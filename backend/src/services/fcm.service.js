@@ -235,6 +235,19 @@ class FCMService extends EventEmitter {
         return;
       }
 
+      // 如果是 appData 数组格式，转换为对象
+      if (data.appData && Array.isArray(data.appData)) {
+        console.log('📦 检测到 appData 数组格式，正在转换...');
+        const convertedData = {};
+        for (const item of data.appData) {
+          if (item.key && item.value !== undefined) {
+            convertedData[item.key] = item.value;
+          }
+        }
+        console.log('✅ 转换后的数据:', JSON.stringify(convertedData, null, 2));
+        data = { ...data, ...convertedData };
+      }
+
       console.log('📨 处理后的数据:', JSON.stringify(data, null, 2));
 
       // 解析消息数据 - body 可能是字符串或对象
@@ -242,6 +255,7 @@ class FCMService extends EventEmitter {
       if (data.body) {
         try {
           body = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
+          console.log('📋 解析后的 body:', JSON.stringify(body, null, 2));
         } catch (e) {
           console.warn('⚠️  无法解析消息 body:', data.body);
         }

@@ -22,9 +22,18 @@ class Storage {
         port TEXT NOT NULL,
         player_id TEXT NOT NULL,
         player_token TEXT NOT NULL,
+        battlemetrics_id TEXT,
         created_at INTEGER DEFAULT (strftime('%s', 'now'))
       )
     `);
+
+    // 检查并添加 battlemetrics_id 列（兼容旧数据库）
+    try {
+      this.db.exec(`ALTER TABLE servers ADD COLUMN battlemetrics_id TEXT`);
+      console.log('✅ 添加 battlemetrics_id 列');
+    } catch (error) {
+      // 列已存在，忽略错误
+    }
 
     // 创建设备表
     this.db.exec(`
@@ -59,7 +68,7 @@ class Storage {
 
   addServer(server) {
     const stmt = this.db.prepare(`
-      INSERT INTO servers (id, name, ip, port, player_id, player_token)
+      INSERT OR REPLACE INTO servers (id, name, ip, port, player_id, player_token)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
     return stmt.run(server.id, server.name, server.ip, server.port, server.playerId, server.playerToken);

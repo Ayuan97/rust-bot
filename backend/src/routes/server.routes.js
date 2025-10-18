@@ -1,6 +1,7 @@
 import express from 'express';
 import storage from '../models/storage.model.js';
 import rustPlusService from '../services/rustplus.service.js';
+import battlemetricsService from '../services/battlemetrics.service.js';
 
 const router = express.Router();
 
@@ -133,6 +134,64 @@ router.get('/:id/events', (req, res) => {
     const limit = parseInt(req.query.limit) || 100;
     const events = storage.getEventLogs(req.params.id, limit);
     res.json({ success: true, events });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 获取 Battlemetrics 详细信息
+router.get('/:id/battlemetrics', async (req, res) => {
+  try {
+    const server = storage.getServer(req.params.id);
+    if (!server) {
+      return res.status(404).json({ success: false, error: '服务器不存在' });
+    }
+
+    let battlemetricsId = server.battlemetrics_id;
+
+    // 如果没有保存的 Battlemetrics ID，尝试查找
+    if (!battlemetricsId) {
+      battlemetricsId = await battlemetricsService.searchServerByAddress(server.ip, server.port);
+      
+      if (battlemetricsId) {
+        // 保存找到的 ID
+        storage.updateServer(req.params.id, { battlemetrics_id: battlemetricsId });
+      } else {
+        return res.status(404).json({ 
+          success: false, 
+          error: '未找到 Battlemetrics 信息' 
+        });
+      }
+    }
+
+    // 获取详细信息
+    const bmInfo = await battlemetricsService.getServerInfo(battlemetricsId);
+    
+    if (!bmInfo) {
+      return res.status(500).json({ 
+        success: false, 
+        error: '获取 Battlemetrics 信息失败' 
+      });
+    }
+
+    res.json({ success: true, data: bmInfo });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 获取服务器玩家排行
+router.get('/:id/battlemetrics/top-players', async (req, res) => {
+  try {
+    const server = storage.getServer(req.params.id);
+    if (!server || !server.battlemetrics_id) {
+      return res.status(404).json({ success: false, error: '服务器不存在或未关联 Battlemetrics' });
+    }
+
+    const days = parseInt(req.query.days) || 30;
+    const players = await battlemetricsService.getTopPlayers(server.battlemetrics_id, days);
+
+    res.json({ success: true, players });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

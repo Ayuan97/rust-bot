@@ -40,13 +40,23 @@ class RustPlusService extends EventEmitter {
       });
 
       rustplus.on('error', (error) => {
-        console.error(`❌ 服务器错误 ${serverId}:`, error);
-        this.emit('server:error', { serverId, error: error.message });
+        console.error(`❌ 服务器错误 ${serverId}:`, error.message || error);
+        this.emit('server:error', { serverId, error: error.message || String(error) });
+        
+        // 如果是 protobuf 错误，不要让整个应用崩溃
+        if (error.message && error.message.includes('missing required')) {
+          console.warn('⚠️  检测到 protobuf 格式不兼容，可能是服务器协议版本问题');
+          console.warn('💡 建议: 更新 @liamcottle/rustplus.js 到最新版本');
+        }
       });
 
       // 监听消息事件
       rustplus.on('message', (message) => {
-        this.handleMessage(serverId, message);
+        try {
+          this.handleMessage(serverId, message);
+        } catch (err) {
+          console.error(`处理消息失败 ${serverId}:`, err.message);
+        }
       });
 
       // 连接到服务器
@@ -55,7 +65,7 @@ class RustPlusService extends EventEmitter {
 
       return rustplus;
     } catch (error) {
-      console.error(`连接失败 ${serverId}:`, error);
+      console.error(`连接失败 ${serverId}:`, error.message || error);
       throw error;
     }
   }
