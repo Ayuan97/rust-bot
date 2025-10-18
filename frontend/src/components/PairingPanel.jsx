@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { FaQrcode, FaPlay, FaStop, FaSync, FaCheckCircle, FaTimesCircle, FaKey } from 'react-icons/fa';
+import { FaQrcode, FaPlay, FaStop, FaSync, FaCheckCircle, FaTimesCircle, FaKey, FaRocket } from 'react-icons/fa';
 import { getPairingStatus, startPairing, stopPairing, resetPairing, submitCredentials } from '../services/pairing';
 import socketService from '../services/socket';
 import CredentialsInput from './CredentialsInput';
+import AutoRegisterPanel from './AutoRegisterPanel';
 
 function PairingPanel({ onServerPaired }) {
   const [status, setStatus] = useState({
@@ -13,9 +14,25 @@ function PairingPanel({ onServerPaired }) {
   const [loading, setLoading] = useState(false);
   const [waitingForPairing, setWaitingForPairing] = useState(false);
   const [showCredentialsInput, setShowCredentialsInput] = useState(false);
+  const [showAutoRegister, setShowAutoRegister] = useState(false);
 
   useEffect(() => {
-    fetchStatus();
+    const loadStatus = async () => {
+      try {
+        const response = await getPairingStatus();
+        const currentStatus = response.data.status;
+        setStatus(currentStatus);
+
+        // 如果正在监听，自动设置为等待配对状态
+        if (currentStatus.isListening) {
+          setWaitingForPairing(true);
+        }
+      } catch (error) {
+        console.error('获取配对状态失败:', error);
+      }
+    };
+
+    loadStatus();
 
     // 监听服务器配对事件
     const handleServerPaired = (serverInfo) => {
@@ -92,18 +109,30 @@ function PairingPanel({ onServerPaired }) {
   };
 
   const handleReset = async () => {
-    if (!confirm('确定要重置 FCM 凭证吗？这将需要重新配对所有服务器。')) {
+    if (!confirm('确定要重置 FCM 凭证吗？这将清空现有凭证，需要重新输入。')) {
       return;
     }
 
     setLoading(true);
+    setWaitingForPairing(false);
+
     try {
-      await resetPairing();
-      setWaitingForPairing(true);
+      const response = await resetPairing();
+      console.log('重置响应:', response.data);
+
+      // 更新状态
       await fetchStatus();
+
+      // 显示凭证输入界面
+      setShowCredentialsInput(true);
+
+      // 显示成功提示
+      const message = response.data.message || 'FCM 凭证已清空';
+      alert(`✅ ${message}`);
     } catch (error) {
       console.error('重置失败:', error);
-      alert('重置失败: ' + error.message);
+      const errorMsg = error.response?.data?.error || error.message || '未知错误';
+      alert(`❌ 重置失败: ${errorMsg}`);
     } finally {
       setLoading(false);
     }
@@ -125,22 +154,42 @@ function PairingPanel({ onServerPaired }) {
     }
   };
 
-  // 如果正在显示凭证输入界面，直接显示
-  if (showCredentialsInput) {
-    return (
-      <CredentialsInput
-        onSubmit={handleCredentialsSubmit}
-        onClose={() => setShowCredentialsInput(false)}
-      />
-    );
-  }
+  // 注意：不要完全替换组件，而是用模态框显示
 
   return (
-    <div className="card">
-      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-rust-gray">
-        <FaQrcode className="text-rust-orange text-xl" />
-        <h2 className="text-xl font-bold">服务器配对</h2>
-      </div>
+    <>
+      {/* 自动注册模态框 */}
+      {showAutoRegister && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="max-w-2xl w-full mx-4">
+            <AutoRegisterPanel
+              onComplete={async () => {
+                setShowAutoRegister(false);
+                await fetchStatus();
+              }}
+              onClose={() => setShowAutoRegister(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 手动凭证输入模态框 */}
+      {showCredentialsInput && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="max-w-3xl w-full mx-4">
+            <CredentialsInput
+              onSubmit={handleCredentialsSubmit}
+              onClose={() => setShowCredentialsInput(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="flex items-center gap-2 mb-4 pb-3 border-b border-rust-gray">
+          <FaQrcode className="text-rust-orange text-xl" />
+          <h2 className="text-xl font-bold">服务器配对</h2>
+        </div>
 
       {/* 状态显示 */}
       <div className="mb-6 space-y-3">
@@ -215,15 +264,27 @@ function PairingPanel({ onServerPaired }) {
         {!status.hasStoredCredentials && (
           <div className="mb-4 p-4 bg-rust-orange bg-opacity-20 border border-rust-orange rounded-lg">
             <p className="text-sm text-gray-300 mb-3">
-              ⚠️ 未找到 FCM 凭证。请先输入凭证才能使用配对功能。
+              ⚠️ 未找到 FCM 凭证。请选择注册方式：
             </p>
-            <button
-              className="btn btn-primary w-full flex items-center justify-center gap-2"
-              onClick={() => setShowCredentialsInput(true)}
-            >
-              <FaKey />
-              输入 FCM 凭证
-            </button>
+            <div className="space-y-2">
+              <button
+                className="btn btn-primary w-full flex items-center justify-center gap-2"
+                onClick={() => setShowAutoRegister(true)}
+              >
+                <FaRocket />
+                自动注册（推荐）
+              </button>
+              <button
+                className="btn btn-secondary w-full flex items-center justify-center gap-2"
+                onClick={() => setShowCredentialsInput(true)}
+              >
+                <FaKey />
+                手动输入凭证
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-3">
+              推荐使用自动注册，只需点击按钮并完成 Steam 登录即可
+            </p>
           </div>
         )}
 
@@ -271,7 +332,8 @@ function PairingPanel({ onServerPaired }) {
           <li>也可以配对智能设备，在游戏中对着设备点击 Pair</li>
         </ul>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

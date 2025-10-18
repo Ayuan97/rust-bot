@@ -59,7 +59,7 @@ const initializeFCM = async () => {
     if (savedCredentials) {
       console.log('✅ 找到已保存的 FCM 凭证');
       fcmService.loadCredentials(savedCredentials);
-      fcmService.startListening();
+      await fcmService.startListening();
       console.log('');
       return;
     }
@@ -69,7 +69,7 @@ const initializeFCM = async () => {
     const fromCLI = await fcmService.loadFromRustPlusCLI();
     if (fromCLI) {
       configStorage.saveFCMCredentials(fcmService.getCredentials());
-      fcmService.startListening();
+      await fcmService.startListening();
       console.log('');
       return;
     }

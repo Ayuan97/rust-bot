@@ -35,7 +35,7 @@ router.post('/start', async (req, res) => {
     if (credentials) {
       console.log('✅ 使用已保存的 FCM 凭证');
       fcmService.loadCredentials(credentials);
-      fcmService.startListening();
+      await fcmService.startListening();
     } else {
       console.log('🆕 注册新的 FCM 凭证');
       credentials = await fcmService.registerAndListen();
@@ -48,7 +48,9 @@ router.post('/start', async (req, res) => {
       success: true,
       message: 'FCM 监听已启动，请在游戏中配对服务器',
       credentials: {
-        token: credentials.fcm.token.substring(0, 50) + '...',
+        type: credentials.gcm ? 'GCM' : 'FCM',
+        androidId: credentials.gcm ? credentials.gcm.androidId : null,
+        token: credentials.fcm ? credentials.fcm.token.substring(0, 50) + '...' : null,
         isListening: true
       }
     });
@@ -71,7 +73,7 @@ router.post('/stop', (req, res) => {
 });
 
 /**
- * 重置 FCM 凭证（重新配对）
+ * 重置 FCM 凭证（清空凭证）
  */
 router.post('/reset', async (req, res) => {
   try {
@@ -81,17 +83,9 @@ router.post('/reset', async (req, res) => {
     // 删除旧凭证
     configStorage.deleteFCMCredentials();
 
-    // 注册新凭证
-    const credentials = await fcmService.registerAndListen();
-    configStorage.saveFCMCredentials(credentials);
-
     res.json({
       success: true,
-      message: 'FCM 已重置，请重新在游戏中配对',
-      credentials: {
-        token: credentials.fcm.token.substring(0, 50) + '...',
-        isListening: true
-      }
+      message: 'FCM 凭证已清空，请重新输入凭证'
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -117,8 +111,10 @@ router.get('/credentials', (req, res) => {
       success: true,
       hasCredentials: true,
       credentials: {
-        token: credentials.fcm.token.substring(0, 50) + '...',
-        pushSet: credentials.fcm.pushSet
+        type: credentials.gcm ? 'GCM' : 'FCM',
+        androidId: credentials.gcm ? credentials.gcm.androidId : null,
+        token: credentials.fcm ? credentials.fcm.token.substring(0, 50) + '...' : null,
+        pushSet: credentials.fcm ? credentials.fcm.pushSet : null
       }
     });
   } catch (error) {
@@ -140,7 +136,7 @@ router.post('/credentials/manual', async (req, res) => {
     configStorage.saveFCMCredentials(fcmService.getCredentials());
 
     // 开始监听
-    fcmService.startListening();
+    await fcmService.startListening();
 
     res.json({
       success: true,
@@ -168,7 +164,7 @@ router.post('/credentials/load-cli', async (req, res) => {
       configStorage.saveFCMCredentials(fcmService.getCredentials());
 
       // 开始监听
-      fcmService.startListening();
+      await fcmService.startListening();
 
       res.json({
         success: true,
@@ -182,6 +178,102 @@ router.post('/credentials/load-cli', async (req, res) => {
       });
     }
   } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * 简化版自动注册：直接使用用户的 Companion 凭证
+ * 用户从 companion 页面复制凭证命令后提交
+ *
+ * 关键理解：
+ * - 用户的 gcm_android_id + gcm_security_token 已经在 Companion 后端注册过
+ * - 我们直接用这些凭证连接 MCS (mtalk.google.com:5228) 接收推送
+ * - 不需要 auth_token（那是注册新设备时才需要的）
+ */
+router.post('/register/simple', async (req, res) => {
+  try {
+    const { credentials_command } = req.body;
+
+    if (!credentials_command) {
+      return res.status(400).json({
+        success: false,
+        error: '缺少 credentials_command 参数'
+      });
+    }
+
+    // 解析凭证命令
+    // 格式: /credentials add gcm_android_id:xxx gcm_security_token:xxx steam_id:xxx issued_date:xxx expire_date:xxx
+    const regex = /(\w+):(\S+)/g;
+    const params = {};
+    let match;
+    while ((match = regex.exec(credentials_command)) !== null) {
+      params[match[1]] = match[2];
+    }
+
+    // 验证必需字段
+    if (!params.gcm_android_id || !params.gcm_security_token) {
+      return res.status(400).json({
+        success: false,
+        error: '凭证格式错误：缺少 gcm_android_id 或 gcm_security_token'
+      });
+    }
+
+    console.log('📝 解析 Companion 凭证:');
+    console.log('   Android ID:', params.gcm_android_id);
+    console.log('   Steam ID:', params.steam_id || '未提供');
+
+    // 检查有效期
+    if (params.expire_date) {
+      const expireTime = new Date(parseInt(params.expire_date) * 1000);
+      const now = new Date();
+      console.log('   过期时间:', expireTime.toLocaleString());
+
+      if (now > expireTime) {
+        return res.status(400).json({
+          success: false,
+          error: '凭证已过期，请重新从 Companion 获取'
+        });
+      }
+    }
+
+    // 构建凭证对象（使用用户的 GCM 凭证）
+    const credentials = {
+      gcm: {
+        androidId: params.gcm_android_id,
+        securityToken: params.gcm_security_token,
+      },
+      steam: {
+        steamId: params.steam_id || 'unknown',
+      },
+      companion: params, // 保存所有原始信息
+    };
+
+    console.log('');
+    console.log('✅ 使用 Companion 凭证（已在服务端注册的设备）');
+    console.log('   → 直接连接 MCS 接收推送，无需 auth_token');
+    console.log('');
+
+    // 加载凭证并开始监听
+    fcmService.loadCredentials(credentials);
+    configStorage.saveFCMCredentials(credentials);
+    await fcmService.startListening();
+
+    res.json({
+      success: true,
+      message: 'FCM 凭证已保存并开始监听',
+      isListening: true,
+      credentials: {
+        androidId: params.gcm_android_id,
+        steamId: params.steam_id,
+        expiresAt: params.expire_date ? new Date(parseInt(params.expire_date) * 1000).toISOString() : null,
+      }
+    });
+  } catch (error) {
+    console.error('注册失败:', error);
     res.status(500).json({
       success: false,
       error: error.message

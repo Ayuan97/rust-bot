@@ -12,17 +12,21 @@ class FCMService extends EventEmitter {
     this.fcmListener = null;
     this.credentials = null;
     this.isListening = false;
+    this.heartbeatInterval = null;
   }
 
   /**
-   * 注册 FCM 并开始监听
-   * @param {Object} steamCredentials - Steam 凭证 (可选)
+   * 完整的 FCM 注册流程（不包含 Steam 登录）
+   * 这个方法会：
+   * 1. 注册 FCM 设备
+   * 2. 获取 Expo Push Token
+   * 返回凭证和 tokens，用户需要自己完成 Steam 登录并调用 completeRegistration
    */
-  async registerAndListen(steamCredentials = null) {
+  async registerFCM() {
     try {
-      console.log('🔐 正在注册 FCM...');
+      console.log('🔐 开始 FCM 注册...');
 
-      // 使用 Rust+ Companion 的 FCM 配置
+      // FCM 注册参数（来自官方 CLI）
       const apiKey = "AIzaSyB5y2y-Tzqb4-I4Qnlsh_9naYv_TD8pCvY";
       const projectId = "rust-companion-app";
       const gcmSenderId = "976529667804";
@@ -30,7 +34,7 @@ class FCMService extends EventEmitter {
       const androidPackageName = "com.facepunch.rust.companion";
       const androidPackageCert = "E28D05345FB78A7A1A63D70F4A302DBF426CA5AD";
 
-      // 注册 FCM 获取凭证
+      console.log('📱 正在注册 FCM 设备...');
       const fcmCredentials = await AndroidFCM.register(
         apiKey,
         projectId,
@@ -40,16 +44,21 @@ class FCMService extends EventEmitter {
         androidPackageCert
       );
 
-      // 保存为 GCM 格式（与 rustplus CLI 一致）
-      this.credentials = fcmCredentials;
+      console.log('✅ FCM 设备注册成功');
+      console.log('   Android ID:', fcmCredentials.gcm.androidId);
+      console.log('   FCM Token:', fcmCredentials.fcm.token.substring(0, 50) + '...');
 
-      console.log('✅ FCM 注册成功！');
-      console.log('📱 Android ID:', fcmCredentials.gcm.androidId);
+      // 获取 Expo Push Token
+      console.log('📱 正在获取 Expo Push Token...');
+      const expoPushToken = await this.getExpoPushToken(fcmCredentials.fcm.token);
 
-      // 开始监听配对推送
-      this.startListening();
+      console.log('✅ Expo Push Token 获取成功');
+      console.log('   Token:', expoPushToken.substring(0, 50) + '...');
 
-      return this.credentials;
+      return {
+        fcmCredentials,
+        expoPushToken,
+      };
     } catch (error) {
       console.error('❌ FCM 注册失败:', error);
       throw error;
@@ -57,9 +66,35 @@ class FCMService extends EventEmitter {
   }
 
   /**
+   * 完成注册流程（使用 Auth Token）
+   * 用户在 Steam 登录后获取 auth_token，调用此方法完成注册
+   */
+  async completeRegistration(fcmCredentials, expoPushToken, authToken) {
+    try {
+      console.log('🔐 完成 Rust+ API 注册...');
+
+      // 注册到 Rust+ API
+      await this.registerWithRustPlusAPI(authToken, expoPushToken);
+
+      // 保存完整凭证
+      this.credentials = {
+        ...fcmCredentials,
+        expo: { pushToken: expoPushToken },
+        rustplus: { authToken: authToken },
+      };
+
+      console.log('✅ 完整注册流程已完成');
+      return this.credentials;
+    } catch (error) {
+      console.error('❌ 完成注册失败:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 使用已有凭证开始监听
    */
-  startListening() {
+  async startListening() {
     if (this.isListening) {
       console.log('⚠️  FCM 监听器已在运行');
       return;
@@ -74,33 +109,77 @@ class FCMService extends EventEmitter {
     }
 
     console.log('👂 开始监听 FCM 推送消息...');
-    console.log('📋 Android ID:', this.credentials.gcm.androidId);
+    console.log('📋 凭证信息:');
+    console.log('   - Android ID:', this.credentials.gcm.androidId);
+    console.log('   - Security Token:', this.credentials.gcm.securityToken);
+    console.log('   - 凭证类型:', typeof this.credentials.gcm.androidId, typeof this.credentials.gcm.securityToken);
 
     // 创建 PushReceiverClient 监听器
-    const androidId = this.credentials.gcm.androidId;
-    const securityToken = this.credentials.gcm.securityToken;
+    // 注意：androidId 和 securityToken 必须是字符串
+    const androidId = String(this.credentials.gcm.androidId);
+    const securityToken = String(this.credentials.gcm.securityToken);
+
+    console.log('📋 转换后的凭证:', { androidId, securityToken });
 
     this.fcmListener = new PushReceiverClient(androidId, securityToken, []);
 
-    // 监听接收到的数据
+    // 监听数据接收事件（未加密的推送消息）
     this.fcmListener.on('ON_DATA_RECEIVED', (data) => {
+      console.log('📩 收到未加密推送 (ON_DATA_RECEIVED)');
       this.handleFCMMessage(data);
+    });
+
+    // 监听通知接收事件（加密后解密的推送消息）
+    this.fcmListener.on('ON_NOTIFICATION_RECEIVED', (data) => {
+      console.log('📩 收到加密推送 (ON_NOTIFICATION_RECEIVED)');
+      this.handleFCMMessage(data.notification || data);
+    });
+
+    // 添加连接成功事件监听（正确的事件名是 'connect'）
+    this.fcmListener.on('connect', () => {
+      console.log('🔗 FCM 连接已建立');
+      console.log('📡 开始接收推送通知...');
+
+      // 每30秒输出一次心跳日志，确认连接活跃
+      if (this.heartbeatInterval) {
+        clearInterval(this.heartbeatInterval);
+      }
+      this.heartbeatInterval = setInterval(() => {
+        console.log(`💓 FCM 连接心跳检查 - 状态: ${this.isListening ? '活跃' : '已断开'} - ${new Date().toLocaleTimeString()}`);
+      }, 30000);
+    });
+
+    // 添加断开连接事件监听（正确的事件名是 'disconnect'）
+    this.fcmListener.on('disconnect', () => {
+      console.log('⚠️  FCM 连接已断开');
+      this.isListening = false;
+
+      if (this.heartbeatInterval) {
+        clearInterval(this.heartbeatInterval);
+        this.heartbeatInterval = null;
+      }
     });
 
     // 监听错误
     this.fcmListener.on('error', (error) => {
+      console.log('❌ 触发 error 事件');
       this.handleFCMError(error);
     });
 
-    // 连接到 FCM
-    this.fcmListener.connect().then(() => {
+    // 连接到 FCM - 等待连接完成
+    try {
+      console.log('🔌 正在连接到 FCM 服务器...');
+      await this.fcmListener.connect();
       this.isListening = true;
-      console.log('✅ FCM 监听已启动');
+      console.log('✅ FCM 连接流程已启动');
+      console.log('📡 等待 connect 事件确认连接...');
+
       this.emit('listening');
-    }).catch((error) => {
+    } catch (error) {
       console.error('❌ FCM 连接失败:', error);
       this.handleFCMError(error);
-    });
+      throw error;
+    }
   }
 
   /**
@@ -111,6 +190,12 @@ class FCMService extends EventEmitter {
       this.fcmListener.destroy();
       this.fcmListener = null;
       this.isListening = false;
+
+      if (this.heartbeatInterval) {
+        clearInterval(this.heartbeatInterval);
+        this.heartbeatInterval = null;
+      }
+
       console.log('🛑 FCM 监听已停止');
       this.emit('stopped');
     }
@@ -120,16 +205,37 @@ class FCMService extends EventEmitter {
    * 处理接收到的 FCM 推送消息
    */
   handleFCMMessage(message) {
-    console.log('📨 收到 FCM 推送:', JSON.stringify(message, null, 2));
+    console.log('\n========================================');
+    console.log('📨 收到 FCM 推送消息！');
+    console.log('========================================');
+    console.log('原始消息类型:', typeof message);
+    console.log('原始消息键:', Object.keys(message || {}));
+    console.log('原始消息内容:');
+    console.log(JSON.stringify(message, null, 2));
+    console.log('========================================\n');
 
     try {
-      // PushReceiverClient 直接返回 data 对象
-      const data = message;
+      // PushReceiverClient 的消息格式可能是 { notification: {...} } 或 直接的 data
+      let data = message;
+
+      // 检查是否有 notification 包装
+      if (message.notification) {
+        console.log('📦 检测到 notification 包装');
+        data = message.notification.data || message.notification;
+      }
+
+      // 检查是否有 data 字段
+      if (message.data) {
+        console.log('📦 检测到 data 字段');
+        data = message.data;
+      }
 
       if (!data) {
         console.warn('⚠️  收到空消息');
         return;
       }
+
+      console.log('📨 处理后的数据:', JSON.stringify(data, null, 2));
 
       // 解析消息数据 - body 可能是字符串或对象
       let body = {};
@@ -283,20 +389,77 @@ class FCMService extends EventEmitter {
   }
 
   /**
+   * 获取 Expo Push Token
+   * 使用 FCM Token 换取 Expo Push Token
+   */
+  async getExpoPushToken(fcmToken) {
+    const axios = (await import('axios')).default;
+    const { v4: uuidv4 } = await import('uuid');
+
+    try {
+      console.log('📱 正在获取 Expo Push Token...');
+      const response = await axios.post('https://exp.host/--/api/v2/push/getExpoPushToken', {
+        type: 'fcm',
+        deviceId: uuidv4(),
+        development: false,
+        appId: 'com.facepunch.rust.companion',
+        deviceToken: fcmToken,
+        projectId: "49451aca-a822-41e6-ad59-955718d0ff9c",
+      });
+
+      const expoPushToken = response.data.data.expoPushToken;
+      console.log('✅ Expo Push Token 获取成功');
+      return expoPushToken;
+    } catch (error) {
+      console.error('❌ 获取 Expo Push Token 失败:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 注册到 Rust+ API
+   */
+  async registerWithRustPlusAPI(authToken, expoPushToken) {
+    const axios = (await import('axios')).default;
+
+    try {
+      console.log('📡 正在注册到 Rust+ API...');
+      await axios.post('https://companion-rust.facepunch.com:443/api/push/register', {
+        AuthToken: authToken,
+        DeviceId: 'rustplus.js-web',
+        PushKind: 3,
+        PushToken: expoPushToken,
+      });
+      console.log('✅ Rust+ API 注册成功');
+      return true;
+    } catch (error) {
+      console.error('❌ Rust+ API 注册失败:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
    * 手动设置凭证（用于 Web 界面输入）
    * 支持从 Companion API 获取的 GCM 凭证格式
+   *
+   * 现在支持完整的注册流程：
+   * 1. 如果提供了 fcm_token 和 auth_token，会自动完成 Expo 和 API 注册
+   * 2. 如果只提供 GCM 凭证，仅保存凭证（可能无法接收推送）
    */
-  setManualCredentials(credentialsData) {
+  async setManualCredentials(credentialsData) {
     try {
-      console.log('📝 设置手动凭证...', credentialsData);
+      console.log('📝 设置手动凭证...');
 
       // 支持多种格式的凭证输入
       if (credentialsData.fcm && credentialsData.keys) {
-        // 标准 rustplus.js 格式
+        // 标准 rustplus.js 格式（已包含完整凭证）
         this.credentials = credentialsData;
-      } else if (credentialsData.gcm_android_id && credentialsData.gcm_security_token && credentialsData.steam_id) {
+        console.log('✅ 标准 FCM 凭证格式识别成功');
+        return true;
+      }
+
+      if (credentialsData.gcm_android_id && credentialsData.gcm_security_token && credentialsData.steam_id) {
         // Companion API 格式 (从 https://companion-rust.facepunch.com/login 获取)
-        // 格式: gcm_android_id:xxx gcm_security_token:xxx steam_id:xxx
         this.credentials = {
           gcm: {
             androidId: credentialsData.gcm_android_id,
@@ -305,7 +468,6 @@ class FCMService extends EventEmitter {
           steam: {
             steamId: credentialsData.steam_id,
           },
-          // 可选的时间戳
           issuedDate: credentialsData.issued_date || null,
           expireDate: credentialsData.expire_date || null,
         };
@@ -317,12 +479,54 @@ class FCMService extends EventEmitter {
           const expireTime = new Date(parseInt(credentialsData.expire_date) * 1000);
           console.log('   过期时间:', expireTime.toLocaleString());
         }
-      } else {
-        throw new Error('无效的凭证格式。需要: gcm_android_id, gcm_security_token, steam_id');
+
+        // 检查是否提供了 fcm_token 和 auth_token 以完成完整注册
+        if (credentialsData.fcm_token && credentialsData.auth_token) {
+          console.log('');
+          console.log('🔄 检测到 FCM Token 和 Auth Token，开始完整注册流程...');
+
+          try {
+            // 1. 获取 Expo Push Token
+            const expoPushToken = await this.getExpoPushToken(credentialsData.fcm_token);
+
+            // 2. 注册到 Rust+ API
+            await this.registerWithRustPlusAPI(credentialsData.auth_token, expoPushToken);
+
+            // 3. 保存完整信息
+            this.credentials.fcm = { token: credentialsData.fcm_token };
+            this.credentials.expo = { pushToken: expoPushToken };
+            this.credentials.rustplus = { authToken: credentialsData.auth_token };
+
+            console.log('');
+            console.log('✅ 完整注册流程已完成！');
+            console.log('   - Expo Push Token: ' + expoPushToken.substring(0, 20) + '...');
+            console.log('   - 已注册到 Rust+ API');
+            console.log('');
+          } catch (error) {
+            console.error('');
+            console.error('❌ 完整注册流程失败:', error.message);
+            console.error('   将仅使用 GCM 凭证，可能无法接收推送');
+            console.error('');
+          }
+        } else {
+          console.log('');
+          console.log('⚠️  警告：仅提供了 GCM 凭证');
+          console.log('   companion-rust.facepunch.com 返回的凭证缺少：');
+          console.log('   - fcm_token (FCM 设备令牌)');
+          console.log('   - auth_token (Rust+ 认证令牌)');
+          console.log('');
+          console.log('   这意味着无法完成 Expo 和 Rust+ API 注册。');
+          console.log('   推送通知可能无法接收。');
+          console.log('');
+          console.log('   建议使用官方 CLI 完整注册：');
+          console.log('   npx @liamcottle/rustplus.js fcm-register');
+          console.log('');
+        }
+
+        return true;
       }
 
-      console.log('✅ 手动凭证已设置');
-      return true;
+      throw new Error('无效的凭证格式。需要: gcm_android_id, gcm_security_token, steam_id');
     } catch (error) {
       console.error('❌ 设置手动凭证失败:', error);
       throw error;
@@ -333,13 +537,19 @@ class FCMService extends EventEmitter {
    * 获取监听状态
    */
   getStatus() {
+    let token = null;
+    if (this.credentials?.fcm?.token) {
+      token = this.credentials.fcm.token.substring(0, 50) + '...';
+    } else if (this.credentials?.gcm?.androidId) {
+      token = `GCM:${this.credentials.gcm.androidId}`;
+    }
+
     return {
       isListening: this.isListening,
       hasCredentials: !!this.credentials,
       credentialType: this.credentials?.gcm ? 'GCM' : (this.credentials?.fcm ? 'FCM' : null),
       steamId: this.credentials?.steam?.steamId || null,
-      token: this.credentials?.fcm?.token?.substring(0, 50) + '...' ||
-             (this.credentials?.gcm ? `GCM:${this.credentials.gcm.androidId}` : null)
+      token: token
     };
   }
 }

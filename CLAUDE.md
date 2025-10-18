@@ -341,6 +341,38 @@ mkdir -p backend/data
 
 **解决**: 确保凭证包含 `gcm.androidId` 和 `gcm.securityToken`
 
+---
+
+**问题**: FCM 已连接但收不到配对推送
+
+**原因**: 可能的原因包括：
+1. GCM 凭证未在 Rust+ 服务器注册
+2. Steam ID 与游戏账号不匹配
+3. 凭证已过期（检查 `expire_date` 字段）
+4. 网络问题导致推送未送达
+
+**排查步骤**:
+1. 检查后端日志中是否有"FCM 连接心跳检查"（每30秒一次）
+2. 确认凭证中的 `steam_id` 与游戏中的 Steam ID 一致
+3. 检查凭证是否过期（`expire_date` Unix 时间戳）
+4. 查看后端是否输出任何事件监听日志（ON_DATA_RECEIVED、ON_MESSAGE_RECEIVED 等）
+5. 尝试在游戏中多次点击配对按钮
+6. 检查防火墙是否阻止了 GCM 连接
+
+**验证凭证有效性**:
+```bash
+# 访问配对状态 API
+curl http://localhost:3000/api/pairing/status
+
+# 检查返回的 credentialType 是否为 "GCM"
+# 检查 isListening 是否为 true
+```
+
+**详细调试日志**: 最新版本已添加详细事件日志，包括：
+- 所有可能的 FCM 事件类型监听（ON_DATA_RECEIVED、ON_MESSAGE_RECEIVED、ON_NOTIFICATION_RECEIVED）
+- 连接心跳检查（每30秒）
+- 消息接收时的完整数据结构输出
+
 ### CORS 错误
 
 **问题**: 前端请求被 CORS 策略阻止

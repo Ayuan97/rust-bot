@@ -1,347 +1,215 @@
 # Rust+ Web Dashboard
 
-一个基于 Web 的 Rust+ 游戏服务器管理面板，可以实时监控服务器状态、发送游戏内消息、控制智能设备等。
+一个基于 Web 的 Rust+ 游戏助手，支持服务器配对、设备控制、地图查看等功能。
 
-## ✨ 功能特性
+## ✨ 特性
 
-- 🎮 **多服务器管理** - 同时连接和管理多个 Rust 服务器
-- 🔐 **官方 Steam 认证** - 通过官方 Companion API 获取凭证
-- 💬 **游戏内聊天** - 从网页发送消息到游戏队伍聊天
-- 🔌 **智能设备控制** - 远程控制灯光、开关、门等智能设备
-- 📊 **实时监控** - 查看在线玩家、队伍信息、游戏时间等
-- 📢 **事件通知** - 玩家登录、死亡通知、智能警报
-- ⚡ **实时通信** - 基于 WebSocket 的实时数据更新
-- 🎨 **现代化 UI** - 响应式设计，支持移动端访问
+- 🎮 **服务器配对** - 通过 FCM 推送自动配对游戏服务器
+- 🔌 **设备控制** - 控制游戏内智能设备（门、灯、开关等）
+- 🗺️ **地图查看** - 实时查看服务器地图和标记点
+- 📊 **服务器信息** - 查看服务器状态、玩家列表等
+- 🔔 **推送通知** - 接收游戏内警报和事件通知
+- 💬 **队伍聊天** - 从网页发送消息到游戏队伍聊天
 
 ## 🚀 快速开始
 
 ### 前置要求
 
-- Node.js 16+
+- Node.js >= 16
 - npm 或 yarn
+- Rust 游戏和 Steam 账号
 
-### 1. 克隆并安装
+### 安装
 
-```bash
-# 克隆仓库
-git clone <repository-url>
-cd rust-bot-new
+1. **克隆项目**
+   ```bash
+   cd /Users/administer/Desktop/go/rust-bot-new
+   ```
 
-# 安装后端依赖
-cd backend
-npm install
+2. **安装后端依赖**
+   ```bash
+   cd backend
+   npm install
+   ```
 
-# 安装前端依赖
-cd ../frontend
-npm install
-```
+3. **安装前端依赖**
+   ```bash
+   cd frontend
+   npm install
+   ```
 
-### 2. 配置环境变量
+### 启动
 
-**后端配置** (`backend/.env`):
-```env
-PORT=3000
-FRONTEND_URL=http://localhost:5173
-```
+1. **启动后端**
+   ```bash
+   cd backend
+   npm start
+   ```
+   后端将运行在 `http://localhost:3000`
 
-**前端配置** (`frontend/.env`):
-```env
-VITE_API_URL=http://localhost:3000/api
-VITE_SOCKET_URL=http://localhost:3000
-```
+2. **启动前端**
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+   前端将运行在 `http://localhost:5173`
 
-### 3. 启动服务
+3. **访问应用**
 
-**方式一：使用启动脚本（推荐）**
-```bash
-./start.sh
-```
+   打开浏览器访问 `http://localhost:5173`
 
-**方式二：手动启动**
-```bash
-# 终端 1 - 启动后端
-cd backend
-npm run dev
+### FCM 注册（首次使用）
 
-# 终端 2 - 启动前端
-cd frontend
-npm run dev
-```
+1. 点击"自动注册（推荐）"
+2. 点击"开始注册"，会在新标签页打开 Steam 登录页面
+3. 使用 Steam 账号登录
+4. 登录成功后，页面会显示凭证命令，类似：
+   ```
+   /credentials add gcm_android_id:xxx gcm_security_token:xxx steam_id:xxx ...
+   ```
+5. 复制完整命令
+6. 切回 Dashboard 标签页，粘贴到输入框
+7. 点击"完成注册"
+8. 等待 FCM 连接建立
 
-访问 http://localhost:5173 即可使用！
+### 服务器配对
 
----
+1. 确保 FCM 注册完成并连接成功
+2. 进入 Rust 游戏并加入服务器
+3. 按 ESC 打开菜单
+4. 点击右下角 Rust+ 图标
+5. 点击 "Pair with Server"
+6. 网页会自动显示配对成功通知
+7. 服务器出现在列表中，可以开始使用
 
-## 🔐 认证配置
+## 📖 详细文档
 
-### ⚠️ 重要：首次使用必须先获取凭证
+- 📘 **[快速测试指南](QUICK_TEST_GUIDE.md)** - 测试和故障排查
+- 📗 **[FCM 简化流程](backend/FCM_SIMPLIFIED_FLOW.md)** - FCM 注册原理详解
+- 📕 **[实现总结](IMPLEMENTATION_SUMMARY.md)** - 完整实现说明
+- 📙 **[版本日志](CHANGELOG_FCM_V2.md)** - V2.0 更新内容
+- 📔 **[架构文档](docs/ARCHITECTURE.md)** - 系统架构设计
+- 📓 **[API 文档](docs/API_CHANNELS.md)** - API 接口说明
 
-本项目需要通过官方 Companion API 获取 Steam 认证凭证。
-
-### 认证步骤
-
-1. **访问 Web 界面**
-   - 打开 http://localhost:5173
-   - 点击顶部"配对服务器"按钮
-
-2. **输入凭证**
-   - 点击"输入 FCM 凭证"按钮
-
-3. **Steam 登录**
-   - 点击"Steam 登录获取凭证"按钮
-   - 在新窗口中登录你的 Steam 账号：
-     ```
-     https://companion-rust.facepunch.com/login
-     ```
-
-4. **复制凭证**
-   - 登录成功后，页面会显示凭证信息：
-     ```
-     /credentials add gcm_android_id:xxx gcm_security_token:xxx steam_id:xxx issued_date:xxx expire_date:xxx
-     ```
-
-5. **填写表单**
-   - 将参数填入表单：
-     - GCM Android ID (必填)
-     - GCM Security Token (必填)
-     - Steam ID (必填)
-     - Issued Date (可选)
-     - Expire Date (可选)
-
-6. **保存并开始监听**
-   - 点击"保存并开始监听"
-   - 系统会自动开始监听推送
-
-7. **游戏内配对**
-   - 进入 Rust 游戏中的任意服务器
-   - 按 `ESC` 打开菜单
-   - 点击右下角 **Rust+** 图标
-   - 点击 **"Pair with Server"**
-
-8. **自动完成**
-   - ✅ 服务器信息自动保存
-   - ✅ 自动连接到服务器
-   - ✅ 可以立即使用所有功能
-
-**详细认证流程**: 查看 [STEAM_AUTH_FLOW.md](STEAM_AUTH_FLOW.md)
-
----
-
-## 📖 使用说明
-
-### 管理服务器
-
-**通过游戏内配对（推荐）**
-1. 点击"配对服务器"按钮
-2. 如果未配置凭证，先完成认证流程
-3. 点击"启动配对监听"
-4. 在游戏中按 ESC → Rust+ → Pair with Server
-5. 配对成功后自动保存并连接
-
-**手动添加服务器**
-1. 点击"手动添加"按钮
-2. 填写服务器信息：
-   - 名称
-   - IP 地址
-   - 端口（通常是游戏端口 + 67）
-   - Player ID（Steam 64 位 ID）
-   - Player Token（配对令牌，负数）
-
-### 发送消息
-
-1. 选择已连接的服务器
-2. 在右侧"队伍聊天"面板输入消息
-3. 点击"发送"
-4. 消息将显示在游戏内队伍聊天
-
-### 控制智能设备
-
-**通过游戏内配对（推荐）**
-1. 在游戏中对着智能设备（灯、开关等）
-2. 按住 `E` 键，点击 "Pair" 按钮
-3. 设备会自动添加到 Dashboard
-
-**手动添加**
-1. 点击"添加设备"按钮
-2. 填写设备信息（需要 Entity ID）
-3. 点击开关按钮控制设备
-
----
-
-## 🏗️ 技术栈
-
-**后端**
-- Node.js + Express
-- Socket.io（实时通信）
-- [@liamcottle/rustplus.js](https://github.com/liamcottle/rustplus.js)（Rust+ API）
-- SQLite（数据存储）
-
-**前端**
-- React + Vite
-- TailwindCSS
-- Socket.io-client
-- React Icons
-
----
-
-## 📂 项目结构
+## 🏗️ 项目结构
 
 ```
 rust-bot-new/
-├── backend/                 # 后端服务
+├── backend/              # 后端服务
 │   ├── src/
-│   │   ├── services/        # 核心服务
-│   │   │   ├── fcm.service.js       # FCM 推送监听
-│   │   │   ├── rustplus.service.js  # Rust+ 连接管理
-│   │   │   └── websocket.service.js # WebSocket 服务
-│   │   ├── routes/          # API 路由
-│   │   │   ├── pairing.routes.js    # 配对相关 API
-│   │   │   └── server.routes.js     # 服务器管理 API
-│   │   ├── models/          # 数据模型
-│   │   └── app.js           # 主应用
+│   │   ├── routes/      # API 路由
+│   │   ├── services/    # 业务逻辑
+│   │   ├── models/      # 数据模型
+│   │   └── index.js     # 入口文件
 │   └── package.json
 │
-├── frontend/                # 前端应用
+├── frontend/             # 前端应用
 │   ├── src/
-│   │   ├── components/      # React 组件
-│   │   │   ├── CredentialsInput.jsx # 凭证输入
-│   │   │   ├── PairingPanel.jsx     # 配对面板
-│   │   │   ├── ServerCard.jsx       # 服务器卡片
-│   │   │   ├── ChatPanel.jsx        # 聊天面板
-│   │   │   └── DeviceControl.jsx    # 设备控制
-│   │   ├── services/        # API 服务
-│   │   │   ├── api.js              # HTTP API
-│   │   │   ├── socket.js           # WebSocket
-│   │   │   └── pairing.js          # 配对 API
-│   │   └── App.jsx          # 主应用
+│   │   ├── components/  # React 组件
+│   │   ├── services/    # API 服务
+│   │   └── App.jsx      # 主应用
 │   └── package.json
 │
-├── docs/                    # 文档
-│   ├── ARCHITECTURE.md      # 技术架构
-│   ├── API_CHANNELS.md      # API 频道说明
-│   └── archive/             # 归档文档
-│
-├── README.md                # 本文件
-├── STEAM_AUTH_FLOW.md       # Steam 认证流程
-├── SETUP_GUIDE.md           # 安装指南
-└── start.sh                 # 启动脚本
+└── docs/                 # 详细文档
+    ├── ARCHITECTURE.md   # 架构说明
+    ├── API_CHANNELS.md   # API 和通道文档
+    └── SETUP_GUIDE.md    # 详细设置指南
 ```
 
----
+## 🔧 核心技术
 
-## 🔌 API 文档
+### 后端
+- **Node.js + Express** - Web 服务器
+- **Socket.io** - WebSocket 实时通信
+- **@liamcottle/rustplus.js** - Rust+ API 封装
+- **@liamcottle/push-receiver** - FCM 推送接收
+- **better-sqlite3** - 数据持久化
 
-### REST API
+### 前端
+- **React + Vite** - UI 框架
+- **Socket.io-client** - WebSocket 客户端
+- **Axios** - HTTP 客户端
+- **React Icons** - 图标库
+- **Tailwind CSS** - 样式框架
 
-**配对相关**
-- `GET /api/pairing/status` - 获取配对状态
-- `POST /api/pairing/start` - 启动 FCM 监听
-- `POST /api/pairing/stop` - 停止监听
-- `POST /api/pairing/credentials/manual` - 手动提交凭证
+## 💡 FCM 注册原理
 
-**服务器管理**
-- `GET /api/servers` - 获取所有服务器
-- `POST /api/servers` - 添加服务器
-- `DELETE /api/servers/:id` - 删除服务器
-- `GET /api/servers/:id/devices` - 获取设备列表
-- `POST /api/servers/:id/devices` - 添加设备
+本项目使用**直连 MCS 复用已注册设备**的方式：
 
-### WebSocket 事件
+1. 用户登录 Companion 获取已注册设备的凭证
+2. 我们使用这些凭证直接连接 FCM (mtalk.google.com:5228)
+3. Companion 后端已经认识这个设备，可以正常路由推送
+4. **不需要 auth_token**（因为不是注册新设备）
 
-**客户端发送**
-- `server:connect` - 连接到 Rust+ 服务器
-- `server:disconnect` - 断开连接
-- `message:send` - 发送队伍消息
-- `device:control` - 控制设备
-
-**服务器推送**
-- `server:paired` - 服务器配对成功
-- `entity:paired` - 设备配对成功
-- `player:login` - 玩家登录通知
-- `player:death` - 玩家死亡通知
-- `alarm` - 智能警报触发
-- `team:message` - 收到队伍消息
-- `entity:changed` - 设备状态改变
-
-**详细 API 说明**: 查看 [docs/API_CHANNELS.md](docs/API_CHANNELS.md)
-
----
+详细说明见 `backend/FCM_SIMPLIFIED_FLOW.md`
 
 ## ❓ 常见问题
 
-### Q: 配对失败怎么办？
+### Q: 收不到推送消息怎么办？
 
-A: 检查以下几点：
-1. 确保已完成 Steam 认证并输入凭证
-2. 检查凭证是否有效（未过期）
-3. 确保点击了"启动配对监听"
-4. 查看后端日志是否有错误
+**检查步骤：**
+1. 后端日志是否显示"FCM 连接已建立"
+2. 是否有心跳日志（每 30 秒一次）
+3. 凭证是否过期（检查 expire_date）
+4. 尝试重新获取凭证并注册
 
 ### Q: 凭证过期了怎么办？
 
-A:
-1. 点击"重置 FCM 凭证"
-2. 重新进行 Steam 登录
-3. 获取新的凭证并填写
+重新登录 `https://companion-rust.facepunch.com/login` 获取新凭证即可。
+凭证通常有效期约 2 周。
 
-凭证通常有效期为 14 天。
+### Q: 为什么不需要 auth_token？
 
-### Q: 可以同时管理多个服务器吗？
+因为我们使用的是 Companion 的已注册设备凭证，不是注册新设备。
+设备已经绑定到用户的 Steam 账号，所以不需要再次证明身份。
 
-A: 可以！Dashboard 支持同时连接多个服务器，在左侧列表中切换即可。
+详见：`backend/FCM_SIMPLIFIED_FLOW.md`
 
-### Q: 智能设备控制失败？
+### Q: 能同时监听多个账号吗？
 
-A:
-1. 确保设备已配对
-2. 检查设备是否有电源
-3. 尝试在游戏中重新配对设备
+目前不支持，但可以在未来版本中添加多账号支持。
 
-### Q: 为什么必须使用 Steam 登录？
+## 🔒 安全提醒
 
-A: 这是官方认证流程：
+⚠️ **凭证保护：**
+- FCM 凭证可以接收你的游戏推送
+- 不要在公共场合展示凭证
+- 不要分享你的凭证命令
+- 凭证存储在本地 `~/.rustplus/config/` 目录
+
+## 🛠️ 开发
+
+### 后端开发
+```bash
+cd backend
+npm run dev  # 使用 nodemon 自动重启
 ```
-Steam 登录 → 获取 Auth Token → 绑定到 Companion API → 接收推送
+
+### 前端开发
+```bash
+cd frontend
+npm run dev  # Vite 热重载
 ```
-没有这个步骤，系统无法知道要推送给谁，配对功能无法工作。
 
----
-
-## 🛣️ 开发路线图
-
-- [x] FCM 推送监听和自动配对
-- [x] 官方 Steam 认证集成
-- [x] 游戏内服务器配对
-- [x] 游戏内设备配对
-- [x] 实时队伍聊天
-- [x] 智能设备控制
-- [x] 玩家登录/死亡通知
-- [x] 智能警报处理
-- [ ] 前端事件历史记录
-- [ ] 数据统计和图表
-- [ ] 设备自动化脚本
-- [ ] 移动端优化
-- [ ] 多语言支持
-- [ ] Docker 部署支持
-
----
+### 构建
+```bash
+# 前端构建
+cd frontend
+npm run build
+```
 
 ## 📄 许可证
 
-MIT License
-
----
+MIT
 
 ## 🙏 致谢
 
 - [@liamcottle/rustplus.js](https://github.com/liamcottle/rustplus.js) - Rust+ API 库
-- [Rust Companion API](https://companion-rust.facepunch.com) - 官方 API
-- [rustplusplus](https://github.com/alexemanuelol/rustplusplus) - 功能参考
+- [@liamcottle/push-receiver](https://github.com/MatthieuLemoine/push-receiver) - FCM 推送接收库
+- [Facepunch Studios](https://rust.facepunch.com/) - Rust 游戏开发商
 
 ---
 
-## 📞 支持
-
-如有问题或建议，请提交 Issue 或 Pull Request。
-
-**最后更新**: 2025-10-18
+**版本:** 2.0.0
+**更新日期:** 2025-10-18
+**状态:** ✅ 稳定版

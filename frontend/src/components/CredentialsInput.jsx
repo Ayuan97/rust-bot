@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FaKey, FaInfoCircle, FaSteam } from 'react-icons/fa';
+import { FaKey, FaInfoCircle, FaSteam, FaMagic } from 'react-icons/fa';
 
 function CredentialsInput({ onSubmit, onClose }) {
   const [manualInput, setManualInput] = useState({
@@ -7,13 +7,53 @@ function CredentialsInput({ onSubmit, onClose }) {
     gcm_security_token: '',
     steam_id: '',
     issued_date: '',
-    expire_date: ''
+    expire_date: '',
+    fcm_token: '',
+    auth_token: ''
   });
+  const [rawInput, setRawInput] = useState('');
   const [error, setError] = useState('');
 
   const handleSteamLogin = () => {
     // 在新窗口打开 Steam 登录页面
     window.open('https://companion-rust.facepunch.com/login', '_blank', 'width=800,height=600');
+  };
+
+  const parseCredentialsCommand = (command) => {
+    try {
+      // 移除 /credentials add 前缀
+      const cleanCommand = command.replace(/^\/credentials\s+add\s+/, '').trim();
+
+      // 解析参数
+      const params = {};
+      const regex = /(\w+):(\S+)/g;
+      let match;
+
+      while ((match = regex.exec(cleanCommand)) !== null) {
+        params[match[1]] = match[2];
+      }
+
+      // 验证必填字段
+      if (!params.gcm_android_id || !params.gcm_security_token || !params.steam_id) {
+        throw new Error('缺少必填字段');
+      }
+
+      return params;
+    } catch (err) {
+      throw new Error('解析失败，请检查格式');
+    }
+  };
+
+  const handleRawInputParse = () => {
+    setError('');
+    try {
+      const parsed = parseCredentialsCommand(rawInput);
+      setManualInput(parsed);
+      setError('');
+      alert('✅ 凭证解析成功！请检查并提交');
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   const handleManualSubmit = (e) => {
@@ -50,10 +90,11 @@ function CredentialsInput({ onSubmit, onClose }) {
               <li>在弹出的窗口中使用 Steam 账号登录</li>
               <li>登录成功后，页面会显示类似这样的凭证信息：
                 <div className="mt-2 p-2 bg-rust-dark rounded text-xs font-mono">
-                  /credentials add gcm_android_id:5346984656978408915 gcm_security_token:4579341590924378429 steam_id:76561198385127796 issued_date:1760759239 expire_date:1761968839
+                  /credentials add gcm_android_id:5346984656978408915 gcm_security_token:4579341590924378429 steam_id:76561198385127796 issued_date:1760759239 expire_date:1761968839 fcm_token:xxx auth_token:xxx
                 </div>
               </li>
-              <li>将这些参数复制并填写到下方表单中</li>
+              <li>将完整的命令粘贴到下方"快捷输入"框中点击"解析"</li>
+              <li>或者手动填写各个字段</li>
             </ol>
           </div>
         </div>
@@ -68,6 +109,33 @@ function CredentialsInput({ onSubmit, onClose }) {
           <FaSteam className="text-2xl" />
           Steam 登录获取凭证
         </button>
+      </div>
+
+      {/* 快捷输入 */}
+      <div className="mb-6 p-4 bg-rust-gray rounded-lg">
+        <label className="block text-sm font-medium mb-2 flex items-center gap-2">
+          <FaMagic className="text-rust-orange" />
+          快捷输入（粘贴完整命令）
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            className="input flex-1 font-mono text-xs"
+            placeholder="/credentials add gcm_android_id:xxx gcm_security_token:xxx steam_id:xxx ..."
+            value={rawInput}
+            onChange={(e) => setRawInput(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn btn-primary px-4"
+            onClick={handleRawInputParse}
+          >
+            解析
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mt-2">
+          将 Steam 登录后获取的完整命令粘贴到此处，然后点击"解析"
+        </p>
       </div>
 
       {/* 错误提示 */}
@@ -146,6 +214,48 @@ function CredentialsInput({ onSubmit, onClose }) {
               value={manualInput.expire_date}
               onChange={(e) => setManualInput({...manualInput, expire_date: e.target.value})}
             />
+          </div>
+
+          <div className="col-span-1 pt-4 border-t border-rust-gray">
+            <p className="text-sm text-rust-orange mb-2">
+              ⚡ 可选字段（提供后可自动完成推送注册）
+            </p>
+            <p className="text-xs text-gray-400">
+              注意：companion-rust.facepunch.com/login 页面可能不提供这些字段。
+              如果没有，请使用官方 CLI: npx @liamcottle/rustplus.js fcm-register
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              FCM Token <span className="text-gray-500">(可选，但推荐)</span>
+            </label>
+            <input
+              type="text"
+              className="input w-full font-mono text-xs"
+              placeholder="如果 companion 页面提供了 fcm_token，请填写"
+              value={manualInput.fcm_token}
+              onChange={(e) => setManualInput({...manualInput, fcm_token: e.target.value})}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              用于获取 Expo Push Token，实现推送通知
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              Auth Token <span className="text-gray-500">(可选，但推荐)</span>
+            </label>
+            <input
+              type="text"
+              className="input w-full font-mono text-xs"
+              placeholder="如果 companion 页面提供了 auth_token，请填写"
+              value={manualInput.auth_token}
+              onChange={(e) => setManualInput({...manualInput, auth_token: e.target.value})}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              用于注册到 Rust+ API，实现推送通知
+            </p>
           </div>
         </div>
 
