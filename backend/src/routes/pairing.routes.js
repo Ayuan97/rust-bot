@@ -1,12 +1,15 @@
 import express from 'express';
 import fcmService from '../services/fcm.service.js';
 import configStorage from '../models/config.model.js';
+import storage from '../models/storage.model.js';
+import rustPlusService from '../services/rustplus.service.js';
 
 const router = express.Router();
 
 /**
  * 获取配对状态
  */
+
 router.get('/status', (req, res) => {
   try {
     const status = fcmService.getStatus();
@@ -73,21 +76,45 @@ router.post('/stop', (req, res) => {
 });
 
 /**
- * 重置 FCM 凭证（清空凭证）
+ * 重置 FCM 凭证（清空凭证并清除所有服务器）
  */
 router.post('/reset', async (req, res) => {
   try {
-    // 停止监听
-    fcmService.stopListening();
+    console.log('🔄 开始重置 FCM 凭证和服务器信息...');
 
-    // 删除旧凭证
+    // 1. 获取所有服务器并断开连接
+    const servers = storage.getAllServers();
+    for (const server of servers) {
+      if (rustPlusService.isConnected(server.id)) {
+        console.log(`🔌 断开服务器连接: ${server.name}`);
+        await rustPlusService.disconnect(server.id);
+      }
+      
+      // 删除服务器及其相关数据
+      console.log(`🗑️  删除服务器: ${server.name}`);
+      storage.deleteServer(server.id);
+    }
+
+    // 2. 停止 FCM 监听
+    fcmService.stopListening();
+    console.log('⏹️  FCM 监听已停止');
+
+    // 3. 删除 FCM 凭证
     configStorage.deleteFCMCredentials();
+    console.log('🗑️  FCM 凭证已删除');
+
+    console.log('✅ 重置完成\n');
 
     res.json({
       success: true,
-      message: 'FCM 凭证已清空，请重新输入凭证'
+      message: 'FCM 凭证和所有服务器信息已清空，请重新配置',
+      cleared: {
+        servers: servers.length,
+        credentials: true
+      }
     });
   } catch (error) {
+    console.error('❌ 重置失败:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

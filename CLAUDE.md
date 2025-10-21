@@ -606,6 +606,7 @@ curl http://localhost:3000/api/pairing/status
 - Docker 容器化部署
 
 ---
+没有要求不能私自创建文档-必须遵守
 
 ## 回答模版（每次必须遵守）
 

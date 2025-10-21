@@ -51,28 +51,19 @@ app.get('/api/health', (req, res) => {
 websocketService.initialize(server, process.env.FRONTEND_URL || 'http://localhost:5173');
 
 // 初始化 FCM 服务
+let fcmInitialized = false;
 const initializeFCM = async () => {
   try {
     console.log('\n🔐 初始化 FCM 服务...\n');
 
-    // 首先注册所有事件监听器（必须在启动监听之前注册）
-    // 监听服务器配对事件
-    fcmService.on('server:paired', async (serverInfo) => {
+    // 只注册一次事件监听器，避免重复监听
+    if (!fcmInitialized) {
+      fcmInitialized = true;
+      
+      // 首先注册所有事件监听器（必须在启动监听之前注册）
+      // 监听服务器配对事件
+      fcmService.on('server:paired', async (serverInfo) => {
       console.log('🎮 新服务器配对:', serverInfo.name);
-
-      // 查找 Battlemetrics ID
-      let battlemetricsId = null;
-      try {
-        console.log('🔍 正在查找 Battlemetrics 信息...');
-        battlemetricsId = await battlemetricsService.searchServerByAddress(serverInfo.ip, serverInfo.port);
-        if (battlemetricsId) {
-          console.log('✅ 找到 Battlemetrics ID:', battlemetricsId);
-        } else {
-          console.log('⚠️  未找到 Battlemetrics 信息');
-        }
-      } catch (error) {
-        console.error('❌ 查找 Battlemetrics 失败:', error.message);
-      }
 
       // 保存服务器信息
       try {
@@ -83,7 +74,7 @@ const initializeFCM = async () => {
           port: serverInfo.port,
           playerId: serverInfo.playerId,
           playerToken: serverInfo.playerToken,
-          battlemetricsId: battlemetricsId,
+          battlemetricsId: null, // 稍后异步获取
         });
 
         console.log('✅ 服务器信息已保存');
@@ -93,7 +84,21 @@ const initializeFCM = async () => {
       }
 
       // 通知前端（无论连接是否成功）
-      websocketService.broadcast('server:paired', { ...serverInfo, battlemetricsId });
+      websocketService.broadcast('server:paired', serverInfo);
+
+      // 在后台异步查找 Battlemetrics ID（不阻塞配对流程）
+      setImmediate(async () => {
+        try {
+          console.log('🔍 后台查找 Battlemetrics 信息...');
+          const battlemetricsId = await battlemetricsService.searchServerByAddress(serverInfo.ip, serverInfo.port);
+          if (battlemetricsId) {
+            storage.updateServer(serverInfo.id, { battlemetrics_id: battlemetricsId });
+            console.log('✅ Battlemetrics ID 已更新:', battlemetricsId);
+          }
+        } catch (error) {
+          console.error('❌ 查找 Battlemetrics 失败:', error.message);
+        }
+      });
 
       // 尝试自动连接到服务器（不阻塞）
       try {
@@ -159,6 +164,7 @@ const initializeFCM = async () => {
       console.log('📬 通知:', notificationInfo);
       websocketService.broadcast('notification', notificationInfo);
     });
+    }
 
     // 加载凭证并启动监听
     // 1. 优先使用数据库中已保存的凭证
@@ -198,6 +204,41 @@ const initializeFCM = async () => {
   }
 };
 
+// 设置玩家事件自动通知
+const setupPlayerEventNotifications = () => {
+  const commandsService = rustPlusService.getCommandsService();
+
+  // 玩家死亡自动通知
+  rustPlusService.on('player:died', async (data) => {
+    try {
+      const settings = commandsService.getServerSettings(data.serverId);
+      if (settings.deathNotify) {
+        const message = `💀 ${data.name} 在 (${Math.round(data.x)}, ${Math.round(data.y)}) 死亡了！`;
+        await rustPlusService.sendTeamMessage(data.serverId, message);
+        console.log(`📨 已发送死亡通知: ${data.name}`);
+      }
+    } catch (error) {
+      console.error('❌ 发送死亡通知失败:', error.message);
+    }
+  });
+
+  // 玩家重生自动通知
+  rustPlusService.on('player:spawned', async (data) => {
+    try {
+      const settings = commandsService.getServerSettings(data.serverId);
+      if (settings.spawnNotify) {
+        const message = `✨ ${data.name} 重生了！`;
+        await rustPlusService.sendTeamMessage(data.serverId, message);
+        console.log(`📨 已发送重生通知: ${data.name}`);
+      }
+    } catch (error) {
+      console.error('❌ 发送重生通知失败:', error.message);
+    }
+  });
+
+  console.log('✅ 玩家事件自动通知已启用（可通过 !notify 命令控制）');
+};
+
 // 启动服务器
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, async () => {
@@ -212,13 +253,49 @@ server.listen(PORT, async () => {
 
   // 初始化 FCM
   await initializeFCM();
+
+  // 设置玩家事件自动通知
+  setupPlayerEventNotifications();
 });
 
-// 优雅关闭
-process.on('SIGTERM', () => {
-  console.log('收到 SIGTERM 信号，正在关闭...');
-  server.close(() => {
-    console.log('服务器已关闭');
-    process.exit(0);
-  });
-});
+// 优雅关闭函数
+const gracefulShutdown = async (signal) => {
+  console.log(`\n收到 ${signal} 信号，正在关闭...`);
+  
+  try {
+    // 1. 关闭所有 Rust+ 连接
+    const connectedServers = rustPlusService.getConnectedServers();
+    console.log(`正在断开 ${connectedServers.length} 个 Rust+ 连接...`);
+    for (const serverId of connectedServers) {
+      await rustPlusService.disconnect(serverId);
+    }
+    
+    // 2. 关闭 Socket.IO
+    const io = websocketService.getIO();
+    if (io) {
+      console.log('正在关闭 Socket.IO 连接...');
+      io.close();
+    }
+    
+    // 3. 关闭 HTTP Server
+    console.log('正在关闭 HTTP Server...');
+    server.close(() => {
+      console.log('✅ 服务器已安全关闭');
+      process.exit(0);
+    });
+    
+    // 设置强制关闭超时（10秒）
+    setTimeout(() => {
+      console.error('❌ 强制关闭（超时）');
+      process.exit(1);
+    }, 10000);
+    
+  } catch (error) {
+    console.error('❌ 关闭过程出错:', error.message);
+    process.exit(1);
+  }
+};
+
+// 监听关闭信号
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

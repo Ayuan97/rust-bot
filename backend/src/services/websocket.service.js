@@ -136,6 +136,19 @@ class WebSocketService {
         }
       });
 
+      // 获取地图标记
+      socket.on('map:markers', async (serverId) => {
+        try {
+          const markers = await rustPlusService.getMapMarkers(serverId);
+          socket.emit('map:markers:success', { serverId, markers });
+        } catch (error) {
+          socket.emit('map:markers:error', {
+            serverId,
+            error: error.message
+          });
+        }
+      });
+
       // 获取游戏时间
       socket.on('time:get', async (serverId) => {
         try {
@@ -146,6 +159,80 @@ class WebSocketService {
             serverId,
             error: error.message
           });
+        }
+      });
+
+      // 智能开关开/关
+      socket.on('switch:on', async ({ serverId, entityId }) => {
+        try {
+          await rustPlusService.turnSmartSwitchOn(serverId, entityId);
+          socket.emit('switch:on:success', { serverId, entityId });
+        } catch (error) {
+          socket.emit('switch:on:error', { serverId, entityId, error: error.message });
+        }
+      });
+
+      socket.on('switch:off', async ({ serverId, entityId }) => {
+        try {
+          await rustPlusService.turnSmartSwitchOff(serverId, entityId);
+          socket.emit('switch:off:success', { serverId, entityId });
+        } catch (error) {
+          socket.emit('switch:off:error', { serverId, entityId, error: error.message });
+        }
+      });
+
+      // 摄像头订阅/控制
+      socket.on('camera:subscribe', async ({ serverId, cameraId }) => {
+        try {
+          const result = await rustPlusService.subscribeCamera(serverId, cameraId);
+          socket.emit('camera:subscribe:success', result);
+        } catch (error) {
+          socket.emit('camera:subscribe:error', { serverId, cameraId, error: error.message });
+        }
+      });
+
+      socket.on('camera:unsubscribe', async ({ serverId, cameraId }) => {
+        try {
+          const result = await rustPlusService.unsubscribeCamera(serverId, cameraId);
+          socket.emit('camera:unsubscribe:success', result);
+        } catch (error) {
+          socket.emit('camera:unsubscribe:error', { serverId, cameraId, error: error.message });
+        }
+      });
+
+      socket.on('camera:move', async ({ serverId, cameraId, buttons, x, y }) => {
+        try {
+          const result = await rustPlusService.cameraMove(serverId, cameraId, buttons, x, y);
+          socket.emit('camera:move:success', { serverId, cameraId, result });
+        } catch (error) {
+          socket.emit('camera:move:error', { serverId, cameraId, error: error.message });
+        }
+      });
+
+      socket.on('camera:zoom', async ({ serverId, cameraId }) => {
+        try {
+          const result = await rustPlusService.cameraZoom(serverId, cameraId);
+          socket.emit('camera:zoom:success', { serverId, cameraId, result });
+        } catch (error) {
+          socket.emit('camera:zoom:error', { serverId, cameraId, error: error.message });
+        }
+      });
+
+      socket.on('camera:shoot', async ({ serverId, cameraId }) => {
+        try {
+          const result = await rustPlusService.cameraShoot(serverId, cameraId);
+          socket.emit('camera:shoot:success', { serverId, cameraId, result });
+        } catch (error) {
+          socket.emit('camera:shoot:error', { serverId, cameraId, error: error.message });
+        }
+      });
+
+      socket.on('camera:reload', async ({ serverId, cameraId }) => {
+        try {
+          const result = await rustPlusService.cameraReload(serverId, cameraId);
+          socket.emit('camera:reload:success', { serverId, cameraId, result });
+        } catch (error) {
+          socket.emit('camera:reload:error', { serverId, cameraId, error: error.message });
         }
       });
 
@@ -180,15 +267,67 @@ class WebSocketService {
       console.log(`💬 [${data.name}]: ${data.message}`);
     });
 
+    // 队伍命令
+    rustPlusService.on('team:command', (data) => {
+      this.io.emit('team:command', data);
+      console.log(`🎮 [命令 ${data.name}]: ${data.message}`);
+    });
+
     // 队伍变化
     rustPlusService.on('team:changed', (data) => {
       this.io.emit('team:changed', data);
+    });
+
+    // 玩家死亡
+    rustPlusService.on('player:died', (data) => {
+      this.io.emit('player:died', data);
+      console.log(`💀 [${data.serverId}] ${data.name} 死亡`);
+    });
+
+    // 玩家复活/重生
+    rustPlusService.on('player:spawned', (data) => {
+      this.io.emit('player:spawned', data);
+      console.log(`✨ [${data.serverId}] ${data.name} 重生`);
+    });
+
+    // 玩家上线
+    rustPlusService.on('player:online', (data) => {
+      this.io.emit('player:online', data);
+      console.log(`🟢 [${data.serverId}] ${data.name} 上线`);
+    });
+
+    // 玩家下线
+    rustPlusService.on('player:offline', (data) => {
+      this.io.emit('player:offline', data);
+      console.log(`🔴 [${data.serverId}] ${data.name} 下线`);
+    });
+
+    // 氏族变化
+    rustPlusService.on('clan:changed', (data) => {
+      this.io.emit('clan:changed', data);
+    });
+
+    // 氏族消息
+    rustPlusService.on('clan:message', (data) => {
+      this.io.emit('clan:message', data);
+      console.log(`🏰 [氏族消息 ${data.name}]: ${data.message}`);
     });
 
     // 设备状态变化
     rustPlusService.on('entity:changed', (data) => {
       this.io.emit('entity:changed', data);
       console.log(`🔄 设备 ${data.entityId} 状态变化: ${data.value}`);
+    });
+
+    // 摄像头事件
+    rustPlusService.on('camera:subscribing', (data) => this.io.emit('camera:subscribing', data));
+    rustPlusService.on('camera:subscribed', (data) => this.io.emit('camera:subscribed', data));
+    rustPlusService.on('camera:unsubscribed', (data) => this.io.emit('camera:unsubscribed', data));
+    rustPlusService.on('camera:render', (data) => this.io.emit('camera:render', data));
+
+    // 原始消息（调试）
+    rustPlusService.on('rust:message', (data) => {
+      this.io.emit('rust:message', data);
     });
   }
 
@@ -199,6 +338,13 @@ class WebSocketService {
     if (this.io) {
       this.io.emit(event, data);
     }
+  }
+
+  /**
+   * 获取 Socket.IO 实例
+   */
+  getIO() {
+    return this.io;
   }
 }
 

@@ -9,6 +9,12 @@ class Storage {
   constructor() {
     const dbPath = join(__dirname, '../../data/database.db');
     this.db = new Database(dbPath);
+    // 启用外键级联删除，确保重置/删除服务器时级联清理设备与事件日志
+    try {
+      this.db.pragma('foreign_keys = ON');
+    } catch (e) {
+      console.warn('无法启用 SQLite 外键:', e?.message || e);
+    }
     this.initDatabase();
   }
 
