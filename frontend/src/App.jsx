@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FaPlus, FaServer, FaQrcode } from 'react-icons/fa';
+import { FaPlus, FaServer, FaQrcode, FaInfoCircle, FaComments, FaGamepad, FaClock, FaHistory } from 'react-icons/fa';
 import socketService from './services/socket';
 import { getServers, addServer as apiAddServer, deleteServer as apiDeleteServer } from './services/api';
 import ServerCard from './components/ServerCard';
@@ -8,6 +8,9 @@ import DeviceControl from './components/DeviceControl';
 import ServerInfo from './components/ServerInfo';
 import AddServerModal from './components/AddServerModal';
 import PairingPanel from './components/PairingPanel';
+import EventsPanel from './components/EventsPanel';
+import EventHistoryPanel from './components/EventHistoryPanel';
+import PlayerNotifications from './components/PlayerNotifications';
 
 function App() {
   const [servers, setServers] = useState([]);
@@ -15,6 +18,7 @@ function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPairingPanel, setShowPairingPanel] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('info'); // 'info', 'chat', 'devices', 'events', 'history'
 
   useEffect(() => {
     // 初始化 WebSocket 连接
@@ -188,21 +192,77 @@ function App() {
             {/* 右侧：主控制面板 */}
             {activeServer ? (
               activeServer.connected ? (
-                <div className="lg:col-span-9 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* 服务器信息 */}
-                  <div className="lg:col-span-1">
-                    <ServerInfo serverId={activeServer.id} />
+                <div className="lg:col-span-9">
+                  {/* 标签页导航 */}
+                  <div className="bg-rust-dark rounded-lg p-2 mb-6 flex gap-2 overflow-x-auto">
+                    <button
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
+                        activeTab === 'info'
+                          ? 'bg-rust-orange text-white'
+                          : 'text-gray-400 hover:bg-rust-gray'
+                      }`}
+                      onClick={() => setActiveTab('info')}
+                    >
+                      <FaInfoCircle />
+                      服务器信息
+                    </button>
+                    <button
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
+                        activeTab === 'chat'
+                          ? 'bg-rust-orange text-white'
+                          : 'text-gray-400 hover:bg-rust-gray'
+                      }`}
+                      onClick={() => setActiveTab('chat')}
+                    >
+                      <FaComments />
+                      队伍聊天
+                    </button>
+                    <button
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
+                        activeTab === 'devices'
+                          ? 'bg-rust-orange text-white'
+                          : 'text-gray-400 hover:bg-rust-gray'
+                      }`}
+                      onClick={() => setActiveTab('devices')}
+                    >
+                      <FaGamepad />
+                      设备控制
+                    </button>
+                    <button
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
+                        activeTab === 'events'
+                          ? 'bg-rust-orange text-white'
+                          : 'text-gray-400 hover:bg-rust-gray'
+                      }`}
+                      onClick={() => setActiveTab('events')}
+                    >
+                      <FaClock />
+                      活跃事件
+                    </button>
+                    <button
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
+                        activeTab === 'history'
+                          ? 'bg-rust-orange text-white'
+                          : 'text-gray-400 hover:bg-rust-gray'
+                      }`}
+                      onClick={() => setActiveTab('history')}
+                    >
+                      <FaHistory />
+                      事件历史
+                    </button>
                   </div>
 
-                  {/* 聊天面板 */}
-                  <div className="lg:col-span-1 h-[600px]">
-                    <ChatPanel serverId={activeServer.id} />
+                  {/* 标签页内容 */}
+                  <div className="h-[600px]">
+                    {activeTab === 'info' && <ServerInfo serverId={activeServer.id} />}
+                    {activeTab === 'chat' && <ChatPanel serverId={activeServer.id} />}
+                    {activeTab === 'devices' && <DeviceControl serverId={activeServer.id} />}
+                    {activeTab === 'events' && <EventsPanel serverId={activeServer.id} />}
+                    {activeTab === 'history' && <EventHistoryPanel serverId={activeServer.id} />}
                   </div>
 
-                  {/* 设备控制 - 占满整行 */}
-                  <div className="lg:col-span-2 h-[600px]">
-                    <DeviceControl serverId={activeServer.id} />
-                  </div>
+                  {/* 玩家动态通知（悬浮） */}
+                  <PlayerNotifications serverId={activeServer.id} />
                 </div>
               ) : (
                 <div className="lg:col-span-9 flex items-center justify-center">

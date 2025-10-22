@@ -33,19 +33,16 @@ function ServerInfo({ serverId }) {
     }
   };
 
-  const formatTime = (dayLengthMinutes, time) => {
-    if (!dayLengthMinutes || time === undefined) return '--:--';
-
-    const totalMinutes = (time / 60) * dayLengthMinutes;
-    const hours = Math.floor(totalMinutes / 60) % 24;
-    const minutes = Math.floor(totalMinutes % 60);
-
+  const formatTime = (time) => {
+    if (time === undefined) return '--:--';
+    const hours = Math.floor(time);
+    const minutes = Math.floor((time - hours) * 60);
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
   };
 
-  const isDaytime = (time) => {
+  const isDaytime = (time, sunrise = 6, sunset = 18) => {
     if (time === undefined) return true;
-    return time >= 0.25 && time <= 0.75;
+    return time >= sunrise && time < sunset;
   };
 
   if (loading) {
@@ -86,7 +83,7 @@ function ServerInfo({ serverId }) {
 
             {timeInfo && (
               <div className="flex items-center gap-3 p-3 bg-rust-gray rounded-lg">
-                {isDaytime(timeInfo.time) ? (
+                {isDaytime(timeInfo.time, timeInfo.sunrise, timeInfo.sunset) ? (
                   <FaSun className="text-yellow-400 text-xl" />
                 ) : (
                   <FaMoon className="text-blue-400 text-xl" />
@@ -94,9 +91,9 @@ function ServerInfo({ serverId }) {
                 <div>
                   <p className="text-sm text-gray-400">游戏时间</p>
                   <p className="text-lg font-semibold">
-                    {formatTime(timeInfo.dayLengthMinutes, timeInfo.time)}
+                    {formatTime(timeInfo.time)}
                     <span className="text-sm text-gray-400 ml-2">
-                      ({isDaytime(timeInfo.time) ? '白天' : '夜晚'})
+                      ({isDaytime(timeInfo.time, timeInfo.sunrise, timeInfo.sunset) ? '白天' : '夜晚'})
                     </span>
                   </p>
                 </div>

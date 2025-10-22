@@ -246,6 +246,7 @@ const setupGameEventNotifications = () => {
       data.serverId,
       `货船已刷新 位置: ${data.position}`
     );
+    websocketService.broadcast('event:cargo:spawn', { ...data, type: 'cargo:spawn' });
   });
 
   eventMonitorService.on(EventType.CARGO_EGRESS_WARNING, async (data) => {
@@ -267,6 +268,7 @@ const setupGameEventNotifications = () => {
       data.serverId,
       `货船已离开地图`
     );
+    websocketService.broadcast('event:cargo:leave', { ...data, type: 'cargo:leave' });
   });
 
   // 小油井事件
@@ -275,6 +277,7 @@ const setupGameEventNotifications = () => {
       data.serverId,
       `小油井已触发 重型科学家正在赶来`
     );
+    websocketService.broadcast('event:small:triggered', { ...data, type: 'small:triggered' });
   });
 
   eventMonitorService.on(EventType.SMALL_OIL_RIG_CRATE_WARNING, async (data) => {
@@ -289,6 +292,7 @@ const setupGameEventNotifications = () => {
       data.serverId,
       `小油井箱子已解锁！`
     );
+    websocketService.broadcast('event:small:unlocked', { ...data, type: 'small:unlocked' });
   });
 
   // 大油井事件
@@ -297,6 +301,7 @@ const setupGameEventNotifications = () => {
       data.serverId,
       `大油井已触发 重型科学家正在赶来`
     );
+    websocketService.broadcast('event:large:triggered', { ...data, type: 'large:triggered' });
   });
 
   eventMonitorService.on(EventType.LARGE_OIL_RIG_CRATE_WARNING, async (data) => {
@@ -311,6 +316,7 @@ const setupGameEventNotifications = () => {
       data.serverId,
       `大油井箱子已解锁！`
     );
+    websocketService.broadcast('event:large:unlocked', { ...data, type: 'large:unlocked' });
   });
 
   // 武装直升机事件
@@ -319,6 +325,7 @@ const setupGameEventNotifications = () => {
       data.serverId,
       `武装直升机已刷新 位置: ${data.position}`
     );
+    websocketService.broadcast('event:heli:spawn', { ...data, type: 'heli:spawn' });
   });
 
   eventMonitorService.on(EventType.PATROL_HELI_DOWNED, async (data) => {
@@ -326,6 +333,7 @@ const setupGameEventNotifications = () => {
       data.serverId,
       `武装直升机被击落 位置: ${data.position}`
     );
+    websocketService.broadcast('event:heli:downed', { ...data, type: 'heli:downed' });
   });
 
   eventMonitorService.on(EventType.PATROL_HELI_LEAVE, async (data) => {
@@ -333,6 +341,7 @@ const setupGameEventNotifications = () => {
       data.serverId,
       `武装直升机已离开地图`
     );
+    websocketService.broadcast('event:heli:leave', { ...data, type: 'heli:leave' });
   });
 
   // CH47事件
@@ -341,6 +350,15 @@ const setupGameEventNotifications = () => {
       data.serverId,
       `CH47已出现 位置: ${data.position}`
     );
+    websocketService.broadcast('event:ch47:spawn', { ...data, type: 'ch47:spawn' });
+  });
+
+  eventMonitorService.on(EventType.CH47_LEAVE, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `CH47已离开`
+    );
+    websocketService.broadcast('event:ch47:leave', { ...data, type: 'ch47:leave' });
   });
 
   // 上锁箱子事件
@@ -349,6 +367,11 @@ const setupGameEventNotifications = () => {
       data.serverId,
       `上锁箱子出现 位置: ${data.position}`
     );
+    websocketService.broadcast('event:crate:spawn', { ...data, type: 'crate:spawn' });
+  });
+
+  eventMonitorService.on(EventType.LOCKED_CRATE_DESPAWN, async (data) => {
+    websocketService.broadcast('event:crate:despawn', { ...data, type: 'crate:despawn' });
   });
 
   // 袭击检测
@@ -357,6 +380,7 @@ const setupGameEventNotifications = () => {
       data.serverId,
       `检测到袭击 位置: ${data.position} (${data.explosionCount}次爆炸)`
     );
+    websocketService.broadcast('event:raid:detected', { ...data, type: 'raid:detected' });
   });
 
   console.log('✅ 游戏事件监听器已注册');
