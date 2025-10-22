@@ -1,6 +1,7 @@
 import RustPlus from '@liamcottle/rustplus.js';
 import EventEmitter from 'events';
 import CommandsService from './commands.service.js';
+import DayNightNotifier from './day-night-notifier.js';
 
 class RustPlusService extends EventEmitter {
   constructor() {
@@ -9,6 +10,12 @@ class RustPlusService extends EventEmitter {
     this.cameras = new Map(); // `${serverId}:${cameraId}` -> Camera instance
     this.teamStates = new Map(); // serverId -> 上一次的队伍状态（用于检测变化）
     this.commandsService = new CommandsService(this); // 命令处理服务
+    this.pollingIntervals = new Map(); // serverId -> 轮询定时器
+    this.pollingInterval = 5000; // 默认 5 秒轮询一次
+    this.messageQueue = new Map(); // serverId -> 消息队列
+    this.messageRateLimit = 2000; // 消息发送间隔：2秒（避免被服务器限制）
+    this.playerCountHistory = new Map(); // serverId -> [{time, count, queued}] 玩家数量历史
+    this.dayNightNotifier = new DayNightNotifier(this); // 昼夜提醒服务
   }
 
   /**
@@ -42,10 +49,24 @@ class RustPlusService extends EventEmitter {
           if (teamInfo) {
             this.teamStates.set(serverId, JSON.parse(JSON.stringify(teamInfo)));
             console.log(`📋 已初始化队伍状态 (${teamInfo.members?.length || 0} 名成员)`);
+
+            // 输出每个成员的详细状态
+            if (teamInfo.members && teamInfo.members.length > 0) {
+              console.log('👥 队伍成员列表:');
+              teamInfo.members.forEach(m => {
+                console.log(`   - ${m.name}: ${m.isOnline ? '🟢在线' : '🔴离线'} ${m.isAlive ? '✅存活' : '💀死亡'}`);
+              });
+            }
           }
         } catch (err) {
           console.warn(`⚠️  无法获取初始队伍状态: ${err.message}`);
         }
+
+        // 启动定时轮询队伍状态（用于检测死亡/重生事件）
+        this.startTeamStatePolling(serverId);
+
+        // 启动昼夜自动提醒
+        this.dayNightNotifier.start(serverId);
       });
 
       rustplus.on('disconnected', () => {
@@ -99,6 +120,12 @@ class RustPlusService extends EventEmitter {
       console.log(`断开连接: ${serverId}`);
     }
 
+    // 停止轮询
+    this.stopTeamStatePolling(serverId);
+
+    // 停止昼夜提醒
+    this.dayNightNotifier.stop(serverId);
+
     // 清理该服务器下的相机实例
     for (const key of Array.from(this.cameras.keys())) {
       if (key.startsWith(`${serverId}:`)) {
@@ -146,15 +173,70 @@ class RustPlusService extends EventEmitter {
   }
 
   /**
-   * 发送队伍聊天消息
+   * 发送队伍聊天消息（带频率限制）
    */
   async sendTeamMessage(serverId, message) {
     const rustplus = this.connections.get(serverId);
     if (!rustplus) throw new Error('服务器未连接');
 
-    await rustplus.sendRequestAsync({ sendTeamMessage: { message } });
-    console.log(`📨 发送消息到 ${serverId}: ${message}`);
-    return { success: true, message };
+    // 获取或创建消息队列
+    if (!this.messageQueue.has(serverId)) {
+      this.messageQueue.set(serverId, {
+        queue: [],
+        processing: false,
+        lastSendTime: 0
+      });
+    }
+
+    const queueData = this.messageQueue.get(serverId);
+
+    // 添加到队列
+    return new Promise((resolve, reject) => {
+      queueData.queue.push({ message, resolve, reject });
+      this.processMessageQueue(serverId);
+    });
+  }
+
+  /**
+   * 处理消息队列（频率限制）
+   */
+  async processMessageQueue(serverId) {
+    const queueData = this.messageQueue.get(serverId);
+    if (!queueData || queueData.processing || queueData.queue.length === 0) {
+      return;
+    }
+
+    queueData.processing = true;
+
+    while (queueData.queue.length > 0) {
+      const now = Date.now();
+      const timeSinceLastSend = now - queueData.lastSendTime;
+
+      // 如果距离上次发送不足限制时间，等待
+      if (timeSinceLastSend < this.messageRateLimit) {
+        const waitTime = this.messageRateLimit - timeSinceLastSend;
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+
+      const { message, resolve, reject } = queueData.queue.shift();
+
+      try {
+        const rustplus = this.connections.get(serverId);
+        if (!rustplus) {
+          throw new Error('服务器未连接');
+        }
+
+        await rustplus.sendRequestAsync({ sendTeamMessage: { message } });
+        queueData.lastSendTime = Date.now();
+        console.log(`📨 发送消息: ${message}`);
+        resolve({ success: true, message });
+      } catch (error) {
+        console.error(`❌ 发送消息失败: ${error.message}`);
+        reject(error);
+      }
+    }
+
+    queueData.processing = false;
   }
 
   /**
@@ -301,6 +383,28 @@ class RustPlusService extends EventEmitter {
   }
 
   /**
+   * 获取地图信息（包含古迹位置）
+   */
+  async getMapInfo(serverId) {
+    const rustplus = this.connections.get(serverId);
+    if (!rustplus) throw new Error('服务器未连接');
+
+    const res = await rustplus.sendRequestAsync({ getMap: {} });
+    return res.map;
+  }
+
+  /**
+   * 获取地图大小
+   */
+  getMapSize(serverId) {
+    const rustplus = this.connections.get(serverId);
+    if (!rustplus || !rustplus.info) {
+      return 4000; // 默认地图大小
+    }
+    return rustplus.info.mapSize || rustplus.info.size || 4000;
+  }
+
+  /**
    * 处理接收到的消息
    */
   handleMessage(serverId, message) {
@@ -386,7 +490,9 @@ class RustPlusService extends EventEmitter {
     // 发送原始的队伍变化事件
     this.emit('team:changed', { serverId, data: teamChanged });
 
-    if (!newTeamInfo || !newTeamInfo.members) return;
+    if (!newTeamInfo || !newTeamInfo.members) {
+      return;
+    }
 
     // 如果有旧状态，则比较变化
     if (oldTeamState && oldTeamState.members) {
@@ -403,7 +509,13 @@ class RustPlusService extends EventEmitter {
         if (oldMember) {
           // 检测死亡事件
           if (oldMember.isAlive && !newMember.isAlive) {
-            console.log(`💀 玩家死亡: ${newMember.name} (${steamId})`);
+            console.log('');
+            console.log('💀═══════════════════════════════════════');
+            console.log(`   玩家死亡: ${newMember.name}`);
+            console.log(`   位置: (${Math.round(newMember.x)}, ${Math.round(newMember.y)})`);
+            console.log(`   Steam ID: ${steamId}`);
+            console.log('═══════════════════════════════════════');
+
             this.emit('player:died', {
               serverId,
               steamId,
@@ -416,7 +528,12 @@ class RustPlusService extends EventEmitter {
 
           // 检测复活/重生事件
           if (!oldMember.isAlive && newMember.isAlive) {
-            console.log(`✨ 玩家复活: ${newMember.name} (${steamId})`);
+            console.log('');
+            console.log('✨═══════════════════════════════════════');
+            console.log(`   玩家重生: ${newMember.name}`);
+            console.log(`   位置: (${Math.round(newMember.x)}, ${Math.round(newMember.y)})`);
+            console.log('═══════════════════════════════════════');
+
             this.emit('player:spawned', {
               serverId,
               steamId,
@@ -476,6 +593,64 @@ class RustPlusService extends EventEmitter {
    */
   getCommandsService() {
     return this.commandsService;
+  }
+
+  /**
+   * 设置事件监控服务（用于事件命令）
+   */
+  setEventMonitorService(eventMonitorService) {
+    this.commandsService.eventMonitorService = eventMonitorService;
+    // 如果事件监控服务可用，注册事件命令
+    if (eventMonitorService && typeof this.commandsService.registerEventCommands === 'function') {
+      this.commandsService.registerEventCommands();
+    }
+  }
+
+  /**
+   * 启动队伍状态轮询（用于检测死亡/重生事件）
+   */
+  startTeamStatePolling(serverId) {
+    // 如果已有轮询，先停止
+    this.stopTeamStatePolling(serverId);
+
+    console.log(`🔁 启动队伍状态轮询 (间隔: ${this.pollingInterval}ms)`);
+
+    const intervalId = setInterval(async () => {
+      try {
+        const teamInfo = await this.getTeamInfo(serverId);
+        if (teamInfo) {
+          // 模拟 teamChanged 广播
+          this.handleTeamChanged(serverId, { teamInfo });
+        }
+      } catch (error) {
+        // 静默处理错误（可能是网络波动）
+        if (error.message && !error.message.includes('服务器未连接')) {
+          console.warn(`⚠️  轮询队伍状态失败: ${error.message}`);
+        }
+      }
+    }, this.pollingInterval);
+
+    this.pollingIntervals.set(serverId, intervalId);
+  }
+
+  /**
+   * 停止队伍状态轮询
+   */
+  stopTeamStatePolling(serverId) {
+    const intervalId = this.pollingIntervals.get(serverId);
+    if (intervalId) {
+      clearInterval(intervalId);
+      this.pollingIntervals.delete(serverId);
+      console.log(`⏹️  已停止队伍状态轮询: ${serverId.substring(0, 8)}`);
+    }
+  }
+
+  /**
+   * 设置轮询间隔（毫秒）
+   */
+  setPollingInterval(interval) {
+    this.pollingInterval = interval;
+    console.log(`⚙️  轮询间隔已设置为: ${interval}ms`);
   }
 }
 

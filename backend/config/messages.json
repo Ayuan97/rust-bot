@@ -1,0 +1,100 @@
+{
+  "notifications": {
+    "death": "{playerName} 在 {position} 死亡",
+    "online": "[上线] {playerName} 上线了",
+    "offline": "[下线] {playerName} 下线了"
+  },
+  "commands": {
+    "help": {
+      "desc": "显示所有命令",
+      "msg": "可用命令: {commands}"
+    },
+    "time": {
+      "desc": "显示游戏时间",
+      "msg_night": "当前游戏时间为 {time} 距离天黑在 {minutes} 分钟后",
+      "msg_day": "当前游戏时间为 {time} 距离天亮在 {minutes} 分钟后",
+      "error": "[错误] 获取时间失败"
+    },
+    "pop": {
+      "desc": "显示服务器人数",
+      "msg": "当前在线人数为 {current}/{max} 最近半小时{change}",
+      "msg_no_change": "当前在线人数为 {current}/{max}",
+      "msg_queued": "当前在线人数为 {current}/{max} 排队人数 {queued}",
+      "error": "[错误] 获取人数失败"
+    },
+    "team": {
+      "desc": "显示队伍信息",
+      "msg": "队伍 {online}/{total} 在线 {list}",
+      "empty": "队伍为空",
+      "error": "[错误] 获取队伍失败"
+    },
+    "online": {
+      "desc": "显示在线队友",
+      "msg": "队伍 {online}/{total} 在线 {list}",
+      "empty": "队伍为空",
+      "error": "[错误] 获取队伍失败"
+    },
+    "cargo": {
+      "desc": "查询货船状态",
+      "msg": "货船位于 {position} 还有 {minutes} 分钟即将离开",
+      "msg_active": "货船位于 {position}",
+      "empty": "当前地图上没有货船",
+      "error": "[错误] 获取货船信息失败"
+    },
+    "small": {
+      "desc": "查询小油井状态",
+      "msg_triggered": "小油井已触发 ({minutesSince}分钟前) 箱子还有 {minutesLeft} 分钟解锁",
+      "msg_unlocked": "小油井 {minutesSince} 分钟前触发 箱子已解锁",
+      "msg_old": "小油井上次触发: {minutesSince} 分钟前",
+      "empty": "小油井尚未被触发",
+      "error": "[错误] 获取小油井信息失败"
+    },
+    "large": {
+      "desc": "查询大油井状态",
+      "msg_triggered": "大油井已触发 ({minutesSince}分钟前) 箱子还有 {minutesLeft} 分钟解锁",
+      "msg_unlocked": "大油井 {minutesSince} 分钟前触发 箱子已解锁",
+      "msg_old": "大油井上次触发: {minutesSince} 分钟前",
+      "empty": "大油井尚未被触发",
+      "error": "[错误] 获取大油井信息失败"
+    },
+    "heli": {
+      "desc": "查询武装直升机状态",
+      "msg": "武装直升机位于 {position}",
+      "empty": "当前地图上没有武装直升机",
+      "error": "[错误] 获取直升机信息失败"
+    },
+    "events": {
+      "desc": "查看所有活跃事件",
+      "header": "当前活跃事件:",
+      "cargo": "货船 {position} ({minutes}分钟后离开)",
+      "cargo_active": "货船 {position}",
+      "heli": "武装直升机 {position}",
+      "ch47": "CH47 {count}架",
+      "crate": "上锁箱子 {count}个",
+      "small_crate": "小油井箱子 {minutes}分钟后解锁",
+      "large_crate": "大油井箱子 {minutes}分钟后解锁",
+      "empty": "当前没有活跃事件",
+      "error": "[错误] 获取事件信息失败"
+    },
+    "history": {
+      "desc": "查看所有事件历史",
+      "header": "事件历史:",
+      "cargo_spawn": "货船刷新: {time}",
+      "cargo_leave": "货船离开: {time}",
+      "small_triggered": "小油井触发: {time}",
+      "small_unlocked": "小油井箱子解锁: {time}",
+      "large_triggered": "大油井触发: {time}",
+      "large_unlocked": "大油井箱子解锁: {time}",
+      "heli_spawn": "武装直升机刷新: {time}",
+      "heli_downed": "武装直升机击落: {time}",
+      "heli_leave": "武装直升机离开: {time}",
+      "ch47_spawn": "CH47刷新: {time}",
+      "crate_spawn": "上锁箱子出现: {time}",
+      "raid": "袭击检测: {time}",
+      "empty": "暂无事件历史记录",
+      "error": "[错误] 获取事件历史失败"
+    },
+    "unknown": "[错误] 未知命令 !{cmd} | 输入 !help 查看命令",
+    "error": "[错误] 命令执行失败"
+  }
+}

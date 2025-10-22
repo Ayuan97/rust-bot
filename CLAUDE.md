@@ -270,7 +270,47 @@ class RustPlusService {
 - 推送类: `event:type` (如 `team:message`, `player:login`)
 - 响应类: `action:result` (如 `device:control:success`, `message:send:error`)
 
-### 5. 前端服务层封装
+### 5. 坐标转换系统
+
+Rust 使用网格坐标系统（如 A5, M15），参考 [rustplusplus](https://github.com/alexemanuelol/rustplusplus) 实现。
+
+**核心常量**:
+```javascript
+const GRID_DIAMETER = 146.25;  // 每个网格大小
+```
+
+**主要函数** (`backend/src/utils/coordinates.js`):
+
+```javascript
+// 将游戏坐标转换为网格位置
+getGridPos(x, y, mapSize)  // 返回 "M15" 或 null
+
+// 格式化坐标显示（网格+精确坐标）
+formatPosition(x, y, mapSize)  // 返回 "M15(1823,2145)"
+
+// 辅助函数
+numberToLetters(num)           // 1→A, 27→AA
+getCorrectedMapSize(mapSize)   // 修正地图大小对齐网格
+getDistance(x1, y1, x2, y2)    // 计算两点距离
+```
+
+**使用示例**:
+```javascript
+import { formatPosition } from '../utils/coordinates.js';
+
+const serverInfo = await rustPlusService.getServerInfo(serverId);
+const position = formatPosition(player.x, player.y, serverInfo.mapSize);
+// 输出: "M15(1823,2145)"
+```
+
+**网格系统说明**:
+- 横轴（X）: 字母 A-Z, AA-AZ, BA-...
+- 纵轴（Y）: 数字 0-29（从下往上）
+- 地图大小会自动修正以对齐网格边界
+
+**详细文档**: 参考 `docs/COORDINATES.md`
+
+### 6. 前端服务层封装
 
 **API 服务** (`frontend/src/services/api.js`):
 ```javascript
@@ -409,6 +449,11 @@ FRONTEND_URL=http://localhost:5173
 - `backend/src/services/rustplus.service.js` - 游戏服务器连接池
 - `backend/src/services/fcm.service.js` - FCM 推送监听器
 - `backend/src/services/websocket.service.js` - WebSocket 实时通信桥
+- `backend/src/services/commands.service.js` - 游戏内命令处理
+
+**工具层**
+- `backend/src/utils/messages.js` - 消息模板系统
+- `backend/src/utils/coordinates.js` - 坐标转换工具
 
 **数据层**
 - `backend/src/models/storage.model.js` - 服务器、设备、事件日志
@@ -559,6 +604,7 @@ VITE_SOCKET_URL=http://localhost:3000       # WebSocket 地址
 - `STEAM_AUTH_FLOW.md` - Steam 认证详细流程
 - `docs/ARCHITECTURE.md` - 技术架构说明
 - `docs/API_CHANNELS.md` - API 和 WebSocket 事件说明
+- `docs/COORDINATES.md` - 坐标转换系统详解
 - `start.sh` - 启动脚本（同时启动前后端）
 
 ## 调试技巧

@@ -12,6 +12,12 @@ import configStorage from './models/config.model.js';
 import storage from './models/storage.model.js';
 import rustPlusService from './services/rustplus.service.js';
 import battlemetricsService from './services/battlemetrics.service.js';
+import { notify } from './utils/messages.js';
+import { formatPosition } from './utils/coordinates.js';
+
+// 导入事件系统
+import EventMonitorService from './services/event-monitor.service.js';
+import { EventType } from './utils/event-constants.js';
 
 import serverRoutes from './routes/server.routes.js';
 import pairingRoutes from './routes/pairing.routes.js';
@@ -31,10 +37,30 @@ if (!existsSync(dataDir)) {
 const app = express();
 const server = createServer(app);
 
-// 中间件
+// 中间件 - 允许多种前端来源
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true
+  origin: (origin, callback) => {
+    // 允许无 origin 的请求（如 Postman、curl）
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log('⚠️  CORS 拦截了来自:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
 
@@ -204,39 +230,225 @@ const initializeFCM = async () => {
   }
 };
 
+// 初始化事件监控系统
+const eventMonitorService = new EventMonitorService(rustPlusService);
+
+// 将事件监控服务注入到命令服务中
+rustPlusService.setEventMonitorService(eventMonitorService);
+
+// 设置游戏事件通知
+const setupGameEventNotifications = () => {
+  console.log('✅ 正在注册游戏事件监听器...');
+
+  // 货船事件
+  eventMonitorService.on(EventType.CARGO_SPAWN, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `货船已刷新 位置: ${data.position}`
+    );
+  });
+
+  eventMonitorService.on(EventType.CARGO_EGRESS_WARNING, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `警告！货船还有 ${data.minutesLeft} 分钟即将离开`
+    );
+  });
+
+  eventMonitorService.on(EventType.CARGO_EGRESS, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `货船准备离开 辐射快速上升 赶紧撤离！`
+    );
+  });
+
+  eventMonitorService.on(EventType.CARGO_LEAVE, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `货船已离开地图`
+    );
+  });
+
+  // 小油井事件
+  eventMonitorService.on(EventType.SMALL_OIL_RIG_TRIGGERED, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `小油井已触发 重型科学家正在赶来`
+    );
+  });
+
+  eventMonitorService.on(EventType.SMALL_OIL_RIG_CRATE_WARNING, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `小油井箱子还有 ${data.minutesLeft} 分钟解锁`
+    );
+  });
+
+  eventMonitorService.on(EventType.SMALL_OIL_RIG_CRATE_UNLOCKED, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `小油井箱子已解锁！`
+    );
+  });
+
+  // 大油井事件
+  eventMonitorService.on(EventType.LARGE_OIL_RIG_TRIGGERED, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `大油井已触发 重型科学家正在赶来`
+    );
+  });
+
+  eventMonitorService.on(EventType.LARGE_OIL_RIG_CRATE_WARNING, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `大油井箱子还有 ${data.minutesLeft} 分钟解锁`
+    );
+  });
+
+  eventMonitorService.on(EventType.LARGE_OIL_RIG_CRATE_UNLOCKED, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `大油井箱子已解锁！`
+    );
+  });
+
+  // 武装直升机事件
+  eventMonitorService.on(EventType.PATROL_HELI_SPAWN, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `武装直升机已刷新 位置: ${data.position}`
+    );
+  });
+
+  eventMonitorService.on(EventType.PATROL_HELI_DOWNED, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `武装直升机被击落 位置: ${data.position}`
+    );
+  });
+
+  eventMonitorService.on(EventType.PATROL_HELI_LEAVE, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `武装直升机已离开地图`
+    );
+  });
+
+  // CH47事件
+  eventMonitorService.on(EventType.CH47_SPAWN, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `CH47已出现 位置: ${data.position}`
+    );
+  });
+
+  // 上锁箱子事件
+  eventMonitorService.on(EventType.LOCKED_CRATE_SPAWN, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `上锁箱子出现 位置: ${data.position}`
+    );
+  });
+
+  // 袭击检测
+  eventMonitorService.on(EventType.RAID_DETECTED, async (data) => {
+    await rustPlusService.sendTeamMessage(
+      data.serverId,
+      `检测到袭击 位置: ${data.position} (${data.explosionCount}次爆炸)`
+    );
+  });
+
+  console.log('✅ 游戏事件监听器已注册');
+};
+
 // 设置玩家事件自动通知
 const setupPlayerEventNotifications = () => {
   const commandsService = rustPlusService.getCommandsService();
 
+  console.log('✅ 正在注册玩家事件监听器...');
+
   // 玩家死亡自动通知
   rustPlusService.on('player:died', async (data) => {
+    console.log('');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔔 收到 player:died 事件！');
+    console.log('   - 完整数据:', JSON.stringify(data, null, 2));
+    console.log('   - 服务器ID:', data.serverId);
+    console.log('   - 玩家:', data.name);
+    console.log('   - X坐标:', data.x, typeof data.x);
+    console.log('   - Y坐标:', data.y, typeof data.y);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
     try {
       const settings = commandsService.getServerSettings(data.serverId);
+      console.log('   - 死亡通知设置:', settings.deathNotify ? '开启' : '关闭');
+
       if (settings.deathNotify) {
-        const message = `💀 ${data.name} 在 (${Math.round(data.x)}, ${Math.round(data.y)}) 死亡了！`;
+        // 获取地图大小以转换网格位置
+        let position;
+        try {
+          const serverInfo = await rustPlusService.getServerInfo(data.serverId);
+          const mapSize = serverInfo.mapSize || 4000;
+          console.log('   - 地图大小:', mapSize);
+
+          if (data.x !== undefined && data.y !== undefined) {
+            // 只显示网格位置，不显示精确坐标
+            position = formatPosition(data.x, data.y, mapSize, true, false);
+            console.log('   - 格式化位置:', position);
+          } else {
+            position = '未知位置';
+            console.log('   - ⚠️  坐标为 undefined');
+          }
+        } catch (err) {
+          console.log('   - ⚠️  获取地图信息失败:', err.message);
+          // 如果无法获取地图信息，使用原始坐标
+          if (data.x !== undefined && data.y !== undefined) {
+            position = `(${Math.round(data.x)},${Math.round(data.y)})`;
+          } else {
+            position = '未知位置';
+          }
+        }
+
+        const message = notify('death', {
+          playerName: data.name,
+          position: position
+        });
+
+        console.log('   - 最终消息:', message);
         await rustPlusService.sendTeamMessage(data.serverId, message);
-        console.log(`📨 已发送死亡通知: ${data.name}`);
+        console.log(`   ✅ 死亡通知已发送: ${data.name}`);
+      } else {
+        console.log('   ⚠️  死亡通知已关闭，跳过发送');
       }
     } catch (error) {
-      console.error('❌ 发送死亡通知失败:', error.message);
+      console.error('   ❌ 发送死亡通知失败:', error.message);
+      console.error('   错误详情:', error);
     }
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('');
   });
 
-  // 玩家重生自动通知
-  rustPlusService.on('player:spawned', async (data) => {
-    try {
-      const settings = commandsService.getServerSettings(data.serverId);
-      if (settings.spawnNotify) {
-        const message = `✨ ${data.name} 重生了！`;
-        await rustPlusService.sendTeamMessage(data.serverId, message);
-        console.log(`📨 已发送重生通知: ${data.name}`);
-      }
-    } catch (error) {
-      console.error('❌ 发送重生通知失败:', error.message);
-    }
+  console.log('✅ 玩家事件监听器已注册（player:died）');
+  console.log('   死亡通知默认开启，可通过 !notify 命令控制');
+};
+
+// 设置服务器连接/断开时的事件监控
+const setupEventMonitorLifecycle = () => {
+  // 服务器连接时启动事件监控
+  rustPlusService.on('server:connected', ({ serverId }) => {
+    console.log(`🎮 启动事件监控: ${serverId}`);
+    eventMonitorService.start(serverId);
   });
 
-  console.log('✅ 玩家事件自动通知已启用（可通过 !notify 命令控制）');
+  // 服务器断开时停止事件监控
+  rustPlusService.on('server:disconnected', ({ serverId }) => {
+    console.log(`🎮 停止事件监控: ${serverId}`);
+    eventMonitorService.stop(serverId);
+  });
+
+  console.log('✅ 事件监控生命周期已设置');
 };
 
 // 启动服务器
@@ -256,6 +468,12 @@ server.listen(PORT, async () => {
 
   // 设置玩家事件自动通知
   setupPlayerEventNotifications();
+
+  // 设置游戏事件通知
+  setupGameEventNotifications();
+
+  // 设置事件监控生命周期
+  setupEventMonitorLifecycle();
 });
 
 // 优雅关闭函数

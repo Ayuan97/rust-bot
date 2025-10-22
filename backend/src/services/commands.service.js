@@ -3,13 +3,19 @@
  * 处理以 ! 开头的队伍聊天命令
  */
 
+import { cmd, cmdConfig, allCommands } from '../utils/messages.js';
+import { formatPosition } from '../utils/coordinates.js';
+import EventTimerManager from '../utils/event-timer.js';
+
 class CommandsService {
-  constructor(rustPlusService) {
+  constructor(rustPlusService, eventMonitorService = null) {
     this.rustPlusService = rustPlusService;
+    this.eventMonitorService = eventMonitorService;
     this.commandPrefix = '!';
     this.commands = new Map();
     this.settings = new Map(); // 存储每个服务器的设置
-    
+    this.playerCountHistory = new Map(); // 存储人数历史记录
+
     // 注册内置命令
     this.registerBuiltInCommands();
   }
@@ -20,8 +26,7 @@ class CommandsService {
   getServerSettings(serverId) {
     if (!this.settings.has(serverId)) {
       this.settings.set(serverId, {
-        deathNotify: true,  // 默认开启死亡通知
-        spawnNotify: true   // 默认开启重生通知
+        deathNotify: true  // 默认开启死亡通知
       });
     }
     return this.settings.get(serverId);
@@ -41,20 +46,22 @@ class CommandsService {
    */
   registerBuiltInCommands() {
     // 帮助命令
+    const helpConfig = cmdConfig('help');
     this.registerCommand('help', {
-      description: '显示所有可用命令',
+      description: helpConfig.desc,
       usage: '!help',
       handler: async (serverId, args, context) => {
         const commandList = Array.from(this.commands.entries())
-          .map(([name, cmd]) => `!${name} - ${cmd.description}`)
-          .join('\n');
-        return `📋 可用命令:\n${commandList}`;
+          .map(([name, c]) => `!${name}`)
+          .join(' | ');
+        return cmd('help', 'msg', { commands: commandList });
       }
     });
 
     // 游戏时间命令
+    const timeConfig = cmdConfig('time');
     this.registerCommand('time', {
-      description: '显示当前游戏时间',
+      description: timeConfig.desc,
       usage: '!time',
       handler: async (serverId, args, context) => {
         try {
@@ -62,233 +69,548 @@ class CommandsService {
           const currentTime = timeInfo.time || 0;
           const hours = Math.floor(currentTime);
           const minutes = Math.floor((currentTime - hours) * 60);
-          
+          const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+
           const sunrise = timeInfo.sunrise || 6;
           const sunset = timeInfo.sunset || 18;
-          
+          const dayLengthMinutes = timeInfo.dayLengthMinutes || 45; // 默认45分钟一天
+
           const isDaytime = currentTime >= sunrise && currentTime < sunset;
-          const timeEmoji = isDaytime ? '☀️' : '🌙';
-          
-          return `${timeEmoji} 游戏时间: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}\n` +
-                 `🌅 日出: ${Math.floor(sunrise)}:${Math.floor((sunrise % 1) * 60).toString().padStart(2, '0')}\n` +
-                 `🌇 日落: ${Math.floor(sunset)}:${Math.floor((sunset % 1) * 60).toString().padStart(2, '0')}`;
+
+          // 计算距离下次昼夜变化的时间（游戏时间）
+          let nextChangeTime;
+          let changeType; // 'night' 或 'day'
+
+          if (isDaytime) {
+            // 白天，计算距离天黑的时间
+            nextChangeTime = sunset;
+            changeType = 'night';
+          } else {
+            // 夜晚，计算距离天亮的时间
+            if (currentTime < sunrise) {
+              // 当前时间在午夜到日出之间
+              nextChangeTime = sunrise;
+            } else {
+              // 当前时间在日落到午夜之间，下次天亮是明天
+              nextChangeTime = 24 + sunrise;
+            }
+            changeType = 'day';
+          }
+
+          // 游戏时间差（小时）
+          const gameTimeDiff = nextChangeTime - currentTime;
+
+          // 转换为真实时间（分钟）
+          // 公式: 真实分钟 = 游戏时间差(小时) × (一天真实分钟数 / 24小时)
+          const realMinutes = Math.floor(gameTimeDiff * (dayLengthMinutes / 24));
+
+          if (changeType === 'night') {
+            return cmd('time', 'msg_night', {
+              time: timeStr,
+              minutes: realMinutes
+            });
+          } else {
+            return cmd('time', 'msg_day', {
+              time: timeStr,
+              minutes: realMinutes
+            });
+          }
         } catch (error) {
-          return `❌ 获取时间失败: ${error.message}`;
+          return cmd('time', 'error');
         }
       }
     });
 
-    // 服务器信息命令
-    this.registerCommand('info', {
-      description: '显示服务器信息',
-      usage: '!info',
+    // 服务器人数命令
+    const popConfig = cmdConfig('pop');
+    this.registerCommand('pop', {
+      description: popConfig.desc,
+      usage: '!pop',
       handler: async (serverId, args, context) => {
         try {
           const info = await this.rustPlusService.getServerInfo(serverId);
-          return `🖥️ 服务器: ${info.name}\n` +
-                 `🗺️ 地图: ${info.map} (${info.mapSize}m)\n` +
-                 `👥 在线人数: ${info.players}/${info.maxPlayers}` +
-                 (info.queuedPlayers > 0 ? `\n⏳ 排队: ${info.queuedPlayers}` : '');
+          const current = info.players || 0;
+          const maxPlayers = info.maxPlayers || 0;
+          const queued = info.queuedPlayers || 0;
+
+          // 记录当前人数
+          this.recordPlayerCount(serverId, current, queued);
+
+          // 获取30分钟前的人数变化
+          const change = this.getPlayerCountChange(serverId);
+
+          // 有排队人数时，不展示人数变化趋势
+          if (queued > 0) {
+            return cmd('pop', 'msg_queued', {
+              current,
+              max: maxPlayers,
+              queued
+            });
+          } else {
+            // 没有排队人数时，展示人数变化趋势
+            // 但是当变化为0时不展示
+            if (change === 0) {
+              return cmd('pop', 'msg_no_change', {
+                current,
+                max: maxPlayers
+              });
+            } else {
+              const changeText = change > 0 ? `新增${change}` : `减少${Math.abs(change)}`;
+              return cmd('pop', 'msg', {
+                current,
+                max: maxPlayers,
+                change: changeText
+              });
+            }
+          }
         } catch (error) {
-          return `❌ 获取服务器信息失败: ${error.message}`;
+          return cmd('pop', 'error');
+        }
+      }
+    });
+
+    // 队伍信息命令
+    const teamConfig = cmdConfig('team');
+    this.registerCommand('team', {
+      description: teamConfig.desc,
+      usage: '!team',
+      handler: async (serverId, args, context) => {
+        try {
+          const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
+          if (!teamInfo.members || teamInfo.members.length === 0) {
+            return cmd('team', 'empty');
+          }
+
+          const onlineMembers = teamInfo.members.filter(m => m.isOnline);
+
+          let list = onlineMembers.map(m => {
+            const status = m.isAlive ? '活' : '死';
+            return `${m.name}[${status}]`;
+          }).join(' | ');
+
+          return cmd('team', 'msg', {
+            online: onlineMembers.length,
+            total: teamInfo.members.length,
+            list: list || '无'
+          });
+        } catch (error) {
+          return cmd('team', 'error');
         }
       }
     });
 
     // 队伍成员命令
+    const onlineConfig = cmdConfig('online');
     this.registerCommand('online', {
-      description: '显示在线队友',
+      description: onlineConfig.desc,
       usage: '!online',
       handler: async (serverId, args, context) => {
         try {
           const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
           if (!teamInfo.members || teamInfo.members.length === 0) {
-            return '❌ 没有队伍成员';
+            return cmd('online', 'empty');
           }
 
           const onlineMembers = teamInfo.members.filter(m => m.isOnline);
           const offlineMembers = teamInfo.members.filter(m => !m.isOnline);
 
-          let message = `👥 队伍成员 (${onlineMembers.length}/${teamInfo.members.length} 在线):\n\n`;
-          
-          if (onlineMembers.length > 0) {
-            message += '🟢 在线:\n';
-            onlineMembers.forEach(m => {
-              const status = m.isAlive ? '✅ 存活' : '💀 已死亡';
-              message += `  • ${m.name} ${status}\n`;
-            });
-          }
+          let list = onlineMembers.map(m => {
+            const status = m.isAlive ? '活' : '死';
+            return `${m.name}[${status}]`;
+          }).join(' | ');
 
-          if (offlineMembers.length > 0) {
-            message += '\n🔴 离线:\n';
-            offlineMembers.forEach(m => {
-              message += `  • ${m.name}\n`;
-            });
-          }
-
-          return message.trim();
-        } catch (error) {
-          return `❌ 获取队伍信息失败: ${error.message}`;
-        }
-      }
-    });
-
-    // Ping 命令
-    this.registerCommand('ping', {
-      description: '测试机器人响应',
-      usage: '!ping',
-      handler: async (serverId, args, context) => {
-        return `🏓 Pong! 机器人运行正常`;
-      }
-    });
-
-    // 位置命令
-    this.registerCommand('pos', {
-      description: '显示所有队友位置',
-      usage: '!pos',
-      handler: async (serverId, args, context) => {
-        try {
-          const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
-          if (!teamInfo.members || teamInfo.members.length === 0) {
-            return '❌ 没有队伍成员';
-          }
-
-          const onlineMembers = teamInfo.members.filter(m => m.isOnline);
-          if (onlineMembers.length === 0) {
-            return '❌ 没有在线的队友';
-          }
-
-          let message = '📍 队友位置:\n';
-          onlineMembers.forEach(m => {
-            const status = m.isAlive ? '✅' : '💀';
-            const pos = m.x !== undefined && m.y !== undefined 
-              ? `(${Math.round(m.x)}, ${Math.round(m.y)})` 
-              : '(未知)';
-            message += `  ${status} ${m.name}: ${pos}\n`;
+          return cmd('online', 'msg', {
+            online: onlineMembers.length,
+            total: teamInfo.members.length,
+            list: list.trim()
           });
-
-          return message.trim();
         } catch (error) {
-          return `❌ 获取位置失败: ${error.message}`;
+          return cmd('online', 'error');
         }
       }
     });
 
-    // 地图标记命令
-    this.registerCommand('markers', {
-      description: '显示地图标记数量',
-      usage: '!markers',
+    // 只有在 eventMonitorService 可用时才注册事件命令
+    if (this.eventMonitorService) {
+      this.registerEventCommands();
+    }
+  }
+
+  /**
+   * 注册事件相关命令
+   */
+  registerEventCommands() {
+    // !cargo - 查询货船状态
+    const cargoConfig = cmdConfig('cargo');
+    this.registerCommand('cargo', {
+      description: cargoConfig.desc,
+      usage: '!cargo',
       handler: async (serverId, args, context) => {
         try {
           const markers = await this.rustPlusService.getMapMarkers(serverId);
-          if (!markers.markers || markers.markers.length === 0) {
-            return '📍 地图上没有标记';
+          const cargoShips = markers.markers ? markers.markers.filter(m => m.type === 5) : [];
+
+          if (cargoShips.length === 0) {
+            return cmd('cargo', 'empty');
           }
 
-          const markerTypes = {};
-          markers.markers.forEach(m => {
-            const type = this.getMarkerTypeName(m.type);
-            markerTypes[type] = (markerTypes[type] || 0) + 1;
-          });
+          const mapSize = this.rustPlusService.getMapSize(serverId);
+          let messages = [];
 
-          let message = `📍 地图标记 (共 ${markers.markers.length} 个):\n`;
-          Object.entries(markerTypes).forEach(([type, count]) => {
-            message += `  • ${type}: ${count}\n`;
-          });
+          for (const ship of cargoShips) {
+            const position = formatPosition(ship.x, ship.y, mapSize);
+            const timeLeft = EventTimerManager.getTimeLeft(`cargo_egress_${ship.id}`, serverId);
 
-          return message.trim();
+            if (timeLeft > 0) {
+              const minutesLeft = Math.floor(timeLeft / 60000);
+              messages.push(cmd('cargo', 'msg', { position, minutes: minutesLeft }));
+            } else {
+              messages.push(cmd('cargo', 'msg_active', { position }));
+            }
+          }
+
+          return messages.join('\n');
         } catch (error) {
-          return `❌ 获取地图标记失败: ${error.message}`;
+          return cmd('cargo', 'error');
         }
       }
     });
 
-    // 死亡统计命令 (示例 - 需要实现统计功能)
-    this.registerCommand('stats', {
-      description: '显示队伍统计',
-      usage: '!stats',
+    // !small - 查询小油井状态
+    const smallConfig = cmdConfig('small');
+    this.registerCommand('small', {
+      description: smallConfig.desc,
+      usage: '!small',
       handler: async (serverId, args, context) => {
-        return '📊 统计功能开发中...';
+        try {
+          const eventData = this.eventMonitorService.getEventData(serverId);
+          if (!eventData || !eventData.lastEvents) {
+            return cmd('small', 'error');
+          }
+
+          const lastTriggered = eventData.lastEvents.smallOilRigTriggered;
+          if (!lastTriggered) {
+            return cmd('small', 'empty');
+          }
+
+          const timeSinceTriggered = Date.now() - lastTriggered;
+          const minutesSince = Math.floor(timeSinceTriggered / 60000);
+          const crateTimeLeft = EventTimerManager.getTimeLeft('small_oil_rig_crate', serverId);
+
+          if (crateTimeLeft > 0) {
+            const minutesLeft = Math.floor(crateTimeLeft / 60000);
+            return cmd('small', 'msg_triggered', { minutesSince, minutesLeft });
+          } else if (timeSinceTriggered < 60 * 60 * 1000) {
+            return cmd('small', 'msg_unlocked', { minutesSince });
+          } else {
+            return cmd('small', 'msg_old', { minutesSince });
+          }
+        } catch (error) {
+          return cmd('small', 'error');
+        }
       }
     });
 
-    // 通知设置命令
-    this.registerCommand('notify', {
-      description: '控制自动通知（死亡/重生）',
-      usage: '!notify [death|spawn] [on|off]',
+    // !large - 查询大油井状态
+    const largeConfig = cmdConfig('large');
+    this.registerCommand('large', {
+      description: largeConfig.desc,
+      usage: '!large',
       handler: async (serverId, args, context) => {
-        const settings = this.getServerSettings(serverId);
+        try {
+          const eventData = this.eventMonitorService.getEventData(serverId);
+          if (!eventData || !eventData.lastEvents) {
+            return cmd('large', 'error');
+          }
 
-        if (args.length === 0) {
-          // 显示当前设置
-          return `🔔 通知设置:\n` +
-                 `  💀 死亡通知: ${settings.deathNotify ? '开启' : '关闭'}\n` +
-                 `  ✨ 重生通知: ${settings.spawnNotify ? '开启' : '关闭'}\n\n` +
-                 `用法: !notify [death|spawn] [on|off]`;
+          const lastTriggered = eventData.lastEvents.largeOilRigTriggered;
+          if (!lastTriggered) {
+            return cmd('large', 'empty');
+          }
+
+          const timeSinceTriggered = Date.now() - lastTriggered;
+          const minutesSince = Math.floor(timeSinceTriggered / 60000);
+          const crateTimeLeft = EventTimerManager.getTimeLeft('large_oil_rig_crate', serverId);
+
+          if (crateTimeLeft > 0) {
+            const minutesLeft = Math.floor(crateTimeLeft / 60000);
+            return cmd('large', 'msg_triggered', { minutesSince, minutesLeft });
+          } else if (timeSinceTriggered < 60 * 60 * 1000) {
+            return cmd('large', 'msg_unlocked', { minutesSince });
+          } else {
+            return cmd('large', 'msg_old', { minutesSince });
+          }
+        } catch (error) {
+          return cmd('large', 'error');
         }
+      }
+    });
 
-        const type = args[0].toLowerCase();
-        const action = args[1]?.toLowerCase();
+    // !heli - 查询武装直升机状态
+    const heliConfig = cmdConfig('heli');
+    this.registerCommand('heli', {
+      description: heliConfig.desc,
+      usage: '!heli',
+      handler: async (serverId, args, context) => {
+        try {
+          const markers = await this.rustPlusService.getMapMarkers(serverId);
+          const helicopters = markers.markers ? markers.markers.filter(m => m.type === 8) : [];
 
-        if (!['death', 'spawn'].includes(type)) {
-          return '❌ 类型错误，请使用 death 或 spawn';
+          if (helicopters.length === 0) {
+            return cmd('heli', 'empty');
+          }
+
+          const mapSize = this.rustPlusService.getMapSize(serverId);
+          let messages = [];
+
+          for (const heli of helicopters) {
+            const position = formatPosition(heli.x, heli.y, mapSize);
+            messages.push(cmd('heli', 'msg', { position }));
+          }
+
+          return messages.join('\n');
+        } catch (error) {
+          return cmd('heli', 'error');
         }
+      }
+    });
 
-        if (!action || !['on', 'off'].includes(action)) {
-          return '❌ 请指定 on 或 off';
+    // !events - 查看所有活跃事件
+    const eventsConfig = cmdConfig('events');
+    this.registerCommand('events', {
+      description: eventsConfig.desc,
+      usage: '!events',
+      handler: async (serverId, args, context) => {
+        try {
+          const markers = await this.rustPlusService.getMapMarkers(serverId);
+          const mapSize = this.rustPlusService.getMapSize(serverId);
+
+          let messages = [cmd('events', 'header')];
+          let eventCount = 0;
+
+          // 货船
+          const cargoShips = markers.markers ? markers.markers.filter(m => m.type === 5) : [];
+          if (cargoShips.length > 0) {
+            eventCount++;
+            for (const ship of cargoShips) {
+              const position = formatPosition(ship.x, ship.y, mapSize);
+              const timeLeft = EventTimerManager.getTimeLeft(`cargo_egress_${ship.id}`, serverId);
+
+              if (timeLeft > 0) {
+                const minutes = Math.floor(timeLeft / 60000);
+                messages.push(cmd('events', 'cargo', { position, minutes }));
+              } else {
+                messages.push(cmd('events', 'cargo_active', { position }));
+              }
+            }
+          }
+
+          // 直升机
+          const helicopters = markers.markers ? markers.markers.filter(m => m.type === 8) : [];
+          if (helicopters.length > 0) {
+            eventCount++;
+            for (const heli of helicopters) {
+              const position = formatPosition(heli.x, heli.y, mapSize);
+              messages.push(cmd('events', 'heli', { position }));
+            }
+          }
+
+          // CH47
+          const ch47s = markers.markers ? markers.markers.filter(m => m.type === 4) : [];
+          if (ch47s.length > 0) {
+            eventCount++;
+            messages.push(cmd('events', 'ch47', { count: ch47s.length }));
+          }
+
+          // 上锁箱子
+          const crates = markers.markers ? markers.markers.filter(m => m.type === 6) : [];
+          if (crates.length > 0) {
+            eventCount++;
+            messages.push(cmd('events', 'crate', { count: crates.length }));
+          }
+
+          // 油井箱子计时器
+          const smallCrateTime = EventTimerManager.getTimeLeft('small_oil_rig_crate', serverId);
+          if (smallCrateTime > 0) {
+            eventCount++;
+            const minutes = Math.floor(smallCrateTime / 60000);
+            messages.push(cmd('events', 'small_crate', { minutes }));
+          }
+
+          const largeCrateTime = EventTimerManager.getTimeLeft('large_oil_rig_crate', serverId);
+          if (largeCrateTime > 0) {
+            eventCount++;
+            const minutes = Math.floor(largeCrateTime / 60000);
+            messages.push(cmd('events', 'large_crate', { minutes }));
+          }
+
+          if (eventCount === 0) {
+            return cmd('events', 'empty');
+          }
+
+          return messages.join('\n');
+        } catch (error) {
+          return cmd('events', 'error');
         }
+      }
+    });
 
-        const enabled = action === 'on';
-        const emoji = type === 'death' ? '💀' : '✨';
-        const typeName = type === 'death' ? '死亡' : '重生';
+    // !history - 查看所有事件历史
+    const historyConfig = cmdConfig('history');
+    this.registerCommand('history', {
+      description: historyConfig.desc,
+      usage: '!history',
+      handler: async (serverId, args, context) => {
+        try {
+          const eventData = this.eventMonitorService.getEventData(serverId);
+          if (!eventData || !eventData.lastEvents) {
+            return cmd('history', 'error');
+          }
 
-        if (type === 'death') {
-          this.updateServerSettings(serverId, { deathNotify: enabled });
-        } else {
-          this.updateServerSettings(serverId, { spawnNotify: enabled });
+          const lastEvents = eventData.lastEvents;
+          const now = Date.now();
+          const messages = [cmd('history', 'header')];
+          let hasAnyEvent = false;
+
+          // 格式化时间差
+          const formatTimeSince = (timestamp) => {
+            if (!timestamp) return '从未触发';
+            const diff = now - timestamp;
+            const minutes = Math.floor(diff / 60000);
+            const hours = Math.floor(minutes / 60);
+
+            if (minutes < 1) return '刚刚';
+            if (minutes < 60) return `${minutes}分钟前`;
+            if (hours < 24) return `${hours}小时前`;
+            const days = Math.floor(hours / 24);
+            return `${days}天前`;
+          };
+
+          // 添加各类事件历史
+          if (lastEvents.cargoShipSpawn) {
+            hasAnyEvent = true;
+            messages.push(cmd('history', 'cargo_spawn', { time: formatTimeSince(lastEvents.cargoShipSpawn) }));
+          }
+          if (lastEvents.cargoShipLeave) {
+            hasAnyEvent = true;
+            messages.push(cmd('history', 'cargo_leave', { time: formatTimeSince(lastEvents.cargoShipLeave) }));
+          }
+          if (lastEvents.smallOilRigTriggered) {
+            hasAnyEvent = true;
+            messages.push(cmd('history', 'small_triggered', { time: formatTimeSince(lastEvents.smallOilRigTriggered) }));
+          }
+          if (lastEvents.smallOilRigCrateUnlocked) {
+            hasAnyEvent = true;
+            messages.push(cmd('history', 'small_unlocked', { time: formatTimeSince(lastEvents.smallOilRigCrateUnlocked) }));
+          }
+          if (lastEvents.largeOilRigTriggered) {
+            hasAnyEvent = true;
+            messages.push(cmd('history', 'large_triggered', { time: formatTimeSince(lastEvents.largeOilRigTriggered) }));
+          }
+          if (lastEvents.largeOilRigCrateUnlocked) {
+            hasAnyEvent = true;
+            messages.push(cmd('history', 'large_unlocked', { time: formatTimeSince(lastEvents.largeOilRigCrateUnlocked) }));
+          }
+          if (lastEvents.patrolHeliSpawn) {
+            hasAnyEvent = true;
+            messages.push(cmd('history', 'heli_spawn', { time: formatTimeSince(lastEvents.patrolHeliSpawn) }));
+          }
+          if (lastEvents.patrolHeliDowned) {
+            hasAnyEvent = true;
+            messages.push(cmd('history', 'heli_downed', { time: formatTimeSince(lastEvents.patrolHeliDowned) }));
+          }
+          if (lastEvents.patrolHeliLeave) {
+            hasAnyEvent = true;
+            messages.push(cmd('history', 'heli_leave', { time: formatTimeSince(lastEvents.patrolHeliLeave) }));
+          }
+          if (lastEvents.ch47Spawn) {
+            hasAnyEvent = true;
+            messages.push(cmd('history', 'ch47_spawn', { time: formatTimeSince(lastEvents.ch47Spawn) }));
+          }
+          if (lastEvents.lockedCrateSpawn) {
+            hasAnyEvent = true;
+            messages.push(cmd('history', 'crate_spawn', { time: formatTimeSince(lastEvents.lockedCrateSpawn) }));
+          }
+          if (lastEvents.raidDetected) {
+            hasAnyEvent = true;
+            messages.push(cmd('history', 'raid', { time: formatTimeSince(lastEvents.raidDetected) }));
+          }
+
+          if (!hasAnyEvent) {
+            return cmd('history', 'empty');
+          }
+
+          return messages.join('\n');
+        } catch (error) {
+          return cmd('history', 'error');
         }
-
-        return `${emoji} ${typeName}通知已${enabled ? '开启' : '关闭'}`;
       }
     });
   }
 
   /**
-   * 获取标记类型名称
+   * 记录玩家人数（用于统计变化）
    */
-  getMarkerTypeName(type) {
-    const typeMap = {
-      0: '未定义',
-      1: '玩家',
-      2: '爆炸',
-      3: '售货机',
-      4: '运输直升机',
-      5: '货船',
-      6: '空投',
-      7: '通用半径',
-      8: '巡逻直升机',
-      9: '移动商人'
-    };
-    return typeMap[type] || `类型${type}`;
+  recordPlayerCount(serverId, count, queued = 0) {
+    if (!this.playerCountHistory) {
+      this.playerCountHistory = new Map();
+    }
+
+    if (!this.playerCountHistory.has(serverId)) {
+      this.playerCountHistory.set(serverId, []);
+    }
+
+    const history = this.playerCountHistory.get(serverId);
+    const now = Date.now();
+
+    // 添加当前记录
+    history.push({ time: now, count, queued });
+
+    // 只保留最近1小时的数据
+    const oneHourAgo = now - 60 * 60 * 1000;
+    const filtered = history.filter(record => record.time >= oneHourAgo);
+    this.playerCountHistory.set(serverId, filtered);
   }
+
+  /**
+   * 获取30分钟内的人数变化
+   */
+  getPlayerCountChange(serverId) {
+    if (!this.playerCountHistory || !this.playerCountHistory.has(serverId)) {
+      return 0;
+    }
+
+    const history = this.playerCountHistory.get(serverId);
+    if (history.length === 0) return 0;
+
+    const now = Date.now();
+    const thirtyMinutesAgo = now - 30 * 60 * 1000;
+
+    // 找到30分钟前最接近的记录
+    const oldRecord = history.find(r => r.time <= thirtyMinutesAgo) || history[0];
+    const currentRecord = history[history.length - 1];
+
+    return currentRecord.count - oldRecord.count;
+  }
+
 
   /**
    * 注册自定义命令
    */
   registerCommand(name, config) {
     if (!config.handler || typeof config.handler !== 'function') {
-      throw new Error(`命令 ${name} 必须提供 handler 函数`);
+      throw new Error(`Command ${name} must provide a handler function`);
     }
 
     this.commands.set(name.toLowerCase(), {
       name,
-      description: config.description || '无描述',
+      description: config.description || 'No description',
       usage: config.usage || `!${name}`,
       handler: config.handler,
       adminOnly: config.adminOnly || false
     });
 
-    console.log(`✅ 已注册命令: !${name}`);
+    console.log(`✅ Registered command: !${name}`);
   }
 
   /**
@@ -314,15 +636,14 @@ class CommandsService {
     const commandName = parts[0].toLowerCase();
     const args = parts.slice(1);
 
-    console.log(`🎮 收到命令: !${commandName} (来自 ${name})`);
+    console.log(`🎮 Received command: !${commandName} (from ${name})`);
 
     // 查找命令
     const command = this.commands.get(commandName);
     if (!command) {
-      // 命令不存在
       await this.rustPlusService.sendTeamMessage(
         serverId,
-        `❌ 未知命令: !${commandName}\n输入 !help 查看所有命令`
+        cmd('unknown', 'msg', { cmd: commandName })
       );
       return true;
     }
@@ -337,14 +658,11 @@ class CommandsService {
         await this.rustPlusService.sendTeamMessage(serverId, response);
       }
 
-      console.log(`✅ 命令执行成功: !${commandName}`);
+      console.log(`✅ Command executed: !${commandName}`);
       return true;
     } catch (error) {
-      console.error(`❌ 命令执行失败 !${commandName}:`, error);
-      await this.rustPlusService.sendTeamMessage(
-        serverId,
-        `❌ 命令执行失败: ${error.message}`
-      );
+      console.error(`❌ Command failed !${commandName}:`, error);
+      await this.rustPlusService.sendTeamMessage(serverId, cmd('error', 'msg'));
       return true;
     }
   }
@@ -363,4 +681,3 @@ class CommandsService {
 }
 
 export default CommandsService;
-

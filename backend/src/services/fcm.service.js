@@ -13,6 +13,8 @@ class FCMService extends EventEmitter {
     this.credentials = null;
     this.isListening = false;
     this.heartbeatInterval = null;
+    this.reconnectTimer = null;
+    this.lastDisconnectTime = null;
   }
 
   /**
@@ -151,13 +153,41 @@ class FCMService extends EventEmitter {
 
     // 添加断开连接事件监听（正确的事件名是 'disconnect'）
     this.fcmListener.on('disconnect', () => {
-      console.log('⚠️  FCM 连接已断开');
+      const now = Date.now();
+
+      // 防止重复日志（1分钟内只输出一次）
+      if (!this.lastDisconnectTime || (now - this.lastDisconnectTime) > 60000) {
+        console.log('⚠️  FCM 连接已断开');
+        console.log('💡 提示：FCM 断开不影响游戏内事件（死亡、聊天等）');
+        console.log('   → 游戏内事件通过 Rust+ WebSocket 接收');
+        console.log('   → FCM 仅用于接收配对推送（在游戏中点击 Pair）');
+        console.log('   → 将每 5 分钟尝试重连一次');
+        this.lastDisconnectTime = now;
+      }
+
       this.isListening = false;
 
       if (this.heartbeatInterval) {
         clearInterval(this.heartbeatInterval);
         this.heartbeatInterval = null;
       }
+
+      // 清除之前的重连定时器
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+      }
+
+      // 5 分钟后重连
+      this.reconnectTimer = setTimeout(async () => {
+        if (!this.isListening && this.credentials) {
+          try {
+            console.log('🔄 尝试重新连接 FCM...');
+            await this.startListening();
+          } catch (error) {
+            console.error('❌ FCM 重连失败:', error.message);
+          }
+        }
+      }, 300000); // 5 分钟 = 300000 毫秒
     });
 
     // 监听错误
@@ -194,6 +224,11 @@ class FCMService extends EventEmitter {
       if (this.heartbeatInterval) {
         clearInterval(this.heartbeatInterval);
         this.heartbeatInterval = null;
+      }
+
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
       }
 
       console.log('🛑 FCM 监听已停止');
