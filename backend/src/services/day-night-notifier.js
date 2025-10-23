@@ -26,8 +26,9 @@ class DayNightNotifier {
       try {
         await this.checkAndNotify(serverId);
       } catch (error) {
-        if (!error.message.includes('服务器未连接')) {
-          console.error(`昼夜提醒检查失败 ${serverId}:`, error.message);
+        const errorMessage = error?.message || JSON.stringify(error) || String(error);
+        if (!errorMessage.includes('服务器未连接')) {
+          console.error(`❌ 昼夜提醒检查失败 ${serverId}:`, error);
         }
       }
     }, this.checkInterval);
