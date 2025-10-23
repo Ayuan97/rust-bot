@@ -42,6 +42,24 @@ code {
   background: #3d3d3d;
 }
 
+/* 自定义滚动条（用于服务器列表） */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #2d2d2d;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #ce412b;
+}
+
 /* 自定义按钮样式 */
 .btn {
   @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;

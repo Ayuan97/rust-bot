@@ -176,17 +176,29 @@ function App() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* 左侧：服务器列表 */}
-            <div className="lg:col-span-3 space-y-4">
-              <h2 className="text-lg font-bold mb-4">服务器列表</h2>
-              {servers.map((server) => (
-                <ServerCard
-                  key={server.id}
-                  server={server}
-                  onDelete={handleDeleteServer}
-                  onSelect={setActiveServer}
-                  isActive={activeServer?.id === server.id}
-                />
-              ))}
+            <div className="lg:col-span-3">
+              <div className="sticky top-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-bold flex items-center gap-2">
+                    <FaServer className="text-rust-orange" />
+                    我的服务器
+                  </h2>
+                  <span className="text-xs text-gray-500 bg-rust-gray px-2 py-1 rounded-full">
+                    {servers.length}
+                  </span>
+                </div>
+                <div className="space-y-3 max-h-[calc(100vh-200px)] overflow-y-auto pr-2 custom-scrollbar">
+                  {servers.map((server) => (
+                    <ServerCard
+                      key={server.id}
+                      server={server}
+                      onDelete={handleDeleteServer}
+                      onSelect={setActiveServer}
+                      isActive={activeServer?.id === server.id}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* 右侧：主控制面板 */}
