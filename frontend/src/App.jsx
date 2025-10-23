@@ -96,14 +96,21 @@ function App() {
     if (!confirm('确定要删除这个服务器吗?')) return;
 
     try {
-      await apiDeleteServer(serverId);
+      console.log(`🗑️ 准备删除服务器: ${serverId}`);
+      const response = await apiDeleteServer(serverId);
+      console.log(`✅ 删除服务器响应:`, response.data);
+
       if (activeServer?.id === serverId) {
         setActiveServer(null);
       }
       fetchServers();
     } catch (error) {
-      console.error('删除服务器失败:', error);
-      alert('删除失败: ' + error.message);
+      console.error('❌ 删除服务器失败:', error);
+      console.error('   错误详情:', error.response?.data);
+      console.error('   状态码:', error.response?.status);
+
+      const errorMessage = error.response?.data?.error || error.message || '未知错误';
+      alert('删除失败: ' + errorMessage);
     }
   };
 

@@ -77,15 +77,47 @@ router.put('/:id', (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const serverId = req.params.id;
+    console.log(`🗑️ 删除服务器请求: ${serverId}`);
 
-    // 先断开连接
-    if (rustPlusService.isConnected(serverId)) {
-      await rustPlusService.disconnect(serverId);
+    // 先检查服务器是否存在
+    const server = storage.getServer(serverId);
+    if (!server) {
+      console.log(`❌ 服务器不存在: ${serverId}`);
+      return res.status(404).json({
+        success: false,
+        error: '服务器不存在'
+      });
     }
 
-    storage.deleteServer(serverId);
+    // 先断开连接（如果已连接）
+    if (rustPlusService.isConnected(serverId)) {
+      console.log(`   - 服务器已连接，正在断开...`);
+      try {
+        await rustPlusService.disconnect(serverId);
+        console.log(`   - 断开成功`);
+      } catch (disconnectError) {
+        console.error(`❌ 断开连接失败:`, disconnectError);
+        // 继续删除，即使断开失败
+      }
+    }
+
+    // 从数据库删除
+    console.log(`   - 正在从数据库删除...`);
+    const result = storage.deleteServer(serverId);
+    console.log(`   - 删除结果:`, result);
+
+    if (result.changes === 0) {
+      console.log(`⚠️ 没有删除任何记录`);
+      return res.status(404).json({
+        success: false,
+        error: '删除失败，服务器可能已被删除'
+      });
+    }
+
+    console.log(`✅ 服务器删除成功: ${serverId}`);
     res.json({ success: true, message: '服务器删除成功' });
   } catch (error) {
+    console.error(`❌ 删除服务器失败:`, error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
