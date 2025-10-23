@@ -38,42 +38,67 @@ class BattlemetricsService extends EventEmitter {
 
   /**
    * 通过 IP:Port 搜索服务器
+   * @param {string} ip - 服务器IP
+   * @param {string|number} port - Rust+ App 端口（通常是游戏端口+2）
    */
   async searchServerByAddress(ip, port) {
     try {
-      console.log(`🔍 搜索 Battlemetrics 服务器: ${ip}:${port}`);
+      const rustPlusPort = parseInt(port);
+      // Rust+ 端口通常是游戏端口 + 2
+      // 例如: 游戏端口 28015, Rust+ 端口 28017
+      const gamePort = rustPlusPort - 2;
 
-      // 方法1: 直接搜索 IP:Port
-      let url = `https://api.battlemetrics.com/servers?filter[search]=${ip}:${port}&filter[game]=rust`;
+      console.log(`🔍 搜索 Battlemetrics 服务器: ${ip}:${port}`);
+      console.log(`   Rust+ 端口: ${rustPlusPort}, 推测游戏端口: ${gamePort}`);
+
+      // 方法1: 使用推测的游戏端口搜索
+      let url = `https://api.battlemetrics.com/servers?filter[search]=${ip}:${gamePort}&filter[game]=rust`;
       let response = await axios.get(url);
 
-      console.log(`📊 搜索结果数量: ${response.data.data.length}`);
+      console.log(`📊 搜索结果数量 (游戏端口): ${response.data.data.length}`);
 
-      // 查找完全匹配的服务器
+      // 查找匹配的服务器
       for (const server of response.data.data) {
         console.log(`  - 检查服务器: ${server.attributes.name} (${server.attributes.ip}:${server.attributes.port})`);
-        if (server.attributes.ip === ip && server.attributes.port === parseInt(port)) {
+        if (server.attributes.ip === ip && server.attributes.port === gamePort) {
           console.log(`✅ 找到匹配服务器 ID: ${server.id}`);
           return server.id;
         }
       }
 
-      // 方法2: 搜索 IP（不带端口）
+      // 方法2: 搜索 IP（不带端口），然后匹配
       console.log(`🔍 尝试仅搜索 IP: ${ip}`);
       url = `https://api.battlemetrics.com/servers?filter[search]=${ip}&filter[game]=rust`;
       response = await axios.get(url);
 
       console.log(`📊 IP 搜索结果数量: ${response.data.data.length}`);
 
+      // 优先匹配推测的游戏端口
       for (const server of response.data.data) {
         console.log(`  - 检查服务器: ${server.attributes.name} (${server.attributes.ip}:${server.attributes.port})`);
-        if (server.attributes.ip === ip && server.attributes.port === parseInt(port)) {
-          console.log(`✅ 找到匹配服务器 ID: ${server.id}`);
+        if (server.attributes.ip === ip && server.attributes.port === gamePort) {
+          console.log(`✅ 找到匹配服务器 ID (游戏端口): ${server.id}`);
           return server.id;
         }
       }
 
+      // 如果游戏端口没找到，尝试匹配 Rust+ 端口（某些特殊配置）
+      for (const server of response.data.data) {
+        if (server.attributes.ip === ip && server.attributes.port === rustPlusPort) {
+          console.log(`✅ 找到匹配服务器 ID (Rust+端口): ${server.id}`);
+          return server.id;
+        }
+      }
+
+      // 方法3: IP 匹配，返回第一个（如果只有一个服务器）
+      const sameIpServers = response.data.data.filter(s => s.attributes.ip === ip);
+      if (sameIpServers.length === 1) {
+        console.log(`✅ 找到同IP唯一服务器 ID: ${sameIpServers[0].id}`);
+        return sameIpServers[0].id;
+      }
+
       console.log(`❌ 未找到匹配的服务器`);
+      console.log(`   提示: IP ${ip} 上可能有多个服务器，端口不匹配`);
       return null;
     } catch (error) {
       console.error('❌ Battlemetrics 搜索错误:', error.message);
