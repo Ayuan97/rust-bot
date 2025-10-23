@@ -174,37 +174,35 @@ function App() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* 左侧：服务器列表 */}
-            <div className="lg:col-span-3">
-              <div className="sticky top-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold flex items-center gap-2">
-                    <FaServer className="text-rust-orange" />
-                    我的服务器
-                  </h2>
-                  <span className="text-xs text-gray-500 bg-rust-gray px-2 py-1 rounded-full">
-                    {servers.length}
-                  </span>
-                </div>
-                <div className="space-y-3 max-h-[calc(100vh-200px)] overflow-y-auto pr-2 custom-scrollbar">
-                  {servers.map((server) => (
-                    <ServerCard
-                      key={server.id}
-                      server={server}
-                      onDelete={handleDeleteServer}
-                      onSelect={setActiveServer}
-                      isActive={activeServer?.id === server.id}
-                    />
-                  ))}
-                </div>
+          <div className="space-y-6">
+            {/* 服务器列表区域 */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <FaServer className="text-rust-orange" />
+                  我的服务器
+                </h2>
+                <span className="text-sm text-gray-400 bg-rust-gray px-3 py-1.5 rounded-full">
+                  共 {servers.length} 个服务器
+                </span>
+              </div>
+              <div className="space-y-3">
+                {servers.map((server) => (
+                  <ServerCard
+                    key={server.id}
+                    server={server}
+                    onDelete={handleDeleteServer}
+                    onSelect={setActiveServer}
+                    isActive={activeServer?.id === server.id}
+                  />
+                ))}
               </div>
             </div>
 
-            {/* 右侧：主控制面板 */}
+            {/* 控制面板区域（仅在有激活服务器且已连接时显示） */}
             {activeServer ? (
               activeServer.connected ? (
-                <div className="lg:col-span-9">
+                <div>
                   {/* 标签页导航 */}
                   <div className="bg-rust-dark rounded-lg p-2 mb-6 flex gap-2 overflow-x-auto">
                     <button
@@ -277,28 +275,17 @@ function App() {
                   <PlayerNotifications serverId={activeServer.id} />
                 </div>
               ) : (
-                <div className="lg:col-span-9 flex items-center justify-center">
-                  <div className="text-center">
-                    <FaServer className="text-6xl text-gray-600 mx-auto mb-4" />
-                    <p className="text-xl text-gray-400 mb-4">
-                      服务器未连接
-                    </p>
-                    <p className="text-gray-500">
-                      请在左侧点击"连接"按钮连接到服务器
-                    </p>
-                  </div>
-                </div>
-              )
-            ) : (
-              <div className="lg:col-span-9 flex items-center justify-center">
-                <div className="text-center">
+                <div className="bg-rust-dark rounded-lg p-12 text-center">
                   <FaServer className="text-6xl text-gray-600 mx-auto mb-4" />
-                  <p className="text-xl text-gray-400">
-                    请从左侧选择一个服务器
+                  <p className="text-xl text-gray-400 mb-4">
+                    服务器未连接
+                  </p>
+                  <p className="text-gray-500">
+                    请点击上方服务器卡片中的"连接"按钮连接到服务器
                   </p>
                 </div>
-              </div>
-            )}
+              )
+            ) : null}
           </div>
         )}
       </main>

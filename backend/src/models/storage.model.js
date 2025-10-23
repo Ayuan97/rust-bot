@@ -29,16 +29,30 @@ class Storage {
         player_id TEXT NOT NULL,
         player_token TEXT NOT NULL,
         battlemetrics_id TEXT,
+        img TEXT,
+        logo TEXT,
+        url TEXT,
+        description TEXT,
         created_at INTEGER DEFAULT (strftime('%s', 'now'))
       )
     `);
 
-    // 检查并添加 battlemetrics_id 列（兼容旧数据库）
-    try {
-      this.db.exec(`ALTER TABLE servers ADD COLUMN battlemetrics_id TEXT`);
-      console.log('✅ 添加 battlemetrics_id 列');
-    } catch (error) {
-      // 列已存在，忽略错误
+    // 检查并添加新列（兼容旧数据库）
+    const columnsToAdd = [
+      'battlemetrics_id',
+      'img',
+      'logo',
+      'url',
+      'description'
+    ];
+
+    for (const column of columnsToAdd) {
+      try {
+        this.db.exec(`ALTER TABLE servers ADD COLUMN ${column} TEXT`);
+        console.log(`✅ 添加 ${column} 列`);
+      } catch (error) {
+        // 列已存在，忽略错误
+      }
     }
 
     // 创建设备表
@@ -74,10 +88,21 @@ class Storage {
 
   addServer(server) {
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO servers (id, name, ip, port, player_id, player_token)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO servers (id, name, ip, port, player_id, player_token, img, logo, url, description)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    return stmt.run(server.id, server.name, server.ip, server.port, server.playerId, server.playerToken);
+    return stmt.run(
+      server.id,
+      server.name,
+      server.ip,
+      server.port,
+      server.playerId,
+      server.playerToken,
+      server.img || null,
+      server.logo || null,
+      server.url || null,
+      server.desc || server.description || null
+    );
   }
 
   getServer(id) {

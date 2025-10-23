@@ -91,7 +91,7 @@ const initializeFCM = async () => {
       fcmService.on('server:paired', async (serverInfo) => {
       console.log('🎮 新服务器配对:', serverInfo.name);
 
-      // 保存服务器信息
+      // 保存服务器信息（包含图片、logo、url、描述）
       try {
         storage.addServer({
           id: serverInfo.id,
@@ -100,10 +100,16 @@ const initializeFCM = async () => {
           port: serverInfo.port,
           playerId: serverInfo.playerId,
           playerToken: serverInfo.playerToken,
+          img: serverInfo.img,
+          logo: serverInfo.logo,
+          url: serverInfo.url,
+          desc: serverInfo.desc,
           battlemetricsId: null, // 稍后异步获取
         });
 
         console.log('✅ 服务器信息已保存');
+        if (serverInfo.img) console.log('   - 服务器图标:', serverInfo.img);
+        if (serverInfo.url) console.log('   - 地图图片:', serverInfo.url);
       } catch (error) {
         console.error('❌ 保存服务器失败:', error);
         return;

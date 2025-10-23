@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FaServer, FaUsers, FaClock, FaTrash, FaPlug, FaPowerOff, FaMapMarkedAlt, FaCircle, FaSun, FaMoon, FaSignal } from 'react-icons/fa';
+import { FaServer, FaUsers, FaClock, FaTrash, FaPlug, FaPowerOff, FaMapMarkedAlt, FaCircle, FaSun, FaMoon, FaSignal, FaGlobeAmericas } from 'react-icons/fa';
 import socketService from '../services/socket';
 
 function ServerCard({ server, onDelete, onSelect, isActive }) {
@@ -91,178 +91,208 @@ function ServerCard({ server, onDelete, onSelect, isActive }) {
 
   const percentage = getPlayerPercentage();
 
+  // 使用服务器的 url 作为背景图片，如果没有则使用渐变
+  const backgroundStyle = server.url
+    ? {
+        backgroundImage: `url(${server.url})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }
+    : {};
+
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl transition-all duration-500 cursor-pointer group ${
-        isActive ? 'scale-[1.02]' : 'hover:scale-[1.01]'
+      className={`relative overflow-hidden rounded-xl transition-all duration-300 cursor-pointer group ${
+        isActive ? 'ring-2 ring-rust-orange ring-offset-2 ring-offset-rust-darker shadow-xl shadow-rust-orange/30' : 'hover:shadow-lg'
       }`}
       onClick={() => onSelect(server)}
     >
-      {/* 背景图层 - 使用渐变作为占位符 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-rust-dark to-black">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwgMjU1LCAyNTUsIDAuMDMpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-30" />
+      {/* 背景层 */}
+      <div className="absolute inset-0">
+        {server.url ? (
+          // 使用地图图片作为背景
+          <div
+            className="absolute inset-0 bg-cover bg-center blur-sm scale-110"
+            style={{ backgroundImage: `url(${server.url})` }}
+          />
+        ) : (
+          // 默认渐变背景
+          <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-rust-dark to-black" />
+        )}
+        {/* 深色遮罩 */}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/75 to-black/60" />
       </div>
-
-      {/* 渐变遮罩 */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent" />
 
       {/* 状态指示条 */}
       <div className={`absolute top-0 left-0 right-0 h-1 z-10 ${
         server.connected
-          ? 'bg-gradient-to-r from-green-500 via-emerald-400 to-green-500'
+          ? 'bg-gradient-to-r from-green-500 via-emerald-400 to-green-500 animate-pulse'
           : 'bg-gradient-to-r from-gray-600 via-gray-500 to-gray-600'
-      }`}>
-        <div className={`h-full ${server.connected ? 'animate-pulse' : ''}`} />
-      </div>
-
-      {/* 边框 */}
-      <div className={`absolute inset-0 rounded-2xl transition-all duration-300 ${
-        isActive
-          ? 'ring-2 ring-rust-orange ring-offset-2 ring-offset-rust-darker shadow-2xl shadow-rust-orange/40'
-          : 'ring-1 ring-white/5 group-hover:ring-white/10'
       }`} />
 
-      <div className="relative z-10 p-5">
-        {/* 头部：服务器名称和状态徽章 */}
-        <div className="flex items-start justify-between mb-4">
+      {/* 内容区域 */}
+      <div className="relative z-10 p-4">
+        <div className="flex items-start gap-4">
+          {/* 左侧：服务器图标 */}
+          <div className="flex-shrink-0">
+            {server.img || server.logo ? (
+              <img
+                src={server.img || server.logo}
+                alt={server.name}
+                className="w-20 h-20 rounded-lg object-cover border-2 border-white/10 shadow-lg"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-lg bg-gradient-to-br from-rust-orange to-orange-600 flex items-center justify-center border-2 border-white/10 shadow-lg">
+                <FaServer className="text-3xl text-white" />
+              </div>
+            )}
+          </div>
+
+          {/* 中间：服务器信息 */}
           <div className="flex-1 min-w-0">
+            {/* 第一行：服务器名称和状态 */}
             <div className="flex items-center gap-2 mb-2">
+              <h3 className="font-bold text-lg text-white truncate drop-shadow-lg">
+                {server.name}
+              </h3>
               {server.connected ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-green-500/20 text-green-400 border border-green-500/30 backdrop-blur-sm">
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold bg-green-500/20 text-green-400 border border-green-500/30 backdrop-blur-sm">
                   <FaCircle className="text-[6px] animate-pulse" />
                   在线
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-500/20 text-gray-400 border border-gray-500/30 backdrop-blur-sm">
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-500/20 text-gray-400 border border-gray-500/30 backdrop-blur-sm">
                   <FaCircle className="text-[6px]" />
                   离线
                 </span>
               )}
               {teamInfo && getOnlineTeamCount() > 0 && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30 backdrop-blur-sm">
-                  👥 {getOnlineTeamCount()}人在线
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30 backdrop-blur-sm">
+                  👥 {getOnlineTeamCount()}人
                 </span>
               )}
             </div>
-            <h3 className="font-bold text-lg mb-1 truncate text-white drop-shadow-lg">
-              {server.name}
-            </h3>
-            <p className="text-xs font-mono text-gray-400 flex items-center gap-2">
-              <FaSignal className="text-gray-500" />
-              {server.ip}:{server.port}
-            </p>
-          </div>
 
-          {/* 删除按钮 */}
-          <button
-            className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all opacity-0 group-hover:opacity-100 backdrop-blur-sm border border-red-500/20"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(server.id);
-            }}
-            title="删除服务器"
-          >
-            <FaTrash className="text-sm" />
-          </button>
-        </div>
-
-        {/* 服务器详细信息 */}
-        {serverInfo && (
-          <div className="space-y-3 mb-4">
-            {/* 玩家数进度条 */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs text-gray-400 flex items-center gap-1.5">
-                  <FaUsers className="text-rust-orange" />
-                  在线玩家
-                </span>
-                <span className="text-sm font-bold text-white">
-                  {serverInfo.players}<span className="text-gray-500">/{serverInfo.maxPlayers}</span>
-                  <span className="text-xs ml-1 text-gray-400">({percentage}%)</span>
-                </span>
-              </div>
-              <div className="relative h-2 bg-black/40 rounded-full overflow-hidden backdrop-blur-sm">
-                <div
-                  className={`h-full transition-all duration-500 ${getPlayerBarColor(percentage)}`}
-                  style={{ width: `${percentage}%` }}
-                />
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" />
-              </div>
+            {/* 第二行：IP端口 */}
+            <div className="flex items-center gap-3 mb-2 text-xs text-gray-400">
+              <span className="flex items-center gap-1.5 font-mono">
+                <FaSignal className="text-gray-500" />
+                {server.ip}:{server.port}
+              </span>
             </div>
 
-            {/* 地图和时间信息 */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="bg-black/30 backdrop-blur-sm rounded-lg p-2 border border-white/5">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <FaMapMarkedAlt className="text-rust-orange text-xs" />
-                  <span className="text-xs text-gray-400">地图</span>
-                </div>
-                <p className="text-xs font-medium text-white truncate" title={serverInfo.map}>
-                  {serverInfo.map || 'Unknown'}
-                </p>
-              </div>
-
-              {timeInfo && (
-                <div className="bg-black/30 backdrop-blur-sm rounded-lg p-2 border border-white/5">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    {isDaytime(timeInfo.time, timeInfo.sunrise, timeInfo.sunset) ? (
-                      <FaSun className="text-yellow-400 text-xs" />
-                    ) : (
-                      <FaMoon className="text-blue-400 text-xs" />
-                    )}
-                    <span className="text-xs text-gray-400">时间</span>
+            {/* 第三行：实时数据（仅在连接时显示） */}
+            {server.connected && serverInfo && (
+              <div className="space-y-2 mb-2">
+                {/* 玩家数进度条 */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-gray-400 flex items-center gap-1">
+                      <FaUsers className="text-rust-orange" />
+                      在线玩家
+                    </span>
+                    <span className="text-sm font-bold text-white">
+                      {serverInfo.players}<span className="text-gray-500">/{serverInfo.maxPlayers}</span>
+                      <span className="text-xs ml-1 text-gray-400">({percentage}%)</span>
+                    </span>
                   </div>
-                  <p className="text-xs font-medium text-white font-mono">
-                    {formatTime(timeInfo.time)}
-                  </p>
+                  <div className="relative h-1.5 bg-black/40 rounded-full overflow-hidden backdrop-blur-sm">
+                    <div
+                      className={`h-full transition-all duration-500 ${getPlayerBarColor(percentage)}`}
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
                 </div>
+
+                {/* 地图和时间 */}
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="flex items-center gap-1 text-gray-300">
+                    <FaMapMarkedAlt className="text-rust-orange" />
+                    {serverInfo.map || 'Unknown'}
+                  </span>
+                  {timeInfo && (
+                    <span className="flex items-center gap-1 text-gray-300">
+                      {isDaytime(timeInfo.time, timeInfo.sunrise, timeInfo.sunset) ? (
+                        <FaSun className="text-yellow-400" />
+                      ) : (
+                        <FaMoon className="text-blue-400" />
+                      )}
+                      {formatTime(timeInfo.time)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 服务器描述（如果有） */}
+            {server.description && (
+              <p className="text-xs text-gray-400 line-clamp-2 mt-2">
+                {server.description}
+              </p>
+            )}
+          </div>
+
+          {/* 右侧：操作按钮 */}
+          <div className="flex flex-col gap-2">
+            {/* 删除按钮 */}
+            <button
+              className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all opacity-0 group-hover:opacity-100 backdrop-blur-sm border border-red-500/20"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(server.id);
+              }}
+              title="删除服务器"
+            >
+              <FaTrash className="text-sm" />
+            </button>
+
+            {/* 连接/断开按钮 */}
+            <div onClick={(e) => e.stopPropagation()}>
+              {!server.connected ? (
+                <button
+                  className={`px-4 py-2 rounded-lg font-bold text-sm transition-all duration-300 flex items-center gap-2 whitespace-nowrap ${
+                    loading
+                      ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-rust-orange to-orange-600 text-white shadow-lg shadow-rust-orange/30 hover:shadow-rust-orange/50 hover:scale-105 active:scale-95'
+                  }`}
+                  onClick={handleConnect}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <FaPlug className="animate-pulse" />
+                      连接中
+                    </>
+                  ) : (
+                    <>
+                      <FaPlug />
+                      连接
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  className={`px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 flex items-center gap-2 backdrop-blur-sm whitespace-nowrap ${
+                    loading
+                      ? 'bg-gray-700/50 text-gray-400 cursor-not-allowed'
+                      : 'bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10'
+                  }`}
+                  onClick={handleDisconnect}
+                  disabled={loading}
+                >
+                  <FaPowerOff />
+                  断开
+                </button>
               )}
             </div>
           </div>
-        )}
-
-        {/* 连接/断开按钮 */}
-        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-          {!server.connected ? (
-            <button
-              className={`flex-1 py-2.5 px-4 rounded-lg font-bold text-sm transition-all duration-300 flex items-center justify-center gap-2 ${
-                loading
-                  ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-rust-orange via-orange-600 to-rust-orange bg-size-200 hover:bg-pos-100 text-white shadow-lg shadow-rust-orange/30 hover:shadow-rust-orange/50 transform hover:scale-[1.02] active:scale-[0.98]'
-              }`}
-              onClick={handleConnect}
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <FaPlug className="animate-pulse" />
-                  连接中...
-                </>
-              ) : (
-                <>
-                  <FaPlug />
-                  连接服务器
-                </>
-              )}
-            </button>
-          ) : (
-            <button
-              className={`flex-1 py-2.5 px-4 rounded-lg font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2 backdrop-blur-sm ${
-                loading
-                  ? 'bg-gray-700/50 text-gray-400 cursor-not-allowed'
-                  : 'bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10'
-              }`}
-              onClick={handleDisconnect}
-              disabled={loading}
-            >
-              <FaPowerOff />
-              断开连接
-            </button>
-          )}
         </div>
       </div>
 
-      {/* 光晕效果 */}
+      {/* 激活状态光晕 */}
       {isActive && (
         <div className="absolute inset-0 bg-gradient-to-br from-rust-orange/10 via-transparent to-transparent pointer-events-none animate-pulse-slow" />
       )}
