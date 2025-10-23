@@ -119,3 +119,40 @@ code {
 .animate-slide-in-right {
   animation: slide-in-right 0.3s ease-out;
 }
+
+/* 闪光动画（用于进度条） */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+/* 慢速脉动动画 */
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
+/* 背景尺寸和位置（用于按钮渐变动画） */
+.bg-size-200 {
+  background-size: 200% 100%;
+}
+
+.bg-pos-100 {
+  background-position: 100% 0;
+}
