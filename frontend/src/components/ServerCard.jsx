@@ -56,6 +56,8 @@ function ServerCard({ server, onDelete, onSelect, isActive }) {
       }
     } catch (error) {
       console.error('获取 Battlemetrics 信息失败:', error);
+      // 设置为空对象表示已尝试但失败，避免重复请求
+      setBmInfo({});
     } finally {
       setLoadingBM(false);
     }
@@ -255,11 +257,11 @@ function ServerCard({ server, onDelete, onSelect, isActive }) {
                       <FaMapMarkedAlt className="text-gray-500" />
                       <span>{serverInfo.map || 'Unknown'}</span>
                     </div>
-                    {bmInfo && (
+                    {bmInfo && bmInfo.mapSize && (
                       <>
                         <div className="flex items-center gap-2 text-gray-300">
                           <FaCubes className="text-gray-500" />
-                          <span>地图大小: {bmInfo.mapSize || '未知'}</span>
+                          <span>地图大小: {bmInfo.mapSize}</span>
                         </div>
                         {bmInfo.lastWipe && (
                           <div className="flex items-center gap-2 text-gray-300">
@@ -423,7 +425,7 @@ function ServerCard({ server, onDelete, onSelect, isActive }) {
               <div className="text-center text-gray-400 py-4">
                 加载 Battlemetrics 信息中...
               </div>
-            ) : bmInfo ? (
+            ) : bmInfo && Object.keys(bmInfo).length > 0 ? (
               <>
                 {/* 服务器描述 */}
                 {(bmInfo.description || server.description) && (
@@ -436,36 +438,45 @@ function ServerCard({ server, onDelete, onSelect, isActive }) {
                 )}
 
                 {/* 详细信息 */}
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  {bmInfo.modded !== undefined && (
-                    <div className="bg-black/20 rounded-lg p-2 border border-white/5">
-                      <span className="text-gray-500">模式: </span>
-                      <span className="text-white">{bmInfo.modded ? '模组服' : '原版'}</span>
-                    </div>
-                  )}
-                  {bmInfo.pve !== undefined && (
-                    <div className="bg-black/20 rounded-lg p-2 border border-white/5">
-                      <span className="text-gray-500">PVE: </span>
-                      <span className="text-white">{bmInfo.pve ? '是' : '否'}</span>
-                    </div>
-                  )}
-                  {bmInfo.entityCount && (
-                    <div className="bg-black/20 rounded-lg p-2 border border-white/5">
-                      <span className="text-gray-500">实体数: </span>
-                      <span className="text-white">{bmInfo.entityCount.toLocaleString()}</span>
-                    </div>
-                  )}
-                  {bmInfo.uptime && (
-                    <div className="bg-black/20 rounded-lg p-2 border border-white/5">
-                      <span className="text-gray-500">运行时间: </span>
-                      <span className="text-white">{Math.floor(bmInfo.uptime / 60)}分钟</span>
-                    </div>
-                  )}
-                </div>
+                {(bmInfo.modded !== undefined || bmInfo.pve !== undefined || bmInfo.entityCount || bmInfo.uptime) && (
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    {bmInfo.modded !== undefined && (
+                      <div className="bg-black/20 rounded-lg p-2 border border-white/5">
+                        <span className="text-gray-500">模式: </span>
+                        <span className="text-white">{bmInfo.modded ? '模组服' : '原版'}</span>
+                      </div>
+                    )}
+                    {bmInfo.pve !== undefined && (
+                      <div className="bg-black/20 rounded-lg p-2 border border-white/5">
+                        <span className="text-gray-500">PVE: </span>
+                        <span className="text-white">{bmInfo.pve ? '是' : '否'}</span>
+                      </div>
+                    )}
+                    {bmInfo.entityCount && (
+                      <div className="bg-black/20 rounded-lg p-2 border border-white/5">
+                        <span className="text-gray-500">实体数: </span>
+                        <span className="text-white">{bmInfo.entityCount.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {bmInfo.uptime && (
+                      <div className="bg-black/20 rounded-lg p-2 border border-white/5">
+                        <span className="text-gray-500">运行时间: </span>
+                        <span className="text-white">{Math.floor(bmInfo.uptime / 60)}分钟</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 如果没有任何详细信息 */}
+                {!bmInfo.description && !server.description && !bmInfo.modded && !bmInfo.pve && !bmInfo.entityCount && !bmInfo.uptime && (
+                  <div className="text-center text-gray-500 py-4">
+                    该服务器未在 Battlemetrics 上注册
+                  </div>
+                )}
               </>
             ) : (
               <div className="text-center text-gray-500 py-4">
-                未找到 Battlemetrics 信息
+                该服务器未在 Battlemetrics 上注册
               </div>
             )}
           </div>

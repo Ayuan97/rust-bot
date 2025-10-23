@@ -41,24 +41,46 @@ class BattlemetricsService extends EventEmitter {
    */
   async searchServerByAddress(ip, port) {
     try {
-      const url = `https://api.battlemetrics.com/servers?filter[search]=${ip}:${port}&filter[game]=rust`;
-      
-      const response = await axios.get(url);
-      
-      if (response.status !== 200) {
-        return null;
-      }
+      console.log(`🔍 搜索 Battlemetrics 服务器: ${ip}:${port}`);
 
-      // 查找匹配的服务器
+      // 方法1: 直接搜索 IP:Port
+      let url = `https://api.battlemetrics.com/servers?filter[search]=${ip}:${port}&filter[game]=rust`;
+      let response = await axios.get(url);
+
+      console.log(`📊 搜索结果数量: ${response.data.data.length}`);
+
+      // 查找完全匹配的服务器
       for (const server of response.data.data) {
+        console.log(`  - 检查服务器: ${server.attributes.name} (${server.attributes.ip}:${server.attributes.port})`);
         if (server.attributes.ip === ip && server.attributes.port === parseInt(port)) {
+          console.log(`✅ 找到匹配服务器 ID: ${server.id}`);
           return server.id;
         }
       }
 
+      // 方法2: 搜索 IP（不带端口）
+      console.log(`🔍 尝试仅搜索 IP: ${ip}`);
+      url = `https://api.battlemetrics.com/servers?filter[search]=${ip}&filter[game]=rust`;
+      response = await axios.get(url);
+
+      console.log(`📊 IP 搜索结果数量: ${response.data.data.length}`);
+
+      for (const server of response.data.data) {
+        console.log(`  - 检查服务器: ${server.attributes.name} (${server.attributes.ip}:${server.attributes.port})`);
+        if (server.attributes.ip === ip && server.attributes.port === parseInt(port)) {
+          console.log(`✅ 找到匹配服务器 ID: ${server.id}`);
+          return server.id;
+        }
+      }
+
+      console.log(`❌ 未找到匹配的服务器`);
       return null;
     } catch (error) {
       console.error('❌ Battlemetrics 搜索错误:', error.message);
+      if (error.response) {
+        console.error('   状态码:', error.response.status);
+        console.error('   响应:', error.response.data);
+      }
       return null;
     }
   }
