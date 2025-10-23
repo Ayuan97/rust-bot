@@ -17,17 +17,23 @@ function ServerInfo({ serverId }) {
 
   const fetchAllInfo = async () => {
     try {
+      console.log(`📊 开始获取服务器信息: ${serverId}`);
+
       const [server, team, time] = await Promise.all([
         socketService.getServerInfo(serverId),
         socketService.getTeamInfo(serverId),
         socketService.getTime(serverId)
       ]);
 
+      console.log('✅ 服务器信息获取成功:', { server, team, time });
+
       setServerInfo(server);
       setTeamInfo(team);
       setTimeInfo(time);
     } catch (error) {
-      console.error('获取服务器信息失败:', error);
+      console.error('❌ 获取服务器信息失败:', error);
+      console.error('   错误详情:', error.message);
+      console.error('   Stack:', error.stack);
     } finally {
       setLoading(false);
     }

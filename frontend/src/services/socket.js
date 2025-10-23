@@ -64,10 +64,22 @@ class SocketService {
 
   getServerInfo(serverId) {
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.socket.off('server:info:success');
+        this.socket.off('server:info:error');
+        reject(new Error('获取服务器信息超时'));
+      }, 10000); // 10秒超时
+
       this.socket.emit('server:info', serverId);
 
-      this.socket.once('server:info:success', (data) => resolve(data.info));
-      this.socket.once('server:info:error', reject);
+      this.socket.once('server:info:success', (data) => {
+        clearTimeout(timeout);
+        resolve(data.info);
+      });
+      this.socket.once('server:info:error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
     });
   }
 
@@ -106,10 +118,22 @@ class SocketService {
 
   getTeamInfo(serverId) {
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.socket.off('team:info:success');
+        this.socket.off('team:info:error');
+        reject(new Error('获取队伍信息超时'));
+      }, 10000);
+
       this.socket.emit('team:info', serverId);
 
-      this.socket.once('team:info:success', (data) => resolve(data.teamInfo));
-      this.socket.once('team:info:error', reject);
+      this.socket.once('team:info:success', (data) => {
+        clearTimeout(timeout);
+        resolve(data.teamInfo);
+      });
+      this.socket.once('team:info:error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
     });
   }
 
@@ -128,10 +152,22 @@ class SocketService {
 
   getTime(serverId) {
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.socket.off('time:get:success');
+        this.socket.off('time:get:error');
+        reject(new Error('获取时间信息超时'));
+      }, 10000);
+
       this.socket.emit('time:get', serverId);
 
-      this.socket.once('time:get:success', (data) => resolve(data.time));
-      this.socket.once('time:get:error', reject);
+      this.socket.once('time:get:success', (data) => {
+        clearTimeout(timeout);
+        resolve(data.time);
+      });
+      this.socket.once('time:get:error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
     });
   }
 
