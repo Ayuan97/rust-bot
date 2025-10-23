@@ -103,9 +103,10 @@ class WebSocketService {
           const info = await rustPlusService.getServerInfo(serverId);
           socket.emit('server:info:success', { serverId, info });
         } catch (error) {
+          console.error(`❌ 获取服务器信息失败 [${serverId}]:`, error);
           socket.emit('server:info:error', {
             serverId,
-            error: error.message
+            error: error.message || error.error || JSON.stringify(error)
           });
         }
       });
@@ -116,9 +117,10 @@ class WebSocketService {
           const teamInfo = await rustPlusService.getTeamInfo(serverId);
           socket.emit('team:info:success', { serverId, teamInfo });
         } catch (error) {
+          console.error(`❌ 获取队伍信息失败 [${serverId}]:`, error);
           socket.emit('team:info:error', {
             serverId,
-            error: error.message
+            error: error.message || error.error || JSON.stringify(error)
           });
         }
       });
@@ -155,9 +157,10 @@ class WebSocketService {
           const time = await rustPlusService.getTime(serverId);
           socket.emit('time:get:success', { serverId, time });
         } catch (error) {
+          console.error(`❌ 获取时间信息失败 [${serverId}]:`, error);
           socket.emit('time:get:error', {
             serverId,
-            error: error.message
+            error: error.message || error.error || JSON.stringify(error)
           });
         }
       });
