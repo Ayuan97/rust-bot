@@ -63,8 +63,9 @@ class EventMonitorService extends EventEmitter {
       try {
         await this.checkMapMarkers(serverId);
       } catch (error) {
-        if (!error.message.includes('服务器未连接')) {
-          console.error(`事件监控检查失败 ${serverId}:`, error.message);
+        const errorMessage = error?.message || String(error);
+        if (!errorMessage.includes('服务器未连接')) {
+          console.error(`事件监控检查失败 ${serverId}:`, errorMessage);
         }
       }
     }, EventTiming.MAP_MARKERS_POLL_INTERVAL);
@@ -98,7 +99,7 @@ class EventMonitorService extends EventEmitter {
         console.log(`🗺️  加载了 ${mapInfo.monuments.length} 个古迹位置`);
       }
     } catch (error) {
-      console.error(`加载古迹位置失败:`, error.message);
+      console.error(`加载古迹位置失败:`, error?.message || String(error));
     }
   }
 
