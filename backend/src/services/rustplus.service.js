@@ -59,7 +59,13 @@ class RustPlusService extends EventEmitter {
             }
           }
         } catch (err) {
-          console.warn(`⚠️  无法获取初始队伍状态: ${err.message}`);
+          // AppError { error: 'not_found' } 表示玩家不在队伍中，这是正常的
+          const errorStr = JSON.stringify(err) || String(err);
+          if (errorStr.includes('not_found')) {
+            console.log(`ℹ️  跳过队伍状态初始化（玩家未加入队伍或不在服务器内）`);
+          } else {
+            console.warn(`⚠️  无法获取初始队伍状态: ${err?.message || errorStr}`);
+          }
         }
 
         // 启动定时轮询队伍状态（用于检测死亡/重生事件）
@@ -623,9 +629,16 @@ class RustPlusService extends EventEmitter {
           this.handleTeamChanged(serverId, { teamInfo });
         }
       } catch (error) {
-        // 静默处理错误（可能是网络波动）
-        if (error.message && !error.message.includes('服务器未连接')) {
-          console.warn(`⚠️  轮询队伍状态失败: ${error.message}`);
+        // AppError { error: 'not_found' } 表示玩家不在队伍中，静默处理
+        const errorStr = JSON.stringify(error) || String(error);
+        if (errorStr.includes('not_found')) {
+          return; // 静默处理
+        }
+
+        // 其他错误才输出
+        const errorMessage = error?.message || errorStr;
+        if (!errorMessage.includes('服务器未连接')) {
+          console.warn(`⚠️  轮询队伍状态失败: ${errorMessage}`);
         }
       }
     }, this.pollingInterval);

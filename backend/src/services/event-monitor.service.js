@@ -63,7 +63,14 @@ class EventMonitorService extends EventEmitter {
       try {
         await this.checkMapMarkers(serverId);
       } catch (error) {
-        const errorMessage = error?.message || JSON.stringify(error) || String(error);
+        // AppError { error: 'not_found' } 表示玩家不在服务器内或没有权限，这是正常的
+        const errorStr = JSON.stringify(error) || String(error);
+        if (errorStr.includes('not_found')) {
+          // 静默处理 not_found 错误
+          return;
+        }
+
+        const errorMessage = error?.message || errorStr;
         if (!errorMessage.includes('服务器未连接')) {
           console.error(`❌ 事件监控检查失败 ${serverId}:`, error);
         }
@@ -99,6 +106,12 @@ class EventMonitorService extends EventEmitter {
         console.log(`🗺️  加载了 ${mapInfo.monuments.length} 个古迹位置`);
       }
     } catch (error) {
+      // AppError { error: 'not_found' } 表示玩家不在服务器内，这是正常的
+      const errorStr = JSON.stringify(error) || String(error);
+      if (errorStr.includes('not_found')) {
+        console.log(`ℹ️  跳过加载古迹位置（玩家未在服务器内）`);
+        return;
+      }
       console.error(`❌ 加载古迹位置失败:`, error);
     }
   }
