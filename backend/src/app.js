@@ -242,145 +242,217 @@ const setupGameEventNotifications = () => {
 
   // 货船事件
   eventMonitorService.on(EventType.CARGO_SPAWN, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `货船已刷新 位置: ${data.position}`
-    );
-    websocketService.broadcast('event:cargo:spawn', { ...data, type: 'cargo:spawn' });
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `货船已刷新 位置: ${data.position}`
+      );
+      websocketService.broadcast('event:cargo:spawn', { ...data, type: 'cargo:spawn' });
+    } catch (error) {
+      console.error('发送货船刷新通知失败:', error.message);
+    }
   });
 
   eventMonitorService.on(EventType.CARGO_EGRESS_WARNING, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `警告！货船还有 ${data.minutesLeft} 分钟即将离开`
-    );
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `警告！货船还有 ${data.minutesLeft} 分钟即将离开`
+      );
+    } catch (error) {
+      console.error('发送货船离开警告通知失败:', error.message);
+    }
   });
 
   eventMonitorService.on(EventType.CARGO_EGRESS, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `货船准备离开 辐射快速上升 赶紧撤离！`
-    );
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `货船准备离开 辐射快速上升 赶紧撤离！`
+      );
+    } catch (error) {
+      console.error('发送货船准备离开通知失败:', error.message);
+    }
   });
 
   eventMonitorService.on(EventType.CARGO_LEAVE, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `货船已离开地图`
-    );
-    websocketService.broadcast('event:cargo:leave', { ...data, type: 'cargo:leave' });
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `货船已离开地图`
+      );
+      websocketService.broadcast('event:cargo:leave', { ...data, type: 'cargo:leave' });
+    } catch (error) {
+      console.error('发送货船离开通知失败:', error.message);
+    }
   });
 
   // 小油井事件
   eventMonitorService.on(EventType.SMALL_OIL_RIG_TRIGGERED, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `小油井已触发 重型科学家正在赶来`
-    );
-    websocketService.broadcast('event:small:triggered', { ...data, type: 'small:triggered' });
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `小油井已触发 重型科学家正在赶来`
+      );
+      websocketService.broadcast('event:small:triggered', { ...data, type: 'small:triggered' });
+    } catch (error) {
+      console.error('发送小油井触发通知失败:', error.message);
+    }
   });
 
   eventMonitorService.on(EventType.SMALL_OIL_RIG_CRATE_WARNING, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `小油井箱子还有 ${data.minutesLeft} 分钟解锁`
-    );
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `小油井箱子还有 ${data.minutesLeft} 分钟解锁`
+      );
+    } catch (error) {
+      console.error('发送小油井箱子警告通知失败:', error.message);
+    }
   });
 
   eventMonitorService.on(EventType.SMALL_OIL_RIG_CRATE_UNLOCKED, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `小油井箱子已解锁！`
-    );
-    websocketService.broadcast('event:small:unlocked', { ...data, type: 'small:unlocked' });
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `小油井箱子已解锁！`
+      );
+      websocketService.broadcast('event:small:unlocked', { ...data, type: 'small:unlocked' });
+    } catch (error) {
+      console.error('发送小油井箱子解锁通知失败:', error.message);
+    }
   });
 
   // 大油井事件
   eventMonitorService.on(EventType.LARGE_OIL_RIG_TRIGGERED, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `大油井已触发 重型科学家正在赶来`
-    );
-    websocketService.broadcast('event:large:triggered', { ...data, type: 'large:triggered' });
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `大油井已触发 重型科学家正在赶来`
+      );
+      websocketService.broadcast('event:large:triggered', { ...data, type: 'large:triggered' });
+    } catch (error) {
+      console.error('发送大油井触发通知失败:', error.message);
+    }
   });
 
   eventMonitorService.on(EventType.LARGE_OIL_RIG_CRATE_WARNING, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `大油井箱子还有 ${data.minutesLeft} 分钟解锁`
-    );
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `大油井箱子还有 ${data.minutesLeft} 分钟解锁`
+      );
+    } catch (error) {
+      console.error('发送大油井箱子警告通知失败:', error.message);
+    }
   });
 
   eventMonitorService.on(EventType.LARGE_OIL_RIG_CRATE_UNLOCKED, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `大油井箱子已解锁！`
-    );
-    websocketService.broadcast('event:large:unlocked', { ...data, type: 'large:unlocked' });
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `大油井箱子已解锁！`
+      );
+      websocketService.broadcast('event:large:unlocked', { ...data, type: 'large:unlocked' });
+    } catch (error) {
+      console.error('发送大油井箱子解锁通知失败:', error.message);
+    }
   });
 
   // 武装直升机事件
   eventMonitorService.on(EventType.PATROL_HELI_SPAWN, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `武装直升机已刷新 位置: ${data.position}`
-    );
-    websocketService.broadcast('event:heli:spawn', { ...data, type: 'heli:spawn' });
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `武装直升机已刷新 位置: ${data.position}`
+      );
+      websocketService.broadcast('event:heli:spawn', { ...data, type: 'heli:spawn' });
+    } catch (error) {
+      console.error('发送武装直升机刷新通知失败:', error.message);
+    }
   });
 
   eventMonitorService.on(EventType.PATROL_HELI_DOWNED, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `武装直升机被击落 位置: ${data.position}`
-    );
-    websocketService.broadcast('event:heli:downed', { ...data, type: 'heli:downed' });
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `武装直升机被击落 位置: ${data.position}`
+      );
+      websocketService.broadcast('event:heli:downed', { ...data, type: 'heli:downed' });
+    } catch (error) {
+      console.error('发送武装直升机被击落通知失败:', error.message);
+    }
   });
 
   eventMonitorService.on(EventType.PATROL_HELI_LEAVE, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `武装直升机已离开地图`
-    );
-    websocketService.broadcast('event:heli:leave', { ...data, type: 'heli:leave' });
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `武装直升机已离开地图`
+      );
+      websocketService.broadcast('event:heli:leave', { ...data, type: 'heli:leave' });
+    } catch (error) {
+      console.error('发送武装直升机离开通知失败:', error.message);
+    }
   });
 
   // CH47事件
   eventMonitorService.on(EventType.CH47_SPAWN, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `CH47已出现 位置: ${data.position}`
-    );
-    websocketService.broadcast('event:ch47:spawn', { ...data, type: 'ch47:spawn' });
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `CH47已出现 位置: ${data.position}`
+      );
+      websocketService.broadcast('event:ch47:spawn', { ...data, type: 'ch47:spawn' });
+    } catch (error) {
+      console.error('发送CH47出现通知失败:', error.message);
+    }
   });
 
   eventMonitorService.on(EventType.CH47_LEAVE, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `CH47已离开`
-    );
-    websocketService.broadcast('event:ch47:leave', { ...data, type: 'ch47:leave' });
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `CH47已离开`
+      );
+      websocketService.broadcast('event:ch47:leave', { ...data, type: 'ch47:leave' });
+    } catch (error) {
+      console.error('发送CH47离开通知失败:', error.message);
+    }
   });
 
   // 上锁箱子事件
   eventMonitorService.on(EventType.LOCKED_CRATE_SPAWN, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `上锁箱子出现 位置: ${data.position}`
-    );
-    websocketService.broadcast('event:crate:spawn', { ...data, type: 'crate:spawn' });
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `上锁箱子出现 位置: ${data.position}`
+      );
+      websocketService.broadcast('event:crate:spawn', { ...data, type: 'crate:spawn' });
+    } catch (error) {
+      console.error('发送上锁箱子出现通知失败:', error.message);
+    }
   });
 
   eventMonitorService.on(EventType.LOCKED_CRATE_DESPAWN, async (data) => {
-    websocketService.broadcast('event:crate:despawn', { ...data, type: 'crate:despawn' });
+    try {
+      websocketService.broadcast('event:crate:despawn', { ...data, type: 'crate:despawn' });
+    } catch (error) {
+      console.error('发送上锁箱子消失通知失败:', error.message);
+    }
   });
 
   // 袭击检测
   eventMonitorService.on(EventType.RAID_DETECTED, async (data) => {
-    await rustPlusService.sendTeamMessage(
-      data.serverId,
-      `检测到袭击 位置: ${data.position} (${data.explosionCount}次爆炸)`
-    );
-    websocketService.broadcast('event:raid:detected', { ...data, type: 'raid:detected' });
+    try {
+      await rustPlusService.sendTeamMessage(
+        data.serverId,
+        `检测到袭击 位置: ${data.position} (${data.explosionCount}次爆炸)`
+      );
+      websocketService.broadcast('event:raid:detected', { ...data, type: 'raid:detected' });
+    } catch (error) {
+      console.error('发送袭击检测通知失败:', error.message);
+    }
   });
 
   console.log('✅ 游戏事件监听器已注册');
