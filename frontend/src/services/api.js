@@ -33,6 +33,12 @@ export const deleteDevice = (serverId, entityId) => api.delete(`/servers/${serve
 
 export const getEvents = (serverId, limit = 100) => api.get(`/servers/${serverId}/events`, { params: { limit } });
 
+// ========== Battlemetrics ==========
+
+export const getBattlemetricsInfo = (serverId) => api.get(`/servers/${serverId}/battlemetrics`);
+
+export const getTopPlayers = (serverId, days = 30) => api.get(`/servers/${serverId}/battlemetrics/top-players`, { params: { days } });
+
 // ========== 健康检查 ==========
 
 export const healthCheck = () => api.get('/health');
