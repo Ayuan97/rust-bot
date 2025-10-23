@@ -141,10 +141,43 @@ class SocketService {
 
   getMapInfo(serverId) {
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.socket.off('map:info:success');
+        this.socket.off('map:info:error');
+        reject(new Error('获取地图信息超时'));
+      }, 10000);
+
       this.socket.emit('map:info', serverId);
 
-      this.socket.once('map:info:success', (data) => resolve(data.mapInfo));
-      this.socket.once('map:info:error', reject);
+      this.socket.once('map:info:success', (data) => {
+        clearTimeout(timeout);
+        resolve(data.mapInfo);
+      });
+      this.socket.once('map:info:error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+    });
+  }
+
+  getMap(serverId) {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.socket.off('map:get:success');
+        this.socket.off('map:get:error');
+        reject(new Error('获取地图超时'));
+      }, 15000); // 地图数据可能较大，15秒超时
+
+      this.socket.emit('map:get', serverId);
+
+      this.socket.once('map:get:success', (data) => {
+        clearTimeout(timeout);
+        resolve(data.map);
+      });
+      this.socket.once('map:get:error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
     });
   }
 

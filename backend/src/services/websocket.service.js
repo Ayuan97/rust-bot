@@ -131,9 +131,24 @@ class WebSocketService {
           const mapInfo = await rustPlusService.getMap(serverId);
           socket.emit('map:info:success', { serverId, mapInfo });
         } catch (error) {
+          console.error(`❌ 获取地图信息失败 [${serverId}]:`, error);
           socket.emit('map:info:error', {
             serverId,
-            error: error.message
+            error: error.message || error.error || JSON.stringify(error)
+          });
+        }
+      });
+
+      // 获取地图（包含JPG图片数据）
+      socket.on('map:get', async (serverId) => {
+        try {
+          const map = await rustPlusService.getMap(serverId);
+          socket.emit('map:get:success', { serverId, map });
+        } catch (error) {
+          console.error(`❌ 获取地图失败 [${serverId}]:`, error);
+          socket.emit('map:get:error', {
+            serverId,
+            error: error.message || error.error || JSON.stringify(error)
           });
         }
       });
