@@ -1034,7 +1034,10 @@ class CommandsService {
 
           console.log(`[AFK检测] 玩家 ${member.name} 位置: (${member.x}, ${member.y})`);
 
-          this.updatePlayerPosition(serverId, member.steamId, {
+          // 统一转换steamId为字符串
+          const steamIdStr = member.steamId.toString();
+
+          this.updatePlayerPosition(serverId, steamIdStr, {
             x: member.x,
             y: member.y,
             isAlive: member.isAlive,
@@ -1043,7 +1046,7 @@ class CommandsService {
           });
 
           // 检测挂机并通知
-          const afkTime = this.getPlayerAfkTime(serverId, member.steamId);
+          const afkTime = this.getPlayerAfkTime(serverId, steamIdStr);
           console.log(`[AFK检测] 玩家 ${member.name} 挂机时长: ${afkTime} 分钟`);
 
           if (afkTime >= 3) {
