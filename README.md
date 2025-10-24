@@ -48,9 +48,26 @@ docker-compose logs -f
 - **前端**: http://localhost:3002
 - **后端**: http://localhost:3001/api
 
+#### 修改端口
+
+**只需编辑一个文件！**
+
+1. 编辑 `.env` 文件：
+   ```bash
+   # 修改端口号
+   BACKEND_PORT=3001   # 改成你想要的后端端口
+   FRONTEND_PORT=3002  # 改成你想要的前端端口
+   ```
+
+2. 重新启动：
+   ```bash
+   ./docker-start.sh
+   ```
+
 **特点：**
 - ✅ 一键启动，环境隔离
 - ✅ 每次启动都是全新环境
+- ✅ 只需修改 .env 文件即可更改所有端口
 - ⚠️ 容器删除后数据清空
 
 **详细文档**: 查看 [Docker 部署指南](DOCKER.md)

@@ -9,6 +9,26 @@ echo "🐳 Rust+ Bot Docker 启动脚本"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
+# 检查 .env 文件
+if [ ! -f .env ]; then
+    echo "📝 创建配置文件 .env ..."
+    cp .env.example .env
+    echo "✅ 已创建 .env 文件"
+    echo ""
+fi
+
+# 读取端口配置
+source .env
+BACKEND_PORT=${BACKEND_PORT:-3001}
+FRONTEND_PORT=${FRONTEND_PORT:-3002}
+
+echo "📋 当前配置："
+echo "  后端端口: $BACKEND_PORT"
+echo "  前端端口: $FRONTEND_PORT"
+echo ""
+echo "💡 提示: 修改端口请编辑 .env 文件"
+echo ""
+
 # 检查 Docker 是否安装
 if ! command -v docker &> /dev/null; then
     echo "❌ 错误: 未安装 Docker"
@@ -67,15 +87,15 @@ echo "🏥 健康检查..."
 echo ""
 
 # 检查后端
-if curl -f http://localhost:3001/api/health &> /dev/null; then
-    echo "✅ 后端服务正常 (http://localhost:3001)"
+if curl -f http://localhost:$BACKEND_PORT/api/health &> /dev/null; then
+    echo "✅ 后端服务正常 (http://localhost:$BACKEND_PORT)"
 else
     echo "⚠️  后端服务可能未就绪，请稍后检查"
 fi
 
 # 检查前端
-if curl -f http://localhost:3002 &> /dev/null; then
-    echo "✅ 前端服务正常 (http://localhost:3002)"
+if curl -f http://localhost:$FRONTEND_PORT &> /dev/null; then
+    echo "✅ 前端服务正常 (http://localhost:$FRONTEND_PORT)"
 else
     echo "⚠️  前端服务可能未就绪，请稍后检查"
 fi
@@ -86,13 +106,14 @@ echo "🎉 部署完成！"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "访问地址:"
-echo "  前端: http://localhost:3002"
-echo "  后端: http://localhost:3001/api"
+echo "  前端: http://localhost:$FRONTEND_PORT"
+echo "  后端: http://localhost:$BACKEND_PORT/api"
 echo ""
 echo "常用命令:"
 echo "  查看日志: docker-compose logs -f"
 echo "  停止服务: docker-compose down"
 echo "  重启服务: docker-compose restart"
 echo ""
+echo "💡 修改端口: 编辑 .env 文件，然后重新运行此脚本"
 echo "详细文档请查看: DOCKER.md"
 echo ""
