@@ -3,6 +3,8 @@
  * 参考: https://github.com/alexemanuelol/rustplusplus
  */
 
+import MONUMENT_INFO from './monument-info.js';
+
 const GRID_DIAMETER = 146.25; // 每个网格的大小
 const SUB_GRID_SIZE = 3; // 子网格分割数量（3x3 = 9个子格）
 
@@ -160,11 +162,95 @@ function getDistance(x1, y1, x2, y2) {
 }
 
 /**
+ * 计算相对于地图中心的方位
+ * @param {number} x - X坐标
+ * @param {number} y - Y坐标
+ * @param {number} mapSize - 地图大小
+ * @returns {string} 方位（如："右上", "左下", "中心"）
+ */
+function getDirection(x, y, mapSize) {
+  const center = mapSize / 2;
+  const dx = x - center;
+  const dy = y - center;
+
+  // 距离中心的距离
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  // 如果距离很近（小于地图1/6），认为是中心
+  if (distance < mapSize / 6) {
+    return '中心';
+  }
+
+  // 判断主要方向
+  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+  // 8个方向判断
+  if (angle >= -22.5 && angle < 22.5) {
+    return '右';
+  } else if (angle >= 22.5 && angle < 67.5) {
+    return '右上';
+  } else if (angle >= 67.5 && angle < 112.5) {
+    return '上';
+  } else if (angle >= 112.5 && angle < 157.5) {
+    return '左上';
+  } else if (angle >= 157.5 || angle < -157.5) {
+    return '左';
+  } else if (angle >= -157.5 && angle < -112.5) {
+    return '左下';
+  } else if (angle >= -112.5 && angle < -67.5) {
+    return '下';
+  } else {
+    return '右下';
+  }
+}
+
+/**
  * 计算两点之间的角度（度数）
  */
 function getAngleBetweenPoints(x1, y1, x2, y2) {
   const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
   return angle < 0 ? angle + 360 : angle;
+}
+
+/**
+ * 根据坐标和古迹列表，找到最近的古迹
+ * @param {number} x - X 坐标
+ * @param {number} y - Y 坐标
+ * @param {Array} monuments - 古迹列表（来自 RustPlus API）
+ * @returns {string|null} 古迹名称或 null
+ */
+function getNearestMonument(x, y, monuments) {
+  if (!monuments || monuments.length === 0) {
+    return null;
+  }
+
+  for (const monument of monuments) {
+    // 跳过某些特殊古迹（地下基地、隧道系统等）
+    if (monument.token === 'DungeonBase' || monument.token === 'underwater_lab') {
+      continue;
+    }
+
+    // 检查是否在 MONUMENT_INFO 中定义
+    const monumentInfo = MONUMENT_INFO[monument.token];
+    if (!monumentInfo) {
+      continue;
+    }
+
+    // 半径为 0 的古迹不参与判定
+    if (monumentInfo.radius === 0) {
+      continue;
+    }
+
+    // 计算距离
+    const distance = getDistance(x, y, monument.x, monument.y);
+
+    // 如果在古迹范围内，返回古迹名称
+    if (distance <= monumentInfo.radius) {
+      return monumentInfo.name;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -174,20 +260,35 @@ function getAngleBetweenPoints(x1, y1, x2, y2) {
  * @param {number} mapSize - 地图大小
  * @param {boolean} includeSubGrid - 是否包含子网格编号（默认true）
  * @param {boolean} includeCoords - 是否包含精确坐标（默认false）
+ * @param {Array} monuments - 古迹列表（可选）
  * @returns {string} 格式化的坐标字符串
  */
-function formatPosition(x, y, mapSize, includeSubGrid = true, includeCoords = false) {
+function formatPosition(x, y, mapSize, includeSubGrid = true, includeCoords = false, monuments = null) {
   const grid = getGridPos(x, y, mapSize, includeSubGrid);
 
+  // 检查是否在古迹附近
+  let monumentName = null;
+  if (monuments) {
+    monumentName = getNearestMonument(x, y, monuments);
+  }
+
   if (grid) {
-    if (includeCoords) {
+    if (monumentName) {
+      // 有古迹名称时：古迹名(网格)
+      return `${monumentName}(${grid})`;
+    } else if (includeCoords) {
+      // 包含精确坐标
       const coords = `(${Math.round(x)},${Math.round(y)})`;
       return `${grid}${coords}`;
     }
     return grid;
   }
 
-  // 如果没有网格位置，返回原始坐标
+  // 如果没有网格位置
+  if (monumentName) {
+    return monumentName;
+  }
+
   return `(${Math.round(x)},${Math.round(y)})`;
 }
 
@@ -202,7 +303,9 @@ export {
   getSubGridNumber,
   getGridPos,
   getDistance,
+  getDirection,
   getAngleBetweenPoints,
+  getNearestMonument,
   formatPosition
 };
 
@@ -217,6 +320,8 @@ export default {
   getSubGridNumber,
   getGridPos,
   getDistance,
+  getDirection,
   getAngleBetweenPoints,
+  getNearestMonument,
   formatPosition
 };

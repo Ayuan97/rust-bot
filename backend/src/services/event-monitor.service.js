@@ -7,6 +7,7 @@ import EventEmitter from 'events';
 import { AppMarkerType, EventTiming, EventType } from '../utils/event-constants.js';
 import { formatPosition, getDistance } from '../utils/coordinates.js';
 import EventTimerManager from '../utils/event-timer.js';
+import { getItemName, isImportantItem } from '../utils/item-info.js';
 
 class EventMonitorService extends EventEmitter {
   constructor(rustPlusService) {
@@ -35,6 +36,9 @@ class EventMonitorService extends EventEmitter {
       patrolHeliTracers: new Map(),          // markerId -> [{x, y, time}]
       ch47Tracers: new Map(),                // markerId -> [{x, y, time}]
 
+      // 货船停靠状态追踪（防止重复通知）
+      cargoShipDockedStatus: new Map(),      // markerId -> boolean
+
       // 所有事件的上次触发时间
       lastEvents: {
         cargoShipSpawn: null,                // 货船刷新
@@ -52,7 +56,8 @@ class EventMonitorService extends EventEmitter {
       },
 
       explosions: [],                        // 爆炸记录 [{x, y, time}]
-      knownVendingMachines: []               // 已知售货机 [{x, y}]
+      knownVendingMachines: new Map(),       // id -> vending machine data
+      isFirstPoll: true                      // 是否首次轮询（防止重启时大量通知）
     });
 
     // 获取古迹位置（用于油井检测）
@@ -138,9 +143,17 @@ class EventMonitorService extends EventEmitter {
     this.checkCH47s(serverId, currentMarkers, previousMarkers);
     this.checkLockedCrates(serverId, currentMarkers, previousMarkers);
     this.checkExplosions(serverId, currentMarkers, previousMarkers);
+    this.checkVendingMachines(serverId, currentMarkers, previousMarkers);
 
     // 更新缓存
     this.previousMarkers.set(serverId, currentMarkers);
+
+    // 标记首次轮询已完成
+    const eventData = this.eventData.get(serverId);
+    if (eventData && eventData.isFirstPoll) {
+      eventData.isFirstPoll = false;
+      console.log(`✅ 服务器 ${serverId} 首次轮询完成，后续将正常发送通知`);
+    }
   }
 
   /**
@@ -182,11 +195,16 @@ class EventMonitorService extends EventEmitter {
         serverId,
         EventTiming.CARGO_SHIP_EGRESS_TIME,
         () => {
-          console.log(`🚢 [货船Egress] 位置: ${position}`);
+          // 获取货船当前的实时位置（从追踪路径中获取最新位置）
+          const tracer = eventData.cargoShipTracers.get(ship.id) || [];
+          const currentPos = tracer.length > 0 ? tracer[tracer.length - 1] : { x: ship.x, y: ship.y };
+          const currentPosition = formatPosition(currentPos.x, currentPos.y, mapSize);
+
+          console.log(`🚢 [货船Egress] 位置: ${currentPosition}`);
           this.emit(EventType.CARGO_EGRESS, {
             serverId,
             markerId: ship.id,
-            position,
+            position: currentPosition,
             time: Date.now()
           });
         }
@@ -194,12 +212,17 @@ class EventMonitorService extends EventEmitter {
 
       // 添加Egress前5分钟警告
       egressTimer.addWarning(EventTiming.CARGO_SHIP_EGRESS_WARNING_TIME, (timeLeft) => {
+        // 获取货船当前的实时位置（从追踪路径中获取最新位置）
+        const tracer = eventData.cargoShipTracers.get(ship.id) || [];
+        const currentPos = tracer.length > 0 ? tracer[tracer.length - 1] : { x: ship.x, y: ship.y };
+        const currentPosition = formatPosition(currentPos.x, currentPos.y, mapSize);
+
         const minutesLeft = Math.floor(timeLeft / 60000);
         console.log(`🚢 [货船Egress警告] ${minutesLeft}分钟后Egress`);
         this.emit(EventType.CARGO_EGRESS_WARNING, {
           serverId,
           markerId: ship.id,
-          position,
+          position: currentPosition,
           minutesLeft,
           time: Date.now()
         });
@@ -236,8 +259,9 @@ class EventMonitorService extends EventEmitter {
       // 停止计时器
       EventTimerManager.stopTimer(`cargo_egress_${ship.id}`, serverId);
 
-      // 清除追踪路径
+      // 清除追踪路径和停靠状态
       eventData.cargoShipTracers.delete(ship.id);
+      eventData.cargoShipDockedStatus.delete(ship.id);
     }
 
     // 更新追踪路径
@@ -261,26 +285,42 @@ class EventMonitorService extends EventEmitter {
    * 检测货船港口停靠
    */
   checkHarborDocking(serverId, ship) {
+    const eventData = this.eventData.get(serverId);
     const monuments = this.monuments.get(serverId) || [];
     const harbors = monuments.filter(m => m.token && m.token.includes('harbor'));
+
+    // 检查是否已经通知过停靠
+    const hasDockedBefore = eventData.cargoShipDockedStatus.get(ship.id);
 
     for (const harbor of harbors) {
       const distance = getDistance(ship.x, ship.y, harbor.x, harbor.y);
 
       if (distance <= EventTiming.HARBOR_CARGO_SHIP_DOCK_DISTANCE) {
-        const mapSize = this.rustPlusService.getMapSize(serverId);
-        const position = formatPosition(ship.x, ship.y, mapSize);
+        // 只在第一次检测到停靠时通知
+        if (!hasDockedBefore) {
+          const mapSize = this.rustPlusService.getMapSize(serverId);
+          const position = formatPosition(ship.x, ship.y, mapSize);
 
-        console.log(`🚢 [货船停靠] 港口: ${harbor.name || 'Harbor'}`);
+          console.log(`🚢 [货船停靠] 港口: ${harbor.name || 'Harbor'}`);
 
-        this.emit(EventType.CARGO_DOCK, {
-          serverId,
-          markerId: ship.id,
-          position,
-          harborName: harbor.name || 'Harbor',
-          time: Date.now()
-        });
+          this.emit(EventType.CARGO_DOCK, {
+            serverId,
+            markerId: ship.id,
+            position,
+            harborName: harbor.name || 'Harbor',
+            time: Date.now()
+          });
+
+          // 标记已停靠
+          eventData.cargoShipDockedStatus.set(ship.id, true);
+        }
+        return; // 已在港口，不需要继续检查其他港口
       }
+    }
+
+    // 如果不在任何港口附近，重置停靠状态（货船可能离开后再次返回）
+    if (hasDockedBefore) {
+      eventData.cargoShipDockedStatus.set(ship.id, false);
     }
   }
 
@@ -697,6 +737,168 @@ class EventMonitorService extends EventEmitter {
    */
   getEventData(serverId) {
     return this.eventData.get(serverId);
+  }
+
+  /**
+   * 检测售货机事件
+   */
+  checkVendingMachines(serverId, currentMarkers, previousMarkers) {
+    const currentVMs = currentMarkers.filter(m => m.type === AppMarkerType.VendingMachine);
+    const previousVMs = previousMarkers.filter(m => m.type === AppMarkerType.VendingMachine);
+    const eventData = this.eventData.get(serverId);
+
+    // 首次轮询：只初始化已知售货机列表，不发送通知（防止重启时大量通知）
+    if (eventData.isFirstPoll) {
+      console.log(`🏪 首次轮询：初始化 ${currentVMs.length} 个售货机到已知列表（跳过通知）`);
+      for (const vm of currentVMs) {
+        eventData.knownVendingMachines.set(vm.id, {
+          id: vm.id,
+          x: vm.x,
+          y: vm.y,
+          name: vm.name,
+          sellOrders: vm.sellOrders || [],
+          lastUpdate: Date.now()
+        });
+      }
+      return;
+    }
+
+    // 新出现的售货机
+    const newVMs = currentVMs.filter(c =>
+      !previousVMs.some(p => p.id === c.id)
+    );
+
+    for (const vm of newVMs) {
+      const mapSize = this.rustPlusService.getMapSize(serverId);
+      const monuments = this.monuments.get(serverId) || [];
+      const position = formatPosition(vm.x, vm.y, mapSize, true, false, monuments);
+      const now = Date.now();
+
+      // 统计商品数量
+      const itemCount = vm.sellOrders?.length || 0;
+
+      // 检查是否有重要物品
+      const importantItems = [];
+      if (vm.sellOrders && vm.sellOrders.length > 0) {
+        for (const order of vm.sellOrders) {
+          if (isImportantItem(order.itemId)) {
+            const itemName = getItemName(order.itemId);
+            importantItems.push({
+              name: itemName,
+              itemId: order.itemId,
+              quantity: order.quantity,
+              amountInStock: order.amountInStock,
+              currencyId: order.currencyId,
+              costPerItem: order.costPerItem
+            });
+          }
+        }
+      }
+
+      console.log(`🏪 [新售货机] 位置: ${position}, 商品: ${itemCount}件, 重要物品: ${importantItems.length}件`);
+
+      // 发送新售货机事件
+      this.emit(EventType.VENDING_MACHINE_NEW, {
+        serverId,
+        vendingMachineId: vm.id,
+        x: vm.x,
+        y: vm.y,
+        position,
+        name: vm.name,
+        itemCount,
+        sellOrders: vm.sellOrders || [],
+        importantItems,
+        time: now
+      });
+
+      // 保存到已知售货机列表
+      eventData.knownVendingMachines.set(vm.id, {
+        id: vm.id,
+        x: vm.x,
+        y: vm.y,
+        name: vm.name,
+        sellOrders: vm.sellOrders || [],
+        lastUpdate: now
+      });
+    }
+
+    // 已移除的售货机
+    const removedVMs = previousVMs.filter(p =>
+      !currentVMs.some(c => c.id === p.id)
+    );
+
+    for (const vm of removedVMs) {
+      console.log(`🏪 [售货机移除] ID: ${vm.id}`);
+
+      this.emit(EventType.VENDING_MACHINE_REMOVED, {
+        serverId,
+        vendingMachineId: vm.id,
+        time: Date.now()
+      });
+
+      // 从已知列表中移除
+      eventData.knownVendingMachines.delete(vm.id);
+    }
+
+    // 检测售货机变化（订单变化、库存变化等）
+    for (const vm of currentVMs) {
+      const previousVM = previousVMs.find(p => p.id === vm.id);
+      if (!previousVM) continue;
+
+      // 比较 sellOrders
+      const hasOrderChanged = this.hasSellOrdersChanged(previousVM.sellOrders, vm.sellOrders);
+
+      if (hasOrderChanged) {
+        const mapSize = this.rustPlusService.getMapSize(serverId);
+        const monuments = this.monuments.get(serverId) || [];
+        const position = formatPosition(vm.x, vm.y, mapSize, true, false, monuments);
+
+        console.log(`🏪 [售货机订单变化] 位置: ${position}`);
+
+        this.emit(EventType.VENDING_MACHINE_ORDER_CHANGE, {
+          serverId,
+          vendingMachineId: vm.id,
+          position,
+          oldOrders: previousVM.sellOrders || [],
+          newOrders: vm.sellOrders || [],
+          time: Date.now()
+        });
+
+        // 更新已知售货机数据
+        const knownVM = eventData.knownVendingMachines.get(vm.id);
+        if (knownVM) {
+          knownVM.sellOrders = vm.sellOrders || [];
+          knownVM.lastUpdate = Date.now();
+        }
+      }
+    }
+  }
+
+  /**
+   * 检查售货机订单是否变化
+   */
+  hasSellOrdersChanged(oldOrders, newOrders) {
+    if (!oldOrders && !newOrders) return false;
+    if (!oldOrders || !newOrders) return true;
+    if (oldOrders.length !== newOrders.length) return true;
+
+    // 深度比较每个订单
+    for (let i = 0; i < oldOrders.length; i++) {
+      const old = oldOrders[i];
+      const now = newOrders[i];
+
+      if (!old || !now) return true;
+
+      if (old.itemId !== now.itemId ||
+          old.quantity !== now.quantity ||
+          old.currencyId !== now.currencyId ||
+          old.costPerItem !== now.costPerItem ||
+          old.amountInStock !== now.amountInStock) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**

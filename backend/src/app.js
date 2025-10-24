@@ -13,7 +13,7 @@ import storage from './models/storage.model.js';
 import rustPlusService from './services/rustplus.service.js';
 import battlemetricsService from './services/battlemetrics.service.js';
 import { notify } from './utils/messages.js';
-import { formatPosition } from './utils/coordinates.js';
+import { formatPosition, getDirection } from './utils/coordinates.js';
 
 // 导入事件系统
 import EventMonitorService from './services/event-monitor.service.js';
@@ -249,38 +249,56 @@ const setupGameEventNotifications = () => {
   // 货船事件
   eventMonitorService.on(EventType.CARGO_SPAWN, async (data) => {
     try {
-      await rustPlusService.sendTeamMessage(
-        data.serverId,
-        `货船已刷新 位置: ${data.position}`
-      );
+      // 获取地图大小以计算方位
+      const mapSize = rustPlusService.getMapSize(data.serverId);
+      const direction = getDirection(data.x, data.y, mapSize);
+
+      // 检查是否有网格位置（如果在地图外会返回原始坐标）
+      const hasGrid = !data.position.startsWith('(');
+
+      let message;
+      if (hasGrid) {
+        // 在地图内，显示方位 + 网格
+        message = `目前货船位于 ${direction} ${data.position}`;
+      } else {
+        // 在地图外，只显示方位
+        message = `目前货船位于 ${direction}`;
+      }
+
+      await rustPlusService.sendTeamMessage(data.serverId, message);
       websocketService.broadcast('event:cargo:spawn', { ...data, type: 'cargo:spawn' });
     } catch (error) {
       console.error('发送货船刷新通知失败:', error.message);
     }
   });
 
-  eventMonitorService.on(EventType.CARGO_EGRESS_WARNING, async (data) => {
+  // 货船停靠港口
+  eventMonitorService.on(EventType.CARGO_DOCK, async (data) => {
     try {
       await rustPlusService.sendTeamMessage(
         data.serverId,
-        `警告！货船还有 ${data.minutesLeft} 分钟即将离开`
+        `货船已停靠港口 ${data.position}`
       );
+      websocketService.broadcast('event:cargo:dock', { ...data, type: 'cargo:dock' });
     } catch (error) {
-      console.error('发送货船离开警告通知失败:', error.message);
+      console.error('发送货船停靠通知失败:', error.message);
     }
   });
 
+  // 货船离开港口（Egress 就是离开港口的意思）
   eventMonitorService.on(EventType.CARGO_EGRESS, async (data) => {
     try {
       await rustPlusService.sendTeamMessage(
         data.serverId,
-        `货船准备离开 辐射快速上升 赶紧撤离！`
+        `货船离开港口 辐射快速上升 赶紧撤离！`
       );
+      websocketService.broadcast('event:cargo:egress', { ...data, type: 'cargo:egress' });
     } catch (error) {
-      console.error('发送货船准备离开通知失败:', error.message);
+      console.error('发送货船离开港口通知失败:', error.message);
     }
   });
 
+  // 货船离开地图
   eventMonitorService.on(EventType.CARGO_LEAVE, async (data) => {
     try {
       await rustPlusService.sendTeamMessage(
@@ -289,7 +307,7 @@ const setupGameEventNotifications = () => {
       );
       websocketService.broadcast('event:cargo:leave', { ...data, type: 'cargo:leave' });
     } catch (error) {
-      console.error('发送货船离开通知失败:', error.message);
+      console.error('发送货船离开地图通知失败:', error.message);
     }
   });
 
@@ -368,9 +386,13 @@ const setupGameEventNotifications = () => {
   // 武装直升机事件
   eventMonitorService.on(EventType.PATROL_HELI_SPAWN, async (data) => {
     try {
+      // 获取地图大小以计算方位
+      const mapSize = rustPlusService.getMapSize(data.serverId);
+      const direction = getDirection(data.x, data.y, mapSize);
+
       await rustPlusService.sendTeamMessage(
         data.serverId,
-        `武装直升机已刷新 位置: ${data.position}`
+        `武装直升机已刷新在 ${direction} ${data.position}`
       );
       websocketService.broadcast('event:heli:spawn', { ...data, type: 'heli:spawn' });
     } catch (error) {
@@ -398,7 +420,7 @@ const setupGameEventNotifications = () => {
       );
       websocketService.broadcast('event:heli:leave', { ...data, type: 'heli:leave' });
     } catch (error) {
-      console.error('发送武装直升机离开通知失败:', error.message);
+      console.error('发送武装直升机离开地图通知失败:', error.message);
     }
   });
 
@@ -461,6 +483,45 @@ const setupGameEventNotifications = () => {
     }
   });
 
+  // 售货机事件
+  eventMonitorService.on(EventType.VENDING_MACHINE_NEW, async (data) => {
+    try {
+      // 基础消息：新售货机出现 位置: xxx 共X件商品
+      let message = `新售货机出现 位置: ${data.position} 共${data.itemCount}件商品`;
+
+      // 如果有重要物品，添加特别提醒
+      if (data.importantItems && data.importantItems.length > 0) {
+        const itemsList = data.importantItems.map(item => {
+          return `${item.name}${item.amountInStock}个`;
+        }).join(' ');
+        message += ` 重要物品: ${itemsList}`;
+      }
+
+      await rustPlusService.sendTeamMessage(data.serverId, message);
+      websocketService.broadcast('event:vending:new', { ...data, type: 'vending:new' });
+    } catch (error) {
+      console.error('发送售货机出现通知失败:', error.message);
+    }
+  });
+
+  eventMonitorService.on(EventType.VENDING_MACHINE_REMOVED, async (data) => {
+    try {
+      // 售货机移除事件只广播到前端，不发送队伍消息（避免刷屏）
+      websocketService.broadcast('event:vending:removed', { ...data, type: 'vending:removed' });
+    } catch (error) {
+      console.error('处理售货机移除事件失败:', error.message);
+    }
+  });
+
+  eventMonitorService.on(EventType.VENDING_MACHINE_ORDER_CHANGE, async (data) => {
+    try {
+      // 订单变化事件只广播到前端，不发送队伍消息（避免刷屏）
+      websocketService.broadcast('event:vending:order_change', { ...data, type: 'vending:order_change' });
+    } catch (error) {
+      console.error('处理售货机订单变化事件失败:', error.message);
+    }
+  });
+
   console.log('✅ 游戏事件监听器已注册');
 };
 
@@ -487,16 +548,21 @@ const setupPlayerEventNotifications = () => {
       console.log('   - 死亡通知设置:', settings.deathNotify ? '开启' : '关闭');
 
       if (settings.deathNotify) {
-        // 获取地图大小以转换网格位置
+        // 获取地图大小和古迹列表
         let position;
         try {
           const serverInfo = await rustPlusService.getServerInfo(data.serverId);
           const mapSize = serverInfo.mapSize || 4000;
           console.log('   - 地图大小:', mapSize);
 
+          // 获取古迹列表（用于判断是否在古迹附近）
+          const mapInfo = await rustPlusService.getMapInfo(data.serverId);
+          const monuments = mapInfo?.monuments || [];
+          console.log('   - 古迹数量:', monuments.length);
+
           if (data.x !== undefined && data.y !== undefined) {
-            // 只显示网格位置，不显示精确坐标
-            position = formatPosition(data.x, data.y, mapSize, true, false);
+            // 显示网格位置和古迹名称（如果在古迹附近）
+            position = formatPosition(data.x, data.y, mapSize, true, false, monuments);
             console.log('   - 格式化位置:', position);
           } else {
             position = '未知位置';

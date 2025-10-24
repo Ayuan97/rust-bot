@@ -16,6 +16,12 @@ class RustPlusService extends EventEmitter {
     this.messageRateLimit = 2000; // 消息发送间隔：2秒（避免被服务器限制）
     this.playerCountHistory = new Map(); // serverId -> [{time, count, queued}] 玩家数量历史
     this.dayNightNotifier = new DayNightNotifier(this); // 昼夜提醒服务
+
+    // 自动重连系统
+    this.serverConfigs = new Map(); // serverId -> config (保存连接配置用于重连)
+    this.reconnectIntervals = new Map(); // serverId -> 重连定时器
+    this.reconnectDelay = 30000; // 重连间隔：30秒
+    this.autoReconnect = true; // 是否启用自动重连
   }
 
   /**
@@ -30,10 +36,16 @@ class RustPlusService extends EventEmitter {
   async connect(config) {
     const { serverId, ip, port, playerId, playerToken } = config;
 
+    // 保存配置用于自动重连
+    this.serverConfigs.set(serverId, config);
+
     if (this.connections.has(serverId)) {
       console.log(`服务器 ${serverId} 已连接`);
       return this.connections.get(serverId);
     }
+
+    // 停止重连定时器（如果存在）
+    this.stopReconnect(serverId);
 
     try {
       const rustplus = new RustPlus(ip, port, playerId, playerToken);
@@ -79,6 +91,11 @@ class RustPlusService extends EventEmitter {
         console.log(`❌ 服务器断开: ${serverId}`);
         this.connections.delete(serverId);
         this.emit('server:disconnected', { serverId });
+
+        // 启动自动重连
+        if (this.autoReconnect) {
+          this.startReconnect(serverId);
+        }
       });
 
       rustplus.on('error', (error) => {
@@ -117,8 +134,10 @@ class RustPlusService extends EventEmitter {
 
   /**
    * 断开服务器连接
+   * @param {string} serverId - 服务器 ID
+   * @param {boolean} removeConfig - 是否删除配置（默认 false，手动断开时应设为 true）
    */
-  async disconnect(serverId) {
+  async disconnect(serverId, removeConfig = false) {
     const rustplus = this.connections.get(serverId);
     if (rustplus) {
       rustplus.disconnect();
@@ -132,6 +151,9 @@ class RustPlusService extends EventEmitter {
     // 停止昼夜提醒
     this.dayNightNotifier.stop(serverId);
 
+    // 停止自动重连
+    this.stopReconnect(serverId);
+
     // 清理该服务器下的相机实例
     for (const key of Array.from(this.cameras.keys())) {
       if (key.startsWith(`${serverId}:`)) {
@@ -143,6 +165,12 @@ class RustPlusService extends EventEmitter {
 
     // 清理队伍状态缓存
     this.teamStates.delete(serverId);
+
+    // 如果需要，删除配置（手动断开时）
+    if (removeConfig) {
+      this.serverConfigs.delete(serverId);
+      console.log(`🗑️  已删除服务器配置: ${serverId.substring(0, 8)}`);
+    }
   }
 
   /**
@@ -664,6 +692,71 @@ class RustPlusService extends EventEmitter {
   setPollingInterval(interval) {
     this.pollingInterval = interval;
     console.log(`⚙️  轮询间隔已设置为: ${interval}ms`);
+  }
+
+  /**
+   * 启动自动重连
+   */
+  startReconnect(serverId) {
+    // 如果已有重连定时器，先停止
+    this.stopReconnect(serverId);
+
+    const config = this.serverConfigs.get(serverId);
+    if (!config) {
+      console.warn(`⚠️  无法重连服务器 ${serverId}：配置不存在`);
+      return;
+    }
+
+    console.log(`🔄 启动自动重连 (${this.reconnectDelay / 1000}秒后尝试)`);
+
+    const intervalId = setInterval(async () => {
+      // 检查是否已连接
+      if (this.connections.has(serverId)) {
+        console.log(`✅ 服务器 ${serverId} 已连接，停止重连`);
+        this.stopReconnect(serverId);
+        return;
+      }
+
+      console.log(`🔄 尝试重连服务器: ${config.ip}:${config.port}`);
+
+      try {
+        await this.connect(config);
+        console.log(`✅ 重连成功`);
+      } catch (error) {
+        console.warn(`⚠️  重连失败: ${error.message}`);
+        console.log(`   ${this.reconnectDelay / 1000}秒后重试...`);
+      }
+    }, this.reconnectDelay);
+
+    this.reconnectIntervals.set(serverId, intervalId);
+  }
+
+  /**
+   * 停止自动重连
+   */
+  stopReconnect(serverId) {
+    const intervalId = this.reconnectIntervals.get(serverId);
+    if (intervalId) {
+      clearInterval(intervalId);
+      this.reconnectIntervals.delete(serverId);
+      console.log(`⏹️  已停止自动重连: ${serverId.substring(0, 8)}`);
+    }
+  }
+
+  /**
+   * 设置是否启用自动重连
+   */
+  setAutoReconnect(enabled) {
+    this.autoReconnect = enabled;
+    console.log(`⚙️  自动重连已${enabled ? '启用' : '禁用'}`);
+  }
+
+  /**
+   * 设置重连间隔（毫秒）
+   */
+  setReconnectDelay(delay) {
+    this.reconnectDelay = delay;
+    console.log(`⚙️  重连间隔已设置为: ${delay}ms`);
   }
 }
 

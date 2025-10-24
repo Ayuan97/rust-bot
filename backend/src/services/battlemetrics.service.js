@@ -172,7 +172,8 @@ class BattlemetricsService extends EventEmitter {
         rustMapsUrl: details.rust_maps?.url || null,
         rustMapsThumbnail: details.rust_maps?.thumbnailUrl || null,
         monuments: details.rust_maps?.monuments || null,
-        
+        mapDownloadUrl: details.rust_world_levelurl || null, // 地图文件下载 URL
+
         updatedAt: attributes.updatedAt,
       };
 

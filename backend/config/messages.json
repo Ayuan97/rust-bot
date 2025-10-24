@@ -24,7 +24,9 @@
     },
     "team": {
       "desc": "显示队伍信息",
-      "msg": "队伍 {online}/{total} 在线 {list}",
+      "msg": "团队总人数({total}) 在线({online}) 离线({offline})",
+      "afk_info": "挂机人员({count}人) {list}",
+      "afk_player": "{name}(挂机{minutes}分钟)",
       "empty": "队伍为空",
       "error": "[错误] 获取队伍失败"
     },
@@ -93,6 +95,14 @@
       "raid": "袭击检测: {time}",
       "empty": "暂无事件历史记录",
       "error": "[错误] 获取事件历史失败"
+    },
+    "shop": {
+      "desc": "搜索售货机物品",
+      "summary": "地图上共有 {count} 个售货机",
+      "found": "找到 {count} 个 {item}:",
+      "not_found": "没有找到 {item}",
+      "empty": "地图上没有售货机",
+      "error": "[错误] 搜索售货机失败"
     },
     "unknown": "[错误] 未知命令 !{cmd} | 输入 !help 查看命令",
     "error": "[错误] 命令执行失败"

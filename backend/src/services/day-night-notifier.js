@@ -94,9 +94,9 @@ class DayNightNotifier {
         // 发送通知
         let message;
         if (changeType === 'night') {
-          message = `距离天黑在 ${realMinutes} 分钟后`;
+          message = ` ${realMinutes} 分钟后 天黑`;
         } else {
-          message = `距离天亮在 ${realMinutes} 分钟后`;
+          message = ` ${realMinutes} 分钟后 天亮`;
         }
 
         console.log(`🌓 [昼夜提醒] ${message}`);

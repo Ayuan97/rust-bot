@@ -73,6 +73,7 @@ export const EventType = {
 
   // 售货机
   VENDING_MACHINE_NEW: 'vending_machine:new',
+  VENDING_MACHINE_REMOVED: 'vending_machine:removed',
   VENDING_MACHINE_STOCK_CHANGE: 'vending_machine:stock_change',
   VENDING_MACHINE_ORDER_CHANGE: 'vending_machine:order_change',
 

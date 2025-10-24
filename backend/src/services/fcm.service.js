@@ -307,8 +307,9 @@ class FCMService extends EventEmitter {
           playerToken: body.playerToken,
           img: body.img, // 服务器图标
           logo: body.logo, // 服务器 logo
-          url: body.url, // 地图 URL
+          url: body.url, // 服务器网站 URL
           desc: body.desc, // 服务器描述
+          mapUrl: body.rust_world_levelurl || body.levelurl, // 地图文件 URL
           type: 'pairing'
         };
 
