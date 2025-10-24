@@ -14,6 +14,7 @@ data/*.db-wal
 logs/
 
 # 环境变量（敏感信息）
+.env
 .env.local
 .env.*.local
 
