@@ -1114,7 +1114,7 @@ class CommandsService {
   }
 
   /**
-   * 更新玩家位置历史
+   * 更新玩家位置历史（参考 rustplusplus 的 Player.updatePlayer 实现）
    */
   updatePlayerPosition(serverId, steamId, positionData) {
     if (!this.playerPositionHistory.has(serverId)) {
@@ -1124,23 +1124,50 @@ class CommandsService {
 
     const serverHistory = this.playerPositionHistory.get(serverId);
 
+    // 初始化玩家位置数据（包含 lastMovement 字段）
     if (!serverHistory.has(steamId)) {
-      serverHistory.set(steamId, []);
-      console.log(`[位置更新] 初始化玩家 ${steamId} 的位置历史`);
+      serverHistory.set(steamId, {
+        lastMovement: Date.now(),  // 最后移动时间
+        currentPosition: positionData,  // 当前位置
+        history: []  // 位置历史（用于调试）
+      });
+      console.log(`[位置更新] 初始化玩家 ${steamId} 的位置数据`);
+      return;
     }
 
-    const playerHistory = serverHistory.get(steamId);
-    console.log(`[位置更新] 添加前位置记录数: ${playerHistory.length}`);
+    const playerData = serverHistory.get(steamId);
+    const lastPos = playerData.currentPosition;
 
-    playerHistory.push(positionData);
-    console.log(`[位置更新] 添加后位置记录数: ${playerHistory.length}, 位置: (${positionData.x}, ${positionData.y})`);
+    // 检查是否移动（X 或 Y 任一变化超过 1 米）
+    const AFK_DISTANCE_THRESHOLD = 1.0;
+    const distance = Math.sqrt(
+      Math.pow(positionData.x - lastPos.x, 2) +
+      Math.pow(positionData.y - lastPos.y, 2)
+    );
+    const hasMoved = distance > AFK_DISTANCE_THRESHOLD;
 
-    // 只保留最近10分钟的数据
+    if (hasMoved) {
+      // 玩家移动了，重置最后移动时间
+      playerData.lastMovement = Date.now();
+      console.log(`[位置更新] 玩家 ${positionData.name} 移动了 ${distance.toFixed(2)}m，重置 lastMovement`);
+    } else {
+      console.log(`[位置更新] 玩家 ${positionData.name} 位置未变 (${distance.toFixed(2)}m)`);
+    }
+
+    // 更新当前位置
+    playerData.currentPosition = positionData;
+
+    // 添加到历史记录（可选，用于调试）
+    playerData.history.push({
+      ...positionData,
+      hasMoved
+    });
+
+    // 只保留最近 10 分钟的历史记录
     const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
-    const filtered = playerHistory.filter(p => p.timestamp >= tenMinutesAgo);
-    console.log(`[位置更新] 过滤后记录数: ${filtered.length} (10分钟内的记录)`);
+    playerData.history = playerData.history.filter(p => p.timestamp >= tenMinutesAgo);
 
-    serverHistory.set(steamId, filtered);
+    serverHistory.set(steamId, playerData);
   }
 
   /**
@@ -1225,8 +1252,8 @@ class CommandsService {
   }
 
   /**
-   * 检测玩家是否挂机
-   * @returns {minutes} 挂机时长（分钟），0 表示不挂机
+   * 计算玩家挂机时长（参考 rustplusplus 的 Player.getAfkSeconds 实现）
+   * @returns {number} 挂机时长（分钟），0 表示不挂机
    */
   getPlayerAfkTime(serverId, steamId) {
     if (!this.playerPositionHistory.has(serverId)) {
@@ -1236,76 +1263,21 @@ class CommandsService {
 
     const serverHistory = this.playerPositionHistory.get(serverId);
     if (!serverHistory.has(steamId)) {
-      console.log(`[AFK计算] 玩家 ${steamId} 无位置历史`);
+      console.log(`[AFK计算] 玩家 ${steamId} 无位置数据`);
       return 0;
     }
 
-    const playerHistory = serverHistory.get(steamId);
-    console.log(`[AFK计算] 玩家 ${steamId} 位置历史记录数: ${playerHistory.length}`);
+    const playerData = serverHistory.get(steamId);
 
-    if (playerHistory.length < 2) {
-      console.log(`[AFK计算] 位置记录不足2条，跳过`);
-      return 0;
-    }
-
-    // 检查最近的位置记录
+    // 计算 AFK 时长（秒） = 当前时间 - 最后移动时间
     const now = Date.now();
-    const threeMinutesAgo = now - 3 * 60 * 1000;
+    const afkSeconds = (now - playerData.lastMovement) / 1000;
+    const afkMinutes = Math.floor(afkSeconds / 60);
 
-    // 获取3分钟前的位置记录
-    const oldPositions = playerHistory.filter(p => p.timestamp <= threeMinutesAgo);
-    console.log(`[AFK计算] 3分钟前的位置记录数: ${oldPositions.length}`);
+    console.log(`[AFK计算] 玩家 ${playerData.currentPosition?.name || steamId} 最后移动: ${new Date(playerData.lastMovement).toLocaleTimeString()}, AFK时长: ${afkMinutes}分钟`);
 
-    if (oldPositions.length === 0) {
-      console.log(`[AFK计算] 数据不足3分钟，跳过`);
-      return 0; // 数据不足3分钟
-    }
-
-    // 最新位置
-    const currentPosition = playerHistory[playerHistory.length - 1];
-    console.log(`[AFK计算] 当前位置: (${currentPosition.x}, ${currentPosition.y})`);
-
-    // 查找最早开始静止的位置（向前追溯）
-    let afkStartTime = null;
-
-    // 从3分钟前开始，检查所有位置是否都在原地（1米内算静止）
-    const AFK_DISTANCE_THRESHOLD = 1.0; // 1米内算挂机
-
-    for (const position of oldPositions) {
-      // 计算距离
-      const distance = Math.sqrt(
-        Math.pow(currentPosition.x - position.x, 2) +
-        Math.pow(currentPosition.y - position.y, 2)
-      );
-      const isSamePosition = distance <= AFK_DISTANCE_THRESHOLD;
-
-      console.log(`[AFK计算] 比对位置 (${position.x.toFixed(1)}, ${position.y.toFixed(1)}) vs (${currentPosition.x.toFixed(1)}, ${currentPosition.y.toFixed(1)}) 距离: ${distance.toFixed(2)}m = ${isSamePosition ? '静止' : '移动'}`);
-
-      if (isSamePosition) {
-        // 记录第一个静止的时间点
-        if (!afkStartTime) {
-          afkStartTime = position.timestamp;
-          console.log(`[AFK计算] 找到静止起点时间: ${new Date(afkStartTime).toISOString()}`);
-        }
-      } else {
-        // 如果发现有移动，重置记录
-        console.log(`[AFK计算] 发现移动(${distance.toFixed(2)}m)，重置静止记录`);
-        afkStartTime = null;
-      }
-    }
-
-    // 如果找到了连续静止的起点
-    if (afkStartTime) {
-      const afkDuration = now - afkStartTime;
-      const afkMinutes = Math.floor(afkDuration / 60000);
-      console.log(`[AFK计算] 挂机时长: ${afkMinutes} 分钟`);
-
-      // 至少挂机3分钟才返回
-      return afkMinutes >= 3 ? afkMinutes : 0;
-    }
-
-    console.log(`[AFK计算] 未找到连续静止，返回0`);
-    return 0;
+    // 至少挂机3分钟才返回
+    return afkMinutes >= 3 ? afkMinutes : 0;
   }
 
   /**
