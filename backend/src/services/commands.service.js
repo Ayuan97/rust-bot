@@ -1210,11 +1210,18 @@ class CommandsService {
     // 查找最早开始静止的位置（向前追溯）
     let afkStartTime = null;
 
-    // 从3分钟前开始，检查所有位置是否都在原地（严格比对坐标）
+    // 从3分钟前开始，检查所有位置是否都在原地（1米内算静止）
+    const AFK_DISTANCE_THRESHOLD = 1.0; // 1米内算挂机
+
     for (const position of oldPositions) {
-      // 严格比对 x 和 y 坐标是否完全相同
-      const isSamePosition = (position.x === currentPosition.x && position.y === currentPosition.y);
-      console.log(`[AFK计算] 比对位置 (${position.x}, ${position.y}) vs (${currentPosition.x}, ${currentPosition.y}) = ${isSamePosition}`);
+      // 计算距离
+      const distance = Math.sqrt(
+        Math.pow(currentPosition.x - position.x, 2) +
+        Math.pow(currentPosition.y - position.y, 2)
+      );
+      const isSamePosition = distance <= AFK_DISTANCE_THRESHOLD;
+
+      console.log(`[AFK计算] 比对位置 (${position.x.toFixed(1)}, ${position.y.toFixed(1)}) vs (${currentPosition.x.toFixed(1)}, ${currentPosition.y.toFixed(1)}) 距离: ${distance.toFixed(2)}m = ${isSamePosition ? '静止' : '移动'}`);
 
       if (isSamePosition) {
         // 记录第一个静止的时间点
@@ -1224,7 +1231,7 @@ class CommandsService {
         }
       } else {
         // 如果发现有移动，重置记录
-        console.log(`[AFK计算] 发现移动，重置静止记录`);
+        console.log(`[AFK计算] 发现移动(${distance.toFixed(2)}m)，重置静止记录`);
         afkStartTime = null;
       }
     }
