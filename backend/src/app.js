@@ -679,7 +679,7 @@ const autoConnectSavedServers = async () => {
   } catch (error) {
     console.error('❌ 自动连接服务器失败:', error);
   }
-});
+};
 
 // 优雅关闭函数
 const gracefulShutdown = async (signal) => {
