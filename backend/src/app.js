@@ -316,7 +316,7 @@ const setupGameEventNotifications = () => {
     try {
       await rustPlusService.sendTeamMessage(
         data.serverId,
-        `小油井已触发 重型科学家正在赶来`
+        notify('small_oil_triggered')
       );
       websocketService.broadcast('event:small:triggered', { ...data, type: 'small:triggered' });
     } catch (error) {
@@ -328,7 +328,7 @@ const setupGameEventNotifications = () => {
     try {
       await rustPlusService.sendTeamMessage(
         data.serverId,
-        `小油井箱子还有 ${data.minutesLeft} 分钟解锁`
+        notify('small_oil_warning', { minutes: data.minutesLeft })
       );
     } catch (error) {
       console.error('发送小油井箱子警告通知失败:', error.message);
@@ -339,7 +339,7 @@ const setupGameEventNotifications = () => {
     try {
       await rustPlusService.sendTeamMessage(
         data.serverId,
-        `小油井箱子已解锁！`
+        notify('small_oil_unlocked')
       );
       websocketService.broadcast('event:small:unlocked', { ...data, type: 'small:unlocked' });
     } catch (error) {
@@ -352,7 +352,7 @@ const setupGameEventNotifications = () => {
     try {
       await rustPlusService.sendTeamMessage(
         data.serverId,
-        `大油井已触发 重型科学家正在赶来`
+        notify('large_oil_triggered')
       );
       websocketService.broadcast('event:large:triggered', { ...data, type: 'large:triggered' });
     } catch (error) {
@@ -364,7 +364,7 @@ const setupGameEventNotifications = () => {
     try {
       await rustPlusService.sendTeamMessage(
         data.serverId,
-        `大油井箱子还有 ${data.minutesLeft} 分钟解锁`
+        notify('large_oil_warning', { minutes: data.minutesLeft })
       );
     } catch (error) {
       console.error('发送大油井箱子警告通知失败:', error.message);
@@ -375,7 +375,7 @@ const setupGameEventNotifications = () => {
     try {
       await rustPlusService.sendTeamMessage(
         data.serverId,
-        `大油井箱子已解锁！`
+        notify('large_oil_unlocked')
       );
       websocketService.broadcast('event:large:unlocked', { ...data, type: 'large:unlocked' });
     } catch (error) {
@@ -392,7 +392,7 @@ const setupGameEventNotifications = () => {
 
       await rustPlusService.sendTeamMessage(
         data.serverId,
-        `武装直升机已刷新在 ${direction} ${data.position}`
+        notify('heli_spawn', { direction, position: data.position })
       );
       websocketService.broadcast('event:heli:spawn', { ...data, type: 'heli:spawn' });
     } catch (error) {
@@ -404,7 +404,7 @@ const setupGameEventNotifications = () => {
     try {
       await rustPlusService.sendTeamMessage(
         data.serverId,
-        `武装直升机被击落 位置: ${data.position}`
+        notify('heli_downed', { position: data.position })
       );
       websocketService.broadcast('event:heli:downed', { ...data, type: 'heli:downed' });
     } catch (error) {
@@ -416,7 +416,7 @@ const setupGameEventNotifications = () => {
     try {
       await rustPlusService.sendTeamMessage(
         data.serverId,
-        `武装直升机已离开地图`
+        notify('heli_leave')
       );
       websocketService.broadcast('event:heli:leave', { ...data, type: 'heli:leave' });
     } catch (error) {
@@ -454,7 +454,7 @@ const setupGameEventNotifications = () => {
     try {
       await rustPlusService.sendTeamMessage(
         data.serverId,
-        `上锁箱子出现 位置: ${data.position}`
+        notify('crate_spawn', { position: data.position })
       );
       websocketService.broadcast('event:crate:spawn', { ...data, type: 'crate:spawn' });
     } catch (error) {
@@ -475,7 +475,7 @@ const setupGameEventNotifications = () => {
     try {
       await rustPlusService.sendTeamMessage(
         data.serverId,
-        `检测到袭击 位置: ${data.position} (${data.explosionCount}次爆炸)`
+        notify('raid_detected', { position: data.position, count: data.explosionCount })
       );
       websocketService.broadcast('event:raid:detected', { ...data, type: 'raid:detected' });
     } catch (error) {
@@ -487,14 +487,17 @@ const setupGameEventNotifications = () => {
   eventMonitorService.on(EventType.VENDING_MACHINE_NEW, async (data) => {
     try {
       // 基础消息：新售货机出现 位置: xxx 共X件商品
-      let message = `新售货机出现 位置: ${data.position} 共${data.itemCount}件商品`;
+      let message = notify('vending_new', {
+        position: data.position,
+        count: data.itemCount
+      });
 
       // 如果有重要物品，添加特别提醒
       if (data.importantItems && data.importantItems.length > 0) {
         const itemsList = data.importantItems.map(item => {
           return `${item.name}${item.amountInStock}个`;
         }).join(' ');
-        message += ` 重要物品: ${itemsList}`;
+        message += notify('vending_important', { items: itemsList });
       }
 
       await rustPlusService.sendTeamMessage(data.serverId, message);

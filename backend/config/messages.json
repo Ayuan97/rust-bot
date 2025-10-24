@@ -1,8 +1,42 @@
 {
   "notifications": {
-    "death": "{playerName} 在 {position} 死亡",
-    "online": "[上线] {playerName} 上线了",
-    "offline": "[下线] {playerName} 下线了"
+    "death": "`{playerName}` 在 {position} 死亡",
+    "online": " `{playerName}` 上线了",
+    "online_after_offline": "`{playerName}` 在离线 {duration} 后上线了",
+    "offline": "`{playerName}` 下线了",
+    "offline_with_duration": "`{playerName}` 今天游玩了 {duration}",
+    "offline_with_afk": "`{playerName}` 今天游玩了 {duration} (其中挂机 {afkDuration})",
+
+    "small_oil_triggered": "小油井已触发 重型科学家正在赶来",
+    "small_oil_warning": "小油井箱子还有 {minutes} 分钟解锁",
+    "small_oil_unlocked": "小油井箱子已解锁！",
+
+    "large_oil_triggered": "大油井已触发 重型科学家正在赶来",
+    "large_oil_warning": "大油井箱子还有 {minutes} 分钟解锁",
+    "large_oil_unlocked": "大油井箱子已解锁！",
+
+    "heli_spawn": "武装直升机已刷新在 {direction} {position}",
+    "heli_downed": "武装直升机被击落 位置: {position}",
+    "heli_leave": "武装直升机已离开地图",
+
+    "crate_spawn": "上锁箱子出现 位置: {position}",
+
+    "raid_detected": "检测到袭击 位置: {position} ({count}次爆炸)",
+
+    "vending_new": "新售货机出现 位置: {position} 共{count}件商品",
+    "vending_important": " 重要物品: {items}",
+
+    "cargo_spawn": "目前货船位于 {direction} {position}",
+    "cargo_spawn_direction_only": "目前货船位于 {direction}",
+    "cargo_dock": "货船已停靠港口 {position}",
+    "cargo_egress": "货船离开港口 辐射快速上升 赶紧撤离！",
+    "cargo_leave": "货船已离开地图",
+
+    "ch47_spawn": "CH47已出现 位置: {position}",
+    "ch47_leave": "CH47已离开",
+
+    "afk_start": "`{name}` 已离开 {minutes} 分钟  -{position} ",
+    "afk_return": "`{name}` 在 {duration} 后回来了"
   },
   "commands": {
     "help": {
@@ -13,7 +47,7 @@
       "desc": "显示游戏时间",
       "msg_night": "当前游戏时间为 {time} 距离天黑在 {minutes} 分钟后",
       "msg_day": "当前游戏时间为 {time} 距离天亮在 {minutes} 分钟后",
-      "error": "[错误] 获取时间失败"
+      "error": "获取时间失败"
     },
     "pop": {
       "desc": "显示服务器人数",
@@ -63,7 +97,7 @@
       "desc": "查询武装直升机状态",
       "msg": "武装直升机位于 {position}",
       "empty": "当前地图上没有武装直升机",
-      "error": "[错误] 获取直升机信息失败"
+      "error": "获取直升机信息失败"
     },
     "events": {
       "desc": "查看所有活跃事件",

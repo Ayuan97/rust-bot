@@ -3,7 +3,7 @@
  * 处理以 ! 开头的队伍聊天命令
  */
 
-import { cmd, cmdConfig, allCommands } from '../utils/messages.js';
+import { cmd, cmdConfig, allCommands, notify } from '../utils/messages.js';
 import { formatPosition } from '../utils/coordinates.js';
 import EventTimerManager from '../utils/event-timer.js';
 
@@ -18,15 +18,14 @@ class CommandsService {
     this.playerPositionHistory = new Map(); // 存储玩家位置历史记录
     this.afkNotifiedPlayers = new Map(); // 存储已通知的挂机玩家 serverId -> Map(steamId -> {name, afkStartTime})
     this.playerSessionData = new Map(); // 存储玩家会话数据 serverId -> Map(steamId -> {name, onlineTime, offlineTime})
+    this.afkDetectionInterval = null; // AFK检测定时器
+    this.playerCountTrackingInterval = null; // 人数追踪定时器
 
     // 注册内置命令
     this.registerBuiltInCommands();
 
-    // 启动定期检测挂机玩家
-    this.startAfkDetection();
-
-    // 启动定期记录服务器人数
-    this.startPlayerCountTracking();
+    // 监听服务器连接/断开事件
+    this.setupServerEventListeners();
 
     // 监听玩家上下线事件
     this.setupPlayerEventListeners();
@@ -792,6 +791,46 @@ class CommandsService {
   }
 
   /**
+   * 设置服务器事件监听器
+   */
+  setupServerEventListeners() {
+    // 监听服务器连接事件
+    this.rustPlusService.on('server:connected', (data) => {
+      console.log(`[事件] 服务器已连接: ${data.serverId}`);
+
+      // 首次连接服务器时启动检测系统
+      const connectedServers = this.rustPlusService.getConnectedServers();
+
+      if (connectedServers.length === 1 && !this.afkDetectionInterval) {
+        // 第一个服务器连接，启动AFK检测
+        this.startAfkDetection();
+      }
+
+      if (connectedServers.length === 1 && !this.playerCountTrackingInterval) {
+        // 第一个服务器连接，启动人数追踪
+        this.startPlayerCountTracking();
+      }
+    });
+
+    // 监听服务器断开事件
+    this.rustPlusService.on('server:disconnected', (data) => {
+      console.log(`[事件] 服务器已断开: ${data.serverId}`);
+
+      // 当所有服务器断开时停止检测系统
+      const connectedServers = this.rustPlusService.getConnectedServers();
+
+      if (connectedServers.length === 0) {
+        // 所有服务器都断开，停止AFK检测
+        this.stopAfkDetection();
+        // 停止人数追踪
+        this.stopPlayerCountTracking();
+      }
+    });
+
+    console.log('[系统] 服务器连接/断开监听器已启动');
+  }
+
+  /**
    * 设置玩家事件监听器
    */
   setupPlayerEventListeners() {
@@ -836,7 +875,10 @@ class CommandsService {
         const offlineDurationText = this.formatDuration(offlineDuration);
 
         // 构建上线通知消息
-        const message = `[上线] ${playerName} 在离线 ${offlineDurationText} 后回来了`;
+        const message = notify('online_after_offline', {
+          playerName,
+          duration: offlineDurationText
+        });
 
         try {
           await this.rustPlusService.sendTeamMessage(serverId, message);
@@ -916,9 +958,18 @@ class CommandsService {
     console.log(`[下线处理] 已更新离线时间: ${Date.now()}`);
 
     // 构建下线通知消息
-    let message = `[下线] ${playerName} 今天游玩了 ${durationText}`;
+    let message;
     if (afkInfo) {
-      message += ` (其中挂机 ${afkInfo.durationText})`;
+      message = notify('offline_with_afk', {
+        playerName,
+        duration: durationText,
+        afkDuration: afkInfo.durationText
+      });
+    } else {
+      message = notify('offline_with_duration', {
+        playerName,
+        duration: durationText
+      });
     }
 
     try {
@@ -1121,7 +1172,11 @@ class CommandsService {
     const position = formatPosition(member.x, member.y, mapSize);
 
     // 发送通知
-    const message = ` "${member.name}" 在 ${position} 挂机了 ${afkTime} 分钟`;
+    const message = notify('afk_start', {
+      name: member.name,
+      position,
+      minutes: afkTime
+    });
 
     try {
       await this.rustPlusService.sendTeamMessage(serverId, message);
@@ -1153,7 +1208,10 @@ class CommandsService {
     const durationText = this.formatDuration(afkDuration);
 
     // 发送回归通知
-    const message = `[回归] 玩家 "${member.name}" 在挂机 ${durationText} 后回来了`;
+    const message = notify('afk_return', {
+      name: member.name,
+      duration: durationText
+    });
 
     try {
       await this.rustPlusService.sendTeamMessage(serverId, message);
