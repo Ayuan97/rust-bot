@@ -642,6 +642,43 @@ server.listen(PORT, async () => {
 
   // 设置事件监控生命周期
   setupEventMonitorLifecycle();
+
+  // 自动连接数据库中已保存的服务器
+  await autoConnectSavedServers();
+});
+
+// 自动连接已保存的服务器
+const autoConnectSavedServers = async () => {
+  try {
+    const servers = storage.getServers();
+    if (!servers || servers.length === 0) {
+      console.log('💡 暂无已保存的服务器');
+      return;
+    }
+
+    console.log(`\n🔌 发现 ${servers.length} 个已保存的服务器，开始自动连接...\n`);
+
+    for (const server of servers) {
+      try {
+        console.log(`🔄 连接服务器: ${server.name} (${server.ip}:${server.port})`);
+
+        await rustPlusService.connect({
+          serverId: server.id,
+          ip: server.ip,
+          port: server.port,
+          playerId: server.player_id,
+          playerToken: server.player_token,
+        });
+
+        console.log(`✅ ${server.name} 连接成功\n`);
+      } catch (error) {
+        console.error(`❌ ${server.name} 连接失败: ${error.message}`);
+        console.log(`   自动重连将在30秒后开始...\n`);
+      }
+    }
+  } catch (error) {
+    console.error('❌ 自动连接服务器失败:', error);
+  }
 });
 
 // 优雅关闭函数
