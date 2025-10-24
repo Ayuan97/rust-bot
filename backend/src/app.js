@@ -650,7 +650,7 @@ server.listen(PORT, async () => {
 // 自动连接已保存的服务器
 const autoConnectSavedServers = async () => {
   try {
-    const servers = storage.getServers();
+    const servers = storage.getAllServers();
     if (!servers || servers.length === 0) {
       console.log('💡 暂无已保存的服务器');
       return;
