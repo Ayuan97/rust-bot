@@ -797,11 +797,13 @@ class CommandsService {
   setupPlayerEventListeners() {
     // 监听玩家上线事件
     this.rustPlusService.on('player:online', async (data) => {
+      console.log(`[事件] 收到玩家上线事件: ${data.name} (${data.steamId})`);
       await this.handlePlayerOnline(data.serverId, data.steamId, data.name);
     });
 
     // 监听玩家下线事件
     this.rustPlusService.on('player:offline', async (data) => {
+      console.log(`[事件] 收到玩家下线事件: ${data.name} (${data.steamId})`);
       await this.handlePlayerOffline(data.serverId, data.steamId, data.name);
     });
 
@@ -812,9 +814,12 @@ class CommandsService {
    * 处理玩家上线
    */
   async handlePlayerOnline(serverId, steamId, playerName) {
+    console.log(`[上线处理] 开始处理玩家 ${playerName} 的上线事件`);
+
     // 初始化会话数据
     if (!this.playerSessionData.has(serverId)) {
       this.playerSessionData.set(serverId, new Map());
+      console.log(`[上线处理] 初始化服务器 ${serverId} 的会话数据`);
     }
 
     const sessionMap = this.playerSessionData.get(serverId);
@@ -823,6 +828,7 @@ class CommandsService {
     // 检查是否有离线记录
     if (sessionMap.has(steamIdStr)) {
       const sessionData = sessionMap.get(steamIdStr);
+      console.log(`[上线处理] 找到历史会话数据，offlineTime: ${sessionData.offlineTime}`);
 
       // 计算离线时长
       if (sessionData.offlineTime) {
@@ -838,7 +844,11 @@ class CommandsService {
         } catch (error) {
           console.error(`[错误] 发送上线通知失败:`, error.message);
         }
+      } else {
+        console.log(`[上线处理] 没有离线时间记录，跳过上线通知`);
       }
+    } else {
+      console.log(`[上线处理] 首次上线，无历史记录`);
     }
 
     // 更新会话数据（重置会话）
@@ -848,11 +858,13 @@ class CommandsService {
       offlineTime: null,
       afkInfo: null
     });
+    console.log(`[上线处理] 已更新会话数据，onlineTime: ${Date.now()}`);
 
     // 清除挂机记录（新的游戏会话）
     if (this.afkNotifiedPlayers.has(serverId)) {
       const notifiedMap = this.afkNotifiedPlayers.get(serverId);
       notifiedMap.delete(steamIdStr);
+      console.log(`[上线处理] 已清除挂机记录`);
     }
   }
 
@@ -860,7 +872,10 @@ class CommandsService {
    * 处理玩家下线
    */
   async handlePlayerOffline(serverId, steamId, playerName) {
+    console.log(`[下线处理] 开始处理玩家 ${playerName} 的下线事件`);
+
     if (!this.playerSessionData.has(serverId)) {
+      console.log(`[下线处理] 无会话数据，跳过`);
       return;
     }
 
@@ -870,12 +885,14 @@ class CommandsService {
     // 获取会话数据
     const sessionData = sessionMap.get(steamIdStr);
     if (!sessionData || !sessionData.onlineTime) {
+      console.log(`[下线处理] 无上线时间记录，跳过`);
       return;
     }
 
     // 计算今日游玩时长
     const playDuration = Date.now() - sessionData.onlineTime;
     const durationText = this.formatDuration(playDuration);
+    console.log(`[下线处理] 游玩时长: ${durationText}`);
 
     // 检查是否有挂机记录
     let afkInfo = null;
@@ -888,6 +905,7 @@ class CommandsService {
           duration: afkDuration,
           durationText: this.formatDuration(afkDuration)
         };
+        console.log(`[下线处理] 检测到挂机记录: ${afkInfo.durationText}`);
       }
     }
 
@@ -895,6 +913,7 @@ class CommandsService {
     sessionData.offlineTime = Date.now();
     sessionData.afkInfo = afkInfo; // 保存挂机信息供上线时使用
     sessionMap.set(steamIdStr, sessionData);
+    console.log(`[下线处理] 已更新离线时间: ${Date.now()}`);
 
     // 构建下线通知消息
     let message = `[下线] ${playerName} 今天游玩了 ${durationText}`;
@@ -1046,20 +1065,27 @@ class CommandsService {
   updatePlayerPosition(serverId, steamId, positionData) {
     if (!this.playerPositionHistory.has(serverId)) {
       this.playerPositionHistory.set(serverId, new Map());
+      console.log(`[位置更新] 初始化服务器 ${serverId} 的位置历史`);
     }
 
     const serverHistory = this.playerPositionHistory.get(serverId);
 
     if (!serverHistory.has(steamId)) {
       serverHistory.set(steamId, []);
+      console.log(`[位置更新] 初始化玩家 ${steamId} 的位置历史`);
     }
 
     const playerHistory = serverHistory.get(steamId);
+    console.log(`[位置更新] 添加前位置记录数: ${playerHistory.length}`);
+
     playerHistory.push(positionData);
+    console.log(`[位置更新] 添加后位置记录数: ${playerHistory.length}, 位置: (${positionData.x}, ${positionData.y})`);
 
     // 只保留最近10分钟的数据
     const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
     const filtered = playerHistory.filter(p => p.timestamp >= tenMinutesAgo);
+    console.log(`[位置更新] 过滤后记录数: ${filtered.length} (10分钟内的记录)`);
+
     serverHistory.set(steamId, filtered);
   }
 
