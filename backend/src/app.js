@@ -246,70 +246,70 @@ rustPlusService.setEventMonitorService(eventMonitorService);
 const setupGameEventNotifications = () => {
   console.log('✅ 正在注册游戏事件监听器...');
 
-  // 货船事件
-  eventMonitorService.on(EventType.CARGO_SPAWN, async (data) => {
-    try {
-      // 获取地图大小以计算方位
-      const mapSize = rustPlusService.getMapSize(data.serverId);
-      const direction = getDirection(data.x, data.y, mapSize);
+  // 货船事件（已关闭通知）
+  // eventMonitorService.on(EventType.CARGO_SPAWN, async (data) => {
+  //   try {
+  //     // 获取地图大小以计算方位
+  //     const mapSize = rustPlusService.getMapSize(data.serverId);
+  //     const direction = getDirection(data.x, data.y, mapSize);
 
-      // 检查是否有网格位置（如果在地图外会返回原始坐标）
-      const hasGrid = !data.position.startsWith('(');
+  //     // 检查是否有网格位置（如果在地图外会返回原始坐标）
+  //     const hasGrid = !data.position.startsWith('(');
 
-      let message;
-      if (hasGrid) {
-        // 在地图内，显示方位 + 网格
-        message = `目前货船位于 ${direction} ${data.position}`;
-      } else {
-        // 在地图外，只显示方位
-        message = `目前货船位于 ${direction}`;
-      }
+  //     let message;
+  //     if (hasGrid) {
+  //       // 在地图内，显示方位 + 网格
+  //       message = `目前货船位于 ${direction} ${data.position}`;
+  //     } else {
+  //       // 在地图外，只显示方位
+  //       message = `目前货船位于 ${direction}`;
+  //     }
 
-      await rustPlusService.sendTeamMessage(data.serverId, message);
-      websocketService.broadcast('event:cargo:spawn', { ...data, type: 'cargo:spawn' });
-    } catch (error) {
-      console.error('发送货船刷新通知失败:', error.message);
-    }
-  });
+  //     await rustPlusService.sendTeamMessage(data.serverId, message);
+  //     websocketService.broadcast('event:cargo:spawn', { ...data, type: 'cargo:spawn' });
+  //   } catch (error) {
+  //     console.error('发送货船刷新通知失败:', error.message);
+  //   }
+  // });
 
-  // 货船停靠港口
-  eventMonitorService.on(EventType.CARGO_DOCK, async (data) => {
-    try {
-      await rustPlusService.sendTeamMessage(
-        data.serverId,
-        `货船已停靠港口 ${data.position}`
-      );
-      websocketService.broadcast('event:cargo:dock', { ...data, type: 'cargo:dock' });
-    } catch (error) {
-      console.error('发送货船停靠通知失败:', error.message);
-    }
-  });
+  // // 货船停靠港口
+  // eventMonitorService.on(EventType.CARGO_DOCK, async (data) => {
+  //   try {
+  //     await rustPlusService.sendTeamMessage(
+  //       data.serverId,
+  //       `货船已停靠港口 ${data.position}`
+  //     );
+  //     websocketService.broadcast('event:cargo:dock', { ...data, type: 'cargo:dock' });
+  //   } catch (error) {
+  //     console.error('发送货船停靠通知失败:', error.message);
+  //   }
+  // });
 
-  // 货船离开港口（Egress 就是离开港口的意思）
-  eventMonitorService.on(EventType.CARGO_EGRESS, async (data) => {
-    try {
-      await rustPlusService.sendTeamMessage(
-        data.serverId,
-        `货船离开港口 辐射快速上升 赶紧撤离！`
-      );
-      websocketService.broadcast('event:cargo:egress', { ...data, type: 'cargo:egress' });
-    } catch (error) {
-      console.error('发送货船离开港口通知失败:', error.message);
-    }
-  });
+  // // 货船离开港口（Egress 就是离开港口的意思）
+  // eventMonitorService.on(EventType.CARGO_EGRESS, async (data) => {
+  //   try {
+  //     await rustPlusService.sendTeamMessage(
+  //       data.serverId,
+  //       `货船离开港口 辐射快速上升 赶紧撤离！`
+  //     );
+  //     websocketService.broadcast('event:cargo:egress', { ...data, type: 'cargo:egress' });
+  //   } catch (error) {
+  //     console.error('发送货船离开港口通知失败:', error.message);
+  //   }
+  // });
 
-  // 货船离开地图
-  eventMonitorService.on(EventType.CARGO_LEAVE, async (data) => {
-    try {
-      await rustPlusService.sendTeamMessage(
-        data.serverId,
-        `货船已离开地图`
-      );
-      websocketService.broadcast('event:cargo:leave', { ...data, type: 'cargo:leave' });
-    } catch (error) {
-      console.error('发送货船离开地图通知失败:', error.message);
-    }
-  });
+  // // 货船离开地图
+  // eventMonitorService.on(EventType.CARGO_LEAVE, async (data) => {
+  //   try {
+  //     await rustPlusService.sendTeamMessage(
+  //       data.serverId,
+  //       `货船已离开地图`
+  //     );
+  //     websocketService.broadcast('event:cargo:leave', { ...data, type: 'cargo:leave' });
+  //   } catch (error) {
+  //     console.error('发送货船离开地图通知失败:', error.message);
+  //   }
+  // });
 
   // 小油井事件
   eventMonitorService.on(EventType.SMALL_OIL_RIG_TRIGGERED, async (data) => {
@@ -424,30 +424,30 @@ const setupGameEventNotifications = () => {
     }
   });
 
-  // CH47事件
-  eventMonitorService.on(EventType.CH47_SPAWN, async (data) => {
-    try {
-      await rustPlusService.sendTeamMessage(
-        data.serverId,
-        `CH47已出现 位置: ${data.position}`
-      );
-      websocketService.broadcast('event:ch47:spawn', { ...data, type: 'ch47:spawn' });
-    } catch (error) {
-      console.error('发送CH47出现通知失败:', error.message);
-    }
-  });
+  // CH47事件（已关闭通知）
+  // eventMonitorService.on(EventType.CH47_SPAWN, async (data) => {
+  //   try {
+  //     await rustPlusService.sendTeamMessage(
+  //       data.serverId,
+  //       `CH47已出现 位置: ${data.position}`
+  //     );
+  //     websocketService.broadcast('event:ch47:spawn', { ...data, type: 'ch47:spawn' });
+  //   } catch (error) {
+  //     console.error('发送CH47出现通知失败:', error.message);
+  //   }
+  // });
 
-  eventMonitorService.on(EventType.CH47_LEAVE, async (data) => {
-    try {
-      await rustPlusService.sendTeamMessage(
-        data.serverId,
-        `CH47已离开`
-      );
-      websocketService.broadcast('event:ch47:leave', { ...data, type: 'ch47:leave' });
-    } catch (error) {
-      console.error('发送CH47离开通知失败:', error.message);
-    }
-  });
+  // eventMonitorService.on(EventType.CH47_LEAVE, async (data) => {
+  //   try {
+  //     await rustPlusService.sendTeamMessage(
+  //       data.serverId,
+  //       `CH47已离开`
+  //     );
+  //     websocketService.broadcast('event:ch47:leave', { ...data, type: 'ch47:leave' });
+  //   } catch (error) {
+  //     console.error('发送CH47离开通知失败:', error.message);
+  //   }
+  // });
 
   // 上锁箱子事件
   eventMonitorService.on(EventType.LOCKED_CRATE_SPAWN, async (data) => {

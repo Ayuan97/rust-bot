@@ -1121,7 +1121,7 @@ class CommandsService {
     const position = formatPosition(member.x, member.y, mapSize);
 
     // 发送通知
-    const message = `[挂机检测] ${member.name} 在 ${position} 挂机 ${afkTime} 分钟`;
+    const message = ` "${member.name}" 在 ${position} 挂机了 ${afkTime} 分钟`;
 
     try {
       await this.rustPlusService.sendTeamMessage(serverId, message);
