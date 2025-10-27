@@ -104,7 +104,11 @@ const initializeFCM = async () => {
       setImmediate(async () => {
         try {
           console.log('🔍 后台查找 Battlemetrics 信息...');
-          const battlemetricsId = await battlemetricsService.searchServerByAddress(serverInfo.ip, serverInfo.port);
+          const battlemetricsId = await battlemetricsService.searchServerByAddress(
+            serverInfo.ip,
+            serverInfo.port,
+            serverInfo.name  // 传递服务器名称用于精确匹配
+          );
           if (battlemetricsId) {
             storage.updateServer(serverInfo.id, { battlemetrics_id: battlemetricsId });
             console.log('✅ Battlemetrics ID 已更新:', battlemetricsId);

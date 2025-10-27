@@ -40,8 +40,9 @@ class BattlemetricsService extends EventEmitter {
    * 通过 IP:Port 搜索服务器
    * @param {string} ip - 服务器IP
    * @param {string|number} port - Rust+ App 端口（通常是游戏端口+2）
+   * @param {string} serverName - 服务器名称（可选，用于精确匹配）
    */
-  async searchServerByAddress(ip, port) {
+  async searchServerByAddress(ip, port, serverName = null) {
     try {
       const rustPlusPort = parseInt(port);
       // Rust+ 端口通常是游戏端口 + 2
@@ -49,7 +50,10 @@ class BattlemetricsService extends EventEmitter {
       const gamePort = rustPlusPort - 2;
 
       console.log(`🔍 搜索 Battlemetrics 服务器: ${ip}:${port}`);
-      console.log(`   Rust+ 端口: ${rustPlusPort}, 推测游戏端口: ${gamePort}`);
+      if (serverName) {
+        console.log(`   服务器名称: ${serverName}`);
+      }
+      console.log(`   Rust+ 端口: ${rustPlusPort}, 游戏端口: ${gamePort}`);
 
       // 方法1: 使用推测的游戏端口搜索
       let url = `https://api.battlemetrics.com/servers?filter[search]=${ip}:${gamePort}&filter[game]=rust`;
@@ -57,11 +61,22 @@ class BattlemetricsService extends EventEmitter {
 
       console.log(`📊 搜索结果数量 (游戏端口): ${response.data.data.length}`);
 
-      // 查找匹配的服务器
+      // 查找匹配的服务器 - 优先精确匹配（IP + Port + Name）
       for (const server of response.data.data) {
         console.log(`  - 检查服务器: ${server.attributes.name} (${server.attributes.ip}:${server.attributes.port})`);
+
+        // 精确匹配：IP + Port + Name
+        if (serverName &&
+            server.attributes.ip === ip &&
+            server.attributes.port === gamePort &&
+            server.attributes.name === serverName) {
+          console.log(`✅ 找到精确匹配服务器 ID (IP + Port + Name): ${server.id}`);
+          return server.id;
+        }
+
+        // 次级匹配：IP + Port
         if (server.attributes.ip === ip && server.attributes.port === gamePort) {
-          console.log(`✅ 找到匹配服务器 ID: ${server.id}`);
+          console.log(`✅ 找到匹配服务器 ID (IP + Port): ${server.id}`);
           return server.id;
         }
       }

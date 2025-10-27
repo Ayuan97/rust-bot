@@ -76,9 +76,15 @@ class EventMonitorService extends EventEmitter {
         }
 
         const errorMessage = error?.message || errorStr;
-        if (!errorMessage.includes('服务器未连接')) {
-          console.error(`❌ 事件监控检查失败 ${serverId}:`, error);
+
+        // 静默处理超时错误和连接错误（服务器响应慢时正常）
+        if (errorMessage.includes('Timeout reached') ||
+            errorMessage.includes('服务器未连接')) {
+          return;
         }
+
+        // 其他错误才输出
+        console.error(`❌ 事件监控检查失败 ${serverId}:`, error);
       }
     }, EventTiming.MAP_MARKERS_POLL_INTERVAL);
 
