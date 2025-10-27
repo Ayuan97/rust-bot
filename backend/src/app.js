@@ -228,7 +228,8 @@ const initializeFCM = async () => {
     console.log('   4. 凭证会自动保存到 ~/.rustplus/credentials');
     console.log('   5. 重启本项目，会自动加载凭证\n');
     console.log('💡 方式 2 - 通过 Web 界面手动输入:');
-    console.log('   访问 http://localhost:5173 点击"输入凭证"\n');
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    console.log(`   访问 ${frontendUrl} 点击"输入凭证"\n`);
     console.log('💡 方式 3 - 使用 /api/pairing/start（不推荐）:');
     console.log('   会生成新凭证，但未关联 Steam 账号，无法接收推送\n');
   } catch (error) {
