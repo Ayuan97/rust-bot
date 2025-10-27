@@ -37,27 +37,9 @@ if (!existsSync(dataDir)) {
 const app = express();
 const server = createServer(app);
 
-// 中间件 - 允许多种前端来源
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://127.0.0.1:5173',
-  'http://127.0.0.1:5174',
-  process.env.FRONTEND_URL
-].filter(Boolean);
-
+// 中间件 - 允许所有来源（方便端口更改）
 app.use(cors({
-  origin: (origin, callback) => {
-    // 允许无 origin 的请求（如 Postman、curl）
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log('⚠️  CORS 拦截了来自:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true, // 允许所有来源
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
