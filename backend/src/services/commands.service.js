@@ -1108,7 +1108,13 @@ class CommandsService {
           }
         }
       } catch (error) {
-        console.error(`[AFK检测] 检测失败:`, error.message);
+        // AppError { error: 'not_found' } 表示玩家不在队伍中，静默处理
+        const errorStr = JSON.stringify(error) || String(error);
+        if (errorStr.includes('not_found')) {
+          // 玩家不在队伍中，跳过
+          continue;
+        }
+        console.error(`[AFK检测] 检测失败:`, error.message || error);
       }
     }
   }
