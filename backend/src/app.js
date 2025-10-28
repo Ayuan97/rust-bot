@@ -637,7 +637,7 @@ server.listen(PORT, async () => {
   await autoConnectSavedServers();
 });
 
-// 自动连接已保存的服务器
+// 自动连接已保存的服务器（单连接限制：只连接最后保存的一个）
 const autoConnectSavedServers = async () => {
   try {
     const servers = storage.getAllServers();
@@ -646,25 +646,30 @@ const autoConnectSavedServers = async () => {
       return;
     }
 
-    console.log(`\n🔌 发现 ${servers.length} 个已保存的服务器，开始自动连接...\n`);
+    console.log(`\n🔌 发现 ${servers.length} 个已保存的服务器`);
 
-    for (const server of servers) {
-      try {
-        console.log(`🔄 连接服务器: ${server.name} (${server.ip}:${server.port})`);
+    // 单连接限制：只连接最后一个保存的服务器
+    const latestServer = servers[servers.length - 1];
 
-        await rustPlusService.connect({
-          serverId: server.id,
-          ip: server.ip,
-          port: server.port,
-          playerId: server.player_id,
-          playerToken: server.player_token,
-        });
+    console.log(`📌 单连接模式：只连接最后保存的服务器`);
+    console.log(`   其他 ${servers.length - 1} 个服务器不会自动连接`);
+    console.log(`   可在 Web 界面手动切换\n`);
 
-        console.log(`✅ ${server.name} 连接成功\n`);
-      } catch (error) {
-        console.error(`❌ ${server.name} 连接失败: ${error.message}`);
-        console.log(`   自动重连将在30秒后开始...\n`);
-      }
+    try {
+      console.log(`🔄 连接服务器: ${latestServer.name} (${latestServer.ip}:${latestServer.port})`);
+
+      await rustPlusService.connect({
+        serverId: latestServer.id,
+        ip: latestServer.ip,
+        port: latestServer.port,
+        playerId: latestServer.player_id,
+        playerToken: latestServer.player_token,
+      });
+
+      console.log(`✅ ${latestServer.name} 连接成功\n`);
+    } catch (error) {
+      console.error(`❌ ${latestServer.name} 连接失败: ${error.message}`);
+      console.log(`   自动重连将在30秒后开始...\n`);
     }
   } catch (error) {
     console.error('❌ 自动连接服务器失败:', error);

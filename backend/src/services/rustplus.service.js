@@ -44,6 +44,15 @@ class RustPlusService extends EventEmitter {
       return this.connections.get(serverId);
     }
 
+    // 单连接限制：断开所有其他服务器
+    const connectedServers = Array.from(this.connections.keys());
+    for (const otherServerId of connectedServers) {
+      if (otherServerId !== serverId) {
+        console.log(`🔄 单连接限制：断开其他服务器 ${otherServerId.substring(0, 8)}`);
+        await this.disconnect(otherServerId, false); // 不删除配置，只断开连接
+      }
+    }
+
     // 停止重连定时器（如果存在）
     this.stopReconnect(serverId);
 
