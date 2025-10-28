@@ -93,12 +93,17 @@ router.delete('/:id', async (req, res) => {
     if (rustPlusService.isConnected(serverId)) {
       console.log(`   - 服务器已连接，正在断开...`);
       try {
-        await rustPlusService.disconnect(serverId);
+        // 传递 removeConfig = true，删除服务器配置，防止自动重连
+        await rustPlusService.disconnect(serverId, true);
         console.log(`   - 断开成功`);
       } catch (disconnectError) {
         console.error(`❌ 断开连接失败:`, disconnectError);
         // 继续删除，即使断开失败
       }
+    } else {
+      // 即使未连接，也要清理服务器配置
+      console.log(`   - 服务器未连接，清理配置...`);
+      await rustPlusService.disconnect(serverId, true);
     }
 
     // 从数据库删除
