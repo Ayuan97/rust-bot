@@ -1113,6 +1113,7 @@ class CommandsService {
 
         // 获取地图大小（用于坐标转换）
         const mapSize = this.rustPlusService.getMapSize(serverId);
+        console.log(`[AFK检测] 地图大小: ${mapSize}`);
 
         // 更新每个玩家的位置历史
         for (const member of teamInfo.members) {
@@ -1123,7 +1124,7 @@ class CommandsService {
 
           // 格式化位置显示
           const position = formatPosition(member.x, member.y, mapSize);
-          console.log(`[AFK检测] 玩家 ${member.name} 位置: ${position}`);
+          console.log(`[AFK检测] 玩家 ${member.name} 原始坐标: (${member.x.toFixed(2)}, ${member.y.toFixed(2)}) -> 网格: ${position}`);
 
           // 统一转换steamId为字符串
           const steamIdStr = member.steamId.toString();
@@ -1243,6 +1244,7 @@ class CommandsService {
 
     // 格式化位置
     const position = formatPosition(member.x, member.y, mapSize);
+    console.log(`[AFK通知] 玩家 ${member.name} 坐标: (${member.x.toFixed(2)}, ${member.y.toFixed(2)}) 地图: ${mapSize} -> ${position}`);
 
     // 发送通知
     const message = notify('afk_start', {

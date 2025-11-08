@@ -30,11 +30,11 @@ export const MONUMENT_INFO = {
     radius: 110
   },
   'water_treatment_plant_display_name': {
-    name: '水处理厂',
+    name: '污水处理厂',
     radius: 110
   },
   'excavator': {
-    name: '挖掘机',
+    name: '巨型挖掘机',
     radius: 110
   },
 
@@ -52,7 +52,7 @@ export const MONUMENT_INFO = {
     radius: 88
   },
   'junkyard_display_name': {
-    name: '废品场',
+    name: '垃圾场',
     radius: 88
   },
   'sewer_display_name': {
@@ -60,7 +60,7 @@ export const MONUMENT_INFO = {
     radius: 87
   },
   'bandit_camp': {
-    name: '土匪营地',
+    name: '强盗营地',
     radius: 82
   },
   'outpost': {
@@ -72,7 +72,7 @@ export const MONUMENT_INFO = {
     radius: 81
   },
   'satellite_dish_display_name': {
-    name: '卫星天线',
+    name: '雷达残骸',
     radius: 78
   },
   'arctic_base_a': {
@@ -80,7 +80,7 @@ export const MONUMENT_INFO = {
     radius: 64
   },
   'dome_monument_name': {
-    name: '球形储罐',
+    name: '大铁球',
     radius: 50
   },
   'AbandonedMilitaryBase': {
@@ -144,7 +144,7 @@ export const MONUMENT_INFO = {
     radius: 19
   },
   'mining_outpost_display_name': {
-    name: '采矿前哨',
+    name: '采矿前哨站',
     radius: 17
   },
 
