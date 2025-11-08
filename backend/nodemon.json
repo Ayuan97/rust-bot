@@ -1,7 +1,7 @@
 {
   "watch": ["src"],
   "ext": "js,json",
-  "ignore": ["src/**/*.test.js", "node_modules"],
+  "ignore": ["src/**/*.test.js", "node_modules", "data"],
   "delay": 2000,
   "signal": "SIGTERM",
   "env": {

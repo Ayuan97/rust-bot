@@ -644,16 +644,28 @@ class CommandsService {
           }
 
           const mapSize = this.rustPlusService.getMapSize(serverId);
-          const { getItemName, getItemShortName, isImportantItem } = await import('../utils/item-info.js');
+          const { getItemName, getItemShortName, isImportantItem, searchItems } = await import('../utils/item-info.js');
 
           // 如果没有提供搜索参数，只显示售货机数量
           if (args.length === 0) {
             return cmd('shop', 'summary', { count: vendingMachines.length });
           }
 
-          // 搜索指定物品
+          // 搜索指定物品 - 使用智能搜索功能
           const searchTerm = args.join(' ');
+          console.log(`🔍 [shop] 搜索关键词: "${searchTerm}"`);
+          
+          const matchedItemIds = searchItems(searchTerm); // 获取所有匹配的物品ID
+          console.log(`🔍 [shop] 匹配到 ${matchedItemIds.length} 个物品ID`);
+          
+          // 如果没有找到匹配的物品ID，直接返回
+          if (matchedItemIds.length === 0) {
+            console.log(`❌ [shop] 未找到匹配物品`);
+            return cmd('shop', 'not_found', { item: searchTerm });
+          }
+
           const foundItems = [];
+          const matchedItemIdsSet = new Set(matchedItemIds.map(id => String(id)));
 
           for (const vm of vendingMachines) {
             if (!vm.sellOrders || vm.sellOrders.length === 0) continue;
@@ -661,12 +673,12 @@ class CommandsService {
             const position = formatPosition(vm.x, vm.y, mapSize);
 
             for (const order of vm.sellOrders) {
-              const itemName = getItemName(order.itemId);
-              if (itemName.includes(searchTerm)) {
+              // 检查这个售货机的物品ID是否在匹配列表中
+              if (matchedItemIdsSet.has(String(order.itemId))) {
                 foundItems.push({
                   position,
-                  itemName,
-                  itemId: order.itemId,  // 添加 itemId
+                  itemName: getItemName(order.itemId),
+                  itemId: order.itemId,
                   quantity: order.quantity,
                   stock: order.amountInStock,
                   costPerItem: order.costPerItem,
@@ -676,7 +688,10 @@ class CommandsService {
             }
           }
 
+          console.log(`✅ [shop] 在售货机中找到 ${foundItems.length} 个匹配物品`);
+          
           if (foundItems.length === 0) {
+            console.log(`❌ [shop] 售货机中没有匹配物品`);
             return cmd('shop', 'not_found', { item: searchTerm });
           }
 
@@ -690,6 +705,7 @@ class CommandsService {
           if (hasMore) {
             summaryMessage += `（仅显示前${MAX_DISPLAY}个）`;
           }
+          console.log(`📨 [shop] 发送汇总消息: ${summaryMessage}`);
           await this.rustPlusService.sendTeamMessage(serverId, summaryMessage);
 
           // 逐条发送每个物品信息（最多10个）
@@ -710,6 +726,8 @@ class CommandsService {
 
           return null; // 已经发送过消息，不需要返回
         } catch (error) {
+          console.error('❌ !shop 命令执行失败:', error);
+          console.error('   错误堆栈:', error.stack);
           return cmd('shop', 'error');
         }
       }

@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node src/app.js",
-    "dev": "nodemon src/app.js"
+    "dev": "nodemon src/app.js",
+    "dev:clean": "./dev.sh"
   },
   "keywords": ["rust", "rustplus", "dashboard"],
   "author": "",

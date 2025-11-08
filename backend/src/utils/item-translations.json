@@ -139,6 +139,9 @@
     "landmine": "地雷",
 
     "blueprint": "蓝图",
+    "blueprintbase": "蓝图",
+    "basicblueprintfragment": "基础蓝图碎片",
+    "advancedblueprintfragment": "高级蓝图碎片",
     "note": "笔记",
     "map": "地图",
     "paper": "纸",

@@ -103,10 +103,9 @@ class WebSocketService {
           const info = await rustPlusService.getServerInfo(serverId);
           socket.emit('server:info:success', { serverId, info });
         } catch (error) {
-          console.error(`❌ 获取服务器信息失败 [${serverId}]:`, error);
           socket.emit('server:info:error', {
             serverId,
-            error: error.message || error.error || JSON.stringify(error)
+            error: error.message
           });
         }
       });
@@ -117,10 +116,9 @@ class WebSocketService {
           const teamInfo = await rustPlusService.getTeamInfo(serverId);
           socket.emit('team:info:success', { serverId, teamInfo });
         } catch (error) {
-          console.error(`❌ 获取队伍信息失败 [${serverId}]:`, error);
           socket.emit('team:info:error', {
             serverId,
-            error: error.message || error.error || JSON.stringify(error)
+            error: error.message
           });
         }
       });
@@ -131,24 +129,9 @@ class WebSocketService {
           const mapInfo = await rustPlusService.getMap(serverId);
           socket.emit('map:info:success', { serverId, mapInfo });
         } catch (error) {
-          console.error(`❌ 获取地图信息失败 [${serverId}]:`, error);
           socket.emit('map:info:error', {
             serverId,
-            error: error.message || error.error || JSON.stringify(error)
-          });
-        }
-      });
-
-      // 获取地图（包含JPG图片数据）
-      socket.on('map:get', async (serverId) => {
-        try {
-          const map = await rustPlusService.getMap(serverId);
-          socket.emit('map:get:success', { serverId, map });
-        } catch (error) {
-          console.error(`❌ 获取地图失败 [${serverId}]:`, error);
-          socket.emit('map:get:error', {
-            serverId,
-            error: error.message || error.error || JSON.stringify(error)
+            error: error.message
           });
         }
       });
@@ -172,10 +155,9 @@ class WebSocketService {
           const time = await rustPlusService.getTime(serverId);
           socket.emit('time:get:success', { serverId, time });
         } catch (error) {
-          console.error(`❌ 获取时间信息失败 [${serverId}]:`, error);
           socket.emit('time:get:error', {
             serverId,
-            error: error.message || error.error || JSON.stringify(error)
+            error: error.message
           });
         }
       });

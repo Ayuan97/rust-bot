@@ -38,9 +38,9 @@ echo ""
 # 使用 trap 捕获 Ctrl+C
 trap 'echo ""; echo "🛑 正在停止服务..."; kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit' INT TERM
 
-# 启动后端
+# 启动后端（自动清理端口）
 echo "▶️  启动后端服务..."
-cd backend && npm run dev &
+cd backend && ./dev.sh &
 BACKEND_PID=$!
 
 # 等待2秒
