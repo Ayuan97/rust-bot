@@ -400,6 +400,9 @@ class CommandsService {
           }
           console.log(`📨 [shop] 发送汇总消息: ${summaryMessage}`);
           await this.rustPlusService.sendTeamMessage(serverId, summaryMessage);
+          
+          // 汇总消息后延迟1.5秒再发送详情
+          await new Promise(resolve => setTimeout(resolve, 1500));
 
           // 逐条发送每个物品信息（最多10个）
           for (let i = 0; i < itemsToDisplay.length; i++) {
