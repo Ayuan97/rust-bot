@@ -294,18 +294,43 @@ class CommandsService {
           const onlineMembers = teamInfo.members.filter(m => m.isOnline);
           const offlineMembers = teamInfo.members.filter(m => !m.isOnline);
 
-          // 构建玩家状态列表（使用符号标记更优雅）
-          const playerList = onlineMembers.map(m => {
-            const statusSymbol = m.isAlive ? '✓' : '✗';
+          // 分类玩家状态
+          const alive = [];
+          const dead = [];
+          const afk = [];
 
+          onlineMembers.forEach(m => {
             // 检查是否挂机
             const afkTime = this.getPlayerAfkTime(serverId, m.steamId);
-            const afkSuffix = afkTime >= 3 ? ',挂机' : '';
+            
+            // 截断过长的名字（最多12个字符）
+            const displayName = m.name.length > 12 ? m.name.substring(0, 12) + '..' : m.name;
+            
+            if (afkTime >= 3) {
+              afk.push(displayName);
+            } else if (m.isAlive) {
+              alive.push(displayName);
+            } else {
+              dead.push(displayName);
+            }
+          });
 
-            return `${m.name}${statusSymbol}${afkSuffix}`;
-          }).join(' ');
+          // 构建消息
+          const parts = [`队伍 ${onlineMembers.length}/${teamInfo.members.length}`];
+          
+          if (alive.length > 0) {
+            parts.push(`存活: ${alive.join(', ')}`);
+          }
+          
+          if (dead.length > 0) {
+            parts.push(`死亡: ${dead.join(', ')}`);
+          }
+          
+          if (afk.length > 0) {
+            parts.push(`挂机: ${afk.join(', ')}`);
+          }
 
-          return `在线${onlineMembers.length}/${teamInfo.members.length}: ${playerList}`;
+          return parts.join('\n');
         } catch (error) {
           return cmd('online', 'error');
         }
