@@ -1101,7 +1101,9 @@ class CommandsService {
             continue;
           }
 
-          console.log(`[AFK检测] 玩家 ${member.name} 位置: (${member.x}, ${member.y})`);
+          // 格式化位置显示
+          const position = formatPosition(member.x, member.y, mapSize);
+          console.log(`[AFK检测] 玩家 ${member.name} 位置: ${position}`);
 
           // 统一转换steamId为字符串
           const steamIdStr = member.steamId.toString();
