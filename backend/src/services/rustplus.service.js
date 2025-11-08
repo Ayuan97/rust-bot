@@ -484,7 +484,14 @@ class RustPlusService extends EventEmitter {
 
         if (oldMember) {
           // 检测死亡事件
-          if (oldMember.isAlive && !newMember.isAlive) {
+          // 1) isAlive 从 true -> false
+          // 2) deathTime 出现或递增（某些情况下 isAlive 字段在不同版本/时序可能不稳定）
+          const isAliveFlipToDead = oldMember.isAlive === true && newMember.isAlive === false;
+          const deathTimeIncreased =
+            typeof newMember.deathTime === 'number' &&
+            (!oldMember.deathTime || newMember.deathTime > oldMember.deathTime);
+
+          if (isAliveFlipToDead || deathTimeIncreased) {
             console.log(`💀 玩家死亡: ${newMember.name} (${steamId})`);
             this.emit('player:died', {
               serverId,

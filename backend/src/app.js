@@ -12,6 +12,8 @@ import configStorage from './models/config.model.js';
 import storage from './models/storage.model.js';
 import rustPlusService from './services/rustplus.service.js';
 import battlemetricsService from './services/battlemetrics.service.js';
+import { formatPosition } from './utils/coordinates.js';
+import { notify } from './utils/messages.js';
 
 import serverRoutes from './routes/server.routes.js';
 import pairingRoutes from './routes/pairing.routes.js';
@@ -155,6 +157,27 @@ const initializeFCM = async () => {
     fcmService.on('player:death', (deathInfo) => {
       console.log('💀 玩家死亡:', deathInfo);
       websocketService.broadcast('player:death', deathInfo);
+
+    // 使用 FCM 死亡推送作为“提示”，立即刷新所有已连接服务器的队伍信息，加速死亡检测
+    try {
+      const servers = rustPlusService.getConnectedServers();
+      if (servers && servers.length > 0) {
+        (async () => {
+          for (const sid of servers) {
+            try {
+              const teamInfo = await rustPlusService.getTeamInfo(sid);
+              if (teamInfo) {
+                rustPlusService.handleTeamChanged(sid, { teamInfo });
+              }
+            } catch (e) {
+              console.warn('⚠️ 基于FCM的快速队伍刷新失败:', e?.message || e);
+            }
+          }
+        })();
+      }
+    } catch (e) {
+      console.warn('⚠️ 获取已连接服务器列表失败:', e?.message || e);
+    }
     });
 
     // 监听智能警报
@@ -217,9 +240,14 @@ const setupPlayerEventNotifications = () => {
     try {
       const settings = commandsService.getServerSettings(data.serverId);
       if (settings.deathNotify) {
-        const message = `💀 ${data.name} 在 (${Math.round(data.x)}, ${Math.round(data.y)}) 死亡了！`;
+        const mapSize = rustPlusService.getMapSize(data.serverId);
+        const position = formatPosition(data.x, data.y, mapSize, true, false);
+        const message = notify('death', {
+          playerName: data.name,
+          position: position
+        });
         await rustPlusService.sendTeamMessage(data.serverId, message);
-        console.log(`📨 已发送死亡通知: ${data.name}`);
+        console.log(`📨 已发送死亡通知: ${message}`);
       }
     } catch (error) {
       console.error('❌ 发送死亡通知失败:', error.message);

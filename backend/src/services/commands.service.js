@@ -930,10 +930,24 @@ class CommandsService {
           console.error(`[错误] 发送上线通知失败:`, error.message);
         }
       } else {
-        console.log(`[上线处理] 没有离线时间记录，跳过上线通知`);
+        // 没有离线时间记录时，发送基础上线通知
+        const message = notify('online', { playerName });
+        try {
+          await this.rustPlusService.sendTeamMessage(serverId, message);
+          console.log(`[上线通知] ${playerName} 上线`);
+        } catch (error) {
+          console.error(`[错误] 发送上线通知失败:`, error.message);
+        }
       }
     } else {
-      console.log(`[上线处理] 首次上线，无历史记录`);
+      console.log(`[上线处理] 首次上线，无历史记录，发送基础上线通知`);
+      const message = notify('online', { playerName });
+      try {
+        await this.rustPlusService.sendTeamMessage(serverId, message);
+        console.log(`[上线通知] ${playerName} 上线`);
+      } catch (error) {
+        console.error(`[错误] 发送上线通知失败:`, error.message);
+      }
     }
 
     // 更新会话数据（重置会话）
@@ -960,8 +974,8 @@ class CommandsService {
     console.log(`[下线处理] 开始处理玩家 ${playerName} 的下线事件`);
 
     if (!this.playerSessionData.has(serverId)) {
-      console.log(`[下线处理] 无会话数据，跳过`);
-      return;
+      console.log(`[下线处理] 无会话数据，创建并发送基础下线通知`);
+      this.playerSessionData.set(serverId, new Map());
     }
 
     const sessionMap = this.playerSessionData.get(serverId);
@@ -970,7 +984,21 @@ class CommandsService {
     // 获取会话数据
     const sessionData = sessionMap.get(steamIdStr);
     if (!sessionData || !sessionData.onlineTime) {
-      console.log(`[下线处理] 无上线时间记录，跳过`);
+      console.log(`[下线处理] 无上线时间记录，发送基础下线通知并记录离线时间`);
+      const message = notify('offline', { playerName });
+      try {
+        await this.rustPlusService.sendTeamMessage(serverId, message);
+        console.log(`[下线通知] ${playerName} 下线`);
+      } catch (error) {
+        console.error(`[错误] 发送下线通知失败:`, error.message);
+      }
+      // 记录离线时间，便于下次上线统计离线时长
+      sessionMap.set(steamIdStr, {
+        name: playerName,
+        onlineTime: null,
+        offlineTime: Date.now(),
+        afkInfo: null
+      });
       return;
     }
 
@@ -1079,12 +1107,12 @@ class CommandsService {
    * 启动挂机检测定时任务
    */
   startAfkDetection() {
-    // 每30秒检测一次玩家位置
+    // 缩短检测周期以降低死亡/复活检测延迟
     this.afkDetectionInterval = setInterval(() => {
       this.checkPlayerPositions();
-    }, 30 * 1000);
+    }, 10 * 1000);
 
-    console.log('✅ 挂机检测系统已启动（每30秒检测一次）');
+    console.log('✅ 挂机检测系统已启动（每10秒检测一次）');
   }
 
   /**
