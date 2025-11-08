@@ -1248,15 +1248,21 @@ class CommandsService {
     });
 
     // 格式化位置
+    console.log(`[AFK通知] 准备格式化 - 原始坐标: x=${member.x}, y=${member.y}, mapSize=${mapSize}`);
     const position = formatPosition(member.x, member.y, mapSize);
-    console.log(`[AFK通知] 玩家 ${member.name} 坐标: (${member.x.toFixed(2)}, ${member.y.toFixed(2)}) 地图: ${mapSize} -> ${position}`);
+    console.log(`[AFK通知] 格式化结果: "${position}" (类型: ${typeof position})`);
+    
+    if (!position || position === 'null' || position.includes('NaN')) {
+      console.error(`❌ [AFK通知] 坐标格式化失败！使用原始坐标`);
+    }
 
     // 发送通知
     const message = notify('afk_start', {
       name: member.name,
-      position,
+      position: position || `(${Math.round(member.x)},${Math.round(member.y)})`,
       minutes: afkTime
     });
+    console.log(`[AFK通知] 最终消息: ${message}`);
 
     try {
       await this.rustPlusService.sendTeamMessage(serverId, message);
