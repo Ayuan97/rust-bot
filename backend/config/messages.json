@@ -15,7 +15,8 @@
     "large_oil_warning": "大油井箱子还有 {minutes} 分钟解锁",
     "large_oil_unlocked": "大油井箱子已解锁！",
 
-    "heli_spawn": "武装直升机已刷新在 {direction} {position}",
+    "heli_spawn": "武装直升机已刷新在 {position}",
+    "heli_spawn_predicted": "武装直升机出现 位置: {position} 预测到达: {predicted}",
     "heli_downed": "武装直升机被击落 位置: {position}",
     "heli_leave": "武装直升机已离开地图",
 

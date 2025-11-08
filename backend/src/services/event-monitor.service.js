@@ -6,6 +6,7 @@
 import EventEmitter from 'events';
 import { AppMarkerType, EventTiming, EventType } from '../utils/event-constants.js';
 import { formatPosition, getDistance } from '../utils/coordinates.js';
+import { notify } from '../utils/messages.js';
 import EventTimerManager from '../utils/event-timer.js';
 import { getItemName, isImportantItem } from '../utils/item-info.js';
 
@@ -144,12 +145,12 @@ class EventMonitorService extends EventEmitter {
     const previousMarkers = this.previousMarkers.get(serverId) || [];
 
     // 检测各类事件
-    this.checkCargoShips(serverId, currentMarkers, previousMarkers);
-    this.checkPatrolHelicopters(serverId, currentMarkers, previousMarkers);
-    this.checkCH47s(serverId, currentMarkers, previousMarkers);
-    this.checkLockedCrates(serverId, currentMarkers, previousMarkers);
-    this.checkExplosions(serverId, currentMarkers, previousMarkers);
-    this.checkVendingMachines(serverId, currentMarkers, previousMarkers);
+    await this.checkCargoShips(serverId, currentMarkers, previousMarkers);
+    await this.checkPatrolHelicopters(serverId, currentMarkers, previousMarkers);
+    await this.checkCH47s(serverId, currentMarkers, previousMarkers);
+    await this.checkLockedCrates(serverId, currentMarkers, previousMarkers);
+    await this.checkExplosions(serverId, currentMarkers, previousMarkers);
+    await this.checkVendingMachines(serverId, currentMarkers, previousMarkers);
 
     // 更新缓存
     this.previousMarkers.set(serverId, currentMarkers);
@@ -333,7 +334,7 @@ class EventMonitorService extends EventEmitter {
   /**
    * 检测武装直升机事件
    */
-  checkPatrolHelicopters(serverId, currentMarkers, previousMarkers) {
+  async checkPatrolHelicopters(serverId, currentMarkers, previousMarkers) {
     const currentHelis = currentMarkers.filter(m => m.type === AppMarkerType.PatrolHelicopter);
     const previousHelis = previousMarkers.filter(m => m.type === AppMarkerType.PatrolHelicopter);
     const eventData = this.eventData.get(serverId);
@@ -344,11 +345,20 @@ class EventMonitorService extends EventEmitter {
     );
 
     for (const heli of newHelis) {
-      const mapSize = this.rustPlusService.getMapSize(serverId);
+      // 使用实时世界尺寸换算
+      const { mapSize } = await this.rustPlusService.getLiveMapContext(serverId);
       const position = formatPosition(heli.x, heli.y, mapSize);
       const now = Date.now();
 
-      console.log(`🚁 [武装直升机刷新] 位置: ${position}`);
+      // 预测最先到达的坐标（基于初始位置与 rotation，向内投射一段距离）
+      let predictedPosition = null;
+      if (typeof heli.rotation === 'number') {
+        const theta = heli.rotation * Math.PI / 180;
+        const STEP = 500; // 预测前进 500 米
+        const px = Math.min(Math.max(heli.x + Math.cos(theta) * STEP, 0), mapSize);
+        const py = Math.min(Math.max(heli.y + Math.sin(theta) * STEP, 0), mapSize);
+        predictedPosition = formatPosition(px, py, mapSize);
+      }
 
       // 记录事件时间
       eventData.lastEvents.patrolHeliSpawn = now;
@@ -359,8 +369,19 @@ class EventMonitorService extends EventEmitter {
         x: heli.x,
         y: heli.y,
         position,
+        predictedPosition,
         time: now
       });
+
+      // 发送队伍通知（无表情、单行）
+      try {
+        const message = predictedPosition
+          ? notify('heli_spawn_predicted', { position, predicted: predictedPosition })
+          : notify('heli_spawn', { position });
+        if (message) {
+          await this.rustPlusService.sendTeamMessage(serverId, message);
+        }
+      } catch (e) {}
 
       // 初始化追踪路径
       if (!eventData.patrolHeliTracers.has(heli.id)) {
@@ -374,7 +395,7 @@ class EventMonitorService extends EventEmitter {
     );
 
     for (const heli of leftHelis) {
-      const mapSize = this.rustPlusService.getMapSize(serverId);
+      const { mapSize } = await this.rustPlusService.getLiveMapContext(serverId);
 
       // 获取最后位置
       const tracer = eventData.patrolHeliTracers.get(heli.id) || [];
@@ -388,8 +409,6 @@ class EventMonitorService extends EventEmitter {
       const now = Date.now();
 
       if (isNearEdge) {
-        console.log(`🚁 [武装直升机离开] 位置: ${position}`);
-
         // 记录事件时间
         eventData.lastEvents.patrolHeliLeave = now;
 
@@ -399,9 +418,15 @@ class EventMonitorService extends EventEmitter {
           position,
           time: now
         });
-      } else {
-        console.log(`🚁 [武装直升机被击落] 位置: ${position}`);
 
+        // 通知：离开
+        try {
+          const msg = notify('heli_leave', { position });
+          if (msg) {
+            await this.rustPlusService.sendTeamMessage(serverId, msg);
+          }
+        } catch (e) {}
+      } else {
         // 记录事件时间
         eventData.lastEvents.patrolHeliDowned = now;
 
@@ -413,6 +438,14 @@ class EventMonitorService extends EventEmitter {
           position,
           time: now
         });
+
+        // 通知：被击落
+        try {
+          const msg = notify('heli_downed', { position });
+          if (msg) {
+            await this.rustPlusService.sendTeamMessage(serverId, msg);
+          }
+        } catch (e) {}
       }
 
       // 清除追踪路径

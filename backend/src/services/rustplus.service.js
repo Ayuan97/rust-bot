@@ -1,6 +1,7 @@
 import RustPlus from '@liamcottle/rustplus.js';
 import EventEmitter from 'events';
 import CommandsService from './commands.service.js';
+import EventMonitorService from './event-monitor.service.js';
 
 class RustPlusService extends EventEmitter {
   constructor() {
@@ -9,7 +10,8 @@ class RustPlusService extends EventEmitter {
     this.cameras = new Map(); // `${serverId}:${cameraId}` -> Camera instance
     this.teamStates = new Map(); // serverId -> 上一次的队伍状态（用于检测变化）
     this.mapCache = new Map(); // serverId -> { width, height, lastUpdate }
-    this.commandsService = new CommandsService(this); // 命令处理服务
+    this.eventMonitorService = new EventMonitorService(this); // 事件监控服务
+    this.commandsService = new CommandsService(this, this.eventMonitorService); // 命令处理服务
   }
 
   /**
@@ -59,12 +61,18 @@ class RustPlusService extends EventEmitter {
         } catch (err) {
           console.warn(`⚠️  无法获取地图信息: ${err.message}，将使用默认值 4500`);
         }
+
+        // 启动事件监控
+        try {
+          this.eventMonitorService.start(serverId);
+        } catch (e) {}
       });
 
       rustplus.on('disconnected', () => {
         console.log(`❌ 服务器断开: ${serverId}`);
         this.connections.delete(serverId);
         this.emit('server:disconnected', { serverId });
+        try { this.eventMonitorService.stop(serverId); } catch (e) {}
       });
 
       rustplus.on('error', (error) => {
