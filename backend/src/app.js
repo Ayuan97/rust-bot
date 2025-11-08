@@ -14,6 +14,7 @@ import rustPlusService from './services/rustplus.service.js';
 import battlemetricsService from './services/battlemetrics.service.js';
 import { formatPosition } from './utils/coordinates.js';
 import { notify } from './utils/messages.js';
+import logger from './utils/logger.js';
 
 import serverRoutes from './routes/server.routes.js';
 import pairingRoutes from './routes/pairing.routes.js';
@@ -247,7 +248,7 @@ const setupPlayerEventNotifications = () => {
           position: position
         });
         await rustPlusService.sendTeamMessage(data.serverId, message);
-        console.log(`📨 已发送死亡通知: ${message}`);
+        logger.debug(`📨 已发送死亡通知: ${message}`);
       }
     } catch (error) {
       console.error('❌ 发送死亡通知失败:', error.message);

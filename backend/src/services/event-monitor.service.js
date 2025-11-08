@@ -9,6 +9,7 @@ import { formatPosition, getDistance } from '../utils/coordinates.js';
 import { notify } from '../utils/messages.js';
 import EventTimerManager from '../utils/event-timer.js';
 import { getItemName, isImportantItem } from '../utils/item-info.js';
+import logger from '../utils/logger.js';
 
 class EventMonitorService extends EventEmitter {
   constructor(rustPlusService) {
@@ -112,10 +113,12 @@ class EventMonitorService extends EventEmitter {
    */
   async loadMonuments(serverId) {
     try {
-      const mapInfo = await this.rustPlusService.getMapInfo(serverId);
-      if (mapInfo && mapInfo.monuments) {
-        this.monuments.set(serverId, mapInfo.monuments);
-        console.log(`🗺️  加载了 ${mapInfo.monuments.length} 个古迹位置`);
+      // 使用 getMap 获取包含 monuments 的地图信息
+      const map = await this.rustPlusService.getMap(serverId);
+      if (map && map.monuments) {
+        this.monuments.set(serverId, map.monuments);
+        // 精简日志：仅必要信息
+        console.log(`🗺️  加载古迹位置: ${map.monuments.length} 个`);
       }
     } catch (error) {
       // AppError { error: 'not_found' } 表示玩家不在服务器内，这是正常的
@@ -892,7 +895,7 @@ class EventMonitorService extends EventEmitter {
         const monuments = this.monuments.get(serverId) || [];
         const position = formatPosition(vm.x, vm.y, mapSize, true, false, monuments);
 
-        console.log(`🏪 [售货机订单变化] 位置: ${position}`);
+        logger.debug(`🏪 [售货机订单变化] 位置: ${position}`);
 
         this.emit(EventType.VENDING_MACHINE_ORDER_CHANGE, {
           serverId,

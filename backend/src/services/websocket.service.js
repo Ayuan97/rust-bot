@@ -1,5 +1,6 @@
 import { Server } from 'socket.io';
 import rustPlusService from './rustplus.service.js';
+import logger from '../utils/logger.js';
 
 class WebSocketService {
   constructor() {
@@ -264,13 +265,13 @@ class WebSocketService {
     // 队伍消息
     rustPlusService.on('team:message', (data) => {
       this.io.emit('team:message', data);
-      console.log(`💬 [${data.name}]: ${data.message}`);
+      logger.debug(`💬 [${data.name}]: ${data.message}`);
     });
 
     // 队伍命令
     rustPlusService.on('team:command', (data) => {
       this.io.emit('team:command', data);
-      console.log(`🎮 [命令 ${data.name}]: ${data.message}`);
+      logger.debug(`🎮 [命令 ${data.name}]: ${data.message}`);
     });
 
     // 队伍变化

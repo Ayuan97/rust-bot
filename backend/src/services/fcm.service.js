@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import AndroidFCM from '@liamcottle/push-receiver/src/android/fcm.js';
 import PushReceiverClient from '@liamcottle/push-receiver/src/client.js';
+import logger from '../utils/logger.js';
 
 class FCMService extends EventEmitter {
   constructor() {
@@ -147,7 +148,7 @@ class FCMService extends EventEmitter {
         clearInterval(this.heartbeatInterval);
       }
       this.heartbeatInterval = setInterval(() => {
-        console.log(`💓 FCM 连接心跳检查 - 状态: ${this.isListening ? '活跃' : '已断开'} - ${new Date().toLocaleTimeString()}`);
+        logger.debug(`💓 FCM 连接心跳检查 - 状态: ${this.isListening ? '活跃' : '已断开'} - ${new Date().toLocaleTimeString()}`);
       }, 30000);
     });
 

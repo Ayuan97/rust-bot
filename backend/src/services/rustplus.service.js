@@ -2,6 +2,7 @@ import RustPlus from '@liamcottle/rustplus.js';
 import EventEmitter from 'events';
 import CommandsService from './commands.service.js';
 import EventMonitorService from './event-monitor.service.js';
+import logger from '../utils/logger.js';
 
 class RustPlusService extends EventEmitter {
   constructor() {
@@ -334,7 +335,7 @@ class RustPlusService extends EventEmitter {
     if (!rustplus) throw new Error('服务器未连接');
 
     await rustplus.sendRequestAsync({ sendTeamMessage: { message } });
-    console.log(`📨 发送消息到 ${serverId}: ${message}`);
+    logger.debug(`📨 发送消息到 ${serverId}: ${message}`);
     return { success: true, message };
   }
 
@@ -591,7 +592,7 @@ class RustPlusService extends EventEmitter {
             (!oldMember.deathTime || newMember.deathTime > oldMember.deathTime);
 
           if (isAliveFlipToDead || deathTimeIncreased) {
-            console.log(`💀 玩家死亡: ${newMember.name} (${steamId})`);
+            logger.debug(`💀 玩家死亡: ${newMember.name} (${steamId})`);
             this.emit('player:died', {
               serverId,
               steamId,
@@ -604,7 +605,7 @@ class RustPlusService extends EventEmitter {
 
           // 检测复活/重生事件
           if (!oldMember.isAlive && newMember.isAlive) {
-            console.log(`✨ 玩家复活: ${newMember.name} (${steamId})`);
+            logger.debug(`✨ 玩家复活: ${newMember.name} (${steamId})`);
             this.emit('player:spawned', {
               serverId,
               steamId,
@@ -617,7 +618,7 @@ class RustPlusService extends EventEmitter {
 
           // 检测上线事件
           if (!oldMember.isOnline && newMember.isOnline) {
-            console.log(`🟢 玩家上线: ${newMember.name} (${steamId})`);
+            logger.debug(`🟢 玩家上线: ${newMember.name} (${steamId})`);
             this.emit('player:online', {
               serverId,
               steamId,
@@ -630,7 +631,7 @@ class RustPlusService extends EventEmitter {
 
           // 检测下线事件
           if (oldMember.isOnline && !newMember.isOnline) {
-            console.log(`🔴 玩家下线: ${newMember.name} (${steamId})`);
+            logger.debug(`🔴 玩家下线: ${newMember.name} (${steamId})`);
             this.emit('player:offline', {
               serverId,
               steamId,

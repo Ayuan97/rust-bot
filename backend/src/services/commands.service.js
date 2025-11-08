@@ -6,6 +6,7 @@
 import { cmd, cmdConfig, allCommands, notify } from '../utils/messages.js';
 import { formatPosition } from '../utils/coordinates.js';
 import EventTimerManager from '../utils/event-timer.js';
+import logger from '../utils/logger.js';
 
 class CommandsService {
   constructor(rustPlusService, eventMonitorService = null) {
@@ -66,7 +67,7 @@ class CommandsService {
         const allCmds = allCommands();
 
         // 基础命令
-        const basicCmds = ['help', 'time', 'pop', 'team', 'online'];
+        const basicCmds = ['help', 'time', 'pop', 'team', 'online', 'afk'];
         // 事件命令
         const eventCmds = ['cargo', 'small', 'large', 'heli', 'events', 'history', 'shop'];
 
@@ -189,18 +190,14 @@ class CommandsService {
                 max: maxPlayers
               });
             } else {
-              // 构建变化文本：+X -Y (净变化)
-              const parts = [];
-              if (change.joined > 0) parts.push(`+${change.joined}`);
-              if (change.left > 0) parts.push(`-${change.left}`);
-
-              let changeText = parts.join(' ');
-
-              // 添加净变化提示
+              // 构建变化文本：仅显示净变化 (+x) 或 (-x)
+              let changeText = '';
               if (change.net > 0) {
-                changeText += ` (净增${change.net})`;
+                changeText = `(+${change.net})`;
               } else if (change.net < 0) {
-                changeText += ` (净减${Math.abs(change.net)})`;
+                changeText = `(-${Math.abs(change.net)})`;
+              } else {
+                changeText = `(+0)`;
               }
 
               return cmd('pop', 'msg', {
@@ -314,6 +311,48 @@ class CommandsService {
       }
     });
 
+    // !afk - 显示挂机队友
+    const afkConfig = cmdConfig('afk') || {};
+    this.registerCommand('afk', {
+      description: afkConfig.desc || '显示挂机队友',
+      usage: '!afk',
+      handler: async (serverId, args, context) => {
+        try {
+          const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
+          if (!teamInfo.members || teamInfo.members.length === 0) {
+            return cmd('afk', 'empty');
+          }
+
+          const onlineMembers = teamInfo.members.filter(m => m.isOnline);
+
+          // 计算 AFK 时间（分钟），>=3 视为挂机；按时长降序
+          const afkPlayers = [];
+          onlineMembers.forEach(m => {
+            const afkTime = this.getPlayerAfkTime(serverId, m.steamId?.toString?.() ?? m.steamId);
+            if (afkTime >= 3) {
+              const displayName = m.name.length > 12 ? m.name.substring(0, 12) + '..' : m.name;
+              const durationText = this.formatDuration(afkTime * 60 * 1000);
+              afkPlayers.push({ name: displayName, minutes: afkTime, duration: durationText });
+            }
+          });
+
+          if (afkPlayers.length === 0) {
+            return cmd('afk', 'empty');
+          }
+
+          afkPlayers.sort((a, b) => b.minutes - a.minutes);
+
+          const list = afkPlayers
+            .map(p => cmd('afk', 'item', { name: p.name, duration: p.duration }))
+            .join(', ');
+
+          return cmd('afk', 'msg', { count: afkPlayers.length, list });
+        } catch (error) {
+          return cmd('afk', 'error');
+        }
+      }
+    });
+
     // !shop - 搜索售货机（不依赖 eventMonitorService）
     const shopConfig = cmdConfig('shop') || {};
     this.registerCommand('shop', {
@@ -380,6 +419,13 @@ class CommandsService {
 
           // 限制显示数量
           const MAX_DISPLAY = 10;
+          // 优先显示有库存的条目
+          foundItems.sort((a, b) => {
+            const aInStock = (a.stock || 0) > 0;
+            const bInStock = (b.stock || 0) > 0;
+            if (aInStock !== bInStock) return aInStock ? -1 : 1;
+            return 0;
+          });
           const itemsToDisplay = foundItems.slice(0, MAX_DISPLAY);
           const hasMore = foundItems.length > MAX_DISPLAY;
 
@@ -1120,24 +1166,24 @@ class CommandsService {
   async checkPlayerPositions() {
     const connectedServers = this.rustPlusService.getConnectedServers();
 
-    console.log(`[AFK检测] 开始检测，已连接服务器数: ${connectedServers.length}`);
+    logger.debug(`[AFK检测] 开始检测，已连接服务器数: ${connectedServers.length}`);
 
     for (const serverId of connectedServers) {
       try {
         const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
         if (!teamInfo.members || teamInfo.members.length === 0) {
-          console.log(`[AFK检测] 服务器 ${serverId} 无队员`);
+          logger.debug(`[AFK检测] 服务器 ${serverId} 无队员`);
           continue;
         }
 
-        console.log(`[AFK检测] 服务器 ${serverId} 队员数: ${teamInfo.members.length}`);
+        logger.debug(`[AFK检测] 服务器 ${serverId} 队员数: ${teamInfo.members.length}`);
 
         // 手动触发队伍状态检测（检测死亡/复活等事件）
         this.rustPlusService.handleTeamChanged(serverId, { teamInfo });
 
         // 获取地图大小（用于坐标转换，必要时同步刷新）
         const { mapSize, oceanMargin } = await this.rustPlusService.getLiveMapContext(serverId);
-        console.log(`[AFK检测] 地图大小: ${mapSize}`);
+        logger.debug(`[AFK检测] 地图大小: ${mapSize}`);
 
         // 更新每个玩家的位置历史
         for (const member of teamInfo.members) {
@@ -1148,7 +1194,7 @@ class CommandsService {
 
           // 格式化位置显示
           const position = formatPosition(member.x, member.y, mapSize, true, false, null, oceanMargin);
-          console.log(`[AFK检测] 玩家 ${member.name} 原始坐标: (${member.x.toFixed(2)}, ${member.y.toFixed(2)}) -> 网格: ${position}`);
+          logger.debug(`[AFK检测] 玩家 ${member.name} 原始坐标: (${member.x.toFixed(2)}, ${member.y.toFixed(2)}) -> 网格: ${position}`);
 
           // 统一转换steamId为字符串
           const steamIdStr = member.steamId.toString();
@@ -1163,7 +1209,7 @@ class CommandsService {
 
           // 检测挂机并通知
           const afkTime = this.getPlayerAfkTime(serverId, steamIdStr);
-          console.log(`[AFK检测] 玩家 ${member.name} 挂机时长: ${afkTime} 分钟`);
+          logger.debug(`[AFK检测] 玩家 ${member.name} 挂机时长: ${afkTime} 分钟`);
 
           if (afkTime >= 3) {
             await this.notifyAfkPlayer(serverId, member, afkTime, mapSize);
@@ -1190,7 +1236,7 @@ class CommandsService {
   updatePlayerPosition(serverId, steamId, positionData) {
     if (!this.playerPositionHistory.has(serverId)) {
       this.playerPositionHistory.set(serverId, new Map());
-      console.log(`[位置更新] 初始化服务器 ${serverId} 的位置历史`);
+      logger.debug(`[位置更新] 初始化服务器 ${serverId} 的位置历史`);
     }
 
     const serverHistory = this.playerPositionHistory.get(serverId);
@@ -1202,7 +1248,7 @@ class CommandsService {
         currentPosition: positionData,  // 当前位置
         history: []  // 位置历史（用于调试）
       });
-      console.log(`[位置更新] 初始化玩家 ${steamId} 的位置数据`);
+      logger.debug(`[位置更新] 初始化玩家 ${steamId} 的位置数据`);
       return;
     }
 
@@ -1220,9 +1266,9 @@ class CommandsService {
     if (hasMoved) {
       // 玩家移动了，重置最后移动时间
       playerData.lastMovement = Date.now();
-      console.log(`[位置更新] 玩家 ${positionData.name} 移动了 ${distance.toFixed(2)}m，重置 lastMovement`);
+      logger.debug(`[位置更新] 玩家 ${positionData.name} 移动了 ${distance.toFixed(2)}m，重置 lastMovement`);
     } else {
-      console.log(`[位置更新] 玩家 ${positionData.name} 位置未变 (${distance.toFixed(2)}m)`);
+      logger.debug(`[位置更新] 玩家 ${positionData.name} 位置未变 (${distance.toFixed(2)}m)`);
     }
 
     // 更新当前位置
@@ -1267,9 +1313,9 @@ class CommandsService {
     });
 
     // 格式化位置
-    console.log(`[AFK通知] 准备格式化 - 原始坐标: x=${member.x}, y=${member.y}, mapSize=${mapSize}`);
+    logger.debug(`[AFK通知] 准备格式化 - 原始坐标: x=${member.x}, y=${member.y}, mapSize=${mapSize}`);
     const position = formatPosition(member.x, member.y, mapSize);
-    console.log(`[AFK通知] 格式化结果: "${position}" (类型: ${typeof position})`);
+    logger.debug(`[AFK通知] 格式化结果: "${position}" (类型: ${typeof position})`);
     
     if (!position || position === 'null' || position.includes('NaN')) {
       console.error(`❌ [AFK通知] 坐标格式化失败！使用原始坐标`);
@@ -1281,11 +1327,11 @@ class CommandsService {
       position: position || `(${Math.round(member.x)},${Math.round(member.y)})`,
       minutes: afkTime
     });
-    console.log(`[AFK通知] 最终消息: ${message}`);
+    logger.debug(`[AFK通知] 最终消息: ${message}`);
 
     try {
       await this.rustPlusService.sendTeamMessage(serverId, message);
-      console.log(`[挂机通知] ${member.name} (${afkTime}分钟) at ${position}`);
+      logger.info(`[挂机通知] ${member.name} (${afkTime}分钟) at ${position}`);
     } catch (error) {
       console.error(`[错误] 发送挂机通知失败:`, error.message);
     }
@@ -1335,13 +1381,13 @@ class CommandsService {
    */
   getPlayerAfkTime(serverId, steamId) {
     if (!this.playerPositionHistory.has(serverId)) {
-      console.log(`[AFK计算] 服务器 ${serverId} 无位置历史`);
+      logger.debug(`[AFK计算] 服务器 ${serverId} 无位置历史`);
       return 0;
     }
 
     const serverHistory = this.playerPositionHistory.get(serverId);
     if (!serverHistory.has(steamId)) {
-      console.log(`[AFK计算] 玩家 ${steamId} 无位置数据`);
+      logger.debug(`[AFK计算] 玩家 ${steamId} 无位置数据`);
       return 0;
     }
 
@@ -1352,7 +1398,7 @@ class CommandsService {
     const afkSeconds = (now - playerData.lastMovement) / 1000;
     const afkMinutes = Math.floor(afkSeconds / 60);
 
-    console.log(`[AFK计算] 玩家 ${playerData.currentPosition?.name || steamId} 最后移动: ${new Date(playerData.lastMovement).toLocaleTimeString()}, AFK时长: ${afkMinutes}分钟`);
+    logger.debug(`[AFK计算] 玩家 ${playerData.currentPosition?.name || steamId} 最后移动: ${new Date(playerData.lastMovement).toLocaleTimeString()}, AFK时长: ${afkMinutes}分钟`);
 
     // 至少挂机3分钟才返回
     return afkMinutes >= 3 ? afkMinutes : 0;
