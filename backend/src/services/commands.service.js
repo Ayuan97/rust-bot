@@ -400,19 +400,31 @@ class CommandsService {
           await this.rustPlusService.sendTeamMessage(serverId, summaryMessage);
 
           // 逐条发送每个物品信息（最多10个）
-          for (const item of itemsToDisplay) {
-            // 获取物品表情（如果找不到就用物品名称）
-            const itemShortName = getItemShortName(item.itemId);
-            const currencyShortName = getItemShortName(item.currencyId);
+          for (let i = 0; i < itemsToDisplay.length; i++) {
+            const item = itemsToDisplay[i];
+            
+            try {
+              // 获取物品表情（如果找不到就用物品名称）
+              const itemShortName = getItemShortName(item.itemId);
+              const currencyShortName = getItemShortName(item.currencyId);
 
-            const itemDisplay = itemShortName !== 'unknown' ? `:${itemShortName}:` : getItemName(item.itemId);
-            const currencyDisplay = currencyShortName !== 'unknown' ? `:${currencyShortName}:` : getItemName(item.currencyId);
+              const itemDisplay = itemShortName !== 'unknown' ? `:${itemShortName}:` : getItemName(item.itemId);
+              const currencyDisplay = currencyShortName !== 'unknown' ? `:${currencyShortName}:` : getItemName(item.currencyId);
 
-            // 优化消息格式：位置 | 物品x数量 | 价格 | 库存
-            const message = `${item.position} | ${itemDisplay}x${item.quantity} | ${item.costPerItem}${currencyDisplay} | 库存${item.stock}`;
-            await this.rustPlusService.sendTeamMessage(serverId, message);
-            // 延迟100ms，避免消息发送过快
-            await new Promise(resolve => setTimeout(resolve, 100));
+              // 优化消息格式：位置 | 物品x数量 | 价格 | 库存
+              const message = `${item.position} | ${itemDisplay}x${item.quantity} | ${item.costPerItem}${currencyDisplay} | 库存${item.stock}`;
+              
+              await this.rustPlusService.sendTeamMessage(serverId, message);
+              console.log(`✅ [shop] 已发送 ${i + 1}/${itemsToDisplay.length}`);
+              
+              // 延迟800ms，避免触发速率限制
+              if (i < itemsToDisplay.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 800));
+              }
+            } catch (sendError) {
+              console.error(`❌ [shop] 发送消息失败 (${i + 1}/${itemsToDisplay.length}):`, sendError.error || sendError.message);
+              // 继续发送下一条，不中断整个流程
+            }
           }
 
           return null; // 已经发送过消息，不需要返回
