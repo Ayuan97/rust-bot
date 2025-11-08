@@ -220,12 +220,20 @@ export function searchItems(searchTerm) {
     else if (chineseName.includes(term)) {
       score = 60;
     }
-    // shortName 包含搜索词
-    else if (shortName.includes(term)) {
+    // shortName 包含搜索词（需要是单词边界或短搜索词使用更严格匹配）
+    else if (term.length >= 4 && shortName.includes(term)) {
+      // 长搜索词（≥4字符）可以模糊匹配
       score = 50;
     }
-    // 英文名称包含搜索词
-    else if (name.includes(term)) {
+    else if (term.length < 4) {
+      // 短搜索词（<4字符）需要单词边界匹配，避免误匹配
+      const wordBoundaryRegex = new RegExp(`(^|[._-])${term}([._-]|$)`, 'i');
+      if (wordBoundaryRegex.test(shortName)) {
+        score = 50;
+      }
+    }
+    // 英文名称包含搜索词（仅限长搜索词）
+    else if (term.length >= 4 && name.includes(term)) {
       score = 40;
     }
 
@@ -270,3 +278,4 @@ export default {
   getUnknownItemIds,
   getItemDatabaseSize
 };
+

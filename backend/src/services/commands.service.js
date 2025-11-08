@@ -419,9 +419,9 @@ class CommandsService {
               await this.rustPlusService.sendTeamMessage(serverId, message);
               console.log(`✅ [shop] 已发送 ${i + 1}/${itemsToDisplay.length}`);
               
-              // 延迟800ms，避免触发速率限制
+              // 延迟1.5秒，避免触发速率限制
               if (i < itemsToDisplay.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 800));
+                await new Promise(resolve => setTimeout(resolve, 1500));
               }
             } catch (sendError) {
               console.error(`❌ [shop] 发送消息失败 (${i + 1}/${itemsToDisplay.length}):`, sendError.error || sendError.message);
