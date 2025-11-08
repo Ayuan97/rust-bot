@@ -240,8 +240,8 @@ const setupPlayerEventNotifications = () => {
     try {
       const settings = commandsService.getServerSettings(data.serverId);
       if (settings.deathNotify) {
-        const mapSize = rustPlusService.getMapSize(data.serverId);
-        const position = formatPosition(data.x, data.y, mapSize, true, false);
+        const { mapSize, oceanMargin } = await rustPlusService.getLiveMapContext(data.serverId);
+        const position = formatPosition(data.x, data.y, mapSize, true, false, null, oceanMargin);
         const message = notify('death', {
           playerName: data.name,
           position: position

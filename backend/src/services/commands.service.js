@@ -320,24 +320,19 @@ class CommandsService {
       description: shopConfig.desc || '搜索售货机物品',
       usage: '!shop [物品名称]',
       handler: async (serverId, args, context) => {
-        console.log(`🛒 [shop] 开始处理命令，参数:`, args);
+        // command trigger logged elsewhere
         try {
           const markers = await this.rustPlusService.getMapMarkers(serverId);
-          console.log(`🛒 [shop] 获取到 ${markers.markers?.length || 0} 个地图标记`);
           
           const vendingMachines = markers.markers ? markers.markers.filter(m => m.type === 3) : [];
-          console.log(`🛒 [shop] 找到 ${vendingMachines.length} 个售货机`);
 
           if (vendingMachines.length === 0) {
-            console.log(`🛒 [shop] 没有售货机，返回 empty`);
             return cmd('shop', 'empty');
           }
 
-          const mapSize = this.rustPlusService.getMapSize(serverId);
-          console.log(`🛒 [shop] 地图大小: ${mapSize}`);
+          const { mapSize, oceanMargin } = await this.rustPlusService.getLiveMapContext(serverId);
           
           const { getItemName, getItemShortName, isImportantItem, searchItems } = await import('../utils/item-info.js');
-          console.log(`🛒 [shop] 物品工具函数已加载`);
 
           // 如果没有提供搜索参数，只显示售货机数量
           if (args.length === 0) {
@@ -346,14 +341,11 @@ class CommandsService {
 
           // 搜索指定物品 - 使用智能搜索功能
           const searchTerm = args.join(' ');
-          console.log(`🔍 [shop] 搜索关键词: "${searchTerm}"`);
           
           const matchedItemIds = searchItems(searchTerm); // 获取所有匹配的物品ID
-          console.log(`🔍 [shop] 匹配到 ${matchedItemIds.length} 个物品ID`);
           
           // 如果没有找到匹配的物品ID，直接返回
           if (matchedItemIds.length === 0) {
-            console.log(`❌ [shop] 未找到匹配物品`);
             return cmd('shop', 'not_found', { item: searchTerm });
           }
 
@@ -363,7 +355,7 @@ class CommandsService {
           for (const vm of vendingMachines) {
             if (!vm.sellOrders || vm.sellOrders.length === 0) continue;
 
-            const position = formatPosition(vm.x, vm.y, mapSize);
+            const position = formatPosition(vm.x, vm.y, mapSize, true, false, null, oceanMargin);
 
             for (const order of vm.sellOrders) {
               // 检查这个售货机的物品ID是否在匹配列表中
@@ -381,10 +373,8 @@ class CommandsService {
             }
           }
 
-          console.log(`✅ [shop] 在售货机中找到 ${foundItems.length} 个匹配物品`);
           
           if (foundItems.length === 0) {
-            console.log(`❌ [shop] 售货机中没有匹配物品`);
             return cmd('shop', 'not_found', { item: searchTerm });
           }
 
@@ -398,7 +388,6 @@ class CommandsService {
           if (hasMore) {
             summaryMessage += `（仅显示前${MAX_DISPLAY}个）`;
           }
-          console.log(`📨 [shop] 发送汇总消息: ${summaryMessage}`);
           await this.rustPlusService.sendTeamMessage(serverId, summaryMessage);
           
           // 汇总消息后延迟1.5秒再发送详情
@@ -420,7 +409,7 @@ class CommandsService {
               const message = `${item.position} | ${itemDisplay}x${item.quantity} | ${item.costPerItem}${currencyDisplay} | 库存${item.stock}`;
               
               await this.rustPlusService.sendTeamMessage(serverId, message);
-              console.log(`✅ [shop] 已发送 ${i + 1}/${itemsToDisplay.length}`);
+              // sendTeamMessage already logs content; avoid duplicate noisy logs
               
               // 延迟1.5秒，避免触发速率限制
               if (i < itemsToDisplay.length - 1) {
@@ -465,11 +454,11 @@ class CommandsService {
             return cmd('cargo', 'empty');
           }
 
-          const mapSize = this.rustPlusService.getMapSize(serverId);
+          const { mapSize, oceanMargin } = await this.rustPlusService.getLiveMapContext(serverId);
           let messages = [];
 
           for (const ship of cargoShips) {
-            const position = formatPosition(ship.x, ship.y, mapSize);
+            const position = formatPosition(ship.x, ship.y, mapSize, true, false, null, oceanMargin);
             const timeLeft = EventTimerManager.getTimeLeft(`cargo_egress_${ship.id}`, serverId);
 
             if (timeLeft > 0) {
@@ -571,11 +560,11 @@ class CommandsService {
             return cmd('heli', 'empty');
           }
 
-          const mapSize = this.rustPlusService.getMapSize(serverId);
+          const { mapSize, oceanMargin } = await this.rustPlusService.getLiveMapContext(serverId);
           let messages = [];
 
           for (const heli of helicopters) {
-            const position = formatPosition(heli.x, heli.y, mapSize);
+            const position = formatPosition(heli.x, heli.y, mapSize, true, false, null, oceanMargin);
             messages.push(cmd('heli', 'msg', { position }));
           }
 
@@ -594,7 +583,7 @@ class CommandsService {
       handler: async (serverId, args, context) => {
         try {
           const markers = await this.rustPlusService.getMapMarkers(serverId);
-          const mapSize = this.rustPlusService.getMapSize(serverId);
+          const { mapSize, oceanMargin } = await this.rustPlusService.getLiveMapContext(serverId);
 
           let messages = [cmd('events', 'header')];
           let eventCount = 0;
@@ -604,7 +593,7 @@ class CommandsService {
           if (cargoShips.length > 0) {
             eventCount++;
             for (const ship of cargoShips) {
-              const position = formatPosition(ship.x, ship.y, mapSize);
+              const position = formatPosition(ship.x, ship.y, mapSize, true, false, null, oceanMargin);
               const timeLeft = EventTimerManager.getTimeLeft(`cargo_egress_${ship.id}`, serverId);
 
               if (timeLeft > 0) {
@@ -621,7 +610,7 @@ class CommandsService {
           if (helicopters.length > 0) {
             eventCount++;
             for (const heli of helicopters) {
-              const position = formatPosition(heli.x, heli.y, mapSize);
+              const position = formatPosition(heli.x, heli.y, mapSize, true, false, null, oceanMargin);
               messages.push(cmd('events', 'heli', { position }));
             }
           }
@@ -839,7 +828,7 @@ class CommandsService {
   setupServerEventListeners() {
     // 监听服务器连接事件
     this.rustPlusService.on('server:connected', (data) => {
-      console.log(`[事件] 服务器已连接: ${data.serverId}`);
+      // keep minimal logs elsewhere
 
       // 首次连接服务器时启动检测系统
       const connectedServers = this.rustPlusService.getConnectedServers();
@@ -857,7 +846,7 @@ class CommandsService {
 
     // 监听服务器断开事件
     this.rustPlusService.on('server:disconnected', (data) => {
-      console.log(`[事件] 服务器已断开: ${data.serverId}`);
+      // keep minimal logs elsewhere
 
       // 当所有服务器断开时停止检测系统
       const connectedServers = this.rustPlusService.getConnectedServers();
@@ -870,7 +859,7 @@ class CommandsService {
       }
     });
 
-    console.log('[系统] 服务器连接/断开监听器已启动');
+    // quiet
   }
 
   /**
@@ -879,29 +868,29 @@ class CommandsService {
   setupPlayerEventListeners() {
     // 监听玩家上线事件
     this.rustPlusService.on('player:online', async (data) => {
-      console.log(`[事件] 收到玩家上线事件: ${data.name} (${data.steamId})`);
+      // quiet
       await this.handlePlayerOnline(data.serverId, data.steamId, data.name);
     });
 
     // 监听玩家下线事件
     this.rustPlusService.on('player:offline', async (data) => {
-      console.log(`[事件] 收到玩家下线事件: ${data.name} (${data.steamId})`);
+      // quiet
       await this.handlePlayerOffline(data.serverId, data.steamId, data.name);
     });
 
-    console.log('[系统] 玩家上下线监听器已启动');
+    // quiet
   }
 
   /**
    * 处理玩家上线
    */
   async handlePlayerOnline(serverId, steamId, playerName) {
-    console.log(`[上线处理] 开始处理玩家 ${playerName} 的上线事件`);
+    // quiet
 
     // 初始化会话数据
     if (!this.playerSessionData.has(serverId)) {
       this.playerSessionData.set(serverId, new Map());
-      console.log(`[上线处理] 初始化服务器 ${serverId} 的会话数据`);
+      // quiet
     }
 
     const sessionMap = this.playerSessionData.get(serverId);
@@ -910,7 +899,7 @@ class CommandsService {
     // 检查是否有离线记录
     if (sessionMap.has(steamIdStr)) {
       const sessionData = sessionMap.get(steamIdStr);
-      console.log(`[上线处理] 找到历史会话数据，offlineTime: ${sessionData.offlineTime}`);
+      // quiet
 
       // 计算离线时长
       if (sessionData.offlineTime) {
@@ -925,7 +914,7 @@ class CommandsService {
 
         try {
           await this.rustPlusService.sendTeamMessage(serverId, message);
-          console.log(`[上线通知] ${playerName} 离线了 ${offlineDurationText}`);
+          // message already logged in sendTeamMessage
         } catch (error) {
           console.error(`[错误] 发送上线通知失败:`, error.message);
         }
@@ -934,17 +923,17 @@ class CommandsService {
         const message = notify('online', { playerName });
         try {
           await this.rustPlusService.sendTeamMessage(serverId, message);
-          console.log(`[上线通知] ${playerName} 上线`);
+          // message already logged in sendTeamMessage
         } catch (error) {
           console.error(`[错误] 发送上线通知失败:`, error.message);
         }
       }
     } else {
-      console.log(`[上线处理] 首次上线，无历史记录，发送基础上线通知`);
+      // quiet
       const message = notify('online', { playerName });
       try {
         await this.rustPlusService.sendTeamMessage(serverId, message);
-        console.log(`[上线通知] ${playerName} 上线`);
+        // message already logged in sendTeamMessage
       } catch (error) {
         console.error(`[错误] 发送上线通知失败:`, error.message);
       }
@@ -957,13 +946,13 @@ class CommandsService {
       offlineTime: null,
       afkInfo: null
     });
-    console.log(`[上线处理] 已更新会话数据，onlineTime: ${Date.now()}`);
+    // quiet
 
     // 清除挂机记录（新的游戏会话）
     if (this.afkNotifiedPlayers.has(serverId)) {
       const notifiedMap = this.afkNotifiedPlayers.get(serverId);
       notifiedMap.delete(steamIdStr);
-      console.log(`[上线处理] 已清除挂机记录`);
+      // quiet
     }
   }
 
@@ -971,10 +960,10 @@ class CommandsService {
    * 处理玩家下线
    */
   async handlePlayerOffline(serverId, steamId, playerName) {
-    console.log(`[下线处理] 开始处理玩家 ${playerName} 的下线事件`);
+    // quiet
 
     if (!this.playerSessionData.has(serverId)) {
-      console.log(`[下线处理] 无会话数据，创建并发送基础下线通知`);
+      // quiet
       this.playerSessionData.set(serverId, new Map());
     }
 
@@ -984,11 +973,11 @@ class CommandsService {
     // 获取会话数据
     const sessionData = sessionMap.get(steamIdStr);
     if (!sessionData || !sessionData.onlineTime) {
-      console.log(`[下线处理] 无上线时间记录，发送基础下线通知并记录离线时间`);
+      // quiet
       const message = notify('offline', { playerName });
       try {
         await this.rustPlusService.sendTeamMessage(serverId, message);
-        console.log(`[下线通知] ${playerName} 下线`);
+        // message already logged in sendTeamMessage
       } catch (error) {
         console.error(`[错误] 发送下线通知失败:`, error.message);
       }
@@ -1005,7 +994,6 @@ class CommandsService {
     // 计算今日游玩时长
     const playDuration = Date.now() - sessionData.onlineTime;
     const durationText = this.formatDuration(playDuration);
-    console.log(`[下线处理] 游玩时长: ${durationText}`);
 
     // 检查是否有挂机记录
     let afkInfo = null;
@@ -1147,8 +1135,8 @@ class CommandsService {
         // 手动触发队伍状态检测（检测死亡/复活等事件）
         this.rustPlusService.handleTeamChanged(serverId, { teamInfo });
 
-        // 获取地图大小（用于坐标转换）
-        const mapSize = this.rustPlusService.getMapSize(serverId);
+        // 获取地图大小（用于坐标转换，必要时同步刷新）
+        const { mapSize, oceanMargin } = await this.rustPlusService.getLiveMapContext(serverId);
         console.log(`[AFK检测] 地图大小: ${mapSize}`);
 
         // 更新每个玩家的位置历史
@@ -1159,7 +1147,7 @@ class CommandsService {
           }
 
           // 格式化位置显示
-          const position = formatPosition(member.x, member.y, mapSize);
+          const position = formatPosition(member.x, member.y, mapSize, true, false, null, oceanMargin);
           console.log(`[AFK检测] 玩家 ${member.name} 原始坐标: (${member.x.toFixed(2)}, ${member.y.toFixed(2)}) -> 网格: ${position}`);
 
           // 统一转换steamId为字符串

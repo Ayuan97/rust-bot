@@ -128,11 +128,14 @@ function getSubGridNumber(x, y, mapSize) {
  * @returns {string|null} 网格位置（如 "A5" 或 "A5-3"）或 null（超出范围）
  */
 function getGridPos(x, y, mapSize, includeSubGrid = false) {
-  const correctedMapSize = getCorrectedMapSize(mapSize);
+  // 先按报告的地图大小纠正
+  let correctedMapSize = getCorrectedMapSize(mapSize);
 
-  // 检查是否超出网格系统
+  // 如果坐标超出纠正后的范围，放大到能覆盖坐标的最近网格边界
   if (isOutsideGridSystem(x, y, correctedMapSize)) {
-    return null;
+    const maxCoord = Math.max(x, y);
+    const gridsNeeded = Math.ceil((maxCoord + GRID_DIAMETER) / GRID_DIAMETER);
+    correctedMapSize = gridsNeeded * GRID_DIAMETER;
   }
 
   const gridPosLetters = getGridPosLettersX(x, correctedMapSize);
@@ -145,7 +148,8 @@ function getGridPos(x, y, mapSize, includeSubGrid = false) {
   const baseGrid = gridPosLetters + gridPosNumber;
 
   if (includeSubGrid) {
-    const subGrid = getSubGridNumber(x, y, mapSize);
+    // 子网格也使用放大后的有效地图大小确保命中
+    const subGrid = getSubGridNumber(x, y, correctedMapSize);
     if (subGrid !== null) {
       return `${baseGrid}-${subGrid}`;
     }
@@ -263,13 +267,19 @@ function getNearestMonument(x, y, monuments) {
  * @param {Array} monuments - 古迹列表（可选）
  * @returns {string} 格式化的坐标字符串
  */
-function formatPosition(x, y, mapSize, includeSubGrid = true, includeCoords = false, monuments = null) {
-  const grid = getGridPos(x, y, mapSize, includeSubGrid);
+function formatPosition(x, y, mapSize, includeSubGrid = true, includeCoords = false, monuments = null, oceanMargin = 0) {
+  // 按 rustplusplus 约定，队伍坐标以世界坐标为基准（0..mapSize）
+  // oceanMargin 仅用于地图图像边缘显示，不参与队伍坐标换算
+  const playableSize = mapSize;
+  const adjX = x;
+  const adjY = y;
+
+  const grid = getGridPos(adjX, adjY, playableSize, includeSubGrid);
 
   // 检查是否在古迹附近
   let monumentName = null;
   if (monuments) {
-    monumentName = getNearestMonument(x, y, monuments);
+    monumentName = getNearestMonument(adjX, adjY, monuments);
   }
 
   if (grid) {
@@ -278,7 +288,7 @@ function formatPosition(x, y, mapSize, includeSubGrid = true, includeCoords = fa
       return `${monumentName}(${grid})`;
     } else if (includeCoords) {
       // 包含精确坐标
-      const coords = `(${Math.round(x)},${Math.round(y)})`;
+      const coords = `(${Math.round(adjX)},${Math.round(adjY)})`;
       return `${grid}${coords}`;
     }
     return grid;
@@ -289,7 +299,7 @@ function formatPosition(x, y, mapSize, includeSubGrid = true, includeCoords = fa
     return monumentName;
   }
 
-  return `(${Math.round(x)},${Math.round(y)})`;
+  return `(${Math.round(adjX)},${Math.round(adjY)})`;
 }
 
 export {
