@@ -231,48 +231,42 @@ class CommandsService {
           const onlineMembers = teamInfo.members.filter(m => m.isOnline);
           const offlineMembers = teamInfo.members.filter(m => !m.isOnline);
 
-          // 检测挂机玩家
+          // 统计挂机和离线玩家
           const afkPlayers = [];
+          const offlinePlayers = [];
+          
           for (const member of onlineMembers) {
             const afkTime = this.getPlayerAfkTime(serverId, member.steamId);
-            if (afkTime >= 3) { // 挂机3分钟以上
-              afkPlayers.push({
-                name: member.name,
-                afkTime: afkTime
-              });
+            if (afkTime >= 3) {
+              // 截断过长的名字（最多12个字符）
+              const displayName = member.name.length > 12 ? member.name.substring(0, 12) + '..' : member.name;
+              afkPlayers.push(displayName);
             }
           }
 
-          // 构建消息数组
-          const messages = [];
+          // 处理离线玩家
+          for (const member of offlineMembers) {
+            const displayName = member.name.length > 12 ? member.name.substring(0, 12) + '..' : member.name;
+            offlinePlayers.push(displayName);
+          }
 
-          // 第一行：统计信息
-          const stats = [`团队人员(${onlineMembers.length}/${teamInfo.members.length})`];
+          // 构建单行消息
+          const parts = [`团队(${onlineMembers.length}/${teamInfo.members.length})`];
+          
           if (afkPlayers.length > 0) {
-            stats.push(`挂机人员(${afkPlayers.length})`);
+            parts.push(`挂机(${afkPlayers.length}):${afkPlayers.join(',')}`);
           }
-          if (offlineMembers.length > 0) {
-            stats.push(`离线人员(${offlineMembers.length})`);
-          }
-          messages.push(stats.join(' '));
-
-          // 第二行：挂机玩家详情
-          if (afkPlayers.length > 0) {
-            const afkList = afkPlayers.map(p => `${p.name}(挂机${p.afkTime}分钟)`).join(' ');
-            messages.push(afkList);
-          }
-
-          // 第三行：离线玩家详情（显示最后在线时间）
-          if (offlineMembers.length > 0) {
-            const offlineList = offlineMembers.map(m => {
-              // 获取最后在线时间
-              const lastOnlineTime = this.getPlayerLastOnlineTime(serverId, m.steamId);
-              return `${m.name}(${lastOnlineTime})`;
-            }).join(' ');
-            messages.push(offlineList);
+          
+          if (offlinePlayers.length > 0) {
+            // 离线人数较多时，只显示人数，不列出名字
+            if (offlinePlayers.length > 5) {
+              parts.push(`离线(${offlinePlayers.length})`);
+            } else {
+              parts.push(`离线(${offlinePlayers.length}):${offlinePlayers.join(',')}`);
+            }
           }
 
-          return messages.join('\n');
+          return parts.join(' | ');
         } catch (error) {
           return cmd('team', 'error');
         }
