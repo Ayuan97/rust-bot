@@ -312,6 +312,118 @@ class CommandsService {
       }
     });
 
+    // !shop - 搜索售货机（不依赖 eventMonitorService）
+    const shopConfig = cmdConfig('shop') || {};
+    this.registerCommand('shop', {
+      description: shopConfig.desc || '搜索售货机物品',
+      usage: '!shop [物品名称]',
+      handler: async (serverId, args, context) => {
+        console.log(`🛒 [shop] 开始处理命令，参数:`, args);
+        try {
+          const markers = await this.rustPlusService.getMapMarkers(serverId);
+          console.log(`🛒 [shop] 获取到 ${markers.markers?.length || 0} 个地图标记`);
+          
+          const vendingMachines = markers.markers ? markers.markers.filter(m => m.type === 3) : [];
+          console.log(`🛒 [shop] 找到 ${vendingMachines.length} 个售货机`);
+
+          if (vendingMachines.length === 0) {
+            console.log(`🛒 [shop] 没有售货机，返回 empty`);
+            return cmd('shop', 'empty');
+          }
+
+          const mapSize = this.rustPlusService.getMapSize(serverId);
+          console.log(`🛒 [shop] 地图大小: ${mapSize}`);
+          
+          const { getItemName, getItemShortName, isImportantItem, searchItems } = await import('../utils/item-info.js');
+          console.log(`🛒 [shop] 物品工具函数已加载`);
+
+          // 如果没有提供搜索参数，只显示售货机数量
+          if (args.length === 0) {
+            return cmd('shop', 'summary', { count: vendingMachines.length });
+          }
+
+          // 搜索指定物品 - 使用智能搜索功能
+          const searchTerm = args.join(' ');
+          console.log(`🔍 [shop] 搜索关键词: "${searchTerm}"`);
+          
+          const matchedItemIds = searchItems(searchTerm); // 获取所有匹配的物品ID
+          console.log(`🔍 [shop] 匹配到 ${matchedItemIds.length} 个物品ID`);
+          
+          // 如果没有找到匹配的物品ID，直接返回
+          if (matchedItemIds.length === 0) {
+            console.log(`❌ [shop] 未找到匹配物品`);
+            return cmd('shop', 'not_found', { item: searchTerm });
+          }
+
+          const foundItems = [];
+          const matchedItemIdsSet = new Set(matchedItemIds.map(id => String(id)));
+
+          for (const vm of vendingMachines) {
+            if (!vm.sellOrders || vm.sellOrders.length === 0) continue;
+
+            const position = formatPosition(vm.x, vm.y, mapSize);
+
+            for (const order of vm.sellOrders) {
+              // 检查这个售货机的物品ID是否在匹配列表中
+              if (matchedItemIdsSet.has(String(order.itemId))) {
+                foundItems.push({
+                  position,
+                  itemName: getItemName(order.itemId),
+                  itemId: order.itemId,
+                  quantity: order.quantity,
+                  stock: order.amountInStock,
+                  costPerItem: order.costPerItem,
+                  currencyId: order.currencyId
+                });
+              }
+            }
+          }
+
+          console.log(`✅ [shop] 在售货机中找到 ${foundItems.length} 个匹配物品`);
+          
+          if (foundItems.length === 0) {
+            console.log(`❌ [shop] 售货机中没有匹配物品`);
+            return cmd('shop', 'not_found', { item: searchTerm });
+          }
+
+          // 限制显示数量
+          const MAX_DISPLAY = 10;
+          const itemsToDisplay = foundItems.slice(0, MAX_DISPLAY);
+          const hasMore = foundItems.length > MAX_DISPLAY;
+
+          // 发送第一条消息：找到多少个
+          let summaryMessage = cmd('shop', 'found', { item: searchTerm, count: foundItems.length });
+          if (hasMore) {
+            summaryMessage += `（仅显示前${MAX_DISPLAY}个）`;
+          }
+          console.log(`📨 [shop] 发送汇总消息: ${summaryMessage}`);
+          await this.rustPlusService.sendTeamMessage(serverId, summaryMessage);
+
+          // 逐条发送每个物品信息（最多10个）
+          for (const item of itemsToDisplay) {
+            // 获取物品表情（如果找不到就用物品名称）
+            const itemShortName = getItemShortName(item.itemId);
+            const currencyShortName = getItemShortName(item.currencyId);
+
+            const itemDisplay = itemShortName !== 'unknown' ? `:${itemShortName}:` : getItemName(item.itemId);
+            const currencyDisplay = currencyShortName !== 'unknown' ? `:${currencyShortName}:` : getItemName(item.currencyId);
+
+            // 优化消息格式：位置 | 物品x数量 | 价格 | 库存
+            const message = `${item.position} | ${itemDisplay}x${item.quantity} | ${item.costPerItem}${currencyDisplay} | 库存${item.stock}`;
+            await this.rustPlusService.sendTeamMessage(serverId, message);
+            // 延迟100ms，避免消息发送过快
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+
+          return null; // 已经发送过消息，不需要返回
+        } catch (error) {
+          console.error('❌ !shop 命令执行失败:', error);
+          console.error('   错误堆栈:', error.stack);
+          return cmd('shop', 'error');
+        }
+      }
+    });
+
     // 只有在 eventMonitorService 可用时才注册事件命令
     if (this.eventMonitorService) {
       this.registerEventCommands();
@@ -625,118 +737,6 @@ class CommandsService {
           return messages.join('\n');
         } catch (error) {
           return cmd('history', 'error');
-        }
-      }
-    });
-
-    // !shop - 搜索售货机
-    const shopConfig = cmdConfig('shop') || {};
-    this.registerCommand('shop', {
-      description: shopConfig.desc || '搜索售货机物品',
-      usage: '!shop [物品名称]',
-      handler: async (serverId, args, context) => {
-        console.log(`🛒 [shop] 开始处理命令，参数:`, args);
-        try {
-          const markers = await this.rustPlusService.getMapMarkers(serverId);
-          console.log(`🛒 [shop] 获取到 ${markers.markers?.length || 0} 个地图标记`);
-          
-          const vendingMachines = markers.markers ? markers.markers.filter(m => m.type === 3) : [];
-          console.log(`🛒 [shop] 找到 ${vendingMachines.length} 个售货机`);
-
-          if (vendingMachines.length === 0) {
-            console.log(`🛒 [shop] 没有售货机，返回 empty`);
-            return cmd('shop', 'empty');
-          }
-
-          const mapSize = this.rustPlusService.getMapSize(serverId);
-          console.log(`🛒 [shop] 地图大小: ${mapSize}`);
-          
-          const { getItemName, getItemShortName, isImportantItem, searchItems } = await import('../utils/item-info.js');
-          console.log(`🛒 [shop] 物品工具函数已加载`);
-
-          // 如果没有提供搜索参数，只显示售货机数量
-          if (args.length === 0) {
-            return cmd('shop', 'summary', { count: vendingMachines.length });
-          }
-
-          // 搜索指定物品 - 使用智能搜索功能
-          const searchTerm = args.join(' ');
-          console.log(`🔍 [shop] 搜索关键词: "${searchTerm}"`);
-          
-          const matchedItemIds = searchItems(searchTerm); // 获取所有匹配的物品ID
-          console.log(`🔍 [shop] 匹配到 ${matchedItemIds.length} 个物品ID`);
-          
-          // 如果没有找到匹配的物品ID，直接返回
-          if (matchedItemIds.length === 0) {
-            console.log(`❌ [shop] 未找到匹配物品`);
-            return cmd('shop', 'not_found', { item: searchTerm });
-          }
-
-          const foundItems = [];
-          const matchedItemIdsSet = new Set(matchedItemIds.map(id => String(id)));
-
-          for (const vm of vendingMachines) {
-            if (!vm.sellOrders || vm.sellOrders.length === 0) continue;
-
-            const position = formatPosition(vm.x, vm.y, mapSize);
-
-            for (const order of vm.sellOrders) {
-              // 检查这个售货机的物品ID是否在匹配列表中
-              if (matchedItemIdsSet.has(String(order.itemId))) {
-                foundItems.push({
-                  position,
-                  itemName: getItemName(order.itemId),
-                  itemId: order.itemId,
-                  quantity: order.quantity,
-                  stock: order.amountInStock,
-                  costPerItem: order.costPerItem,
-                  currencyId: order.currencyId
-                });
-              }
-            }
-          }
-
-          console.log(`✅ [shop] 在售货机中找到 ${foundItems.length} 个匹配物品`);
-          
-          if (foundItems.length === 0) {
-            console.log(`❌ [shop] 售货机中没有匹配物品`);
-            return cmd('shop', 'not_found', { item: searchTerm });
-          }
-
-          // 限制显示数量
-          const MAX_DISPLAY = 10;
-          const itemsToDisplay = foundItems.slice(0, MAX_DISPLAY);
-          const hasMore = foundItems.length > MAX_DISPLAY;
-
-          // 发送第一条消息：找到多少个
-          let summaryMessage = cmd('shop', 'found', { item: searchTerm, count: foundItems.length });
-          if (hasMore) {
-            summaryMessage += `（仅显示前${MAX_DISPLAY}个）`;
-          }
-          console.log(`📨 [shop] 发送汇总消息: ${summaryMessage}`);
-          await this.rustPlusService.sendTeamMessage(serverId, summaryMessage);
-
-          // 逐条发送每个物品信息（最多10个）
-          for (const item of itemsToDisplay) {
-            // 获取物品表情（如果找不到就用物品名称）
-            const itemShortName = getItemShortName(item.itemId);
-            const currencyShortName = getItemShortName(item.currencyId);
-
-            const itemDisplay = itemShortName !== 'unknown' ? `:${itemShortName}:` : getItemName(item.itemId);
-            const currencyDisplay = currencyShortName !== 'unknown' ? `:${currencyShortName}:` : getItemName(item.currencyId);
-
-            // 优化消息格式：位置 | 物品x数量 | 价格 | 库存
-            const message = `${item.position} | ${itemDisplay}x${item.quantity} | ${item.costPerItem}${currencyDisplay} | 库存${item.stock}`;
-            await this.rustPlusService.sendTeamMessage(serverId, message);
-            // 延迟100ms，避免消息发送过快
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-
-          return null; // 已经发送过消息，不需要返回
-        } catch (error) {
-          console.error('❌ !shop 命令执行失败:', error);
-          console.error('   错误堆栈:', error.stack);
-          return cmd('shop', 'error');
         }
       }
     });
