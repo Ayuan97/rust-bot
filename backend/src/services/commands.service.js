@@ -315,19 +315,19 @@ class CommandsService {
             }
           });
 
-          // 构建消息（单行，用 | 分隔）
-          const parts = [`队伍${onlineMembers.length}/${teamInfo.members.length}`];
+          // 构建消息（单行，用 | 分隔，数字用括号）
+          const parts = [`队伍(${onlineMembers.length}/${teamInfo.members.length})`];
           
           if (alive.length > 0) {
-            parts.push(`存活${alive.length}:${alive.join(',')}`);
+            parts.push(`存活(${alive.length}):${alive.join(',')}`);
           }
           
           if (dead.length > 0) {
-            parts.push(`死亡${dead.length}:${dead.join(',')}`);
+            parts.push(`死亡(${dead.length}):${dead.join(',')}`);
           }
           
           if (afk.length > 0) {
-            parts.push(`挂机${afk.length}:${afk.join(',')}`);
+            parts.push(`挂机(${afk.length}):${afk.join(',')}`);
           }
 
           return parts.join(' | ');
