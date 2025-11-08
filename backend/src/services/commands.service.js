@@ -1116,6 +1116,9 @@ class CommandsService {
 
         console.log(`[AFK检测] 服务器 ${serverId} 队员数: ${teamInfo.members.length}`);
 
+        // 手动触发队伍状态检测（检测死亡/复活等事件）
+        this.rustPlusService.handleTeamChanged(serverId, { teamInfo });
+
         // 获取地图大小（用于坐标转换）
         const mapSize = this.rustPlusService.getMapSize(serverId);
         console.log(`[AFK检测] 地图大小: ${mapSize}`);
