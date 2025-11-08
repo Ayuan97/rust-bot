@@ -51,11 +51,13 @@ class RustPlusService extends EventEmitter {
         // 主动获取地图信息以缓存地图大小
         try {
           const mapInfo = await this.getMap(serverId);
-          if (mapInfo) {
+          if (mapInfo && mapInfo.width && mapInfo.height) {
             console.log(`🗺️  已缓存地图大小: ${mapInfo.width}x${mapInfo.height}`);
+          } else {
+            console.warn(`⚠️  地图信息不完整，将使用默认值`);
           }
         } catch (err) {
-          console.warn(`⚠️  无法获取地图信息: ${err.message}`);
+          console.warn(`⚠️  无法获取地图信息: ${err.message}，将使用默认值 4500`);
         }
       });
 
@@ -167,12 +169,51 @@ class RustPlusService extends EventEmitter {
     // 优先使用缓存
     const cached = this.mapCache.get(serverId);
     if (cached) {
+      // 检查缓存是否过期（24小时），防止服务器擦除后使用旧数据
+      const CACHE_EXPIRE_TIME = 24 * 60 * 60 * 1000; // 24小时
+      const now = Date.now();
+      
+      if (now - cached.lastUpdate > CACHE_EXPIRE_TIME) {
+        console.log(`⚠️  地图缓存已过期 (${serverId})，将在下次调用 getMap 时更新`);
+        // 缓存过期，但仍返回缓存值（不阻塞当前操作）
+        // 后台异步刷新
+        this.refreshMapCacheInBackground(serverId);
+      }
+      
       // 使用地图的宽度作为地图大小（Rust地图通常是正方形）
       return cached.width || 4500;
     }
     
-    // 如果没有缓存，返回默认值（标准地图大小）
+    // 如果没有缓存，尝试异步获取（不阻塞）
+    if (this.connections.has(serverId)) {
+      this.refreshMapCacheInBackground(serverId);
+    }
+    
+    // 返回默认值（标准地图大小）
     return 4500;
+  }
+
+  /**
+   * 后台异步刷新地图缓存
+   * @param {string} serverId - 服务器ID
+   */
+  async refreshMapCacheInBackground(serverId) {
+    // 防止重复刷新
+    const refreshKey = `refreshing_${serverId}`;
+    if (this[refreshKey]) {
+      return;
+    }
+    
+    this[refreshKey] = true;
+    
+    try {
+      await this.getMap(serverId);
+      console.log(`✅ 地图缓存已刷新 (${serverId})`);
+    } catch (error) {
+      console.warn(`⚠️  刷新地图缓存失败 (${serverId}):`, error.message);
+    } finally {
+      delete this[refreshKey];
+    }
   }
 
   /**

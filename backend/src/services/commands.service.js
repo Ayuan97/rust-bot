@@ -635,16 +635,24 @@ class CommandsService {
       description: shopConfig.desc || '搜索售货机物品',
       usage: '!shop [物品名称]',
       handler: async (serverId, args, context) => {
+        console.log(`🛒 [shop] 开始处理命令，参数:`, args);
         try {
           const markers = await this.rustPlusService.getMapMarkers(serverId);
+          console.log(`🛒 [shop] 获取到 ${markers.markers?.length || 0} 个地图标记`);
+          
           const vendingMachines = markers.markers ? markers.markers.filter(m => m.type === 3) : [];
+          console.log(`🛒 [shop] 找到 ${vendingMachines.length} 个售货机`);
 
           if (vendingMachines.length === 0) {
+            console.log(`🛒 [shop] 没有售货机，返回 empty`);
             return cmd('shop', 'empty');
           }
 
           const mapSize = this.rustPlusService.getMapSize(serverId);
+          console.log(`🛒 [shop] 地图大小: ${mapSize}`);
+          
           const { getItemName, getItemShortName, isImportantItem, searchItems } = await import('../utils/item-info.js');
+          console.log(`🛒 [shop] 物品工具函数已加载`);
 
           // 如果没有提供搜索参数，只显示售货机数量
           if (args.length === 0) {
