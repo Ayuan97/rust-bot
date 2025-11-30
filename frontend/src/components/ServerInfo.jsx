@@ -215,21 +215,21 @@ function ServerInfo({ serverId }) {
 
       {/* 连接信息 */}
       {serverConfig && (
-        <div className="card">
-          <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
-            <FaServer className="text-rust-orange" />
-            连接信息
+        <div className="panel p-4">
+          <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <FaServer className="text-rust-accent" />
+            Connection Info
           </h3>
-          <div className="flex items-center justify-between p-3 bg-rust-gray rounded-lg">
+          <div className="flex items-center justify-between p-3 bg-dark-900/50 border border-black/20 rounded-lg group">
             <div>
-              <p className="text-sm text-gray-400">服务器地址</p>
-              <p className="font-mono font-semibold">{serverConfig.ip}:{serverConfig.port}</p>
+              <p className="text-xs text-gray-500 mb-1">Server Address</p>
+              <p className="font-mono font-bold text-gray-200">{serverConfig.ip}:{serverConfig.port}</p>
             </div>
             <button
               onClick={() => copyToClipboard(`client.connect ${serverConfig.ip}:${serverConfig.port}`)}
-              className="btn btn-sm btn-secondary"
+              className="btn btn-sm btn-secondary opacity-0 group-hover:opacity-100 transition-opacity"
             >
-              <FaCopy />
+              <FaCopy /> Connect
             </button>
           </div>
         </div>
@@ -237,51 +237,51 @@ function ServerInfo({ serverId }) {
 
       {/* 实时状态 */}
       {serverInfo && (
-        <div className="card">
-          <h3 className="text-lg font-bold mb-3">实时状态</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex items-center gap-3 p-3 bg-rust-gray rounded-lg">
-              <FaUsers className="text-rust-orange text-2xl" />
-              <div>
-                <p className="text-sm text-gray-400">在线玩家</p>
-                <p className="text-xl font-semibold">
-                  {serverInfo.players} / {serverInfo.maxPlayers}
-                </p>
+        <div className="panel p-4">
+          <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Live Status</h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="p-3 bg-dark-900/30 rounded-lg border border-white/5">
+              <div className="flex items-center gap-2 mb-2">
+                <FaUsers className="text-rust-accent" />
+                <span className="text-xs text-gray-500">Players</span>
               </div>
+              <p className="text-xl font-bold text-white">
+                {serverInfo.players} <span className="text-sm text-gray-500">/ {serverInfo.maxPlayers}</span>
+              </p>
             </div>
 
-            <div className="flex items-center gap-3 p-3 bg-rust-gray rounded-lg">
-              <FaMap className="text-rust-orange text-2xl" />
-              <div>
-                <p className="text-sm text-gray-400">地图</p>
-                <p className="text-lg font-semibold truncate">{serverInfo.map}</p>
+            <div className="p-3 bg-dark-900/30 rounded-lg border border-white/5">
+              <div className="flex items-center gap-2 mb-2">
+                <FaMap className="text-blue-500" />
+                <span className="text-xs text-gray-500">Map</span>
               </div>
+              <p className="text-lg font-bold text-white truncate" title={serverInfo.map}>{serverInfo.map}</p>
             </div>
 
             {timeInfo && (
               <>
-                <div className="flex items-center gap-3 p-3 bg-rust-gray rounded-lg">
-                  {isDaytime(timeInfo.time, timeInfo.sunrise, timeInfo.sunset) ? (
-                    <FaSun className="text-yellow-400 text-2xl" />
-                  ) : (
-                    <FaMoon className="text-blue-400 text-2xl" />
-                  )}
-                  <div>
-                    <p className="text-sm text-gray-400">游戏时间</p>
-                    <p className="text-xl font-semibold">
-                      {formatTime(timeInfo.time)}
-                    </p>
+                <div className="p-3 bg-dark-900/30 rounded-lg border border-white/5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <FaClock className="text-gray-400" />
+                    <span className="text-xs text-gray-500">Time</span>
                   </div>
+                  <p className="text-xl font-bold text-white font-mono">
+                    {formatTime(timeInfo.time)}
+                  </p>
                 </div>
-
-                <div className="flex items-center gap-3 p-3 bg-rust-gray rounded-lg">
-                  <FaClock className="text-rust-orange text-2xl" />
-                  <div>
-                    <p className="text-sm text-gray-400">昼夜状态</p>
-                    <p className="text-lg font-semibold">
-                      {isDaytime(timeInfo.time, timeInfo.sunrise, timeInfo.sunset) ? '白天' : '夜晚'}
-                    </p>
+                
+                 <div className="p-3 bg-dark-900/30 rounded-lg border border-white/5">
+                  <div className="flex items-center gap-2 mb-2">
+                     {isDaytime(timeInfo.time, timeInfo.sunrise, timeInfo.sunset) ? (
+                    <FaSun className="text-yellow-500" />
+                  ) : (
+                    <FaMoon className="text-purple-400" />
+                  )}
+                    <span className="text-xs text-gray-500">Cycle</span>
                   </div>
+                  <p className="text-lg font-bold text-white">
+                    {isDaytime(timeInfo.time, timeInfo.sunrise, timeInfo.sunset) ? 'Day' : 'Night'}
+                  </p>
                 </div>
               </>
             )}
@@ -290,7 +290,7 @@ function ServerInfo({ serverId }) {
       )}
 
       {/* 地图信息 */}
-      <div className="card">
+      <div className="panel p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-bold flex items-center gap-2">
             <FaMapMarkedAlt className="text-rust-orange" />
@@ -322,22 +322,22 @@ function ServerInfo({ serverId }) {
         {/* 地图信息 */}
         <div className="grid grid-cols-2 gap-2 mb-3">
           {serverInfo?.map && (
-            <div className="p-3 bg-rust-gray rounded-lg">
-              <p className="text-sm text-gray-400">地图名称</p>
-              <p className="font-semibold">{serverInfo.map}</p>
+            <div className="p-3 bg-dark-900/30 rounded-lg border border-white/5">
+              <p className="text-xs text-gray-500">Map Name</p>
+              <p className="font-semibold text-gray-200">{serverInfo.map}</p>
             </div>
           )}
           {mapData?.size && (
-            <div className="p-3 bg-rust-gray rounded-lg">
-              <p className="text-sm text-gray-400">地图大小</p>
-              <p className="font-semibold">{mapData.size}m</p>
+            <div className="p-3 bg-dark-900/30 rounded-lg border border-white/5">
+              <p className="text-xs text-gray-500">Map Size</p>
+              <p className="font-semibold text-gray-200">{mapData.size}m</p>
             </div>
           )}
           {mapData?.seed && (
-            <div className="p-3 bg-rust-gray rounded-lg col-span-2">
-              <p className="text-sm text-gray-400">地图种子</p>
+            <div className="p-3 bg-dark-900/30 rounded-lg border border-white/5 col-span-2">
+              <p className="text-xs text-gray-500">Seed</p>
               <div className="flex items-center justify-between">
-                <p className="font-semibold font-mono">{mapData.seed}</p>
+                <p className="font-semibold font-mono text-gray-200">{mapData.seed}</p>
                 <button
                   onClick={() => copyToClipboard(mapData.seed.toString())}
                   className="btn btn-sm btn-secondary"
@@ -355,7 +355,7 @@ function ServerInfo({ serverId }) {
             <img
               src={mapData.imageUrl}
               alt="Server Map"
-              className="w-full rounded-lg border-2 border-rust-gray"
+              className="w-full rounded-lg border border-white/10"
             />
           </div>
         )}
@@ -367,37 +367,40 @@ function ServerInfo({ serverId }) {
 
       {/* 队伍信息 */}
       {teamInfo && teamInfo.members && teamInfo.members.length > 0 && (
-        <div className="card">
-          <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
-            <FaUsers className="text-rust-orange" />
-            队伍成员 ({teamInfo.members.length})
+        <div className="panel p-4">
+          <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <FaUsers className="text-rust-accent" />
+            Team Members ({teamInfo.members.length})
           </h3>
           <div className="space-y-2">
             {teamInfo.members.map((member) => (
               <div
                 key={member.steamId}
-                className="p-3 bg-rust-gray rounded-lg flex items-center justify-between hover:bg-rust-gray/80 transition-colors"
+                className="p-3 bg-dark-900/30 border border-white/5 rounded-lg flex items-center justify-between hover:bg-white/5 transition-colors"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{member.name}</p>
-                  <p className="text-xs text-gray-400 truncate">
-                    Steam ID: {member.steamId}
+                  <p className="font-medium truncate text-gray-200">{member.name}</p>
+                  <p className="text-xs text-gray-500 truncate">
+                    ID: {member.steamId}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
                   {member.isAlive !== undefined && (
-                    <span className={`text-xs px-2 py-1 rounded ${member.isAlive ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'}`}>
-                      {member.isAlive ? '存活' : '死亡'}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                        member.isAlive 
+                        ? 'bg-green-500/10 text-green-400 border-green-500/20' 
+                        : 'bg-red-500/10 text-red-400 border-red-500/20'
+                    }`}>
+                      {member.isAlive ? 'Alive' : 'Dead'}
                     </span>
                   )}
                   <div className="flex items-center gap-2">
-                    <span
-                      className={`status-dot ${
-                        member.isOnline ? 'status-online' : 'status-offline'
-                      }`}
+                    <div className={`w-2 h-2 rounded-full ${
+                        member.isOnline ? 'bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)]' : 'bg-dark-600'
+                      }`} 
                     />
-                    <span className="text-sm text-gray-400">
-                      {member.isOnline ? '在线' : '离线'}
+                    <span className="text-xs text-gray-500">
+                      {member.isOnline ? 'Online' : 'Offline'}
                     </span>
                   </div>
                 </div>
@@ -409,19 +412,19 @@ function ServerInfo({ serverId }) {
 
       {/* 在线玩家列表 (Battlemetrics) */}
       {bmInfo && bmInfo.onlinePlayers && bmInfo.onlinePlayers.length > 0 && (
-        <div className="card">
-          <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
-            <FaUsers className="text-rust-orange" />
-            在线玩家 ({bmInfo.onlinePlayers.length})
+        <div className="panel p-4">
+          <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <FaUsers className="text-rust-accent" />
+            Online Players ({bmInfo.onlinePlayers.length})
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-96 overflow-y-auto">
             {bmInfo.onlinePlayers.map((player) => (
               <div
                 key={player.id}
-                className="p-2 bg-rust-gray rounded-lg hover:bg-rust-gray/80 transition-colors"
+                className="p-2 bg-dark-900/30 border border-white/5 rounded-lg hover:bg-white/5 transition-colors"
               >
-                <p className="font-medium text-sm truncate">{player.name}</p>
-                <p className="text-xs text-gray-500">ID: {player.id}</p>
+                <p className="font-medium text-xs truncate text-gray-300">{player.name}</p>
+                <p className="text-[10px] text-gray-600">ID: {player.id}</p>
               </div>
             ))}
           </div>

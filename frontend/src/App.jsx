@@ -1,8 +1,13 @@
 import { useState, useEffect } from 'react';
-import { FaPlus, FaServer, FaQrcode, FaInfoCircle, FaComments, FaGamepad, FaClock, FaHistory } from 'react-icons/fa';
+import { 
+  FaPlus, FaServer, FaQrcode, FaInfoCircle, FaComments, 
+  FaGamepad, FaClock, FaHistory, FaCog, FaSignOutAlt, FaPlug 
+} from 'react-icons/fa';
 import socketService from './services/socket';
 import { getServers, addServer as apiAddServer, deleteServer as apiDeleteServer } from './services/api';
-import ServerCard from './components/ServerCard';
+
+// Components
+import ServerSidebarItem from './components/ServerSidebarItem';
 import ChatPanel from './components/ChatPanel';
 import DeviceControl from './components/DeviceControl';
 import ServerInfo from './components/ServerInfo';
@@ -19,19 +24,15 @@ function App() {
   const [showPairingPanel, setShowPairingPanel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('info'); // 'info', 'chat', 'devices', 'events', 'history'
+  const [connectionLoading, setConnectionLoading] = useState(false);
 
+  // --- Initial Setup & Socket Listeners ---
   useEffect(() => {
-    // 初始化 WebSocket 连接
     socketService.connect();
-
-    // 加载服务器列表
     fetchServers();
 
-    // 监听服务器连接状态变化
     socketService.on('server:connected', handleServerConnected);
     socketService.on('server:disconnected', handleServerDisconnected);
-
-    // 监听服务器配对事件
     socketService.on('server:paired', handleServerPaired);
 
     return () => {
@@ -42,48 +43,42 @@ function App() {
     };
   }, []);
 
+  // --- Data Fetching ---
   const fetchServers = async () => {
     setLoading(true);
     try {
       const response = await getServers();
-      setServers(response.data.servers);
+      const serverList = response.data.servers;
+      setServers(serverList);
 
-      // 如果有服务器且没有选中的，自动选中第一个
-      if (response.data.servers.length > 0 && !activeServer) {
-        setActiveServer(response.data.servers[0]);
+      // Auto-select first server if none selected
+      if (serverList.length > 0 && !activeServer) {
+        setActiveServer(serverList[0]);
       }
     } catch (error) {
-      console.error('获取服务器列表失败:', error);
+      console.error('Failed to fetch servers:', error);
     } finally {
       setLoading(false);
     }
   };
 
+  // --- Event Handlers ---
   const handleServerConnected = (data) => {
-    setServers((prev) =>
-      prev.map((server) =>
-        server.id === data.serverId
-          ? { ...server, connected: true }
-          : server
-      )
-    );
+    setServers((prev) => prev.map((s) => s.id === data.serverId ? { ...s, connected: true } : s));
+    if (activeServer?.id === data.serverId) {
+        setActiveServer(prev => ({ ...prev, connected: true }));
+    }
   };
 
   const handleServerDisconnected = (data) => {
-    setServers((prev) =>
-      prev.map((server) =>
-        server.id === data.serverId
-          ? { ...server, connected: false }
-          : server
-      )
-    );
+    setServers((prev) => prev.map((s) => s.id === data.serverId ? { ...s, connected: false } : s));
+    if (activeServer?.id === data.serverId) {
+        setActiveServer(prev => ({ ...prev, connected: false }));
+    }
   };
 
   const handleServerPaired = (serverInfo) => {
-    console.log('收到配对的服务器:', serverInfo);
-    // 刷新服务器列表
     fetchServers();
-    // 关闭配对面板
     setShowPairingPanel(false);
   };
 
@@ -94,217 +89,251 @@ function App() {
 
   const handleDeleteServer = async (serverId) => {
     if (!confirm('确定要删除这个服务器吗?')) return;
-
     try {
-      console.log(`🗑️ 准备删除服务器: ${serverId}`);
-      const response = await apiDeleteServer(serverId);
-      console.log(`✅ 删除服务器响应:`, response.data);
-
-      if (activeServer?.id === serverId) {
-        setActiveServer(null);
-      }
+      await apiDeleteServer(serverId);
+      if (activeServer?.id === serverId) setActiveServer(null);
       fetchServers();
     } catch (error) {
-      console.error('❌ 删除服务器失败:', error);
-      console.error('   错误详情:', error.response?.data);
-      console.error('   状态码:', error.response?.status);
+      alert('删除失败');
+    }
+  };
 
-      const errorMessage = error.response?.data?.error || error.message || '未知错误';
-      alert('删除失败: ' + errorMessage);
+  const handleConnect = async (server) => {
+    setConnectionLoading(true);
+    try {
+      await socketService.connectToServer({
+        serverId: server.id,
+        ip: server.ip,
+        port: server.port,
+        playerId: server.player_id,
+        playerToken: server.player_token
+      });
+    } catch (error) {
+      alert('连接失败: ' + error.message);
+    } finally {
+      setConnectionLoading(false);
+    }
+  };
+
+  const handleDisconnect = async (server) => {
+    try {
+      await socketService.disconnectFromServer(server.id);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  // --- Render Helpers ---
+  const renderContent = () => {
+    if (!activeServer) return <EmptyState />;
+    if (!activeServer.connected) return <DisconnectedState server={activeServer} onConnect={() => handleConnect(activeServer)} loading={connectionLoading} onDelete={() => handleDeleteServer(activeServer.id)} />;
+
+    switch (activeTab) {
+      case 'info': return <ServerInfo serverId={activeServer.id} />;
+      case 'chat': return <ChatPanel serverId={activeServer.id} />;
+      case 'devices': return <DeviceControl serverId={activeServer.id} />;
+      case 'events': return <EventsPanel serverId={activeServer.id} />;
+      case 'history': return <EventHistoryPanel serverId={activeServer.id} />;
+      default: return <ServerInfo serverId={activeServer.id} />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-rust-darker">
-      {/* 顶部导航栏 */}
-      <header className="bg-rust-dark border-b border-rust-gray">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <FaServer className="text-rust-orange text-3xl" />
-              <h1 className="text-2xl font-bold">Rust+ Dashboard</h1>
+    <div className="flex h-screen bg-dark-900 text-gray-200 font-sans overflow-hidden">
+      
+      {/* --- Sidebar --- */}
+      <aside className="w-72 flex flex-col border-r border-white/5 bg-dark-900/50 backdrop-blur-sm">
+        {/* Sidebar Header */}
+        <div className="p-5 border-b border-white/5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rust-accent to-orange-700 flex items-center justify-center shadow-lg shadow-rust-accent/20">
+              <FaServer className="text-white text-lg" />
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                className="btn btn-secondary flex items-center gap-2"
-                onClick={() => setShowPairingPanel(!showPairingPanel)}
-              >
-                <FaQrcode />
-                {showPairingPanel ? '关闭配对' : '配对服务器'}
-              </button>
-              <button
-                className="btn btn-primary flex items-center gap-2"
-                onClick={() => setShowAddModal(true)}
-              >
-                <FaPlus />
-                手动添加
-              </button>
+            <div>
+              <h1 className="font-bold text-lg tracking-tight text-white">Rust+ Bot</h1>
+              <p className="text-xs text-gray-500 font-medium">Command Center</p>
             </div>
           </div>
         </div>
-      </header>
 
-      {/* 主内容区域 */}
-      <main className="container mx-auto px-4 py-6">
-        {/* 配对面板 */}
-        {showPairingPanel && (
-          <div className="mb-6 max-w-2xl mx-auto">
-            <PairingPanel onServerPaired={handleServerPaired} />
-          </div>
-        )}
+        {/* Server List */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
+          <div className="text-xs font-bold text-gray-600 uppercase tracking-wider px-3 mb-2 mt-2">Servers</div>
+          {loading ? (
+            <div className="p-4 text-center text-gray-500 text-sm">加载中...</div>
+          ) : servers.map(server => (
+            <ServerSidebarItem 
+              key={server.id} 
+              server={server} 
+              isActive={activeServer?.id === server.id} 
+              onSelect={setActiveServer}
+            />
+          ))}
+          
+          {servers.length === 0 && !loading && (
+             <div className="p-4 text-center border-2 border-dashed border-dark-700 rounded-xl m-2">
+                <p className="text-sm text-gray-500 mb-2">无服务器</p>
+                <button onClick={() => setShowPairingPanel(true)} className="text-rust-accent text-xs font-bold hover:underline">去配对</button>
+             </div>
+          )}
+        </div>
 
-        {loading ? (
-          <div className="text-center text-gray-400 py-20">
-            加载中...
-          </div>
-        ) : servers.length === 0 ? (
-          <div className="text-center py-20">
-            <FaServer className="text-6xl text-gray-600 mx-auto mb-4" />
-            <p className="text-xl text-gray-400 mb-6">
-              还没有添加服务器
-            </p>
-            <div className="flex gap-4 justify-center">
-              <button
-                className="btn btn-primary inline-flex items-center gap-2"
+        {/* Sidebar Footer */}
+        <div className="p-3 border-t border-white/5 bg-dark-800/30 space-y-2">
+            <button 
                 onClick={() => setShowPairingPanel(true)}
-              >
-                <FaQrcode />
-                游戏内配对
-              </button>
-              <button
-                className="btn btn-secondary inline-flex items-center gap-2"
+                className="w-full btn btn-secondary text-sm justify-start"
+            >
+                <FaQrcode className="text-gray-400" /> 配对新服务器
+            </button>
+            <button 
                 onClick={() => setShowAddModal(true)}
-              >
-                <FaPlus />
-                手动添加
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* 服务器列表区域 */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <FaServer className="text-rust-orange" />
-                  我的服务器
+                className="w-full btn btn-secondary text-sm justify-start"
+            >
+                <FaPlus className="text-gray-400" /> 手动添加
+            </button>
+        </div>
+      </aside>
+
+      {/* --- Main Content --- */}
+      <main className="flex-1 flex flex-col min-w-0 bg-gradient-to-br from-dark-900 via-dark-900 to-dark-800">
+        {activeServer ? (
+          <>
+            {/* Top Bar */}
+            <header className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-dark-900/80 backdrop-blur-md z-10">
+              <div className="flex items-center gap-4">
+                <h2 className="text-xl font-bold text-white flex items-center gap-3">
+                  {activeServer.name}
+                  {activeServer.connected ? (
+                    <span className="badge bg-green-500/10 text-green-400 border border-green-500/20">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse mr-1.5"/> Online
+                    </span>
+                  ) : (
+                    <span className="badge bg-dark-700 text-gray-400 border border-dark-600">
+                      Offline
+                    </span>
+                  )}
                 </h2>
-                <span className="text-sm text-gray-400 bg-rust-gray px-3 py-1.5 rounded-full">
-                  共 {servers.length} 个服务器
-                </span>
               </div>
-              <div className="space-y-3">
-                {servers.map((server) => (
-                  <ServerCard
-                    key={server.id}
-                    server={server}
-                    onDelete={handleDeleteServer}
-                    onSelect={setActiveServer}
-                    isActive={activeServer?.id === server.id}
-                  />
-                ))}
+              
+              <div className="flex items-center gap-3">
+                {activeServer.connected && (
+                    <button 
+                        onClick={() => handleDisconnect(activeServer)}
+                        className="btn btn-secondary text-xs h-8"
+                    >
+                        <FaSignOutAlt /> 断开
+                    </button>
+                )}
+                {!activeServer.connected && (
+                    <button 
+                        onClick={() => handleDeleteServer(activeServer.id)}
+                        className="btn btn-danger text-xs h-8"
+                    >
+                        删除
+                    </button>
+                )}
               </div>
+            </header>
+
+            {/* Tabs (Only if connected) */}
+            {activeServer.connected && (
+              <div className="px-6 py-2 border-b border-white/5 flex gap-1 bg-dark-900/50 overflow-x-auto">
+                 <TabButton id="info" label="信息概览" icon={<FaInfoCircle />} active={activeTab} onClick={setActiveTab} />
+                 <TabButton id="chat" label="队伍聊天" icon={<FaComments />} active={activeTab} onClick={setActiveTab} />
+                 <TabButton id="devices" label="智能设备" icon={<FaGamepad />} active={activeTab} onClick={setActiveTab} />
+                 <TabButton id="events" label="实时事件" icon={<FaClock />} active={activeTab} onClick={setActiveTab} />
+                 <TabButton id="history" label="历史记录" icon={<FaHistory />} active={activeTab} onClick={setActiveTab} />
+              </div>
+            )}
+
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto p-6 relative">
+               {renderContent()}
+               {/* Global Notifications */}
+               {activeServer.connected && <PlayerNotifications serverId={activeServer.id} />}
             </div>
-
-            {/* 控制面板区域（仅在有激活服务器且已连接时显示） */}
-            {activeServer ? (
-              activeServer.connected ? (
-                <div>
-                  {/* 标签页导航 */}
-                  <div className="bg-rust-dark rounded-lg p-2 mb-6 flex gap-2 overflow-x-auto">
-                    <button
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
-                        activeTab === 'info'
-                          ? 'bg-rust-orange text-white'
-                          : 'text-gray-400 hover:bg-rust-gray'
-                      }`}
-                      onClick={() => setActiveTab('info')}
-                    >
-                      <FaInfoCircle />
-                      服务器信息
-                    </button>
-                    <button
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
-                        activeTab === 'chat'
-                          ? 'bg-rust-orange text-white'
-                          : 'text-gray-400 hover:bg-rust-gray'
-                      }`}
-                      onClick={() => setActiveTab('chat')}
-                    >
-                      <FaComments />
-                      队伍聊天
-                    </button>
-                    <button
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
-                        activeTab === 'devices'
-                          ? 'bg-rust-orange text-white'
-                          : 'text-gray-400 hover:bg-rust-gray'
-                      }`}
-                      onClick={() => setActiveTab('devices')}
-                    >
-                      <FaGamepad />
-                      设备控制
-                    </button>
-                    <button
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
-                        activeTab === 'events'
-                          ? 'bg-rust-orange text-white'
-                          : 'text-gray-400 hover:bg-rust-gray'
-                      }`}
-                      onClick={() => setActiveTab('events')}
-                    >
-                      <FaClock />
-                      活跃事件
-                    </button>
-                    <button
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
-                        activeTab === 'history'
-                          ? 'bg-rust-orange text-white'
-                          : 'text-gray-400 hover:bg-rust-gray'
-                      }`}
-                      onClick={() => setActiveTab('history')}
-                    >
-                      <FaHistory />
-                      事件历史
-                    </button>
-                  </div>
-
-                  {/* 标签页内容 */}
-                  <div className="h-[600px]">
-                    {activeTab === 'info' && <ServerInfo serverId={activeServer.id} />}
-                    {activeTab === 'chat' && <ChatPanel serverId={activeServer.id} />}
-                    {activeTab === 'devices' && <DeviceControl serverId={activeServer.id} />}
-                    {activeTab === 'events' && <EventsPanel serverId={activeServer.id} />}
-                    {activeTab === 'history' && <EventHistoryPanel serverId={activeServer.id} />}
-                  </div>
-
-                  {/* 玩家动态通知（悬浮） */}
-                  <PlayerNotifications serverId={activeServer.id} />
-                </div>
-              ) : (
-                <div className="bg-rust-dark rounded-lg p-12 text-center">
-                  <FaServer className="text-6xl text-gray-600 mx-auto mb-4" />
-                  <p className="text-xl text-gray-400 mb-4">
-                    服务器未连接
-                  </p>
-                  <p className="text-gray-500">
-                    请点击上方服务器卡片中的"连接"按钮连接到服务器
-                  </p>
-                </div>
-              )
-            ) : null}
-          </div>
+          </>
+        ) : (
+          <EmptyState />
         )}
       </main>
 
-      {/* 添加服务器模态框 */}
+      {/* Modals */}
       <AddServerModal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         onAdd={handleAddServer}
       />
+
+      {showPairingPanel && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-dark-800 rounded-2xl w-full max-w-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="p-4 border-b border-white/10 flex justify-between items-center bg-dark-900/50">
+                    <h3 className="font-bold text-lg">配对服务器</h3>
+                    <button onClick={() => setShowPairingPanel(false)} className="text-gray-400 hover:text-white">✕</button>
+                </div>
+                <div className="overflow-y-auto p-0">
+                    <PairingPanel onServerPaired={handleServerPaired} />
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 }
+
+// Sub-components for cleaner App.jsx
+const TabButton = ({ id, label, icon, active, onClick }) => (
+  <button
+    onClick={() => onClick(id)}
+    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+      active === id
+        ? 'bg-rust-accent text-white shadow-lg shadow-rust-accent/20'
+        : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+    }`}
+  >
+    {icon} {label}
+  </button>
+);
+
+const EmptyState = () => (
+  <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
+    <div className="w-20 h-20 rounded-2xl bg-dark-800 flex items-center justify-center mb-6 border border-dark-700">
+        <FaServer className="text-4xl text-dark-600" />
+    </div>
+    <h3 className="text-xl font-bold text-gray-300 mb-2">未选择服务器</h3>
+    <p>请在左侧列表选择一个服务器或添加新服务器</p>
+  </div>
+);
+
+const DisconnectedState = ({ server, onConnect, loading, onDelete }) => (
+  <div className="flex-1 flex flex-col items-center justify-center">
+    <div className="max-w-md w-full bg-dark-800/50 backdrop-blur border border-white/5 rounded-2xl p-8 text-center shadow-2xl">
+        <div className="w-16 h-16 mx-auto rounded-full bg-dark-700 flex items-center justify-center mb-6">
+            <FaPlug className="text-2xl text-gray-400" />
+        </div>
+        <h2 className="text-2xl font-bold text-white mb-2">{server.name}</h2>
+        <p className="text-gray-400 mb-8 font-mono text-sm">{server.ip}:{server.port}</p>
+        
+        <div className="space-y-3">
+            <button 
+                onClick={onConnect}
+                disabled={loading}
+                className="w-full btn btn-primary py-3 text-lg"
+            >
+                {loading ? '连接中...' : '连接服务器'}
+            </button>
+            
+            <button 
+                onClick={onDelete}
+                className="w-full btn btn-ghost text-red-400 hover:bg-red-500/10"
+            >
+                删除服务器
+            </button>
+        </div>
+    </div>
+  </div>
+);
 
 export default App;

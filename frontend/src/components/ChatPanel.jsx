@@ -80,37 +80,33 @@ function ChatPanel({ serverId }) {
   };
 
   return (
-    <div className="card h-full flex flex-col">
-      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-rust-gray">
-        <FaComments className="text-rust-orange text-xl" />
-        <h2 className="text-xl font-bold">队伍聊天</h2>
-      </div>
-
+    <div className="h-full flex flex-col">
       {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto mb-4 space-y-3">
+      <div className="flex-1 overflow-y-auto mb-4 space-y-3 custom-scrollbar pr-2">
         {messages.length === 0 ? (
-          <div className="text-center text-gray-400 py-8">
-            暂无消息
+          <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-2">
+            <FaComments className="text-4xl opacity-20" />
+            <p className="text-sm">暂无消息</p>
           </div>
         ) : (
           messages.map((msg) => (
             <div
               key={msg.id}
-              className={`p-3 rounded-lg ${
+              className={`p-3 rounded-xl max-w-[80%] ${
                 msg.isMe
-                  ? 'bg-rust-orange bg-opacity-20 ml-8'
-                  : 'bg-rust-gray mr-8'
+                  ? 'bg-rust-accent/20 border border-rust-accent/20 ml-auto rounded-tr-sm text-gray-100'
+                  : 'bg-dark-700/50 border border-white/5 mr-auto rounded-tl-sm text-gray-300'
               }`}
             >
-              <div className="flex items-center justify-between mb-1">
-                <span className="font-semibold text-sm">
+              <div className="flex items-center justify-between mb-1 gap-4">
+                <span className={`font-bold text-xs ${msg.isMe ? 'text-rust-accent' : 'text-gray-400'}`}>
                   {msg.isMe ? '你' : msg.name}
                 </span>
-                <span className="text-xs text-gray-400">
+                <span className="text-[10px] text-gray-500 font-mono opacity-70">
                   {formatTime(msg.time)}
                 </span>
               </div>
-              <p className="text-sm break-words">{msg.message}</p>
+              <p className="text-sm break-words leading-relaxed">{msg.message}</p>
             </div>
           ))
         )}
@@ -118,11 +114,11 @@ function ChatPanel({ serverId }) {
       </div>
 
       {/* 输入框 */}
-      <form onSubmit={handleSendMessage} className="flex gap-2">
+      <form onSubmit={handleSendMessage} className="flex gap-2 p-1">
         <input
           type="text"
-          className="input flex-1"
-          placeholder="输入消息发送到游戏内..."
+          className="input flex-1 bg-dark-800/50 backdrop-blur border-white/10 focus:border-rust-accent/50 focus:ring-1 focus:ring-rust-accent/50"
+          placeholder="发送消息到游戏内..."
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
           disabled={sending}

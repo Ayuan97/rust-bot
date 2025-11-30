@@ -2,157 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #0f0f0f;
-  color: #ffffff;
-}
-
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
-
-/* 滚动条样式 */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #1a1a1a;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #2d2d2d;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #3d3d3d;
-}
-
-/* 自定义滚动条（用于服务器列表） */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #2d2d2d;
-  border-radius: 3px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #ce412b;
-}
-
-/* 自定义按钮样式 */
-.btn {
-  @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
-}
-
-.btn-primary {
-  @apply bg-rust-orange hover:bg-opacity-80 text-white;
-}
-
-.btn-secondary {
-  @apply bg-rust-gray hover:bg-opacity-80 text-white;
-}
-
-.btn-danger {
-  @apply bg-red-600 hover:bg-red-700 text-white;
-}
-
-/* 卡片样式 */
-.card {
-  @apply bg-rust-dark rounded-lg p-4 shadow-lg border border-rust-gray;
-}
-
-/* 输入框样式 */
-.input {
-  @apply bg-rust-gray border border-rust-gray rounded-lg px-4 py-2 text-white focus:outline-none focus:border-rust-orange transition-colors;
-}
-
-/* 状态指示器 */
-.status-dot {
-  @apply w-2 h-2 rounded-full inline-block;
-}
-
-.status-online {
-  @apply bg-green-500;
-}
-
-.status-offline {
-  @apply bg-gray-500;
-}
-
-.status-error {
-  @apply bg-red-500;
-}
-
-/* 通知动画 */
-@keyframes slide-in-right {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
+@layer base {
+  body {
+    @apply bg-dark-900 text-gray-200 antialiased overflow-hidden;
   }
-  to {
-    transform: translateX(0);
-    opacity: 1;
+  
+  /* Custom Scrollbar for Webkit */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-dark-600 rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-dark-500;
   }
 }
 
-.animate-slide-in-right {
-  animation: slide-in-right 0.3s ease-out;
-}
-
-/* 闪光动画（用于进度条） */
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
   }
-  100% {
-    transform: translateX(100%);
+  
+  .btn-primary {
+    @apply bg-rust-accent text-white hover:bg-rust-hover shadow-lg shadow-rust-accent/20;
   }
-}
-
-.animate-shimmer {
-  animation: shimmer 2s infinite;
-}
-
-/* 慢速脉动动画 */
-@keyframes pulse-slow {
-  0%, 100% {
-    opacity: 1;
+  
+  .btn-secondary {
+    @apply bg-dark-700 text-gray-300 hover:bg-dark-600 hover:text-white border border-white/5;
   }
-  50% {
-    opacity: 0.5;
+  
+  .btn-ghost {
+    @apply text-gray-400 hover:text-white hover:bg-white/5;
   }
-}
+  
+  .btn-danger {
+    @apply bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20;
+  }
 
-.animate-pulse-slow {
-  animation: pulse-slow 3s ease-in-out infinite;
-}
+  .panel {
+    @apply bg-dark-800/80 backdrop-blur-md border border-white/5 rounded-xl shadow-xl;
+  }
 
-/* 背景尺寸和位置（用于按钮渐变动画） */
-.bg-size-200 {
-  background-size: 200% 100%;
-}
-
-.bg-pos-100 {
-  background-position: 100% 0;
+  .input {
+    @apply bg-dark-900 border border-dark-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-rust-accent focus:ring-1 focus:ring-rust-accent transition-all placeholder-gray-600;
+  }
+  
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium;
+  }
 }

@@ -6,6 +6,8 @@ import path from 'path';
 import AndroidFCM from '@liamcottle/push-receiver/src/android/fcm.js';
 import PushReceiverClient from '@liamcottle/push-receiver/src/client.js';
 import logger from '../utils/logger.js';
+import https from 'https';
+import http from 'http';
 
 class FCMService extends EventEmitter {
   constructor() {
@@ -16,6 +18,15 @@ class FCMService extends EventEmitter {
     this.heartbeatInterval = null;
     this.reconnectTimer = null;
     this.lastDisconnectTime = null;
+    this.proxyAgent = null; // 代理 Agent
+  }
+
+  /**
+   * 设置代理 Agent（从 ProxyService 获取）
+   */
+  setProxyAgent(proxyAgent) {
+    this.proxyAgent = proxyAgent;
+    logger.info('✅ FCM 服务已配置代理');
   }
 
   /**
@@ -449,6 +460,18 @@ class FCMService extends EventEmitter {
 
     try {
       console.log('📱 正在获取 Expo Push Token...');
+
+      // 配置 axios 使用代理
+      const axiosConfig = {
+        timeout: 30000,
+      };
+
+      if (this.proxyAgent) {
+        axiosConfig.httpsAgent = this.proxyAgent;
+        axiosConfig.httpAgent = this.proxyAgent;
+        logger.debug('   使用代理请求 Expo API');
+      }
+
       const response = await axios.post('https://exp.host/--/api/v2/push/getExpoPushToken', {
         type: 'fcm',
         deviceId: uuidv4(),
@@ -456,7 +479,7 @@ class FCMService extends EventEmitter {
         appId: 'com.facepunch.rust.companion',
         deviceToken: fcmToken,
         projectId: "49451aca-a822-41e6-ad59-955718d0ff9c",
-      });
+      }, axiosConfig);
 
       const expoPushToken = response.data.data.expoPushToken;
       console.log('✅ Expo Push Token 获取成功');
@@ -475,12 +498,25 @@ class FCMService extends EventEmitter {
 
     try {
       console.log('📡 正在注册到 Rust+ API...');
+
+      // 配置 axios 使用代理
+      const axiosConfig = {
+        timeout: 30000,
+      };
+
+      if (this.proxyAgent) {
+        axiosConfig.httpsAgent = this.proxyAgent;
+        axiosConfig.httpAgent = this.proxyAgent;
+        logger.debug('   使用代理请求 Rust+ API');
+      }
+
       await axios.post('https://companion-rust.facepunch.com:443/api/push/register', {
         AuthToken: authToken,
         DeviceId: 'rustplus.js-web',
         PushKind: 3,
         PushToken: expoPushToken,
-      });
+      }, axiosConfig);
+
       console.log('✅ Rust+ API 注册成功');
       return true;
     } catch (error) {

@@ -39,22 +39,22 @@ function AddServerModal({ isOpen, onClose, onAdd }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-      <div className="bg-rust-dark rounded-lg p-6 max-w-md w-full mx-4 border border-rust-gray">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold">添加服务器</h2>
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-dark-800 rounded-2xl p-6 max-w-md w-full border border-white/10 shadow-2xl">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-white">添加服务器</h2>
           <button
             className="text-gray-400 hover:text-white transition-colors"
             onClick={onClose}
           >
-            <FaTimes size={24} />
+            <FaTimes size={20} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">
-              服务器 ID <span className="text-red-500">*</span>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
+              服务器 ID <span className="text-rust-accent">*</span>
             </label>
             <input
               type="text"
@@ -64,12 +64,12 @@ function AddServerModal({ isOpen, onClose, onAdd }) {
               onChange={(e) => setFormData({ ...formData, id: e.target.value })}
               required
             />
-            <p className="text-xs text-gray-400 mt-1">唯一标识符，用于区分不同服务器</p>
+            <p className="text-[10px] text-gray-500 mt-1">唯一标识符，用于区分不同服务器</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">
-              服务器名称 <span className="text-red-500">*</span>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
+              服务器名称 <span className="text-rust-accent">*</span>
             </label>
             <input
               type="text"
@@ -83,8 +83,8 @@ function AddServerModal({ isOpen, onClose, onAdd }) {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-2">
-                IP 地址 <span className="text-red-500">*</span>
+              <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
+                IP 地址 <span className="text-rust-accent">*</span>
               </label>
               <input
                 type="text"
@@ -96,8 +96,8 @@ function AddServerModal({ isOpen, onClose, onAdd }) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">
-                端口 <span className="text-red-500">*</span>
+              <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
+                端口 <span className="text-rust-accent">*</span>
               </label>
               <input
                 type="text"
@@ -111,8 +111,8 @@ function AddServerModal({ isOpen, onClose, onAdd }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">
-              Player ID (Steam ID) <span className="text-red-500">*</span>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
+              Player ID (Steam ID) <span className="text-rust-accent">*</span>
             </label>
             <input
               type="text"
@@ -125,8 +125,8 @@ function AddServerModal({ isOpen, onClose, onAdd }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">
-              Player Token <span className="text-red-500">*</span>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
+              Player Token <span className="text-rust-accent">*</span>
             </label>
             <input
               type="text"
@@ -136,7 +136,7 @@ function AddServerModal({ isOpen, onClose, onAdd }) {
               onChange={(e) => setFormData({ ...formData, playerToken: e.target.value })}
               required
             />
-            <p className="text-xs text-gray-400 mt-1">从 Rust+ 应用获取配对信息</p>
+            <p className="text-[10px] text-gray-500 mt-1">从 Rust+ 应用获取配对信息</p>
           </div>
 
           <div className="flex gap-3 pt-4">

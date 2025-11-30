@@ -1,0 +1,213 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import https from 'https';
+import AdmZip from 'adm-zip';
+import logger from '../utils/logger.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+/**
+ * Xray-Core 下载器
+ * 自动下载适配当前系统的 xray-core 二进制文件
+ */
+class XrayDownloader {
+  constructor() {
+    this.binDir = path.join(__dirname, '../../bin');
+    this.version = '1.8.23'; // Xray-core 版本
+    this.baseUrl = 'https://github.com/XTLS/Xray-core/releases/download';
+  }
+
+  /**
+   * 获取当前系统信息
+   */
+  getSystemInfo() {
+    const platform = process.platform; // 'win32', 'linux', 'darwin'
+    const arch = process.arch;         // 'x64', 'arm64', etc.
+
+    let osName, archName, fileName, executableName;
+
+    // 确定操作系统
+    if (platform === 'win32') {
+      osName = 'windows';
+      executableName = 'xray.exe';
+    } else if (platform === 'linux') {
+      osName = 'linux';
+      executableName = 'xray';
+    } else if (platform === 'darwin') {
+      osName = 'macos';
+      executableName = 'xray';
+    } else {
+      throw new Error(`不支持的操作系统: ${platform}`);
+    }
+
+    // 确定架构
+    if (arch === 'x64') {
+      archName = '64';
+    } else if (arch === 'arm64') {
+      archName = 'arm64-v8a';
+    } else if (arch === 'arm') {
+      archName = 'arm32-v7a';
+    } else {
+      throw new Error(`不支持的架构: ${arch}`);
+    }
+
+    // 构建文件名
+    fileName = `Xray-${osName}-${archName}.zip`;
+
+    return {
+      platform,
+      arch,
+      osName,
+      archName,
+      fileName,
+      executableName,
+      executablePath: path.join(this.binDir, executableName),
+    };
+  }
+
+  /**
+   * 检查 xray 是否已存在
+   */
+  isXrayInstalled() {
+    const { executablePath } = this.getSystemInfo();
+    return fs.existsSync(executablePath);
+  }
+
+  /**
+   * 下载 xray-core
+   */
+  async downloadXray() {
+    const systemInfo = this.getSystemInfo();
+    const { fileName, executablePath } = systemInfo;
+
+    // 创建 bin 目录
+    if (!fs.existsSync(this.binDir)) {
+      fs.mkdirSync(this.binDir, { recursive: true });
+      logger.info('📁 创建 bin 目录');
+    }
+
+    // 如果已存在，跳过下载
+    if (this.isXrayInstalled()) {
+      logger.info('✅ Xray-core 已存在，跳过下载');
+      return executablePath;
+    }
+
+    try {
+      logger.info('📦 开始下载 Xray-core...');
+      logger.info(`   系统: ${systemInfo.osName}-${systemInfo.archName}`);
+      logger.info(`   版本: v${this.version}`);
+
+      // 下载 URL
+      const downloadUrl = `${this.baseUrl}/v${this.version}/${fileName}`;
+      const zipPath = path.join(this.binDir, fileName);
+
+      logger.info(`   URL: ${downloadUrl}`);
+
+      // 下载文件
+      await this.downloadFile(downloadUrl, zipPath);
+
+      // 解压文件
+      logger.info('📦 正在解压...');
+      await this.extractZip(zipPath, this.binDir);
+
+      // 删除 zip 文件
+      fs.unlinkSync(zipPath);
+
+      // 设置可执行权限（Linux/Mac）
+      if (systemInfo.platform !== 'win32') {
+        logger.info('🔧 设置可执行权限...');
+        fs.chmodSync(executablePath, '755');
+      }
+
+      logger.info('✅ Xray-core 下载完成！');
+      logger.info(`   路径: ${executablePath}`);
+
+      return executablePath;
+    } catch (error) {
+      logger.error('❌ 下载 Xray-core 失败:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 下载文件（支持进度显示）
+   */
+  downloadFile(url, dest) {
+    return new Promise((resolve, reject) => {
+      const file = fs.createWriteStream(dest);
+      let receivedBytes = 0;
+      let totalBytes = 0;
+
+      https.get(url, (response) => {
+        // 处理重定向
+        if (response.statusCode === 302 || response.statusCode === 301) {
+          const redirectUrl = response.headers.location;
+          logger.info(`   重定向到: ${redirectUrl}`);
+          return this.downloadFile(redirectUrl, dest).then(resolve).catch(reject);
+        }
+
+        if (response.statusCode !== 200) {
+          reject(new Error(`下载失败: HTTP ${response.statusCode}`));
+          return;
+        }
+
+        totalBytes = parseInt(response.headers['content-length'], 10);
+
+        response.on('data', (chunk) => {
+          receivedBytes += chunk.length;
+          file.write(chunk);
+
+          // 显示进度（每 1MB 显示一次）
+          if (receivedBytes % (1024 * 1024) < chunk.length || receivedBytes === totalBytes) {
+            const percent = ((receivedBytes / totalBytes) * 100).toFixed(1);
+            const mbReceived = (receivedBytes / 1024 / 1024).toFixed(1);
+            const mbTotal = (totalBytes / 1024 / 1024).toFixed(1);
+            logger.info(`   下载进度: ${percent}% (${mbReceived}MB / ${mbTotal}MB)`);
+          }
+        });
+
+        response.on('end', () => {
+          file.end();
+          logger.info('   下载完成');
+          resolve();
+        });
+      }).on('error', (err) => {
+        fs.unlinkSync(dest);
+        reject(err);
+      });
+    });
+  }
+
+  /**
+   * 解压 ZIP 文件
+   */
+  async extractZip(zipPath, targetDir) {
+    try {
+      const zip = new AdmZip(zipPath);
+      const zipEntries = zip.getEntries();
+
+      // 只提取 xray 可执行文件
+      for (const entry of zipEntries) {
+        if (entry.entryName.includes('xray') && !entry.isDirectory) {
+          logger.info(`   提取: ${entry.entryName}`);
+          zip.extractEntryTo(entry, targetDir, false, true);
+        }
+      }
+    } catch (error) {
+      logger.error('解压失败:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取 xray 可执行文件路径
+   */
+  getXrayPath() {
+    const { executablePath } = this.getSystemInfo();
+    return executablePath;
+  }
+}
+
+export default new XrayDownloader();

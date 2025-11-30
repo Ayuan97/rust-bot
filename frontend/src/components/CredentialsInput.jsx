@@ -71,25 +71,25 @@ function CredentialsInput({ onSubmit, onClose }) {
   };
 
   return (
-    <div className="card max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-4 pb-3 border-b border-rust-gray">
+    <div className="panel p-6 max-w-3xl mx-auto">
+      <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/5">
         <div className="flex items-center gap-2">
-          <FaKey className="text-rust-orange text-xl" />
-          <h2 className="text-xl font-bold">获取 FCM 凭证</h2>
+          <FaKey className="text-rust-accent text-xl" />
+          <h2 className="text-xl font-bold text-white">获取 FCM 凭证</h2>
         </div>
       </div>
 
       {/* 重要提示 */}
-      <div className="mb-6 p-4 bg-rust-orange bg-opacity-20 border border-rust-orange rounded-lg">
+      <div className="mb-6 p-4 bg-rust-accent/10 border border-rust-accent/30 rounded-lg">
         <div className="flex items-start gap-3">
-          <FaInfoCircle className="text-rust-orange text-xl mt-1 flex-shrink-0" />
+          <FaInfoCircle className="text-rust-accent text-xl mt-1 flex-shrink-0" />
           <div className="text-sm">
-            <p className="font-semibold mb-2">⚠️ 如何获取凭证</p>
+            <p className="font-semibold mb-2 text-rust-accent">⚠️ 如何获取凭证</p>
             <ol className="text-gray-300 space-y-2 list-decimal list-inside">
               <li>点击下方"Steam 登录"按钮</li>
               <li>在弹出的窗口中使用 Steam 账号登录</li>
               <li>登录成功后，页面会显示类似这样的凭证信息：
-                <div className="mt-2 p-2 bg-rust-dark rounded text-xs font-mono">
+                <div className="mt-2 p-2 bg-black/40 rounded text-xs font-mono border border-white/5 text-gray-400">
                   /credentials add gcm_android_id:5346984656978408915 gcm_security_token:4579341590924378429 steam_id:76561198385127796 issued_date:1760759239 expire_date:1761968839 fcm_token:xxx auth_token:xxx
                 </div>
               </li>
@@ -112,9 +112,9 @@ function CredentialsInput({ onSubmit, onClose }) {
       </div>
 
       {/* 快捷输入 */}
-      <div className="mb-6 p-4 bg-rust-gray rounded-lg">
-        <label className="block text-sm font-medium mb-2 flex items-center gap-2">
-          <FaMagic className="text-rust-orange" />
+      <div className="mb-6 p-4 bg-dark-700/50 rounded-lg border border-white/5">
+        <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider flex items-center gap-2">
+          <FaMagic className="text-rust-accent" />
           快捷输入（粘贴完整命令）
         </label>
         <div className="flex gap-2">
@@ -133,14 +133,14 @@ function CredentialsInput({ onSubmit, onClose }) {
             解析
           </button>
         </div>
-        <p className="text-xs text-gray-400 mt-2">
+        <p className="text-[10px] text-gray-500 mt-2">
           将 Steam 登录后获取的完整命令粘贴到此处，然后点击"解析"
         </p>
       </div>
 
       {/* 错误提示 */}
       {error && (
-        <div className="mb-4 p-3 bg-red-500 bg-opacity-20 border border-red-500 rounded-lg text-red-400 text-sm">
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
           {error}
         </div>
       )}
@@ -149,8 +149,8 @@ function CredentialsInput({ onSubmit, onClose }) {
       <form onSubmit={handleManualSubmit}>
         <div className="space-y-4 mb-4">
           <div>
-            <label className="block text-sm font-medium mb-2">
-              GCM Android ID <span className="text-red-500">*</span>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
+              GCM Android ID <span className="text-rust-accent">*</span>
             </label>
             <input
               type="text"
@@ -163,8 +163,8 @@ function CredentialsInput({ onSubmit, onClose }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">
-              GCM Security Token <span className="text-red-500">*</span>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
+              GCM Security Token <span className="text-rust-accent">*</span>
             </label>
             <input
               type="text"
@@ -177,8 +177,8 @@ function CredentialsInput({ onSubmit, onClose }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">
-              Steam ID <span className="text-red-500">*</span>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
+              Steam ID <span className="text-rust-accent">*</span>
             </label>
             <input
               type="text"
@@ -191,7 +191,7 @@ function CredentialsInput({ onSubmit, onClose }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
               Issued Date <span className="text-gray-500">(可选)</span>
             </label>
             <input
@@ -204,7 +204,7 @@ function CredentialsInput({ onSubmit, onClose }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
               Expire Date <span className="text-gray-500">(可选)</span>
             </label>
             <input
@@ -216,8 +216,8 @@ function CredentialsInput({ onSubmit, onClose }) {
             />
           </div>
 
-          <div className="col-span-1 pt-4 border-t border-rust-gray">
-            <p className="text-sm text-rust-orange mb-2">
+          <div className="col-span-1 pt-4 border-t border-white/10">
+            <p className="text-sm text-rust-accent mb-2">
               ⚡ 可选字段（提供后可自动完成推送注册）
             </p>
             <p className="text-xs text-gray-400">
@@ -227,7 +227,7 @@ function CredentialsInput({ onSubmit, onClose }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
               FCM Token <span className="text-gray-500">(可选，但推荐)</span>
             </label>
             <input
@@ -237,13 +237,13 @@ function CredentialsInput({ onSubmit, onClose }) {
               value={manualInput.fcm_token}
               onChange={(e) => setManualInput({...manualInput, fcm_token: e.target.value})}
             />
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-[10px] text-gray-500 mt-1">
               用于获取 Expo Push Token，实现推送通知
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
               Auth Token <span className="text-gray-500">(可选，但推荐)</span>
             </label>
             <input
@@ -253,7 +253,7 @@ function CredentialsInput({ onSubmit, onClose }) {
               value={manualInput.auth_token}
               onChange={(e) => setManualInput({...manualInput, auth_token: e.target.value})}
             />
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-[10px] text-gray-500 mt-1">
               用于注册到 Rust+ API，实现推送通知
             </p>
           </div>

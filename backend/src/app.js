@@ -8,6 +8,7 @@ import { existsSync, mkdirSync } from 'fs';
 
 import websocketService from './services/websocket.service.js';
 import fcmService from './services/fcm.service.js';
+import proxyService from './services/proxy.service.js';
 import configStorage from './models/config.model.js';
 import storage from './models/storage.model.js';
 import rustPlusService from './services/rustplus.service.js';
@@ -287,6 +288,27 @@ server.listen(PORT, async () => {
 ╚═══════════════════════════════════════╝
   `);
 
+  // 初始化代理服务（如果配置了订阅链接）
+  const subscriptionUrl = process.env.PROXY_SUBSCRIPTION_URL;
+  if (subscriptionUrl) {
+    try {
+      console.log('\n🌐 初始化代理服务...\n');
+      const preferredNode = process.env.PROXY_NODE_NAME || null;
+      await proxyService.initialize(subscriptionUrl, preferredNode);
+
+      // 将代理 Agent 传递给 FCM 服务
+      fcmService.setProxyAgent(proxyService.getProxyAgent());
+
+      console.log('✅ 代理服务已启动\n');
+    } catch (error) {
+      console.error('❌ 代理服务初始化失败:', error.message);
+      console.error('   将在无代理模式下运行\n');
+    }
+  } else {
+    console.log('\n💡 提示: 未配置代理订阅链接 (PROXY_SUBSCRIPTION_URL)');
+    console.log('   如需使用代理，请在 .env 中配置订阅链接\n');
+  }
+
   // 初始化 FCM
   await initializeFCM();
 
@@ -342,24 +364,31 @@ const gracefulShutdown = async (signal) => {
   }, 3000);
   
   try {
-    // 1. 关闭 Rust+ 连接（最重要）
+    // 1. 停止代理服务
+    try {
+      proxyService.stopXray();
+    } catch (err) {
+      console.warn('⚠️  停止代理服务失败:', err.message);
+    }
+
+    // 2. 关闭 Rust+ 连接（最重要）
     const connectedServers = rustPlusService.getConnectedServers();
     if (connectedServers.length > 0) {
       await Promise.allSettled(
-        connectedServers.map(serverId => 
+        connectedServers.map(serverId =>
           rustPlusService.disconnect(serverId)
         )
       );
     }
-    
-    // 2. 关闭 Socket.IO
+
+    // 3. 关闭 Socket.IO
     const io = websocketService.getIO();
     if (io) {
       io.disconnectSockets(true); // 强制断开所有连接
       io.close();
     }
-    
-    // 3. 关闭 HTTP Server（只在服务器已启动时）
+
+    // 4. 关闭 HTTP Server（只在服务器已启动时）
     if (serverStarted && server.listening) {
       await new Promise((resolve) => {
         server.close(() => resolve());

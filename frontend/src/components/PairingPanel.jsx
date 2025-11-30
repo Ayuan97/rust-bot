@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { FaQrcode, FaPlay, FaStop, FaSync, FaCheckCircle, FaTimesCircle, FaKey, FaRocket } from 'react-icons/fa';
 import { getPairingStatus, startPairing, stopPairing, resetPairing, submitCredentials } from '../services/pairing';
 import socketService from '../services/socket';
@@ -127,8 +128,9 @@ function PairingPanel({ onServerPaired }) {
       setShowCredentialsInput(true);
 
       // 显示成功提示
-      const message = response.data.message || 'FCM 凭证已清空';
-      alert(`✅ ${message}`);
+      // const message = response.data.message || 'FCM 凭证已清空';
+      // alert(`✅ ${message}`); 
+      // Removed alert to avoid blocking UI or focus issues when modal opens
     } catch (error) {
       console.error('重置失败:', error);
       const errorMsg = error.response?.data?.error || error.message || '未知错误';
@@ -154,14 +156,22 @@ function PairingPanel({ onServerPaired }) {
     }
   };
 
-  // 注意：不要完全替换组件，而是用模态框显示
+  // Portal Helper
+  const ModalPortal = ({ children }) => {
+    return createPortal(
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
+        {children}
+      </div>,
+      document.body
+    );
+  };
 
   return (
     <>
-      {/* 自动注册模态框 */}
+      {/* 自动注册模态框 - 使用 Portal */}
       {showAutoRegister && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="max-w-2xl w-full mx-4">
+        <ModalPortal>
+          <div className="w-full max-w-2xl animate-fade-in">
             <AutoRegisterPanel
               onComplete={async () => {
                 setShowAutoRegister(false);
@@ -170,75 +180,53 @@ function PairingPanel({ onServerPaired }) {
               onClose={() => setShowAutoRegister(false)}
             />
           </div>
-        </div>
+        </ModalPortal>
       )}
 
-      {/* 手动凭证输入模态框 */}
+      {/* 手动凭证输入模态框 - 使用 Portal */}
       {showCredentialsInput && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="max-w-3xl w-full mx-4">
+        <ModalPortal>
+          <div className="w-full max-w-3xl animate-fade-in">
             <CredentialsInput
               onSubmit={handleCredentialsSubmit}
               onClose={() => setShowCredentialsInput(false)}
             />
           </div>
-        </div>
+        </ModalPortal>
       )}
 
-      <div className="card">
-        <div className="flex items-center gap-2 mb-4 pb-3 border-b border-rust-gray">
-          <FaQrcode className="text-rust-orange text-xl" />
-          <h2 className="text-xl font-bold">服务器配对</h2>
+      <div className="p-4 space-y-4">
+        {/* 状态显示 */}
+        <div className="grid grid-cols-2 gap-4">
+            <div className="p-3 bg-dark-700/50 rounded-lg border border-white/5 flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-300">FCM 监听</span>
+                {status.isListening ? (
+                    <span className="badge bg-green-500/10 text-green-400 border border-green-500/20">运行中</span>
+                ) : (
+                    <span className="badge bg-dark-600/50 text-gray-500 border border-dark-600">未启动</span>
+                )}
+            </div>
+            <div className="p-3 bg-dark-700/50 rounded-lg border border-white/5 flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-300">FCM 凭证</span>
+                {status.hasStoredCredentials ? (
+                    <span className="badge bg-green-500/10 text-green-400 border border-green-500/20">已保存</span>
+                ) : (
+                    <span className="badge bg-dark-600/50 text-gray-500 border border-dark-600">未配置</span>
+                )}
+            </div>
         </div>
-
-      {/* 状态显示 */}
-      <div className="mb-6 space-y-3">
-        <div className="flex items-center justify-between p-3 bg-rust-gray rounded-lg">
-          <span className="text-sm font-medium">FCM 监听状态</span>
-          <div className="flex items-center gap-2">
-            {status.isListening ? (
-              <>
-                <FaCheckCircle className="text-green-500" />
-                <span className="text-green-500 text-sm">运行中</span>
-              </>
-            ) : (
-              <>
-                <FaTimesCircle className="text-gray-500" />
-                <span className="text-gray-400 text-sm">未启动</span>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between p-3 bg-rust-gray rounded-lg">
-          <span className="text-sm font-medium">FCM 凭证</span>
-          <div className="flex items-center gap-2">
-            {status.hasStoredCredentials ? (
-              <>
-                <FaCheckCircle className="text-green-500" />
-                <span className="text-green-500 text-sm">已保存</span>
-              </>
-            ) : (
-              <>
-                <FaTimesCircle className="text-gray-500" />
-                <span className="text-gray-400 text-sm">未配置</span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
 
       {/* 等待配对提示 */}
       {waitingForPairing && (
-        <div className="mb-6 p-4 bg-rust-orange bg-opacity-20 border border-rust-orange rounded-lg">
+        <div className="mb-6 p-4 bg-rust-accent/10 border border-rust-accent/30 rounded-lg">
           <div className="flex items-center gap-3 mb-3">
             <div className="animate-spin">
-              <FaSync className="text-rust-orange" />
+              <FaSync className="text-rust-accent" />
             </div>
-            <span className="font-semibold text-rust-orange">等待游戏内配对...</span>
+            <span className="font-semibold text-rust-accent">等待游戏内配对...</span>
           </div>
           <div className="text-sm text-gray-300 space-y-2">
-            <p>1. 在 Rust 游戏中按 <kbd className="px-2 py-1 bg-rust-dark rounded">ESC</kbd></p>
+            <p>1. 在 Rust 游戏中按 <kbd className="px-1.5 py-0.5 bg-black/40 rounded border border-white/10 text-xs">ESC</kbd></p>
             <p>2. 点击右下角的 Rust+ 图标</p>
             <p>3. 点击 "Pair with Server" 配对服务器</p>
             <p>4. 或对着智能设备点击 "Pair" 配对设备</p>
@@ -247,9 +235,9 @@ function PairingPanel({ onServerPaired }) {
       )}
 
       {/* 配对说明 */}
-      <div className="mb-6 p-4 bg-rust-gray rounded-lg">
-        <h3 className="font-semibold mb-3">配对流程说明</h3>
-        <ol className="text-sm text-gray-300 space-y-2 list-decimal list-inside">
+      <div className="mb-6 p-4 bg-dark-700/30 border border-white/5 rounded-lg">
+        <h3 className="font-semibold mb-3 text-gray-200">配对流程说明</h3>
+        <ol className="text-sm text-gray-400 space-y-2 list-decimal list-inside">
           <li>点击下方"启动配对监听"按钮</li>
           <li>在 Rust 游戏中进入任意服务器</li>
           <li>按 ESC 打开菜单，点击 Rust+ 图标</li>
@@ -262,7 +250,7 @@ function PairingPanel({ onServerPaired }) {
       {/* 控制按钮 */}
       <div className="space-y-3">
         {!status.hasStoredCredentials && (
-          <div className="mb-4 p-4 bg-rust-orange bg-opacity-20 border border-rust-orange rounded-lg">
+          <div className="mb-4 p-4 bg-rust-accent/10 border border-rust-accent/30 rounded-lg">
             <p className="text-sm text-gray-300 mb-3">
               ⚠️ 未找到 FCM 凭证。请选择注册方式：
             </p>
@@ -323,7 +311,7 @@ function PairingPanel({ onServerPaired }) {
       </div>
 
       {/* 提示信息 */}
-      <div className="mt-6 p-3 bg-rust-gray rounded-lg text-xs text-gray-400">
+      <div className="mt-6 p-4 bg-dark-800/50 rounded-lg border border-white/5 text-xs text-gray-400">
         <p className="mb-2">💡 提示：</p>
         <ul className="space-y-1 list-disc list-inside">
           <li>首次使用需要启动配对监听</li>
