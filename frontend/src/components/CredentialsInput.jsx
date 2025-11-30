@@ -16,7 +16,12 @@ function CredentialsInput({ onSubmit, onClose }) {
 
   const handleSteamLogin = () => {
     // 在新窗口打开 Steam 登录页面
-    window.open('https://companion-rust.facepunch.com/login', '_blank', 'width=800,height=600');
+    const steamWin = window.open('https://companion-rust.facepunch.com/login', '_blank', 'width=800,height=600');
+
+    // 检查弹窗是否被阻止
+    if (!steamWin || steamWin.closed || typeof steamWin.closed === 'undefined') {
+      setError('浏览器阻止了弹窗，请允许弹窗后重试或手动访问链接');
+    }
   };
 
   const parseCredentialsCommand = (command) => {

@@ -46,19 +46,43 @@ class SocketService {
 
   connectToServer(config) {
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.socket.off('server:connect:success');
+        this.socket.off('server:connect:error');
+        reject(new Error('连接服务器超时'));
+      }, 15000); // 15秒超时
+
       this.socket.emit('server:connect', config);
 
-      this.socket.once('server:connect:success', resolve);
-      this.socket.once('server:connect:error', reject);
+      this.socket.once('server:connect:success', (data) => {
+        clearTimeout(timeout);
+        resolve(data);
+      });
+      this.socket.once('server:connect:error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
     });
   }
 
   disconnectFromServer(serverId) {
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.socket.off('server:disconnect:success');
+        this.socket.off('server:disconnect:error');
+        reject(new Error('断开服务器超时'));
+      }, 10000);
+
       this.socket.emit('server:disconnect', serverId);
 
-      this.socket.once('server:disconnect:success', resolve);
-      this.socket.once('server:disconnect:error', reject);
+      this.socket.once('server:disconnect:success', (data) => {
+        clearTimeout(timeout);
+        resolve(data);
+      });
+      this.socket.once('server:disconnect:error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
     });
   }
 
@@ -87,10 +111,22 @@ class SocketService {
 
   sendMessage(serverId, message) {
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.socket.off('message:send:success');
+        this.socket.off('message:send:error');
+        reject(new Error('发送消息超时'));
+      }, 10000);
+
       this.socket.emit('message:send', { serverId, message });
 
-      this.socket.once('message:send:success', resolve);
-      this.socket.once('message:send:error', reject);
+      this.socket.once('message:send:success', (data) => {
+        clearTimeout(timeout);
+        resolve(data);
+      });
+      this.socket.once('message:send:error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
     });
   }
 
@@ -98,19 +134,43 @@ class SocketService {
 
   controlDevice(serverId, entityId, value) {
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.socket.off('device:control:success');
+        this.socket.off('device:control:error');
+        reject(new Error('控制设备超时'));
+      }, 10000);
+
       this.socket.emit('device:control', { serverId, entityId, value });
 
-      this.socket.once('device:control:success', resolve);
-      this.socket.once('device:control:error', reject);
+      this.socket.once('device:control:success', (data) => {
+        clearTimeout(timeout);
+        resolve(data);
+      });
+      this.socket.once('device:control:error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
     });
   }
 
   getDeviceInfo(serverId, entityId) {
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.socket.off('device:info:success');
+        this.socket.off('device:info:error');
+        reject(new Error('获取设备信息超时'));
+      }, 10000);
+
       this.socket.emit('device:info', { serverId, entityId });
 
-      this.socket.once('device:info:success', (data) => resolve(data.info));
-      this.socket.once('device:info:error', reject);
+      this.socket.once('device:info:success', (data) => {
+        clearTimeout(timeout);
+        resolve(data.info);
+      });
+      this.socket.once('device:info:error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
     });
   }
 

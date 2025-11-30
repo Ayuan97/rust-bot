@@ -13,14 +13,20 @@ function AutoRegisterPanel({ onComplete, onClose }) {
 
   // 打开 Steam 登录页面（新标签页）
   const handleOpenSteamLogin = () => {
-    setStep(2);
-
     // 在新标签页打开 Steam 登录
     const steamWin = window.open(
       'https://companion-rust.facepunch.com/login',
       '_blank'
     );
+
+    // 检查弹窗是否被阻止
+    if (!steamWin || steamWin.closed || typeof steamWin.closed === 'undefined') {
+      setError('浏览器阻止了弹窗，请允许弹窗后重试');
+      return;
+    }
+
     setSteamWindow(steamWin);
+    setStep(2);
   };
 
   // 处理凭证提交（简化版：直接使用 Companion 凭证）
@@ -45,7 +51,7 @@ function AutoRegisterPanel({ onComplete, onClose }) {
 
       setStep(4);
 
-      // 关闭 Steam 窗口
+      // 关闭 Steam 窗口（检查是否仍然存在）
       if (steamWindow && !steamWindow.closed) {
         steamWindow.close();
       }

@@ -25,6 +25,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('info'); // 'info', 'chat', 'devices', 'events', 'history'
   const [connectionLoading, setConnectionLoading] = useState(false);
+  const [hasAutoSelected, setHasAutoSelected] = useState(false); // 记录是否已自动选择
 
   // --- Initial Setup & Socket Listeners ---
   useEffect(() => {
@@ -51,9 +52,10 @@ function App() {
       const serverList = response.data.servers;
       setServers(serverList);
 
-      // Auto-select first server if none selected
-      if (serverList.length > 0 && !activeServer) {
+      // 只在首次加载且未选择服务器时自动选择第一个
+      if (serverList.length > 0 && !activeServer && !hasAutoSelected) {
         setActiveServer(serverList[0]);
+        setHasAutoSelected(true);
       }
     } catch (error) {
       console.error('Failed to fetch servers:', error);
@@ -64,17 +66,35 @@ function App() {
 
   // --- Event Handlers ---
   const handleServerConnected = (data) => {
-    setServers((prev) => prev.map((s) => s.id === data.serverId ? { ...s, connected: true } : s));
-    if (activeServer?.id === data.serverId) {
-        setActiveServer(prev => ({ ...prev, connected: true }));
-    }
+    setServers((prev) => {
+      const updated = prev.map((s) =>
+        s.id === data.serverId ? { ...s, connected: true } : s
+      );
+
+      // 同时更新 activeServer，保持引用一致
+      if (activeServer?.id === data.serverId) {
+        const newActive = updated.find(s => s.id === data.serverId);
+        setActiveServer(newActive);
+      }
+
+      return updated;
+    });
   };
 
   const handleServerDisconnected = (data) => {
-    setServers((prev) => prev.map((s) => s.id === data.serverId ? { ...s, connected: false } : s));
-    if (activeServer?.id === data.serverId) {
-        setActiveServer(prev => ({ ...prev, connected: false }));
-    }
+    setServers((prev) => {
+      const updated = prev.map((s) =>
+        s.id === data.serverId ? { ...s, connected: false } : s
+      );
+
+      // 同时更新 activeServer，保持引用一致
+      if (activeServer?.id === data.serverId) {
+        const newActive = updated.find(s => s.id === data.serverId);
+        setActiveServer(newActive);
+      }
+
+      return updated;
+    });
   };
 
   const handleServerPaired = (serverInfo) => {

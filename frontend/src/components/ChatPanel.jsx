@@ -72,7 +72,9 @@ function ChatPanel({ serverId }) {
   };
 
   const formatTime = (timestamp) => {
-    const date = new Date(timestamp * 1000);
+    // 统一处理时间戳：如果小于 10000000000，认为是秒级，否则是毫秒级
+    const ms = timestamp < 10000000000 ? timestamp * 1000 : timestamp;
+    const date = new Date(ms);
     return date.toLocaleTimeString('zh-CN', {
       hour: '2-digit',
       minute: '2-digit'

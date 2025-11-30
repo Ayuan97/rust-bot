@@ -110,13 +110,18 @@ function ServerInfo({ serverId }) {
       console.log('✅ 地图数据加载成功');
 
       if (map && map.jpgImage) {
-        // 保存原始二进制数据用于下载
-        const imageUrl = `data:image/jpeg;base64,${btoa(String.fromCharCode(...new Uint8Array(map.jpgImage)))}`;
-        setMapData({
-          ...map,
-          imageUrl,
-          rawData: map.jpgImage // 保存原始数据
-        });
+        try {
+          // 保存原始二进制数据用于下载，添加错误处理
+          const imageUrl = `data:image/jpeg;base64,${btoa(String.fromCharCode(...new Uint8Array(map.jpgImage)))}`;
+          setMapData({
+            ...map,
+            imageUrl,
+            rawData: map.jpgImage // 保存原始数据
+          });
+        } catch (conversionError) {
+          console.error('❌ 地图数据转换失败:', conversionError);
+          // 静默失败，不影响其他功能，但不设置 mapData
+        }
       }
     } catch (error) {
       console.error('❌ 加载地图失败:', error);
