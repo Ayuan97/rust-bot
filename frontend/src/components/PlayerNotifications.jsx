@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FaSkull, FaUser, FaSignInAlt, FaSignOutAlt } from 'react-icons/fa';
 import socketService from '../services/socket';
 
 function PlayerNotifications({ serverId }) {
   const [notifications, setNotifications] = useState([]);
+  const timeoutsRef = useRef([]); // 存储所有 timeout ID
 
   useEffect(() => {
     // 监听玩家事件
@@ -13,6 +14,11 @@ function PlayerNotifications({ serverId }) {
     socketService.on('player:offline', handlePlayerOffline);
 
     return () => {
+      // 清理所有 timeout
+      timeoutsRef.current.forEach(clearTimeout);
+      timeoutsRef.current = [];
+
+      // 清理监听器
       socketService.off('player:died', handlePlayerDied);
       socketService.off('player:spawned', handlePlayerSpawned);
       socketService.off('player:online', handlePlayerOnline);
@@ -32,9 +38,12 @@ function PlayerNotifications({ serverId }) {
     setNotifications(prev => [notification, ...prev].slice(0, 20)); // 只保留最近20条
 
     // 5秒后自动移除
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== notification.id));
     }, 5000);
+
+    // 保存 timeout ID
+    timeoutsRef.current.push(timeoutId);
   };
 
   const handlePlayerDied = (data) => {

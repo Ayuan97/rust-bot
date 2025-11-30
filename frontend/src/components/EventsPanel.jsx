@@ -14,6 +14,106 @@ function EventsPanel({ serverId }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // 定义事件处理器（在 useEffect 内部，避免依赖问题）
+    const handleCargoSpawn = (data) => {
+      if (data.serverId === serverId) {
+        setEvents(prev => ({
+          ...prev,
+          cargo: [...prev.cargo, { id: data.markerId, position: data.position, time: data.time }]
+        }));
+      }
+    };
+
+    const handleCargoLeave = (data) => {
+      if (data.serverId === serverId) {
+        setEvents(prev => ({
+          ...prev,
+          cargo: prev.cargo.filter(c => c.id !== data.markerId)
+        }));
+      }
+    };
+
+    const handleHeliSpawn = (data) => {
+      if (data.serverId === serverId) {
+        setEvents(prev => ({
+          ...prev,
+          heli: [...prev.heli, { id: data.markerId, position: data.position, time: data.time }]
+        }));
+      }
+    };
+
+    const handleHeliDowned = (data) => {
+      if (data.serverId === serverId) {
+        setEvents(prev => ({
+          ...prev,
+          heli: prev.heli.filter(h => h.id !== data.markerId)
+        }));
+      }
+    };
+
+    const handleHeliLeave = (data) => {
+      if (data.serverId === serverId) {
+        setEvents(prev => ({
+          ...prev,
+          heli: prev.heli.filter(h => h.id !== data.markerId)
+        }));
+      }
+    };
+
+    const handleCH47Spawn = (data) => {
+      if (data.serverId === serverId) {
+        setEvents(prev => ({
+          ...prev,
+          ch47: [...prev.ch47, { id: data.markerId, position: data.position, time: data.time }]
+        }));
+      }
+    };
+
+    const handleCH47Leave = (data) => {
+      if (data.serverId === serverId) {
+        setEvents(prev => ({
+          ...prev,
+          ch47: prev.ch47.filter(c => c.id !== data.markerId)
+        }));
+      }
+    };
+
+    const handleCrateSpawn = (data) => {
+      if (data.serverId === serverId) {
+        setEvents(prev => ({
+          ...prev,
+          crates: [...prev.crates, { id: data.markerId, position: data.position, time: data.time }]
+        }));
+      }
+    };
+
+    const handleCrateDespawn = (data) => {
+      if (data.serverId === serverId) {
+        setEvents(prev => ({
+          ...prev,
+          crates: prev.crates.filter(c => c.id !== data.markerId)
+        }));
+      }
+    };
+
+    const handleSmallOilRig = (data) => {
+      if (data.serverId === serverId) {
+        setEvents(prev => ({
+          ...prev,
+          smallOilRig: { time: data.time, position: data.position }
+        }));
+      }
+    };
+
+    const handleLargeOilRig = (data) => {
+      if (data.serverId === serverId) {
+        setEvents(prev => ({
+          ...prev,
+          largeOilRig: { time: data.time, position: data.position }
+        }));
+      }
+    };
+
     // 监听游戏事件
     socketService.on('event:cargo:spawn', handleCargoSpawn);
     socketService.on('event:cargo:leave', handleCargoLeave);
@@ -55,108 +155,11 @@ function EventsPanel({ serverId }) {
     }
   };
 
-  const handleCargoSpawn = (data) => {
-    if (data.serverId === serverId) {
-      setEvents(prev => ({
-        ...prev,
-        cargo: [...prev.cargo, { id: data.markerId, position: data.position, time: data.time }]
-      }));
-    }
-  };
-
-  const handleCargoLeave = (data) => {
-    if (data.serverId === serverId) {
-      setEvents(prev => ({
-        ...prev,
-        cargo: prev.cargo.filter(c => c.id !== data.markerId)
-      }));
-    }
-  };
-
-  const handleHeliSpawn = (data) => {
-    if (data.serverId === serverId) {
-      setEvents(prev => ({
-        ...prev,
-        heli: [...prev.heli, { id: data.markerId, position: data.position, time: data.time }]
-      }));
-    }
-  };
-
-  const handleHeliDowned = (data) => {
-    if (data.serverId === serverId) {
-      setEvents(prev => ({
-        ...prev,
-        heli: prev.heli.filter(h => h.id !== data.markerId)
-      }));
-    }
-  };
-
-  const handleHeliLeave = (data) => {
-    if (data.serverId === serverId) {
-      setEvents(prev => ({
-        ...prev,
-        heli: prev.heli.filter(h => h.id !== data.markerId)
-      }));
-    }
-  };
-
-  const handleCH47Spawn = (data) => {
-    if (data.serverId === serverId) {
-      setEvents(prev => ({
-        ...prev,
-        ch47: [...prev.ch47, { id: data.markerId, position: data.position, time: data.time }]
-      }));
-    }
-  };
-
-  const handleCH47Leave = (data) => {
-    if (data.serverId === serverId) {
-      setEvents(prev => ({
-        ...prev,
-        ch47: prev.ch47.filter(c => c.id !== data.markerId)
-      }));
-    }
-  };
-
-  const handleCrateSpawn = (data) => {
-    if (data.serverId === serverId) {
-      setEvents(prev => ({
-        ...prev,
-        crates: [...prev.crates, { id: data.markerId, position: data.position, time: data.time }]
-      }));
-    }
-  };
-
-  const handleCrateDespawn = (data) => {
-    if (data.serverId === serverId) {
-      setEvents(prev => ({
-        ...prev,
-        crates: prev.crates.filter(c => c.id !== data.markerId)
-      }));
-    }
-  };
-
-  const handleSmallOilRig = (data) => {
-    if (data.serverId === serverId) {
-      setEvents(prev => ({
-        ...prev,
-        smallOilRig: { time: data.time, position: data.position }
-      }));
-    }
-  };
-
-  const handleLargeOilRig = (data) => {
-    if (data.serverId === serverId) {
-      setEvents(prev => ({
-        ...prev,
-        largeOilRig: { time: data.time, position: data.position }
-      }));
-    }
-  };
-
   const formatTimeAgo = (timestamp) => {
     const now = Date.now();
-    const diff = now - timestamp;
+    // 统一处理时间戳：如果小于 10000000000，认为是秒级，否则是毫秒级
+    const ms = timestamp < 10000000000 ? timestamp * 1000 : timestamp;
+    const diff = now - ms;
     const minutes = Math.floor(diff / 60000);
 
     if (minutes < 1) return '刚刚';

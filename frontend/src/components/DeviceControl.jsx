@@ -85,20 +85,32 @@ function DeviceControl({ serverId }) {
   };
 
   const handleToggleDevice = async (device) => {
-    try {
-      const newValue = !device.currentValue;
-      await socketService.controlDevice(serverId, device.entity_id, newValue);
+    const originalValue = device.currentValue;
+    const newValue = !originalValue;
 
-      // 立即更新 UI
+    // 乐观更新：先更新 UI
+    setDevices((prev) =>
+      prev.map((d) =>
+        d.entity_id === device.entity_id
+          ? { ...d, currentValue: newValue }
+          : d
+      )
+    );
+
+    try {
+      await socketService.controlDevice(serverId, device.entity_id, newValue);
+    } catch (error) {
+      console.error('控制设备失败:', error);
+
+      // 失败时回滚到原始状态
       setDevices((prev) =>
         prev.map((d) =>
           d.entity_id === device.entity_id
-            ? { ...d, currentValue: newValue }
+            ? { ...d, currentValue: originalValue }
             : d
         )
       );
-    } catch (error) {
-      console.error('控制设备失败:', error);
+
       alert('控制失败: ' + error.message);
     }
   };

@@ -7,6 +7,22 @@ function EventHistoryPanel({ serverId }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // 定义事件处理器（在 useEffect 内部，避免依赖问题）
+    const handleEvent = (data) => {
+      if (data.serverId === serverId) {
+        setHistory(prev => [
+          {
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            type: data.type || '未知事件',
+            position: data.position,
+            time: data.time,
+            data: data
+          },
+          ...prev
+        ].slice(0, 50)); // 只保留最近50条
+      }
+    };
+
     // 监听所有游戏事件并添加到历史
     socketService.on('event:cargo:spawn', handleEvent);
     socketService.on('event:cargo:leave', handleEvent);
@@ -43,21 +59,6 @@ function EventHistoryPanel({ serverId }) {
     };
   }, [serverId]);
 
-  const handleEvent = (data) => {
-    if (data.serverId === serverId) {
-      setHistory(prev => [
-        {
-          id: `${data.time}-${Math.random()}`,
-          type: data.type || '未知事件',
-          position: data.position,
-          time: data.time,
-          data: data
-        },
-        ...prev
-      ].slice(0, 50)); // 只保留最近50条
-    }
-  };
-
   const getEventIcon = (type) => {
     if (type.includes('cargo')) return <FaShip className="text-blue-400" />;
     if (type.includes('heli')) return <FaHelicopter className="text-red-400" />;
@@ -89,7 +90,9 @@ function EventHistoryPanel({ serverId }) {
   };
 
   const formatTime = (timestamp) => {
-    const date = new Date(timestamp);
+    // 统一处理时间戳：如果小于 10000000000，认为是秒级，否则是毫秒级
+    const ms = timestamp < 10000000000 ? timestamp * 1000 : timestamp;
+    const date = new Date(ms);
     return date.toLocaleTimeString('zh-CN', {
       hour: '2-digit',
       minute: '2-digit',
@@ -99,7 +102,9 @@ function EventHistoryPanel({ serverId }) {
 
   const formatTimeAgo = (timestamp) => {
     const now = Date.now();
-    const diff = now - timestamp;
+    // 统一处理时间戳：如果小于 10000000000，认为是秒级，否则是毫秒级
+    const ms = timestamp < 10000000000 ? timestamp * 1000 : timestamp;
+    const diff = now - ms;
     const minutes = Math.floor(diff / 60000);
 
     if (minutes < 1) return '刚刚';
