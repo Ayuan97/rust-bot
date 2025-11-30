@@ -91,7 +91,7 @@ class CommandsService {
           messages.push(`[事件] ${eventList}`);
         }
 
-        return messages.join('\n');
+        return messages.join(' | ');
       }
     });
 
@@ -515,7 +515,7 @@ class CommandsService {
             }
           }
 
-          return messages.join('\n');
+          return messages.join(' | ');
         } catch (error) {
           return cmd('cargo', 'error');
         }
@@ -614,7 +614,7 @@ class CommandsService {
             messages.push(cmd('heli', 'msg', { position }));
           }
 
-          return messages.join('\n');
+          return messages.join(' | ');
         } catch (error) {
           return cmd('heli', 'error');
         }
@@ -694,7 +694,7 @@ class CommandsService {
             return cmd('events', 'empty');
           }
 
-          return messages.join('\n');
+          return messages.join(' | ');
         } catch (error) {
           return cmd('events', 'error');
         }
@@ -786,7 +786,7 @@ class CommandsService {
             return cmd('history', 'empty');
           }
 
-          return messages.join('\n');
+          return messages.join(' | ');
         } catch (error) {
           return cmd('history', 'error');
         }
@@ -1141,12 +1141,12 @@ class CommandsService {
    * 启动挂机检测定时任务
    */
   startAfkDetection() {
-    // 缩短检测周期以降低死亡/复活检测延迟
+    // 每30秒检测一次，降低API调用频率
     this.afkDetectionInterval = setInterval(() => {
       this.checkPlayerPositions();
-    }, 10 * 1000);
+    }, 30 * 1000);
 
-    console.log('✅ 挂机检测系统已启动（每10秒检测一次）');
+    console.log('✅ 挂机检测系统已启动（每30秒检测一次）');
   }
 
   /**

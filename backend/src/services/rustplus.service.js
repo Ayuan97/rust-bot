@@ -3,6 +3,7 @@ import EventEmitter from 'events';
 import CommandsService from './commands.service.js';
 import EventMonitorService from './event-monitor.service.js';
 import logger from '../utils/logger.js';
+import { getCorrectedMapSize } from '../utils/coordinates.js';
 
 class RustPlusService extends EventEmitter {
   constructor() {
@@ -147,10 +148,12 @@ class RustPlusService extends EventEmitter {
     const res = await rustplus.sendRequestAsync({ getInfo: {} });
     const info = res.info;
     // 如果包含 mapSize，则用作地图大小缓存的权威来源
+    // 存储修正后的地图大小，确保与网格系统对齐
     if (info && info.mapSize) {
+      const correctedSize = getCorrectedMapSize(info.mapSize);
       this.mapCache.set(serverId, {
-        width: info.mapSize,
-        height: info.mapSize,
+        width: correctedSize,
+        height: correctedSize,
         lastUpdate: Date.now()
       });
     }
@@ -268,7 +271,8 @@ class RustPlusService extends EventEmitter {
     try {
       const infoRes = await rustplus.sendRequestAsync({ getInfo: {} });
       if (infoRes?.info?.mapSize) {
-        mapSize = infoRes.info.mapSize;
+        // 使用修正后的地图大小，确保与网格系统对齐
+        mapSize = getCorrectedMapSize(infoRes.info.mapSize);
       }
     } catch (e) {
       // 忽略错误，使用默认值
