@@ -7,22 +7,27 @@ function ChatPanel({ serverId }) {
   const [inputMessage, setInputMessage] = useState('');
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef(null);
+  const MAX_MESSAGES = 500; // 限制消息数量，防止内存泄漏
 
   useEffect(() => {
     // 监听队伍消息
     const handleTeamMessage = (data) => {
       if (data.serverId === serverId) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now(),
-            name: data.name,
-            message: data.message,
-            steamId: data.steamId,
-            time: data.time || Date.now(),
-            isMe: false
-          }
-        ]);
+        setMessages((prev) => {
+          const newMessages = [
+            ...prev,
+            {
+              id: Date.now(),
+              name: data.name,
+              message: data.message,
+              steamId: data.steamId,
+              time: data.time || Date.now(),
+              isMe: false
+            }
+          ];
+          // 限制消息数量
+          return newMessages.slice(-MAX_MESSAGES);
+        });
       }
     };
 
@@ -51,16 +56,19 @@ function ChatPanel({ serverId }) {
       await socketService.sendMessage(serverId, inputMessage);
 
       // 添加自己的消息到列表
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          name: 'You',
-          message: inputMessage,
-          time: Date.now(),
-          isMe: true
-        }
-      ]);
+      setMessages((prev) => {
+        const newMessages = [
+          ...prev,
+          {
+            id: Date.now(),
+            name: 'You',
+            message: inputMessage,
+            time: Date.now(),
+            isMe: true
+          }
+        ];
+        return newMessages.slice(-MAX_MESSAGES);
+      });
 
       setInputMessage('');
     } catch (error) {

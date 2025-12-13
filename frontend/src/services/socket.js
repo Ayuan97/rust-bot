@@ -17,7 +17,7 @@ class SocketService {
       transports: ['websocket'],
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionAttempts: 5
+      reconnectionAttempts: Infinity  // 无限重连
     });
 
     this.socket.on('connect', () => {
@@ -37,6 +37,12 @@ class SocketService {
 
   disconnect() {
     if (this.socket) {
+      // 清理所有记录的监听器
+      this.listeners.forEach((callbacks, event) => {
+        callbacks.forEach(cb => this.socket.off(event, cb));
+      });
+      this.listeners.clear();
+
       this.socket.disconnect();
       this.socket = null;
     }

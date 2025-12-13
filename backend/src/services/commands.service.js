@@ -21,6 +21,7 @@ class CommandsService {
     this.playerSessionData = new Map(); // 存储玩家会话数据 serverId -> Map(steamId -> {name, onlineTime, offlineTime})
     this.afkDetectionInterval = null; // AFK检测定时器
     this.playerCountTrackingInterval = null; // 人数追踪定时器
+    this.eventListenersInitialized = false; // 防止重复注册监听器
 
     // 注册内置命令
     this.registerBuiltInCommands();
@@ -913,6 +914,9 @@ class CommandsService {
    * 设置服务器事件监听器
    */
   setupServerEventListeners() {
+    // 防止重复注册
+    if (this.eventListenersInitialized) return;
+
     // 监听服务器连接事件
     this.rustPlusService.on('server:connected', (data) => {
       // keep minimal logs elsewhere
@@ -933,7 +937,9 @@ class CommandsService {
 
     // 监听服务器断开事件
     this.rustPlusService.on('server:disconnected', (data) => {
-      // keep minimal logs elsewhere
+      // 清理该服务器的相关数据
+      const serverId = data.serverId;
+      this.cleanupServerData(serverId);
 
       // 当所有服务器断开时停止检测系统
       const connectedServers = this.rustPlusService.getConnectedServers();
@@ -950,9 +956,23 @@ class CommandsService {
   }
 
   /**
+   * 清理指定服务器的相关数据
+   */
+  cleanupServerData(serverId) {
+    this.playerCountHistory.delete(serverId);
+    this.playerPositionHistory.delete(serverId);
+    this.afkNotifiedPlayers.delete(serverId);
+    this.playerSessionData.delete(serverId);
+    this.settings.delete(serverId);
+    logger.debug(`🧹 已清理服务器 ${serverId} 的缓存数据`);
+  }
+
+  /**
    * 设置玩家事件监听器
    */
   setupPlayerEventListeners() {
+    // 标记监听器已初始化（与 setupServerEventListeners 共用标志）
+    this.eventListenersInitialized = true;
     // 监听玩家上线事件
     this.rustPlusService.on('player:online', async (data) => {
       // quiet

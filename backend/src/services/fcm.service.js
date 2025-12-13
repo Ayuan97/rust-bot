@@ -124,16 +124,14 @@ class FCMService extends EventEmitter {
 
     console.log('👂 开始监听 FCM 推送消息...');
     console.log('📋 凭证信息:');
-    console.log('   - Android ID:', this.credentials.gcm.androidId);
-    console.log('   - Security Token:', this.credentials.gcm.securityToken);
-    console.log('   - 凭证类型:', typeof this.credentials.gcm.androidId, typeof this.credentials.gcm.securityToken);
+    const maskStr = (str) => str ? `${String(str).substring(0, 6)}****` : 'N/A';
+    console.log('   - Android ID:', maskStr(this.credentials.gcm.androidId));
+    console.log('   - Security Token:', maskStr(this.credentials.gcm.securityToken));
 
     // 创建 PushReceiverClient 监听器
     // 注意：androidId 和 securityToken 必须是字符串
     const androidId = String(this.credentials.gcm.androidId);
     const securityToken = String(this.credentials.gcm.securityToken);
-
-    console.log('📋 转换后的凭证:', { androidId, securityToken });
 
     this.fcmListener = new PushReceiverClient(androidId, securityToken, []);
 

@@ -72,8 +72,6 @@ const initializeFCM = async () => {
 
     // 只注册一次事件监听器，避免重复监听
     if (!fcmInitialized) {
-      fcmInitialized = true;
-      
       // 首先注册所有事件监听器（必须在启动监听之前注册）
       // 监听服务器配对事件
       fcmService.on('server:paired', async (serverInfo) => {
@@ -199,6 +197,9 @@ const initializeFCM = async () => {
       console.log('📬 通知:', notificationInfo);
       websocketService.broadcast('notification', notificationInfo);
     });
+
+    // 标记事件监听器已注册
+    fcmInitialized = true;
     }
 
     // 加载凭证并启动监听
@@ -312,27 +313,22 @@ const setupPlayerEventNotifications = () => {
     }
   });
 
-  // 玩家重生：清除死亡会话与抑制状态
-  rustPlusService.on('player:spawned', (data) => {
+  // 玩家重生：清除死亡会话状态 + 发送通知
+  rustPlusService.on('player:spawned', async (data) => {
+    // 1. 清除死亡会话与抑制状态
     try {
       const sessionSet = deathSessionNotified.get(data.serverId);
-      if (sessionSet) {
-        sessionSet.delete(data.steamId);
-      }
+      if (sessionSet) sessionSet.delete(data.steamId);
       const serverMap = deathNotifyCache.get(data.serverId);
-      if (serverMap) {
-        serverMap.delete(data.steamId);
-      }
+      if (serverMap) serverMap.delete(data.steamId);
       const suppressMap = deathNotifySuppressUntil.get(data.serverId);
-      if (suppressMap) {
-        suppressMap.delete(data.steamId);
-      }
+      if (suppressMap) suppressMap.delete(data.steamId);
       logger.debug(`✨ 已清除死亡会话与抑制: ${data.name} (${data.steamId})`);
-    } catch {}
-  });
+    } catch (e) {
+      logger.debug(`清除死亡会话失败: ${e.message}`);
+    }
 
-  // 玩家重生自动通知
-  rustPlusService.on('player:spawned', async (data) => {
+    // 2. 发送重生通知
     try {
       const settings = commandsService.getServerSettings(data.serverId);
       if (settings.spawnNotify) {
@@ -343,6 +339,15 @@ const setupPlayerEventNotifications = () => {
     } catch (error) {
       console.error('❌ 发送重生通知失败:', error.message);
     }
+  });
+
+  // 服务器断开时清理死亡通知相关缓存
+  rustPlusService.on('server:disconnected', (data) => {
+    const serverId = data.serverId;
+    deathNotifyCache.delete(serverId);
+    deathSessionNotified.delete(serverId);
+    deathNotifySuppressUntil.delete(serverId);
+    logger.debug(`🧹 已清理服务器 ${serverId} 的死亡通知缓存`);
   });
 
   console.log('✅ 玩家事件自动通知已启用（可通过 !notify 命令控制）');

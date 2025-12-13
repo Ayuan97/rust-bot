@@ -5,6 +5,7 @@ import logger from '../utils/logger.js';
 class WebSocketService {
   constructor() {
     this.io = null;
+    this.rustPlusListenersInitialized = false;
   }
 
   /**
@@ -247,6 +248,13 @@ class WebSocketService {
    * 监听 Rust+ 服务事件并广播给所有客户端
    */
   setupRustPlusListeners() {
+    // 防止重复注册监听器
+    if (this.rustPlusListenersInitialized) {
+      console.log('⚠️ RustPlus 监听器已注册，跳过重复注册');
+      return;
+    }
+    this.rustPlusListenersInitialized = true;
+
     // 服务器连接
     rustPlusService.on('server:connected', (data) => {
       this.io.emit('server:connected', data);

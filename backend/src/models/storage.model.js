@@ -81,6 +81,15 @@ class Storage {
       )
     `);
 
+    // 创建索引以提升查询性能
+    try {
+      this.db.exec(`CREATE INDEX IF NOT EXISTS idx_event_logs_server_id ON event_logs(server_id)`);
+      this.db.exec(`CREATE INDEX IF NOT EXISTS idx_event_logs_created_at ON event_logs(created_at)`);
+      this.db.exec(`CREATE INDEX IF NOT EXISTS idx_devices_server_id ON devices(server_id)`);
+    } catch (e) {
+      // 索引已存在，忽略
+    }
+
     console.log('✅ 数据库初始化完成');
   }
 
