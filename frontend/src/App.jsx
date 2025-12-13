@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   FaPlus, FaServer, FaQrcode, FaInfoCircle, FaComments, 
   FaGamepad, FaClock, FaHistory, FaCog, FaSignOutAlt, FaPlug 
@@ -26,6 +26,10 @@ function App() {
   const [activeTab, setActiveTab] = useState('info'); // 'info', 'chat', 'devices', 'events', 'history'
   const [connectionLoading, setConnectionLoading] = useState(false);
   const [hasAutoSelected, setHasAutoSelected] = useState(false); // 记录是否已自动选择
+
+  // 使用 ref 存储 activeServer 最新值，避免事件处理器闭包陈旧
+  const activeServerRef = useRef(null);
+  useEffect(() => { activeServerRef.current = activeServer; }, [activeServer]);
 
   // --- Initial Setup & Socket Listeners ---
   useEffect(() => {
@@ -71,10 +75,10 @@ function App() {
         s.id === data.serverId ? { ...s, connected: true } : s
       );
 
-      // 同时更新 activeServer，保持引用一致
-      if (activeServer?.id === data.serverId) {
+      // 使用 ref 获取最新的 activeServer 值
+      if (activeServerRef.current?.id === data.serverId) {
         const newActive = updated.find(s => s.id === data.serverId);
-        setActiveServer(newActive);
+        if (newActive) setActiveServer(newActive);
       }
 
       return updated;
@@ -87,10 +91,10 @@ function App() {
         s.id === data.serverId ? { ...s, connected: false } : s
       );
 
-      // 同时更新 activeServer，保持引用一致
-      if (activeServer?.id === data.serverId) {
+      // 使用 ref 获取最新的 activeServer 值
+      if (activeServerRef.current?.id === data.serverId) {
         const newActive = updated.find(s => s.id === data.serverId);
-        setActiveServer(newActive);
+        if (newActive) setActiveServer(newActive);
       }
 
       return updated;

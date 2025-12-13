@@ -52,9 +52,12 @@ class SocketService {
 
   connectToServer(config) {
     return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        return reject(new Error('Socket 未连接'));
+      }
       const timeout = setTimeout(() => {
-        this.socket.off('server:connect:success');
-        this.socket.off('server:connect:error');
+        this.socket?.off('server:connect:success');
+        this.socket?.off('server:connect:error');
         reject(new Error('连接服务器超时'));
       }, 15000); // 15秒超时
 
@@ -73,9 +76,12 @@ class SocketService {
 
   disconnectFromServer(serverId) {
     return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        return reject(new Error('Socket 未连接'));
+      }
       const timeout = setTimeout(() => {
-        this.socket.off('server:disconnect:success');
-        this.socket.off('server:disconnect:error');
+        this.socket?.off('server:disconnect:success');
+        this.socket?.off('server:disconnect:error');
         reject(new Error('断开服务器超时'));
       }, 10000);
 
@@ -94,9 +100,12 @@ class SocketService {
 
   getServerInfo(serverId) {
     return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        return reject(new Error('Socket 未连接'));
+      }
       const timeout = setTimeout(() => {
-        this.socket.off('server:info:success');
-        this.socket.off('server:info:error');
+        this.socket?.off('server:info:success');
+        this.socket?.off('server:info:error');
         reject(new Error('获取服务器信息超时'));
       }, 10000); // 10秒超时
 
@@ -117,9 +126,12 @@ class SocketService {
 
   sendMessage(serverId, message) {
     return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        return reject(new Error('Socket 未连接'));
+      }
       const timeout = setTimeout(() => {
-        this.socket.off('message:send:success');
-        this.socket.off('message:send:error');
+        this.socket?.off('message:send:success');
+        this.socket?.off('message:send:error');
         reject(new Error('发送消息超时'));
       }, 10000);
 
@@ -140,9 +152,12 @@ class SocketService {
 
   controlDevice(serverId, entityId, value) {
     return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        return reject(new Error('Socket 未连接'));
+      }
       const timeout = setTimeout(() => {
-        this.socket.off('device:control:success');
-        this.socket.off('device:control:error');
+        this.socket?.off('device:control:success');
+        this.socket?.off('device:control:error');
         reject(new Error('控制设备超时'));
       }, 10000);
 
@@ -161,9 +176,12 @@ class SocketService {
 
   getDeviceInfo(serverId, entityId) {
     return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        return reject(new Error('Socket 未连接'));
+      }
       const timeout = setTimeout(() => {
-        this.socket.off('device:info:success');
-        this.socket.off('device:info:error');
+        this.socket?.off('device:info:success');
+        this.socket?.off('device:info:error');
         reject(new Error('获取设备信息超时'));
       }, 10000);
 
@@ -184,9 +202,12 @@ class SocketService {
 
   getTeamInfo(serverId) {
     return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        return reject(new Error('Socket 未连接'));
+      }
       const timeout = setTimeout(() => {
-        this.socket.off('team:info:success');
-        this.socket.off('team:info:error');
+        this.socket?.off('team:info:success');
+        this.socket?.off('team:info:error');
         reject(new Error('获取队伍信息超时'));
       }, 10000);
 
@@ -207,9 +228,12 @@ class SocketService {
 
   getMapInfo(serverId) {
     return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        return reject(new Error('Socket 未连接'));
+      }
       const timeout = setTimeout(() => {
-        this.socket.off('map:info:success');
-        this.socket.off('map:info:error');
+        this.socket?.off('map:info:success');
+        this.socket?.off('map:info:error');
         reject(new Error('获取地图信息超时'));
       }, 10000);
 
@@ -228,9 +252,12 @@ class SocketService {
 
   getMap(serverId) {
     return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        return reject(new Error('Socket 未连接'));
+      }
       const timeout = setTimeout(() => {
-        this.socket.off('map:get:success');
-        this.socket.off('map:get:error');
+        this.socket?.off('map:get:success');
+        this.socket?.off('map:get:error');
         reject(new Error('获取地图超时'));
       }, 15000); // 地图数据可能较大，15秒超时
 
@@ -251,9 +278,12 @@ class SocketService {
 
   getTime(serverId) {
     return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        return reject(new Error('Socket 未连接'));
+      }
       const timeout = setTimeout(() => {
-        this.socket.off('time:get:success');
-        this.socket.off('time:get:error');
+        this.socket?.off('time:get:success');
+        this.socket?.off('time:get:error');
         reject(new Error('获取时间信息超时'));
       }, 10000);
 

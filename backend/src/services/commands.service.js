@@ -22,6 +22,8 @@ class CommandsService {
     this.afkDetectionInterval = null; // AFK检测定时器
     this.playerCountTrackingInterval = null; // 人数追踪定时器
     this.eventListenersInitialized = false; // 防止重复注册监听器
+    this.isProcessingAfk = false; // AFK 检测并发保护
+    this.isProcessingPlayerCount = false; // 人数追踪并发保护
 
     // 注册内置命令
     this.registerBuiltInCommands();
@@ -1168,19 +1170,27 @@ class CommandsService {
   startPlayerCountTracking() {
     // 每2分钟自动记录一次服务器人数
     this.playerCountTrackingInterval = setInterval(async () => {
-      const connectedServers = this.rustPlusService.getConnectedServers();
+      // 并发保护：上一次还在执行则跳过
+      if (this.isProcessingPlayerCount) return;
+      this.isProcessingPlayerCount = true;
 
-      for (const serverId of connectedServers) {
-        try {
-          const info = await this.rustPlusService.getServerInfo(serverId);
-          const current = info.players || 0;
-          const queued = info.queuedPlayers || 0;
+      try {
+        const connectedServers = this.rustPlusService.getConnectedServers();
 
-          // 自动记录人数
-          this.recordPlayerCount(serverId, current, queued);
-        } catch (error) {
-          // 静默失败，避免日志过多
+        for (const serverId of connectedServers) {
+          try {
+            const info = await this.rustPlusService.getServerInfo(serverId);
+            const current = info.players || 0;
+            const queued = info.queuedPlayers || 0;
+
+            // 自动记录人数
+            this.recordPlayerCount(serverId, current, queued);
+          } catch (error) {
+            // 静默失败，避免日志过多
+          }
         }
+      } finally {
+        this.isProcessingPlayerCount = false;
       }
     }, 2 * 60 * 1000); // 每2分钟
 
@@ -1203,8 +1213,15 @@ class CommandsService {
    */
   startAfkDetection() {
     // 每30秒检测一次，降低API调用频率
-    this.afkDetectionInterval = setInterval(() => {
-      this.checkPlayerPositions();
+    this.afkDetectionInterval = setInterval(async () => {
+      // 并发保护：上一次还在执行则跳过
+      if (this.isProcessingAfk) return;
+      this.isProcessingAfk = true;
+      try {
+        await this.checkPlayerPositions();
+      } finally {
+        this.isProcessingAfk = false;
+      }
     }, 30 * 1000);
 
     console.log('✅ 挂机检测系统已启动（每30秒检测一次）');

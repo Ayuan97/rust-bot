@@ -140,6 +140,28 @@ class EventMonitorService extends EventEmitter {
       throw new Error('服务器未连接');
     }
 
+    // 清理过期的追踪路径（超过2小时未更新的）
+    const eventData = this.eventData.get(serverId);
+    if (eventData) {
+      const expiryTime = Date.now() - 2 * 60 * 60 * 1000; // 2小时
+      for (const [id, tracer] of eventData.cargoShipTracers.entries()) {
+        if (tracer.length > 0 && tracer[tracer.length - 1].time < expiryTime) {
+          eventData.cargoShipTracers.delete(id);
+          eventData.cargoShipDockedStatus.delete(id);
+        }
+      }
+      for (const [id, tracer] of eventData.patrolHeliTracers.entries()) {
+        if (tracer.length > 0 && tracer[tracer.length - 1].time < expiryTime) {
+          eventData.patrolHeliTracers.delete(id);
+        }
+      }
+      for (const [id, tracer] of eventData.ch47Tracers.entries()) {
+        if (tracer.length > 0 && tracer[tracer.length - 1].time < expiryTime) {
+          eventData.ch47Tracers.delete(id);
+        }
+      }
+    }
+
     // 获取当前标记
     const response = await this.rustPlusService.getMapMarkers(serverId);
     const currentMarkers = response.markers || [];

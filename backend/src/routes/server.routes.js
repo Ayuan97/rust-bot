@@ -47,7 +47,19 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, error: '缺少必要参数' });
     }
 
-    storage.addServer({ id, name, ip, port, playerId, playerToken });
+    // 类型验证
+    if (typeof id !== 'string' || typeof name !== 'string') {
+      return res.status(400).json({ success: false, error: 'id 和 name 必须是字符串' });
+    }
+    if (typeof ip !== 'string' || !/^[\d.]+$|^[a-zA-Z0-9.-]+$/.test(ip)) {
+      return res.status(400).json({ success: false, error: 'ip 格式无效' });
+    }
+    const portNum = parseInt(port);
+    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+      return res.status(400).json({ success: false, error: 'port 必须是 1-65535 之间的数字' });
+    }
+
+    storage.addServer({ id, name, ip, port: String(portNum), playerId, playerToken });
     res.json({ success: true, message: '服务器添加成功' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -147,7 +159,13 @@ router.post('/:id/devices', (req, res) => {
       return res.status(400).json({ success: false, error: '缺少必要参数' });
     }
 
-    storage.addDevice({ serverId, entityId, name, type });
+    // entityId 类型验证
+    const entityIdNum = parseInt(entityId);
+    if (isNaN(entityIdNum) || entityIdNum < 0) {
+      return res.status(400).json({ success: false, error: 'entityId 必须是非负整数' });
+    }
+
+    storage.addDevice({ serverId, entityId: entityIdNum, name, type });
     res.json({ success: true, message: '设备添加成功' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -158,7 +176,13 @@ router.post('/:id/devices', (req, res) => {
 router.delete('/:id/devices/:entityId', (req, res) => {
   try {
     const { id, entityId } = req.params;
-    storage.deleteDevice(id, parseInt(entityId));
+    const entityIdNum = parseInt(entityId);
+
+    if (isNaN(entityIdNum) || entityIdNum < 0) {
+      return res.status(400).json({ success: false, error: 'entityId 必须是非负整数' });
+    }
+
+    storage.deleteDevice(id, entityIdNum);
     res.json({ success: true, message: '设备删除成功' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -169,6 +193,12 @@ router.delete('/:id/devices/:entityId', (req, res) => {
 router.get('/:id/events', (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 100;
+
+    // 验证 limit 范围
+    if (limit < 1 || limit > 1000) {
+      return res.status(400).json({ success: false, error: 'limit 必须在 1-1000 之间' });
+    }
+
     const events = storage.getEventLogs(req.params.id, limit);
     res.json({ success: true, events });
   } catch (error) {
@@ -226,6 +256,12 @@ router.get('/:id/battlemetrics/top-players', async (req, res) => {
     }
 
     const days = parseInt(req.query.days) || 30;
+
+    // 验证 days 范围
+    if (days < 1 || days > 365) {
+      return res.status(400).json({ success: false, error: 'days 必须在 1-365 之间' });
+    }
+
     const players = await battlemetricsService.getTopPlayers(server.battlemetrics_id, days);
 
     res.json({ success: true, players });

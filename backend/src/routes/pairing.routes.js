@@ -156,6 +156,23 @@ router.post('/credentials/manual', async (req, res) => {
   try {
     const credentialsData = req.body;
 
+    // 验证凭证格式
+    if (!credentialsData || typeof credentialsData !== 'object') {
+      return res.status(400).json({ success: false, error: '凭证数据格式无效' });
+    }
+
+    // 验证必须有 gcm 或 fcm 凭证
+    if (!credentialsData.gcm && !credentialsData.fcm) {
+      return res.status(400).json({ success: false, error: '缺少 gcm 或 fcm 凭证' });
+    }
+
+    // 如果是 GCM 凭证，验证必要字段
+    if (credentialsData.gcm) {
+      if (!credentialsData.gcm.androidId || !credentialsData.gcm.securityToken) {
+        return res.status(400).json({ success: false, error: 'GCM 凭证缺少 androidId 或 securityToken' });
+      }
+    }
+
     // 设置凭证
     fcmService.setManualCredentials(credentialsData);
 

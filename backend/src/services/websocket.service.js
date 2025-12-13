@@ -35,11 +35,19 @@ class WebSocketService {
       // 客户端请求连接到 Rust+ 服务器
       socket.on('server:connect', async (config) => {
         try {
+          // 参数验证
+          if (!config || !config.serverId) {
+            return socket.emit('server:connect:error', { error: '缺少必要参数: serverId' });
+          }
+          // 检查是否已连接
+          if (rustPlusService.isConnected(config.serverId)) {
+            return socket.emit('server:connect:error', { serverId: config.serverId, error: '服务器已连接' });
+          }
           await rustPlusService.connect(config);
           socket.emit('server:connect:success', { serverId: config.serverId });
         } catch (error) {
           socket.emit('server:connect:error', {
-            serverId: config.serverId,
+            serverId: config?.serverId,
             error: error.message
           });
         }
@@ -48,6 +56,9 @@ class WebSocketService {
       // 断开服务器连接
       socket.on('server:disconnect', async (serverId) => {
         try {
+          if (!serverId) {
+            return socket.emit('server:disconnect:error', { error: '缺少 serverId' });
+          }
           await rustPlusService.disconnect(serverId);
           socket.emit('server:disconnect:success', { serverId });
         } catch (error) {
@@ -59,8 +70,11 @@ class WebSocketService {
       });
 
       // 发送队伍消息
-      socket.on('message:send', async ({ serverId, message }) => {
+      socket.on('message:send', async ({ serverId, message } = {}) => {
         try {
+          if (!serverId || !message) {
+            return socket.emit('message:send:error', { error: '缺少 serverId 或 message' });
+          }
           await rustPlusService.sendTeamMessage(serverId, message);
           socket.emit('message:send:success', { serverId, message });
         } catch (error) {
@@ -72,8 +86,11 @@ class WebSocketService {
       });
 
       // 控制设备
-      socket.on('device:control', async ({ serverId, entityId, value }) => {
+      socket.on('device:control', async ({ serverId, entityId, value } = {}) => {
         try {
+          if (!serverId || entityId === undefined || value === undefined) {
+            return socket.emit('device:control:error', { error: '缺少必要参数' });
+          }
           const result = await rustPlusService.setEntityValue(serverId, entityId, value);
           socket.emit('device:control:success', { serverId, entityId, value, result });
         } catch (error) {
@@ -86,8 +103,11 @@ class WebSocketService {
       });
 
       // 获取设备信息
-      socket.on('device:info', async ({ serverId, entityId }) => {
+      socket.on('device:info', async ({ serverId, entityId } = {}) => {
         try {
+          if (!serverId || entityId === undefined) {
+            return socket.emit('device:info:error', { error: '缺少必要参数' });
+          }
           const info = await rustPlusService.getEntityInfo(serverId, entityId);
           socket.emit('device:info:success', { serverId, entityId, info });
         } catch (error) {
@@ -102,6 +122,9 @@ class WebSocketService {
       // 获取服务器信息
       socket.on('server:info', async (serverId) => {
         try {
+          if (!serverId) {
+            return socket.emit('server:info:error', { error: '缺少 serverId' });
+          }
           const info = await rustPlusService.getServerInfo(serverId);
           socket.emit('server:info:success', { serverId, info });
         } catch (error) {

@@ -7,6 +7,51 @@ function PlayerNotifications({ serverId }) {
   const timeoutsRef = useRef([]); // 存储所有 timeout ID
 
   useEffect(() => {
+    // 定义事件处理器（在 useEffect 内部，避免闭包陷旧）
+    const addNotification = (type, name, data = {}) => {
+      const notification = {
+        id: Date.now() + Math.random(),
+        type,
+        name,
+        time: Date.now(),
+        ...data
+      };
+
+      setNotifications(prev => [notification, ...prev].slice(0, 20)); // 只保留最近20条
+
+      // 5秒后自动移除
+      const timeoutId = setTimeout(() => {
+        setNotifications(prev => prev.filter(n => n.id !== notification.id));
+      }, 5000);
+
+      // 保存 timeout ID
+      timeoutsRef.current.push(timeoutId);
+    };
+
+    const handlePlayerDied = (data) => {
+      if (data.serverId === serverId) {
+        addNotification('died', data.name, { position: data.position });
+      }
+    };
+
+    const handlePlayerSpawned = (data) => {
+      if (data.serverId === serverId) {
+        addNotification('spawned', data.name);
+      }
+    };
+
+    const handlePlayerOnline = (data) => {
+      if (data.serverId === serverId) {
+        addNotification('online', data.name);
+      }
+    };
+
+    const handlePlayerOffline = (data) => {
+      if (data.serverId === serverId) {
+        addNotification('offline', data.name);
+      }
+    };
+
     // 监听玩家事件
     socketService.on('player:died', handlePlayerDied);
     socketService.on('player:spawned', handlePlayerSpawned);
@@ -25,50 +70,6 @@ function PlayerNotifications({ serverId }) {
       socketService.off('player:offline', handlePlayerOffline);
     };
   }, [serverId]);
-
-  const addNotification = (type, name, data = {}) => {
-    const notification = {
-      id: Date.now() + Math.random(),
-      type,
-      name,
-      time: Date.now(),
-      ...data
-    };
-
-    setNotifications(prev => [notification, ...prev].slice(0, 20)); // 只保留最近20条
-
-    // 5秒后自动移除
-    const timeoutId = setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== notification.id));
-    }, 5000);
-
-    // 保存 timeout ID
-    timeoutsRef.current.push(timeoutId);
-  };
-
-  const handlePlayerDied = (data) => {
-    if (data.serverId === serverId) {
-      addNotification('died', data.name, { position: data.position });
-    }
-  };
-
-  const handlePlayerSpawned = (data) => {
-    if (data.serverId === serverId) {
-      addNotification('spawned', data.name);
-    }
-  };
-
-  const handlePlayerOnline = (data) => {
-    if (data.serverId === serverId) {
-      addNotification('online', data.name);
-    }
-  };
-
-  const handlePlayerOffline = (data) => {
-    if (data.serverId === serverId) {
-      addNotification('offline', data.name);
-    }
-  };
 
   const getNotificationConfig = (type) => {
     const configs = {

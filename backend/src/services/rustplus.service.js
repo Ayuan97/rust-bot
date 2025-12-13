@@ -505,21 +505,23 @@ class RustPlusService extends EventEmitter {
         time: msg.time
       };
 
-      // 先尝试作为命令处理（异步，不阻塞）
+      // 尝试作为命令处理，根据结果决定发送哪个事件
       (async () => {
         try {
           const isCommand = await this.commandsService.handleMessage(serverId, messageData);
           if (isCommand) {
-            // 是命令，同时也发送事件（可选）
+            // 是命令，发送 team:command 事件
             this.emit('team:command', messageData);
+          } else {
+            // 不是命令，发送普通消息事件
+            this.emit('team:message', messageData);
           }
         } catch (err) {
           console.error(`处理命令失败:`, err.message);
+          // 处理失败时作为普通消息发送
+          this.emit('team:message', messageData);
         }
       })();
-
-      // 无论是否为命令，都发送原始消息事件
-      this.emit('team:message', messageData);
     }
 
     // 队伍变化（包含玩家死亡/复活/上线/下线等状态变化）
