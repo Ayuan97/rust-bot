@@ -69,7 +69,7 @@ class CommandsService {
         // 基础命令
         const basicCmds = ['help', 'time', 'pop', 'team', 'online', 'afk'];
         // 事件命令
-        const eventCmds = ['cargo', 'small', 'large', 'heli', 'events', 'history', 'shop'];
+        const eventCmds = ['cargo', 'small', 'large', 'heli', 'smalllast', 'largelast', 'helilast', 'events', 'history', 'shop'];
 
         let messages = ['可用命令:'];
 
@@ -522,6 +522,79 @@ class CommandsService {
       }
     });
 
+    // !smalllast - 上次小油井事件（触发/解锁）时间
+    const smallLastConfig = cmdConfig('smalllast');
+    this.registerCommand('smalllast', {
+      description: smallLastConfig?.desc || '上次小油井事件时间',
+      usage: '!smalllast',
+      handler: async (serverId, args, context) => {
+        try {
+          const eventData = this.eventMonitorService.getEventData(serverId);
+          if (!eventData || !eventData.lastEvents) {
+            return cmd('smalllast', 'error');
+          }
+          const { smallOilRigTriggered, smallOilRigCrateUnlocked } = eventData.lastEvents;
+          const last = smallOilRigTriggered || smallOilRigCrateUnlocked;
+          if (!last) return cmd('smalllast', 'empty');
+          const now = Date.now();
+          const minutes = Math.floor((now - last) / 60000);
+          const time = this.formatDuration(minutes * 60 * 1000);
+          return cmd('smalllast', 'msg', { time });
+        } catch (error) {
+          return cmd('smalllast', 'error');
+        }
+      }
+    });
+
+    // !largelast - 上次大油井事件（触发/解锁）时间
+    const largeLastConfig = cmdConfig('largelast');
+    this.registerCommand('largelast', {
+      description: largeLastConfig?.desc || '上次大油井事件时间',
+      usage: '!largelast',
+      handler: async (serverId, args, context) => {
+        try {
+          const eventData = this.eventMonitorService.getEventData(serverId);
+          if (!eventData || !eventData.lastEvents) {
+            return cmd('largelast', 'error');
+          }
+          const { largeOilRigTriggered, largeOilRigCrateUnlocked } = eventData.lastEvents;
+          const last = largeOilRigTriggered || largeOilRigCrateUnlocked;
+          if (!last) return cmd('largelast', 'empty');
+          const now = Date.now();
+          const minutes = Math.floor((now - last) / 60000);
+          const time = this.formatDuration(minutes * 60 * 1000);
+          return cmd('largelast', 'msg', { time });
+        } catch (error) {
+          return cmd('largelast', 'error');
+        }
+      }
+    });
+
+    // !helilast - 上次武装直升机相关事件时间（刷新/击落/离开中最近一次）
+    const heliLastConfig = cmdConfig('helilast');
+    this.registerCommand('helilast', {
+      description: heliLastConfig?.desc || '上次武装直升机事件时间',
+      usage: '!helilast',
+      handler: async (serverId, args, context) => {
+        try {
+          const eventData = this.eventMonitorService.getEventData(serverId);
+          if (!eventData || !eventData.lastEvents) {
+            return cmd('helilast', 'error');
+          }
+          const { patrolHeliSpawn, patrolHeliDowned, patrolHeliLeave } = eventData.lastEvents;
+          const candidates = [patrolHeliSpawn, patrolHeliDowned, patrolHeliLeave].filter(Boolean);
+          if (candidates.length === 0) return cmd('helilast', 'empty');
+          const last = Math.max(...candidates);
+          const now = Date.now();
+          const minutes = Math.floor((now - last) / 60000);
+          const time = this.formatDuration(minutes * 60 * 1000);
+          return cmd('helilast', 'msg', { time });
+        } catch (error) {
+          return cmd('helilast', 'error');
+        }
+      }
+    });
+
     // !small - 查询小油井状态
     const smallConfig = cmdConfig('small');
     this.registerCommand('small', {
@@ -531,28 +604,15 @@ class CommandsService {
         try {
           const eventData = this.eventMonitorService.getEventData(serverId);
           if (!eventData || !eventData.lastEvents) {
-            return cmd('small', 'error');
+            return cmd('smalllast', 'error');
           }
-
-          const lastTriggered = eventData.lastEvents.smallOilRigTriggered;
-          if (!lastTriggered) {
-            return cmd('small', 'empty');
-          }
-
-          const timeSinceTriggered = Date.now() - lastTriggered;
-          const minutesSince = Math.floor(timeSinceTriggered / 60000);
-          const crateTimeLeft = EventTimerManager.getTimeLeft('small_oil_rig_crate', serverId);
-
-          if (crateTimeLeft > 0) {
-            const minutesLeft = Math.floor(crateTimeLeft / 60000);
-            return cmd('small', 'msg_triggered', { minutesSince, minutesLeft });
-          } else if (timeSinceTriggered < 60 * 60 * 1000) {
-            return cmd('small', 'msg_unlocked', { minutesSince });
-          } else {
-            return cmd('small', 'msg_old', { minutesSince });
-          }
+          const { smallOilRigTriggered, smallOilRigCrateUnlocked } = eventData.lastEvents;
+          const last = smallOilRigTriggered || smallOilRigCrateUnlocked;
+          if (!last) return cmd('smalllast', 'empty');
+          const time = this.formatDuration(Date.now() - last);
+          return cmd('smalllast', 'msg', { time });
         } catch (error) {
-          return cmd('small', 'error');
+          return cmd('smalllast', 'error');
         }
       }
     });
@@ -566,28 +626,15 @@ class CommandsService {
         try {
           const eventData = this.eventMonitorService.getEventData(serverId);
           if (!eventData || !eventData.lastEvents) {
-            return cmd('large', 'error');
+            return cmd('largelast', 'error');
           }
-
-          const lastTriggered = eventData.lastEvents.largeOilRigTriggered;
-          if (!lastTriggered) {
-            return cmd('large', 'empty');
-          }
-
-          const timeSinceTriggered = Date.now() - lastTriggered;
-          const minutesSince = Math.floor(timeSinceTriggered / 60000);
-          const crateTimeLeft = EventTimerManager.getTimeLeft('large_oil_rig_crate', serverId);
-
-          if (crateTimeLeft > 0) {
-            const minutesLeft = Math.floor(crateTimeLeft / 60000);
-            return cmd('large', 'msg_triggered', { minutesSince, minutesLeft });
-          } else if (timeSinceTriggered < 60 * 60 * 1000) {
-            return cmd('large', 'msg_unlocked', { minutesSince });
-          } else {
-            return cmd('large', 'msg_old', { minutesSince });
-          }
+          const { largeOilRigTriggered, largeOilRigCrateUnlocked } = eventData.lastEvents;
+          const last = largeOilRigTriggered || largeOilRigCrateUnlocked;
+          if (!last) return cmd('largelast', 'empty');
+          const time = this.formatDuration(Date.now() - last);
+          return cmd('largelast', 'msg', { time });
         } catch (error) {
-          return cmd('large', 'error');
+          return cmd('largelast', 'error');
         }
       }
     });
@@ -599,24 +646,18 @@ class CommandsService {
       usage: '!heli',
       handler: async (serverId, args, context) => {
         try {
-          const markers = await this.rustPlusService.getMapMarkers(serverId);
-          const helicopters = markers.markers ? markers.markers.filter(m => m.type === 8) : [];
-
-          if (helicopters.length === 0) {
-            return cmd('heli', 'empty');
+          const eventData = this.eventMonitorService.getEventData(serverId);
+          if (!eventData || !eventData.lastEvents) {
+            return cmd('helilast', 'error');
           }
-
-          const { mapSize, oceanMargin } = await this.rustPlusService.getLiveMapContext(serverId);
-          let messages = [];
-
-          for (const heli of helicopters) {
-            const position = formatPosition(heli.x, heli.y, mapSize, true, false, null, oceanMargin);
-            messages.push(cmd('heli', 'msg', { position }));
-          }
-
-          return messages.join(' | ');
+          const { patrolHeliSpawn, patrolHeliDowned, patrolHeliLeave } = eventData.lastEvents;
+          const candidates = [patrolHeliSpawn, patrolHeliDowned, patrolHeliLeave].filter(Boolean);
+          if (candidates.length === 0) return cmd('helilast', 'empty');
+          const last = Math.max(...candidates);
+          const time = this.formatDuration(Date.now() - last);
+          return cmd('helilast', 'msg', { time });
         } catch (error) {
-          return cmd('heli', 'error');
+          return cmd('helilast', 'error');
         }
       }
     });

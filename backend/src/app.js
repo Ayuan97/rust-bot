@@ -60,6 +60,12 @@ websocketService.initialize(server, '*');
 
 // 初始化 FCM 服务
 let fcmInitialized = false;
+// 死亡通知去重缓存：serverId -> Map(steamId -> lastDeathTimeNotified)
+const deathNotifyCache = new Map();
+// 死亡会话去重：serverId -> Set(steamId) 处于死亡状态期间仅通知一次
+const deathSessionNotified = new Map();
+// 死亡通知抑制窗口：serverId -> Map(steamId -> suppressedUntilTs)
+const deathNotifySuppressUntil = new Map();
 const initializeFCM = async () => {
   try {
     console.log('\n🔐 初始化 FCM 服务...\n');
@@ -240,20 +246,89 @@ const setupPlayerEventNotifications = () => {
   // 玩家死亡自动通知
   rustPlusService.on('player:died', async (data) => {
     try {
+      // 抑制窗口：在 suppressedUntil 之前不再尝试发送
+      const suppressMap = deathNotifySuppressUntil.get(data.serverId) || new Map();
+      const suppressedUntil = suppressMap.get(data.steamId) || 0;
+      if (Date.now() < suppressedUntil) {
+        logger.debug(`💀 死亡通知处于抑制窗口内，跳过: ${data.name} (${data.steamId})`);
+        return;
+      }
+
+      // 若该玩家在本次死亡会话中已通知过，直接跳过（直到复活才清空）
+      const sessionSet = deathSessionNotified.get(data.serverId) || new Set();
+      if (sessionSet.has(data.steamId)) {
+        logger.debug(`💀 跳过会话重复死亡通知: ${data.name} (${data.steamId})`);
+        return;
+      }
+
+      // 去重：相同玩家相同 deathTime 不重复发送；若缺少 deathTime，则 10 秒内只发一次
+      const serverMap = deathNotifyCache.get(data.serverId) || new Map();
+      const cached = serverMap.get(data.steamId) || { deathTime: null, lastSentAt: 0 };
+      const nowTs = Date.now();
+      if (typeof data.deathTime === 'number') {
+        if (cached.deathTime && cached.deathTime === data.deathTime) {
+          logger.debug(`💀 跳过重复死亡通知: ${data.name} (${data.steamId})`);
+          return;
+        }
+      } else {
+        if (nowTs - cached.lastSentAt < 10_000) {
+          logger.debug(`💀 跳过短期重复死亡通知: ${data.name} (${data.steamId})`);
+          return;
+        }
+      }
+
       const settings = commandsService.getServerSettings(data.serverId);
       if (settings.deathNotify) {
         const { mapSize, oceanMargin } = await rustPlusService.getLiveMapContext(data.serverId);
-        const position = formatPosition(data.x, data.y, mapSize, true, false, null, oceanMargin);
+        let position = formatPosition(data.x, data.y, mapSize, true, false, null, oceanMargin);
+        if (!position || typeof position !== 'string' || position.includes('NaN')) {
+          position = `(${Math.round(data.x)},${Math.round(data.y)})`;
+        }
         const message = notify('death', {
           playerName: data.name,
           position: position
         });
         await rustPlusService.sendTeamMessage(data.serverId, message);
         logger.debug(`📨 已发送死亡通知: ${message}`);
+
+        // 更新缓存
+        serverMap.set(data.steamId, {
+          deathTime: typeof data.deathTime === 'number' ? data.deathTime : cached.deathTime,
+          lastSentAt: nowTs
+        });
+        deathNotifyCache.set(data.serverId, serverMap);
+        // 标记本次死亡会话已通知
+        sessionSet.add(data.steamId);
+        deathSessionNotified.set(data.serverId, sessionSet);
       }
     } catch (error) {
-      console.error('❌ 发送死亡通知失败:', error.message);
+      const errMsg = error?.message || error?.error || JSON.stringify(error);
+      console.error('❌ 发送死亡通知失败:', errMsg);
+      // 对已知错误开启短期抑制窗口，避免反复尝试
+      const suppressMap = deathNotifySuppressUntil.get(data.serverId) || new Map();
+      const backoffMs = errMsg && String(errMsg).includes('message_not_sent') ? 5 * 60 * 1000 : 60 * 1000;
+      suppressMap.set(data.steamId, Date.now() + backoffMs);
+      deathNotifySuppressUntil.set(data.serverId, suppressMap);
     }
+  });
+
+  // 玩家重生：清除死亡会话与抑制状态
+  rustPlusService.on('player:spawned', (data) => {
+    try {
+      const sessionSet = deathSessionNotified.get(data.serverId);
+      if (sessionSet) {
+        sessionSet.delete(data.steamId);
+      }
+      const serverMap = deathNotifyCache.get(data.serverId);
+      if (serverMap) {
+        serverMap.delete(data.steamId);
+      }
+      const suppressMap = deathNotifySuppressUntil.get(data.serverId);
+      if (suppressMap) {
+        suppressMap.delete(data.steamId);
+      }
+      logger.debug(`✨ 已清除死亡会话与抑制: ${data.name} (${data.steamId})`);
+    } catch {}
   });
 
   // 玩家重生自动通知
