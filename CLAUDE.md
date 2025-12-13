@@ -581,6 +581,11 @@ VITE_SOCKET_URL=http://localhost:3000       # WebSocket 地址
 - **API 调用**: 通过 `services/` 层封装，不在组件直接调用
 - **事件命名**: 小写加冒号分隔（如 `server:connect`）
 
+### Git 提交规范
+
+- **禁止 AI 标识**: 提交信息中不得包含任何 AI 相关标识（如 "Generated with Claude"、"Co-Authored-By: Claude" 等）
+- **提交信息格式**: `type: 简短描述`，type 包括 feat/fix/refactor/chore/docs
+
 ## Steam 认证流程
 
 **用户必须完成 Steam 认证才能使用配对功能**：
