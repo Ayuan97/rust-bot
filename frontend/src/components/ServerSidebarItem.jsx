@@ -1,7 +1,7 @@
 import React from 'react';
-import { FaServer, FaCircle, FaPlug, FaExclamationTriangle } from 'react-icons/fa';
+import { FaServer } from 'react-icons/fa';
 
-function ServerSidebarItem({ server, isActive, onSelect, onDelete }) {
+function ServerSidebarItem({ server, isActive, onSelect }) {
   return (
     <div
       className={`group relative flex items-center gap-3 p-3 rounded-xl transition-all duration-200 cursor-pointer border ${

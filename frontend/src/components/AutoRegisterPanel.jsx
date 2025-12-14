@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { FaRocket, FaCheckCircle, FaSpinner, FaSteam } from 'react-icons/fa';
 import axios from 'axios';
+import { useToast } from './Toast';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 function AutoRegisterPanel({ onComplete, onClose }) {
   const [step, setStep] = useState(1); // 1: 初始, 2: 等待输入凭证, 3: 注册中, 4: 成功
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [steamWindow, setSteamWindow] = useState(null);
   const [credentialsInput, setCredentialsInput] = useState('');
+
+  const toast = useToast();
 
   // 打开 Steam 登录页面（新标签页）
   const handleOpenSteamLogin = () => {
@@ -21,7 +23,7 @@ function AutoRegisterPanel({ onComplete, onClose }) {
 
     // 检查弹窗是否被阻止
     if (!steamWin || steamWin.closed || typeof steamWin.closed === 'undefined') {
-      setError('浏览器阻止了弹窗，请允许弹窗后重试');
+      toast.error('浏览器阻止了弹窗，请允许弹窗后重试');
       return;
     }
 
@@ -32,12 +34,11 @@ function AutoRegisterPanel({ onComplete, onClose }) {
   // 处理凭证提交（简化版：直接使用 Companion 凭证）
   const handleSubmitCredentials = async () => {
     if (!credentialsInput.trim()) {
-      setError('请输入凭证命令');
+      toast.warning('请输入凭证命令');
       return;
     }
 
     setLoading(true);
-    setError('');
     setStep(3);
 
     try {
@@ -64,7 +65,7 @@ function AutoRegisterPanel({ onComplete, onClose }) {
       }, 2000);
     } catch (err) {
       console.error('提交凭证失败:', err);
-      setError(err.response?.data?.error || err.message || '提交失败');
+      toast.error(err.response?.data?.error || err.message || '提交失败');
       setStep(2);
     } finally {
       setLoading(false);
@@ -81,12 +82,6 @@ function AutoRegisterPanel({ onComplete, onClose }) {
         </div>
       </div>
 
-      {/* 错误提示 */}
-      {error && (
-        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
-          {error}
-        </div>
-      )}
 
       {/* 步骤指示器 */}
       <div className="mb-6">

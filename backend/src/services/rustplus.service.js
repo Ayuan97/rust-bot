@@ -446,6 +446,26 @@ class RustPlusService extends EventEmitter {
   }
 
   /**
+   * 移交队长权限
+   * @param {string} serverId - 服务器 ID
+   * @param {string} steamId - 目标玩家的 Steam ID
+   * @returns {Promise<Object>} 操作结果
+   */
+  async promoteToLeader(serverId, steamId) {
+    const rustplus = this.connections.get(serverId);
+    if (!rustplus) throw new Error('服务器未连接');
+
+    // steamId 需要是 Long 类型
+    const targetSteamId = BigInt(steamId);
+    const res = await rustplus.sendRequestAsync({
+      promoteToLeader: { steamId: targetSteamId }
+    });
+
+    console.log(`👑 移交队长权限给 ${steamId}`);
+    return res;
+  }
+
+  /**
    * 获取队伍信息
    */
   async getTeamInfo(serverId) {
@@ -703,14 +723,17 @@ class RustPlusService extends EventEmitter {
 
         if (oldMember) {
           // 检测死亡事件
-          // 1) isAlive 从 true -> false
-          // 2) deathTime 出现或递增（某些情况下 isAlive 字段在不同版本/时序可能不稳定）
+          // 条件：isAlive 从 true 变为 false
+          // 或者：deathTime 增加（表示新的一次死亡），且当前是死亡状态
           const isAliveFlipToDead = oldMember.isAlive === true && newMember.isAlive === false;
-          const deathTimeIncreased =
+          const hasNewDeathTime =
             typeof newMember.deathTime === 'number' &&
-            (!oldMember.deathTime || newMember.deathTime > oldMember.deathTime);
+            newMember.isAlive === false &&
+            typeof oldMember.deathTime === 'number' &&
+            newMember.deathTime > oldMember.deathTime;
 
-          if (isAliveFlipToDead || deathTimeIncreased) {
+          // 只有在状态翻转或有新的死亡时间时才触发（避免重复触发）
+          if (isAliveFlipToDead || hasNewDeathTime) {
             logger.debug(`💀 玩家死亡: ${newMember.name} (${steamId})`);
             this.emit('player:died', {
               serverId,

@@ -174,6 +174,23 @@ class WebSocketService {
         }
       });
 
+      // 获取完整地图数据（包含图片）
+      socket.on('map:get', async (serverId) => {
+        try {
+          const map = await rustPlusService.getMap(serverId);
+          // 将 jpgImage Buffer 转换为 base64 字符串，方便前端处理
+          if (map && map.jpgImage) {
+            map.jpgImage = Buffer.from(map.jpgImage).toString('base64');
+          }
+          socket.emit('map:get:success', { serverId, map });
+        } catch (error) {
+          socket.emit('map:get:error', {
+            serverId,
+            error: error.message
+          });
+        }
+      });
+
       // 获取游戏时间
       socket.on('time:get', async (serverId) => {
         try {

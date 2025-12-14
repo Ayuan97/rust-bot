@@ -376,8 +376,12 @@ server.listen(PORT, async () => {
       const preferredNode = process.env.PROXY_NODE_NAME || null;
       await proxyService.initialize(subscriptionUrl, preferredNode);
 
-      // 将代理 Agent 传递给 FCM 服务
+      // 将代理 Agent 传递给 FCM 服务（用于 HTTP 请求）
       fcmService.setProxyAgent(proxyService.getProxyAgent());
+
+      // 配置 SOCKS5 代理（用于 FCM WebSocket 连接）
+      const proxyPort = parseInt(process.env.PROXY_PORT) || 10808;
+      fcmService.setProxyConfig({ host: '127.0.0.1', port: proxyPort });
 
       console.log('✅ 代理服务已启动\n');
     } catch (error) {
@@ -444,14 +448,37 @@ const gracefulShutdown = async (signal) => {
   }, 3000);
   
   try {
-    // 1. 停止代理服务
+    // 1. 停止 FCM 服务（关闭 WebSocket 和定时器）
+    try {
+      fcmService.stopListening();
+    } catch (err) {
+      console.warn('⚠️  停止 FCM 服务失败:', err.message);
+    }
+
+    // 2. 停止代理服务
     try {
       proxyService.stopXray();
     } catch (err) {
       console.warn('⚠️  停止代理服务失败:', err.message);
     }
 
-    // 2. 关闭 Rust+ 连接（最重要）
+    // 3. 停止所有事件监控（清理定时器）
+    try {
+      rustPlusService.eventMonitorService?.stopAll();
+    } catch (err) {
+      console.warn('⚠️  停止事件监控失败:', err.message);
+    }
+
+    // 4. 停止命令服务中的定时器（AFK检测、人数追踪）
+    try {
+      const commandsService = rustPlusService.getCommandsService();
+      commandsService?.stopAfkDetection();
+      commandsService?.stopPlayerCountTracking();
+    } catch (err) {
+      console.warn('⚠️  停止命令服务定时器失败:', err.message);
+    }
+
+    // 5. 关闭 Rust+ 连接
     const connectedServers = rustPlusService.getConnectedServers();
     if (connectedServers.length > 0) {
       await Promise.allSettled(
@@ -461,14 +488,14 @@ const gracefulShutdown = async (signal) => {
       );
     }
 
-    // 3. 关闭 Socket.IO
+    // 6. 关闭 Socket.IO
     const io = websocketService.getIO();
     if (io) {
       io.disconnectSockets(true); // 强制断开所有连接
       io.close();
     }
 
-    // 4. 关闭 HTTP Server（只在服务器已启动时）
+    // 7. 关闭 HTTP Server（只在服务器已启动时）
     if (serverStarted && server.listening) {
       await new Promise((resolve) => {
         server.close(() => resolve());

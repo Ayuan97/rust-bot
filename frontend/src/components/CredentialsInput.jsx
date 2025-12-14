@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { FaKey, FaInfoCircle, FaSteam, FaMagic } from 'react-icons/fa';
+import { useToast } from './Toast';
 
 function CredentialsInput({ onSubmit, onClose }) {
   const [manualInput, setManualInput] = useState({
@@ -13,6 +14,8 @@ function CredentialsInput({ onSubmit, onClose }) {
   });
   const [rawInput, setRawInput] = useState('');
   const [error, setError] = useState('');
+
+  const toast = useToast();
 
   const handleSteamLogin = () => {
     // 在新窗口打开 Steam 登录页面
@@ -55,7 +58,7 @@ function CredentialsInput({ onSubmit, onClose }) {
       const parsed = parseCredentialsCommand(rawInput);
       setManualInput(parsed);
       setError('');
-      alert('✅ 凭证解析成功！请检查并提交');
+      toast.success('凭证解析成功，请检查并提交');
     } catch (err) {
       setError(err.message);
     }

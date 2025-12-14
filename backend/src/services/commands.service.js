@@ -273,6 +273,59 @@ class CommandsService {
       }
     });
 
+    // 移交队长权限命令
+    const leaderConfig = cmdConfig('leader');
+    this.registerCommand('leader', {
+      description: leaderConfig?.desc || '移交队长权限',
+      usage: '!leader [玩家名]',
+      handler: async (serverId, args, context) => {
+        try {
+          const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
+          if (!teamInfo.members || teamInfo.members.length === 0) {
+            return cmd('leader', 'error');
+          }
+
+          // 确定目标玩家
+          let targetMember;
+
+          if (args.length === 0) {
+            // 无参数：移交给发送命令的玩家
+            targetMember = teamInfo.members.find(m =>
+              m.steamId?.toString() === context.steamId?.toString()
+            );
+            if (!targetMember) {
+              return cmd('leader', 'error');
+            }
+          } else {
+            // 有参数：移交给指定玩家
+            const targetName = args.join(' ').toLowerCase();
+            targetMember = teamInfo.members.find(m =>
+              m.name.toLowerCase().includes(targetName)
+            );
+            if (!targetMember) {
+              return cmd('leader', 'not_found', { name: args.join(' ') });
+            }
+          }
+
+          // 检查目标是否已经是队长
+          if (teamInfo.leaderSteamId?.toString() === targetMember.steamId?.toString()) {
+            return cmd('leader', 'already', { name: targetMember.name });
+          }
+
+          // 执行移交
+          await this.rustPlusService.promoteToLeader(serverId, targetMember.steamId.toString());
+          return cmd('leader', 'msg', { name: targetMember.name });
+        } catch (error) {
+          console.error('❌ 移交队长失败:', error);
+          // 如果是权限问题，给出明确提示
+          if (error.message?.includes('not_leader') || error.error === 'not_leader') {
+            return cmd('leader', 'not_leader');
+          }
+          return cmd('leader', 'error');
+        }
+      }
+    });
+
     // 队伍成员命令
     const onlineConfig = cmdConfig('online');
     this.registerCommand('online', {

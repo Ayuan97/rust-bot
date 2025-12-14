@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { FaShip, FaHelicopter, FaOilCan, FaBox, FaClock } from 'react-icons/fa';
 import socketService from '../services/socket';
+import { formatTimeAgo } from '../utils/time';
+import EmptyState from './EmptyState';
 
 function EventsPanel({ serverId }) {
   const [events, setEvents] = useState({
@@ -12,6 +14,15 @@ function EventsPanel({ serverId }) {
     largeOilRig: null
   });
   const [loading, setLoading] = useState(true);
+  const [, setTick] = useState(0); // 用于触发时间更新的强制刷新
+
+  // 每分钟更新一次时间显示
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTick(t => t + 1);
+    }, 60000); // 60秒更新一次
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     // 定义事件处理器（在 useEffect 内部，避免依赖问题）
@@ -155,20 +166,6 @@ function EventsPanel({ serverId }) {
     }
   };
 
-  const formatTimeAgo = (timestamp) => {
-    const now = Date.now();
-    // 统一处理时间戳：如果小于 10000000000，认为是秒级，否则是毫秒级
-    const ms = timestamp < 10000000000 ? timestamp * 1000 : timestamp;
-    const diff = now - ms;
-    const minutes = Math.floor(diff / 60000);
-
-    if (minutes < 1) return '刚刚';
-    if (minutes < 60) return `${minutes}分钟前`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}小时前`;
-    return `${Math.floor(hours / 24)}天前`;
-  };
-
   const hasActiveEvents = events.cargo.length > 0 ||
                          events.heli.length > 0 ||
                          events.ch47.length > 0 ||
@@ -186,15 +183,17 @@ function EventsPanel({ serverId }) {
 
   return (
     <div className="card h-full">
-      <h2 className="text-xl font-bold mb-4 pb-3 border-b border-rust-gray">
-        活跃游戏事件
-      </h2>
+      <div className="mb-4 pb-3 border-b border-rust-gray">
+        <div className="flex items-center gap-2">
+          <FaClock className="text-green-400 text-xl" />
+          <h2 className="text-xl font-bold">活跃游戏事件</h2>
+        </div>
+        <p className="text-xs text-gray-500 mt-1">货船、直升机、空投等游戏事件实时追踪</p>
+      </div>
 
       <div className="space-y-4 overflow-y-auto max-h-[500px]">
         {!hasActiveEvents ? (
-          <div className="text-center text-gray-400 py-8">
-            当前没有活跃事件
-          </div>
+          <EmptyState type="events" />
         ) : (
           <>
             {/* 货船 */}

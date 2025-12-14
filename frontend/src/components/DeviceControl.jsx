@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import { FaLightbulb, FaPlus, FaTrash, FaSync, FaPowerOff, FaBolt } from 'react-icons/fa';
 import socketService from '../services/socket';
 import { getDevices, addDevice as apiAddDevice, deleteDevice as apiDeleteDevice } from '../services/api';
+import { useToast } from './Toast';
+import { useConfirm } from './ConfirmModal';
+import EmptyState from './EmptyState';
+import { DeviceListSkeleton } from './Skeleton';
 
 function DeviceControl({ serverId }) {
   const [devices, setDevices] = useState([]);
@@ -12,6 +16,9 @@ function DeviceControl({ serverId }) {
     name: '',
     type: 'switch'
   });
+
+  const toast = useToast();
+  const confirm = useConfirm();
 
   useEffect(() => {
     fetchDevices();
@@ -52,7 +59,7 @@ function DeviceControl({ serverId }) {
     e.preventDefault();
 
     if (!newDevice.entityId || !newDevice.name) {
-      alert('请填写所有必填字段');
+      toast.warning('请填写所有必填字段');
       return;
     }
 
@@ -66,21 +73,30 @@ function DeviceControl({ serverId }) {
       setNewDevice({ entityId: '', name: '', type: 'switch' });
       setShowAddForm(false);
       fetchDevices();
+      toast.success('设备添加成功');
     } catch (error) {
       console.error('添加设备失败:', error);
-      alert('添加失败: ' + error.message);
+      toast.error('添加失败: ' + error.message);
     }
   };
 
   const handleDeleteDevice = async (entityId) => {
-    if (!confirm('确定要删除这个设备吗?')) return;
+    const confirmed = await confirm({
+      type: 'danger',
+      title: '删除设备',
+      message: '确定要删除这个设备吗？',
+      confirmText: '删除',
+      cancelText: '取消'
+    });
+    if (!confirmed) return;
 
     try {
       await apiDeleteDevice(serverId, entityId);
       fetchDevices();
+      toast.success('设备已删除');
     } catch (error) {
       console.error('删除设备失败:', error);
-      alert('删除失败: ' + error.message);
+      toast.error('删除失败: ' + error.message);
     }
   };
 
@@ -111,7 +127,7 @@ function DeviceControl({ serverId }) {
         )
       );
 
-      alert('控制失败: ' + error.message);
+      toast.error('控制失败: ' + error.message);
     }
   };
 
@@ -132,10 +148,13 @@ function DeviceControl({ serverId }) {
 
   return (
     <div className="card h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4 pb-3 border-b border-rust-gray">
-        <div className="flex items-center gap-2">
-          <FaBolt className="text-rust-orange text-xl" />
-          <h2 className="text-xl font-bold">智能设备</h2>
+      <div className="flex items-center justify-between mb-2 pb-3 border-b border-rust-gray">
+        <div>
+          <div className="flex items-center gap-2">
+            <FaBolt className="text-rust-orange text-xl" />
+            <h2 className="text-xl font-bold">智能设备</h2>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">远程控制游戏内的开关、灯光、门等设备</p>
         </div>
         <button
           className="btn btn-primary flex items-center gap-2 text-sm"
@@ -201,11 +220,9 @@ function DeviceControl({ serverId }) {
       {/* 设备列表 */}
       <div className="flex-1 overflow-y-auto space-y-2">
         {loading ? (
-          <div className="text-center text-gray-400 py-8">加载中...</div>
+          <DeviceListSkeleton />
         ) : devices.length === 0 ? (
-          <div className="text-center text-gray-400 py-8">
-            暂无设备，点击上方按钮添加
-          </div>
+          <EmptyState type="devices" />
         ) : (
           devices.map((device) => (
             <div
@@ -231,23 +248,29 @@ function DeviceControl({ serverId }) {
                   className="btn btn-secondary px-3 py-2"
                   onClick={() => handleRefreshDevice(device)}
                   title="刷新状态"
+                  aria-label={`刷新 ${device.name} 状态`}
                 >
-                  <FaSync />
+                  <FaSync aria-hidden="true" />
                 </button>
                 <button
-                  className={`btn px-4 py-2 ${
+                  className={`btn px-4 py-2 min-w-[100px] ${
                     device.currentValue ? 'btn-primary' : 'btn-secondary'
                   }`}
                   onClick={() => handleToggleDevice(device)}
+                  title={device.currentValue ? '点击关闭设备' : '点击开启设备'}
+                  aria-label={`${device.name} ${device.currentValue ? '已开启，点击关闭' : '已关闭，点击开启'}`}
+                  aria-pressed={device.currentValue}
                 >
-                  <FaPowerOff className="mr-2" />
-                  {device.currentValue ? '开启' : '关闭'}
+                  <FaPowerOff className="mr-2" aria-hidden="true" />
+                  {device.currentValue ? '已开启' : '已关闭'}
                 </button>
                 <button
                   className="btn btn-danger px-3 py-2"
                   onClick={() => handleDeleteDevice(device.entity_id)}
+                  title="删除设备"
+                  aria-label={`删除 ${device.name}`}
                 >
-                  <FaTrash />
+                  <FaTrash aria-hidden="true" />
                 </button>
               </div>
             </div>

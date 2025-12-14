@@ -7,6 +7,8 @@ import {
 } from 'react-icons/fa';
 import socketService from '../services/socket';
 import { getBattlemetricsInfo } from '../services/api';
+import { useToast } from './Toast';
+import { formatGameTime, isDaytime, formatTimeAgo } from '../utils/time';
 
 function ServerCard({ server, onDelete, onSelect, isActive }) {
   const [serverInfo, setServerInfo] = useState(null);
@@ -16,6 +18,9 @@ function ServerCard({ server, onDelete, onSelect, isActive }) {
   const [loading, setLoading] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [loadingBM, setLoadingBM] = useState(false);
+  const [imgError, setImgError] = useState(false);
+
+  const toast = useToast();
 
   useEffect(() => {
     if (server.connected && isActive) {
@@ -75,33 +80,9 @@ function ServerCard({ server, onDelete, onSelect, isActive }) {
     return 'bg-gradient-to-r from-green-500 to-green-600';
   };
 
-  const formatTime = (time) => {
-    if (!time) return '--:--';
-    const hours = Math.floor(time);
-    const minutes = Math.floor((time - hours) * 60);
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  };
-
-  const isDaytime = (time, sunrise = 6, sunset = 18) => {
-    if (!time) return true;
-    return time >= sunrise && time < sunset;
-  };
-
   const getOnlineTeamCount = () => {
     if (!teamInfo || !teamInfo.members) return 0;
     return teamInfo.members.filter(m => m.isOnline).length;
-  };
-
-  const formatTimeSince = (timestamp) => {
-    if (!timestamp) return '未知';
-    const now = Date.now();
-    const diff = now - new Date(timestamp).getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    if (days > 0) return `${days}天前`;
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    if (hours > 0) return `${hours}小时前`;
-    const minutes = Math.floor(diff / (1000 * 60));
-    return `${minutes}分钟前`;
   };
 
   const handleConnect = async () => {
@@ -116,7 +97,7 @@ function ServerCard({ server, onDelete, onSelect, isActive }) {
       });
     } catch (error) {
       console.error('连接失败:', error);
-      alert('连接失败: ' + error.message);
+      toast.error('连接失败: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -156,14 +137,12 @@ function ServerCard({ server, onDelete, onSelect, isActive }) {
         <div className="flex items-start gap-4 mb-4">
           {/* 左侧大Logo */}
           <div className="flex-shrink-0">
-            {server.img || server.logo ? (
+            {(server.img || server.logo) && !imgError ? (
               <img
                 src={server.img || server.logo}
                 alt={server.name}
                 className="w-24 h-24 rounded-lg object-cover border-2 border-white/10 shadow-lg"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                }}
+                onError={() => setImgError(true)}
               />
             ) : (
               <div className="w-24 h-24 rounded-lg bg-gradient-to-br from-rust-orange to-orange-600 flex items-center justify-center border-2 border-white/10 shadow-lg">
@@ -266,7 +245,7 @@ function ServerCard({ server, onDelete, onSelect, isActive }) {
                         {bmInfo.lastWipe && (
                           <div className="flex items-center gap-2 text-gray-300">
                             <FaCalendarAlt className="text-gray-500" />
-                            <span>清档: {formatTimeSince(bmInfo.lastWipe)}</span>
+                            <span>清档: {formatTimeAgo(bmInfo.lastWipe)}</span>
                           </div>
                         )}
                         {bmInfo.fps && (
@@ -302,7 +281,7 @@ function ServerCard({ server, onDelete, onSelect, isActive }) {
                     ) : (
                       <FaMoon className="text-blue-400" />
                     )}
-                    <span>游戏时间: {formatTime(timeInfo.time)}</span>
+                    <span>游戏时间: {formatGameTime(timeInfo.time)}</span>
                   </div>
                 )}
                 {serverInfo && (

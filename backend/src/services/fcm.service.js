@@ -3,8 +3,10 @@ import RustPlus from '@liamcottle/rustplus.js';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import tls from 'tls';
 import AndroidFCM from '@liamcottle/push-receiver/src/android/fcm.js';
 import PushReceiverClient from '@liamcottle/push-receiver/src/client.js';
+import { SocksClient } from 'socks';
 import logger from '../utils/logger.js';
 import https from 'https';
 import http from 'http';
@@ -28,7 +30,8 @@ class FCMService extends EventEmitter {
     this.heartbeatInterval = null;
     this.reconnectTimer = null;
     this.lastDisconnectTime = null;
-    this.proxyAgent = null; // 代理 Agent
+    this.proxyAgent = null; // 代理 Agent (用于 HTTP 请求)
+    this.proxyConfig = null; // SOCKS5 代理配置 (用于 FCM 连接)
   }
 
   /**
@@ -36,7 +39,16 @@ class FCMService extends EventEmitter {
    */
   setProxyAgent(proxyAgent) {
     this.proxyAgent = proxyAgent;
-    logger.info('✅ FCM 服务已配置代理');
+    logger.info('✅ FCM 服务已配置 HTTP 代理');
+  }
+
+  /**
+   * 设置 SOCKS5 代理配置（用于 FCM 连接）
+   * @param {Object} config - { host: '127.0.0.1', port: 10808 }
+   */
+  setProxyConfig(config) {
+    this.proxyConfig = config;
+    logger.info(`✅ FCM 服务已配置 SOCKS5 代理: ${config.host}:${config.port}`);
   }
 
   /**
@@ -208,10 +220,18 @@ class FCMService extends EventEmitter {
       this.handleFCMError(error);
     });
 
-    // 连接到 FCM - 等待连接完成
+    // 连接到 FCM - 如果配置了代理则通过代理连接
     try {
       console.log('🔌 正在连接到 FCM 服务器...');
-      await this.fcmListener.connect();
+
+      // 如果配置了 SOCKS5 代理，使用代理连接
+      if (this.proxyConfig) {
+        console.log(`🌐 通过代理连接: ${this.proxyConfig.host}:${this.proxyConfig.port}`);
+        await this._connectWithProxy();
+      } else {
+        await this.fcmListener.connect();
+      }
+
       this.isListening = true;
       console.log('✅ FCM 连接流程已启动');
       console.log('📡 等待 connect 事件确认连接...');
@@ -222,6 +242,57 @@ class FCMService extends EventEmitter {
       this.handleFCMError(error);
       throw error;
     }
+  }
+
+  /**
+   * 通过 SOCKS5 代理连接到 FCM
+   * 原理：先通过代理建立 TCP 连接，然后在该连接上建立 TLS
+   */
+  async _connectWithProxy() {
+    const FCM_HOST = 'mtalk.google.com';
+    const FCM_PORT = 5228;
+
+    // 保存原始的 tls.connect
+    const originalTlsConnect = tls.connect;
+
+    // 创建代理连接
+    const proxySocket = await SocksClient.createConnection({
+      proxy: {
+        host: this.proxyConfig.host,
+        port: this.proxyConfig.port,
+        type: 5, // SOCKS5
+      },
+      command: 'connect',
+      destination: {
+        host: FCM_HOST,
+        port: FCM_PORT,
+      },
+    });
+
+    console.log('✅ SOCKS5 代理连接已建立');
+
+    // Monkey-patch tls.connect 让它使用代理 socket
+    tls.connect = (options) => {
+      // 只拦截连接到 FCM 的请求
+      if (options.host === FCM_HOST && options.port === FCM_PORT) {
+        console.log('🔒 在代理连接上建立 TLS...');
+        // 恢复原始函数
+        tls.connect = originalTlsConnect;
+        // 在代理 socket 上建立 TLS
+        return originalTlsConnect({
+          ...options,
+          socket: proxySocket.socket,
+        });
+      }
+      // 其他连接使用原始方法
+      return originalTlsConnect(options);
+    };
+
+    // 调用原始的 connect 方法
+    await this.fcmListener.connect();
+
+    // 确保恢复原始函数
+    tls.connect = originalTlsConnect;
   }
 
   /**

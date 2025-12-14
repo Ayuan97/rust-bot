@@ -83,6 +83,14 @@
       "empty": "队伍为空",
       "error": "[错误] 获取队伍失败"
     },
+    "leader": {
+      "desc": "移交队长权限",
+      "msg": "已将队长移交给 {name}",
+      "already": "{name} 已经是队长了",
+      "not_found": "找不到玩家: {name}",
+      "not_leader": "移交失败: 当前账号不是队长",
+      "error": "移交队长失败"
+    },
     "online": {
       "desc": "显示在线队友",
       "msg": "队伍 {online}/{total} 在线 {list}",

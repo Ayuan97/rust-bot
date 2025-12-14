@@ -181,7 +181,6 @@ class EventMonitorService extends EventEmitter {
     this.previousMarkers.set(serverId, currentMarkers);
 
     // 标记首次轮询已完成
-    const eventData = this.eventData.get(serverId);
     if (eventData && eventData.isFirstPoll) {
       eventData.isFirstPoll = false;
       console.log(`✅ 服务器 ${serverId} 首次轮询完成，后续将正常发送通知`);

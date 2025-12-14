@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { FaQrcode, FaPlay, FaStop, FaSync, FaCheckCircle, FaTimesCircle, FaKey, FaRocket } from 'react-icons/fa';
 import { getPairingStatus, startPairing, stopPairing, resetPairing, submitCredentials } from '../services/pairing';
 import socketService from '../services/socket';
+import { useToast } from './Toast';
+import { useConfirm } from './ConfirmModal';
 import CredentialsInput from './CredentialsInput';
 import AutoRegisterPanel from './AutoRegisterPanel';
 
@@ -16,6 +18,9 @@ function PairingPanel({ onServerPaired }) {
   const [waitingForPairing, setWaitingForPairing] = useState(false);
   const [showCredentialsInput, setShowCredentialsInput] = useState(false);
   const [showAutoRegister, setShowAutoRegister] = useState(false);
+
+  const toast = useToast();
+  const confirm = useConfirm();
 
   useEffect(() => {
     const loadStatus = async () => {
@@ -46,19 +51,26 @@ function PairingPanel({ onServerPaired }) {
       }
 
       // 显示成功通知
-      alert(`服务器配对成功!\n\n名称: ${serverInfo.name}\nIP: ${serverInfo.ip}:${serverInfo.port}`);
+      toast.success(`服务器配对成功: ${serverInfo.name}`, {
+        title: '配对成功'
+      });
     };
 
     // 监听设备配对事件
     const handleEntityPaired = (entityInfo) => {
       console.log('✅ 设备配对成功:', entityInfo);
-      alert(`设备配对成功!\n\n设备 ID: ${entityInfo.entityId}\n类型: ${entityInfo.entityType || '未知'}`);
+      toast.success(`设备 ID: ${entityInfo.entityId}`, {
+        title: '设备配对成功'
+      });
     };
 
     // 监听警报
     const handleAlarm = (alarmInfo) => {
       console.log('🚨 警报:', alarmInfo);
-      alert(`警报!\n\n${alarmInfo.title}\n${alarmInfo.message}`);
+      toast.warning(`${alarmInfo.title}: ${alarmInfo.message}`, {
+        title: '警报',
+        duration: 5000
+      });
     };
 
     socketService.on('server:paired', handleServerPaired);
@@ -89,7 +101,7 @@ function PairingPanel({ onServerPaired }) {
       await fetchStatus();
     } catch (error) {
       console.error('启动配对失败:', error);
-      alert('启动失败: ' + error.message);
+      toast.error('启动失败: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -103,16 +115,21 @@ function PairingPanel({ onServerPaired }) {
       await fetchStatus();
     } catch (error) {
       console.error('停止配对失败:', error);
-      alert('停止失败: ' + error.message);
+      toast.error('停止失败: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleReset = async () => {
-    if (!confirm('确定要重置 FCM 凭证吗？这将清空现有凭证，需要重新输入。')) {
-      return;
-    }
+    const confirmed = await confirm({
+      type: 'warning',
+      title: '重置 FCM 凭证',
+      message: '确定要重置 FCM 凭证吗？这将清空现有凭证，需要重新输入。',
+      confirmText: '重置',
+      cancelText: '取消'
+    });
+    if (!confirmed) return;
 
     setLoading(true);
     setWaitingForPairing(false);
@@ -126,15 +143,10 @@ function PairingPanel({ onServerPaired }) {
 
       // 显示凭证输入界面
       setShowCredentialsInput(true);
-
-      // 显示成功提示
-      // const message = response.data.message || 'FCM 凭证已清空';
-      // alert(`✅ ${message}`); 
-      // Removed alert to avoid blocking UI or focus issues when modal opens
     } catch (error) {
       console.error('重置失败:', error);
       const errorMsg = error.response?.data?.error || error.message || '未知错误';
-      alert(`❌ 重置失败: ${errorMsg}`);
+      toast.error('重置失败: ' + errorMsg);
     } finally {
       setLoading(false);
     }
@@ -147,10 +159,10 @@ function PairingPanel({ onServerPaired }) {
       setShowCredentialsInput(false);
       setWaitingForPairing(true);
       await fetchStatus();
-      alert('凭证已保存并开始监听！');
+      toast.success('凭证已保存并开始监听');
     } catch (error) {
       console.error('提交凭证失败:', error);
-      alert('提交失败: ' + error.message);
+      toast.error('提交失败: ' + error.message);
     } finally {
       setLoading(false);
     }

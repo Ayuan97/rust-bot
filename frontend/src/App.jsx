@@ -5,6 +5,8 @@ import {
 } from 'react-icons/fa';
 import socketService from './services/socket';
 import { getServers, addServer as apiAddServer, deleteServer as apiDeleteServer } from './services/api';
+import { useToast } from './components/Toast';
+import { useConfirm } from './components/ConfirmModal';
 
 // Components
 import ServerSidebarItem from './components/ServerSidebarItem';
@@ -16,6 +18,8 @@ import PairingPanel from './components/PairingPanel';
 import EventsPanel from './components/EventsPanel';
 import EventHistoryPanel from './components/EventHistoryPanel';
 import PlayerNotifications from './components/PlayerNotifications';
+import EmptyState from './components/EmptyState';
+import WelcomeGuide from './components/WelcomeGuide';
 
 function App() {
   const [servers, setServers] = useState([]);
@@ -28,9 +32,18 @@ function App() {
   const [hasAutoSelected, setHasAutoSelected] = useState(false); // 记录是否已自动选择
   const [socketConnected, setSocketConnected] = useState(false); // Socket 连接状态
 
+  // 未读计数
+  const [unreadChat, setUnreadChat] = useState(0);
+  const [activeEvents, setActiveEvents] = useState(0);
+
+  const toast = useToast();
+  const confirm = useConfirm();
+
   // 使用 ref 存储 activeServer 最新值，避免事件处理器闭包陈旧
   const activeServerRef = useRef(null);
+  const activeTabRef = useRef('info');
   useEffect(() => { activeServerRef.current = activeServer; }, [activeServer]);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
   // --- Initial Setup & Socket Listeners ---
   useEffect(() => {
@@ -51,11 +64,51 @@ function App() {
     socketService.on('server:disconnected', handleServerDisconnected);
     socketService.on('server:paired', handleServerPaired);
 
+    // 监听聊天消息（用于未读计数）
+    const handleChatMessage = (data) => {
+      if (activeServerRef.current?.id === data.serverId && activeTabRef.current !== 'chat') {
+        setUnreadChat(prev => prev + 1);
+      }
+    };
+
+    // 监听游戏事件（用于活跃事件计数）
+    const handleEventSpawn = (data) => {
+      if (activeServerRef.current?.id === data.serverId) {
+        setActiveEvents(prev => prev + 1);
+      }
+    };
+    const handleEventLeave = (data) => {
+      if (activeServerRef.current?.id === data.serverId) {
+        setActiveEvents(prev => Math.max(0, prev - 1));
+      }
+    };
+
+    socketService.on('team:message', handleChatMessage);
+    socketService.on('event:cargo:spawn', handleEventSpawn);
+    socketService.on('event:cargo:leave', handleEventLeave);
+    socketService.on('event:heli:spawn', handleEventSpawn);
+    socketService.on('event:heli:downed', handleEventLeave);
+    socketService.on('event:heli:leave', handleEventLeave);
+    socketService.on('event:ch47:spawn', handleEventSpawn);
+    socketService.on('event:ch47:leave', handleEventLeave);
+    socketService.on('event:crate:spawn', handleEventSpawn);
+    socketService.on('event:crate:despawn', handleEventLeave);
+
     return () => {
       unsubscribe();
       socketService.removeAllListeners('server:connected');
       socketService.removeAllListeners('server:disconnected');
       socketService.removeAllListeners('server:paired');
+      socketService.off('team:message', handleChatMessage);
+      socketService.off('event:cargo:spawn', handleEventSpawn);
+      socketService.off('event:cargo:leave', handleEventLeave);
+      socketService.off('event:heli:spawn', handleEventSpawn);
+      socketService.off('event:heli:downed', handleEventLeave);
+      socketService.off('event:heli:leave', handleEventLeave);
+      socketService.off('event:ch47:spawn', handleEventSpawn);
+      socketService.off('event:ch47:leave', handleEventLeave);
+      socketService.off('event:crate:spawn', handleEventSpawn);
+      socketService.off('event:crate:despawn', handleEventLeave);
       socketService.disconnect();
     };
   }, []);
@@ -124,13 +177,22 @@ function App() {
   };
 
   const handleDeleteServer = async (serverId) => {
-    if (!confirm('确定要删除这个服务器吗?')) return;
+    const confirmed = await confirm({
+      type: 'danger',
+      title: '删除服务器',
+      message: '确定要删除这个服务器吗？此操作无法撤销。',
+      confirmText: '删除',
+      cancelText: '取消'
+    });
+    if (!confirmed) return;
+
     try {
       await apiDeleteServer(serverId);
       if (activeServer?.id === serverId) setActiveServer(null);
       fetchServers();
+      toast.success('服务器已删除');
     } catch (error) {
-      alert('删除失败');
+      toast.error('删除失败: ' + (error.message || '未知错误'));
     }
   };
 
@@ -145,7 +207,7 @@ function App() {
         playerToken: server.player_token
       });
     } catch (error) {
-      alert('连接失败: ' + error.message);
+      toast.error('连接失败: ' + error.message);
     } finally {
       setConnectionLoading(false);
     }
@@ -159,9 +221,18 @@ function App() {
     }
   };
 
+  // Tab 切换处理（清除对应未读计数）
+  const handleTabChange = (tabId) => {
+    setActiveTab(tabId);
+    if (tabId === 'chat') {
+      setUnreadChat(0);
+    }
+    // events tab 不需要清除，因为显示的是活跃数量而非未读
+  };
+
   // --- Render Helpers ---
   const renderContent = () => {
-    if (!activeServer) return <EmptyState />;
+    if (!activeServer) return <EmptyState type="server" />;
     if (!activeServer.connected) return <DisconnectedState server={activeServer} onConnect={() => handleConnect(activeServer)} loading={connectionLoading} onDelete={() => handleDeleteServer(activeServer.id)} />;
 
     switch (activeTab) {
@@ -205,12 +276,25 @@ function App() {
               onSelect={setActiveServer}
             />
           ))}
-          
+
           {servers.length === 0 && !loading && (
-             <div className="p-4 text-center border-2 border-dashed border-dark-700 rounded-xl m-2">
-                <p className="text-sm text-gray-500 mb-2">无服务器</p>
-                <button onClick={() => setShowPairingPanel(true)} className="text-rust-accent text-xs font-bold hover:underline">去配对</button>
-             </div>
+            <div className="m-2 p-4 rounded-xl bg-dark-800/50 border border-white/5">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-lg bg-rust-accent/10 flex items-center justify-center">
+                  <FaServer className="text-rust-accent" />
+                </div>
+                <div>
+                  <p className="font-medium text-gray-300">开始使用</p>
+                  <p className="text-xs text-gray-500">添加你的第一个服务器</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPairingPanel(true)}
+                className="w-full btn btn-primary text-sm"
+              >
+                <FaQrcode /> 配对服务器
+              </button>
+            </div>
           )}
         </div>
 
@@ -287,11 +371,11 @@ function App() {
             {/* Tabs (Only if connected) */}
             {activeServer.connected && (
               <div className="px-6 py-2 border-b border-white/5 flex gap-1 bg-dark-900/50 overflow-x-auto">
-                 <TabButton id="info" label="信息概览" icon={<FaInfoCircle />} active={activeTab} onClick={setActiveTab} />
-                 <TabButton id="chat" label="队伍聊天" icon={<FaComments />} active={activeTab} onClick={setActiveTab} />
-                 <TabButton id="devices" label="智能设备" icon={<FaGamepad />} active={activeTab} onClick={setActiveTab} />
-                 <TabButton id="events" label="实时事件" icon={<FaClock />} active={activeTab} onClick={setActiveTab} />
-                 <TabButton id="history" label="历史记录" icon={<FaHistory />} active={activeTab} onClick={setActiveTab} />
+                 <TabButton id="info" label="信息概览" icon={<FaInfoCircle />} active={activeTab} onClick={handleTabChange} />
+                 <TabButton id="chat" label="队伍聊天" icon={<FaComments />} active={activeTab} onClick={handleTabChange} badge={unreadChat} />
+                 <TabButton id="devices" label="智能设备" icon={<FaGamepad />} active={activeTab} onClick={handleTabChange} />
+                 <TabButton id="events" label="实时事件" icon={<FaClock />} active={activeTab} onClick={handleTabChange} badge={activeEvents} badgeType="info" />
+                 <TabButton id="history" label="历史记录" icon={<FaHistory />} active={activeTab} onClick={handleTabChange} />
               </div>
             )}
 
@@ -302,8 +386,13 @@ function App() {
                {activeServer.connected && <PlayerNotifications serverId={activeServer.id} />}
             </div>
           </>
+        ) : servers.length === 0 ? (
+          <WelcomeGuide
+            onStartPairing={() => setShowPairingPanel(true)}
+            onManualAdd={() => setShowAddModal(true)}
+          />
         ) : (
-          <EmptyState />
+          <EmptyState type="server" />
         )}
       </main>
 
@@ -332,27 +421,26 @@ function App() {
 }
 
 // Sub-components for cleaner App.jsx
-const TabButton = ({ id, label, icon, active, onClick }) => (
+const TabButton = ({ id, label, icon, active, onClick, badge = 0, badgeType = 'danger' }) => (
   <button
     onClick={() => onClick(id)}
-    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+    className={`relative flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
       active === id
         ? 'bg-rust-accent text-white shadow-lg shadow-rust-accent/20'
         : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
     }`}
   >
     {icon} {label}
+    {badge > 0 && (
+      <span className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center px-1 rounded-full text-[10px] font-bold ${
+        badgeType === 'info'
+          ? 'bg-blue-500 text-white'
+          : 'bg-red-500 text-white animate-pulse'
+      }`}>
+        {badge > 99 ? '99+' : badge}
+      </span>
+    )}
   </button>
-);
-
-const EmptyState = () => (
-  <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
-    <div className="w-20 h-20 rounded-2xl bg-dark-800 flex items-center justify-center mb-6 border border-dark-700">
-        <FaServer className="text-4xl text-dark-600" />
-    </div>
-    <h3 className="text-xl font-bold text-gray-300 mb-2">未选择服务器</h3>
-    <p>请在左侧列表选择一个服务器或添加新服务器</p>
-  </div>
 );
 
 const DisconnectedState = ({ server, onConnect, loading, onDelete }) => (

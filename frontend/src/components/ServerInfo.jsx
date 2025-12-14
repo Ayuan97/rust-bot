@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { FaUsers, FaClock, FaMap, FaSun, FaMoon, FaDownload, FaCopy, FaServer, FaMapMarkedAlt, FaChevronUp, FaChevronDown } from 'react-icons/fa';
 import socketService from '../services/socket';
 import { getServer, getBattlemetricsInfo } from '../services/api';
+import { useToast } from './Toast';
+import { formatGameTime, isDaytime } from '../utils/time';
+import { ServerInfoSkeleton } from './Skeleton';
 
 function ServerInfo({ serverId }) {
   const [serverInfo, setServerInfo] = useState(null);
@@ -13,6 +16,8 @@ function ServerInfo({ serverId }) {
   const [loading, setLoading] = useState(true);
   const [loadingMap, setLoadingMap] = useState(false);
   const [showMapImage, setShowMapImage] = useState(false);
+
+  const toast = useToast();
 
   useEffect(() => {
     fetchAllInfo();
@@ -111,12 +116,12 @@ function ServerInfo({ serverId }) {
 
       if (map && map.jpgImage) {
         try {
-          // 保存原始二进制数据用于下载，添加错误处理
-          const imageUrl = `data:image/jpeg;base64,${btoa(String.fromCharCode(...new Uint8Array(map.jpgImage)))}`;
+          // jpgImage 现在是 base64 字符串
+          const imageUrl = `data:image/jpeg;base64,${map.jpgImage}`;
           setMapData({
             ...map,
             imageUrl,
-            rawData: map.jpgImage // 保存原始数据
+            rawData: map.jpgImage // 保存原始 base64 数据
           });
         } catch (conversionError) {
           console.error('❌ 地图数据转换失败:', conversionError);
@@ -133,27 +138,11 @@ function ServerInfo({ serverId }) {
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    alert('已复制到剪贴板！');
-  };
-
-  const formatTime = (time) => {
-    if (time === undefined) return '--:--';
-    const hours = Math.floor(time);
-    const minutes = Math.floor((time - hours) * 60);
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  };
-
-  const isDaytime = (time, sunrise = 6, sunset = 18) => {
-    if (time === undefined) return true;
-    return time >= sunrise && time < sunset;
+    toast.success('已复制到剪贴板');
   };
 
   if (loading) {
-    return (
-      <div className="card h-full flex items-center justify-center">
-        <div className="text-gray-400">加载中...</div>
-      </div>
-    );
+    return <ServerInfoSkeleton />;
   }
 
   return (
@@ -271,7 +260,7 @@ function ServerInfo({ serverId }) {
                     <span className="text-xs text-gray-500">Time</span>
                   </div>
                   <p className="text-xl font-bold text-white font-mono">
-                    {formatTime(timeInfo.time)}
+                    {formatGameTime(timeInfo.time)}
                   </p>
                 </div>
                 
