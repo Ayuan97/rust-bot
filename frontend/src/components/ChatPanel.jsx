@@ -7,12 +7,27 @@ function ChatPanel({ serverId }) {
   const [inputMessage, setInputMessage] = useState('');
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef(null);
+  const recentlySentRef = useRef([]); // 记录最近发送的消息，用于去重
   const MAX_MESSAGES = 500; // 限制消息数量，防止内存泄漏
 
   useEffect(() => {
     // 监听队伍消息
     const handleTeamMessage = (data) => {
       if (data.serverId === serverId) {
+        // 检查是否是自己刚发送的消息（去重）
+        const isDuplicate = recentlySentRef.current.some(sent =>
+          sent.message === data.message &&
+          Math.abs(Date.now() - sent.time) < 5000 // 5秒内的相同消息视为重复
+        );
+
+        if (isDuplicate) {
+          // 清理已匹配的发送记录
+          recentlySentRef.current = recentlySentRef.current.filter(
+            sent => sent.message !== data.message
+          );
+          return; // 跳过重复消息
+        }
+
         setMessages((prev) => {
           const newMessages = [
             ...prev,
@@ -51,9 +66,22 @@ function ChatPanel({ serverId }) {
 
     if (!inputMessage.trim() || sending) return;
 
+    const messageToSend = inputMessage.trim();
     setSending(true);
     try {
-      await socketService.sendMessage(serverId, inputMessage);
+      await socketService.sendMessage(serverId, messageToSend);
+
+      // 记录发送的消息用于去重（防止服务器广播回来时重复显示）
+      recentlySentRef.current.push({
+        message: messageToSend,
+        time: Date.now()
+      });
+
+      // 清理超过10秒的旧记录
+      const now = Date.now();
+      recentlySentRef.current = recentlySentRef.current.filter(
+        sent => now - sent.time < 10000
+      );
 
       // 添加自己的消息到列表
       setMessages((prev) => {
@@ -61,8 +89,8 @@ function ChatPanel({ serverId }) {
           ...prev,
           {
             id: Date.now(),
-            name: 'You',
-            message: inputMessage,
+            name: '你',
+            message: messageToSend,
             time: Date.now(),
             isMe: true
           }

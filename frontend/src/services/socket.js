@@ -6,6 +6,7 @@ class SocketService {
   constructor() {
     this.socket = null;
     this.listeners = new Map();
+    this.connectionListeners = new Set(); // 连接状态变化监听器
   }
 
   connect() {
@@ -22,10 +23,12 @@ class SocketService {
 
     this.socket.on('connect', () => {
       console.log('✅ WebSocket 已连接');
+      this.notifyConnectionChange(true);
     });
 
     this.socket.on('disconnect', () => {
       console.log('❌ WebSocket 已断开');
+      this.notifyConnectionChange(false);
     });
 
     this.socket.on('error', (error) => {
@@ -33,6 +36,33 @@ class SocketService {
     });
 
     return this.socket;
+  }
+
+  // 通知所有连接状态监听器
+  notifyConnectionChange(connected) {
+    this.connectionListeners.forEach(listener => {
+      try {
+        listener(connected);
+      } catch (e) {
+        console.error('连接状态监听器错误:', e);
+      }
+    });
+  }
+
+  // 订阅连接状态变化
+  onConnectionChange(callback) {
+    this.connectionListeners.add(callback);
+    // 立即通知当前状态
+    if (this.socket) {
+      callback(this.socket.connected);
+    }
+    // 返回取消订阅函数
+    return () => this.connectionListeners.delete(callback);
+  }
+
+  // 获取当前连接状态
+  isConnected() {
+    return this.socket?.connected || false;
   }
 
   disconnect() {

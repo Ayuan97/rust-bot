@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { 
-  FaPlus, FaServer, FaQrcode, FaInfoCircle, FaComments, 
-  FaGamepad, FaClock, FaHistory, FaCog, FaSignOutAlt, FaPlug 
+import {
+  FaPlus, FaServer, FaQrcode, FaInfoCircle, FaComments,
+  FaGamepad, FaClock, FaHistory, FaCog, FaSignOutAlt, FaPlug, FaWifi
 } from 'react-icons/fa';
 import socketService from './services/socket';
 import { getServers, addServer as apiAddServer, deleteServer as apiDeleteServer } from './services/api';
@@ -26,6 +26,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('info'); // 'info', 'chat', 'devices', 'events', 'history'
   const [connectionLoading, setConnectionLoading] = useState(false);
   const [hasAutoSelected, setHasAutoSelected] = useState(false); // 记录是否已自动选择
+  const [socketConnected, setSocketConnected] = useState(false); // Socket 连接状态
 
   // 使用 ref 存储 activeServer 最新值，避免事件处理器闭包陈旧
   const activeServerRef = useRef(null);
@@ -36,11 +37,22 @@ function App() {
     socketService.connect();
     fetchServers();
 
+    // 订阅 Socket 连接状态，断网重连时自动刷新
+    const unsubscribe = socketService.onConnectionChange((connected) => {
+      setSocketConnected(connected);
+      if (connected) {
+        // 重连后刷新服务器列表，同步状态
+        console.log('🔄 Socket 重连，刷新服务器状态...');
+        fetchServers();
+      }
+    });
+
     socketService.on('server:connected', handleServerConnected);
     socketService.on('server:disconnected', handleServerDisconnected);
     socketService.on('server:paired', handleServerPaired);
 
     return () => {
+      unsubscribe();
       socketService.removeAllListeners('server:connected');
       socketService.removeAllListeners('server:disconnected');
       socketService.removeAllListeners('server:paired');
@@ -204,18 +216,30 @@ function App() {
 
         {/* Sidebar Footer */}
         <div className="p-3 border-t border-white/5 bg-dark-800/30 space-y-2">
-            <button 
+            <button
                 onClick={() => setShowPairingPanel(true)}
                 className="w-full btn btn-secondary text-sm justify-start"
             >
                 <FaQrcode className="text-gray-400" /> 配对新服务器
             </button>
-            <button 
+            <button
                 onClick={() => setShowAddModal(true)}
                 className="w-full btn btn-secondary text-sm justify-start"
             >
                 <FaPlus className="text-gray-400" /> 手动添加
             </button>
+            {/* Socket 连接状态指示器 */}
+            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${
+              socketConnected
+                ? 'bg-green-500/10 text-green-400'
+                : 'bg-red-500/10 text-red-400'
+            }`}>
+              <FaWifi className={socketConnected ? 'text-green-400' : 'text-red-400'} />
+              <span>{socketConnected ? '后端已连接' : '后端断开'}</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                socketConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'
+              }`} />
+            </div>
         </div>
       </aside>
 
