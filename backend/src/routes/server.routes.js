@@ -51,6 +51,24 @@ router.post('/', async (req, res) => {
     if (typeof id !== 'string' || typeof name !== 'string') {
       return res.status(400).json({ success: false, error: 'id 和 name 必须是字符串' });
     }
+
+    // 长度限制
+    if (id.length > 100) {
+      return res.status(400).json({ success: false, error: 'id 长度不能超过 100 字符' });
+    }
+    if (name.length > 200) {
+      return res.status(400).json({ success: false, error: 'name 长度不能超过 200 字符' });
+    }
+    if (ip.length > 255) {
+      return res.status(400).json({ success: false, error: 'ip 长度不能超过 255 字符' });
+    }
+    if (String(playerId).length > 50) {
+      return res.status(400).json({ success: false, error: 'playerId 长度不能超过 50 字符' });
+    }
+    if (String(playerToken).length > 100) {
+      return res.status(400).json({ success: false, error: 'playerToken 长度不能超过 100 字符' });
+    }
+
     if (typeof ip !== 'string' || !/^[\d.]+$|^[a-zA-Z0-9.-]+$/.test(ip)) {
       return res.status(400).json({ success: false, error: 'ip 格式无效' });
     }
@@ -157,6 +175,14 @@ router.post('/:id/devices', (req, res) => {
 
     if (!entityId || !name) {
       return res.status(400).json({ success: false, error: '缺少必要参数' });
+    }
+
+    // 长度限制
+    if (name.length > 100) {
+      return res.status(400).json({ success: false, error: '设备名称长度不能超过 100 字符' });
+    }
+    if (type && type.length > 50) {
+      return res.status(400).json({ success: false, error: '设备类型长度不能超过 50 字符' });
     }
 
     // entityId 类型验证

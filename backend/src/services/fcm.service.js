@@ -9,6 +9,16 @@ import logger from '../utils/logger.js';
 import https from 'https';
 import http from 'http';
 
+// Rust Companion App 公开参数（来自官方 CLI）
+const FCM_CONFIG = {
+  apiKey: "AIzaSyB5y2y-Tzqb4-I4Qnlsh_9naYv_TD8pCvY",
+  projectId: "rust-companion-app",
+  gcmSenderId: "976529667804",
+  gmsAppId: "1:976529667804:android:d6f1ddeb4403b338fea619",
+  androidPackageName: "com.facepunch.rust.companion",
+  androidPackageCert: "E28D05345FB78A7A1A63D70F4A302DBF426CA5AD"
+};
+
 class FCMService extends EventEmitter {
   constructor() {
     super();
@@ -40,22 +50,14 @@ class FCMService extends EventEmitter {
     try {
       console.log('🔐 开始 FCM 注册...');
 
-      // FCM 注册参数（来自官方 CLI）
-      const apiKey = "AIzaSyB5y2y-Tzqb4-I4Qnlsh_9naYv_TD8pCvY";
-      const projectId = "rust-companion-app";
-      const gcmSenderId = "976529667804";
-      const gmsAppId = "1:976529667804:android:d6f1ddeb4403b338fea619";
-      const androidPackageName = "com.facepunch.rust.companion";
-      const androidPackageCert = "E28D05345FB78A7A1A63D70F4A302DBF426CA5AD";
-
       console.log('📱 正在注册 FCM 设备...');
       const fcmCredentials = await AndroidFCM.register(
-        apiKey,
-        projectId,
-        gcmSenderId,
-        gmsAppId,
-        androidPackageName,
-        androidPackageCert
+        FCM_CONFIG.apiKey,
+        FCM_CONFIG.projectId,
+        FCM_CONFIG.gcmSenderId,
+        FCM_CONFIG.gmsAppId,
+        FCM_CONFIG.androidPackageName,
+        FCM_CONFIG.androidPackageCert
       );
 
       console.log('✅ FCM 设备注册成功');

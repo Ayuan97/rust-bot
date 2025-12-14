@@ -9,11 +9,21 @@ class RustPlusService extends EventEmitter {
   constructor() {
     super();
     this.connections = new Map(); // serverId -> rustplus instance
+    this.connecting = new Set(); // 正在连接中的 serverId（防止竞态）
+    this.serverConfigs = new Map(); // serverId -> config（保存配置用于重连）
+    this.reconnectAttempts = new Map(); // serverId -> 当前重连尝试次数
+    this.reconnectTimers = new Map(); // serverId -> 重连定时器
+    this.manualDisconnect = new Set(); // 手动断开的服务器（不自动重连）
     this.cameras = new Map(); // `${serverId}:${cameraId}` -> Camera instance
     this.teamStates = new Map(); // serverId -> 上一次的队伍状态（用于检测变化）
     this.mapCache = new Map(); // serverId -> { width, height, lastUpdate }
     this.eventMonitorService = new EventMonitorService(this); // 事件监控服务
     this.commandsService = new CommandsService(this, this.eventMonitorService); // 命令处理服务
+
+    // 重连配置
+    this.RECONNECT_MAX_ATTEMPTS = 5;
+    this.RECONNECT_BASE_DELAY = 5000; // 5秒基础延迟
+    this.RECONNECT_MAX_DELAY = 60000; // 最大60秒延迟
   }
 
   /**
@@ -28,10 +38,23 @@ class RustPlusService extends EventEmitter {
   async connect(config) {
     const { serverId, ip, port, playerId, playerToken } = config;
 
+    // 已连接，直接返回
     if (this.connections.has(serverId)) {
       console.log(`服务器 ${serverId} 已连接`);
       return this.connections.get(serverId);
     }
+
+    // 竞态保护：正在连接中，抛出错误
+    if (this.connecting.has(serverId)) {
+      throw new Error(`服务器 ${serverId} 正在连接中，请稍候`);
+    }
+
+    // 标记为正在连接，清除手动断开标记
+    this.connecting.add(serverId);
+    this.manualDisconnect.delete(serverId);
+
+    // 保存配置用于重连
+    this.serverConfigs.set(serverId, config);
 
     try {
       const rustplus = new RustPlus(ip, port, playerId, playerToken);
@@ -39,6 +62,8 @@ class RustPlusService extends EventEmitter {
       // 监听连接事件
       rustplus.on('connected', async () => {
         console.log(`✅ 已连接到服务器: ${serverId}`);
+        // 连接成功，重置重连计数
+        this.reconnectAttempts.delete(serverId);
         this.emit('server:connected', { serverId });
 
         // 主动获取初始队伍状态
@@ -75,6 +100,11 @@ class RustPlusService extends EventEmitter {
         this.connections.delete(serverId);
         this.emit('server:disconnected', { serverId });
         try { this.eventMonitorService.stop(serverId); } catch (e) {}
+
+        // 自动重连逻辑（仅在非手动断开时触发）
+        if (!this.manualDisconnect.has(serverId)) {
+          this.scheduleReconnect(serverId);
+        }
       });
 
       rustplus.on('error', (error) => {
@@ -108,6 +138,9 @@ class RustPlusService extends EventEmitter {
     } catch (error) {
       console.error(`连接失败 ${serverId}:`, error.message || error);
       throw error;
+    } finally {
+      // 无论成功失败，都清理 connecting 状态
+      this.connecting.delete(serverId);
     }
   }
 
@@ -115,6 +148,17 @@ class RustPlusService extends EventEmitter {
    * 断开服务器连接
    */
   async disconnect(serverId) {
+    // 标记为手动断开，阻止自动重连
+    this.manualDisconnect.add(serverId);
+
+    // 清除重连定时器
+    const timer = this.reconnectTimers.get(serverId);
+    if (timer) {
+      clearTimeout(timer);
+      this.reconnectTimers.delete(serverId);
+    }
+    this.reconnectAttempts.delete(serverId);
+
     const rustplus = this.connections.get(serverId);
     if (rustplus) {
       rustplus.disconnect();
@@ -133,9 +177,67 @@ class RustPlusService extends EventEmitter {
 
     // 清理队伍状态缓存
     this.teamStates.delete(serverId);
-    
+
     // 清理地图缓存
     this.mapCache.delete(serverId);
+  }
+
+  /**
+   * 调度自动重连（指数退避）
+   */
+  scheduleReconnect(serverId) {
+    const config = this.serverConfigs.get(serverId);
+    if (!config) {
+      console.log(`⚠️  无法重连 ${serverId}：缺少配置信息`);
+      return;
+    }
+
+    const attempts = (this.reconnectAttempts.get(serverId) || 0) + 1;
+    if (attempts > this.RECONNECT_MAX_ATTEMPTS) {
+      console.log(`❌ 服务器 ${serverId} 重连失败：已达最大尝试次数 (${this.RECONNECT_MAX_ATTEMPTS})`);
+      this.emit('server:reconnect:failed', { serverId, attempts });
+      this.reconnectAttempts.delete(serverId);
+      return;
+    }
+
+    this.reconnectAttempts.set(serverId, attempts);
+
+    // 指数退避：5s, 10s, 20s, 40s, 60s
+    const delay = Math.min(
+      this.RECONNECT_BASE_DELAY * Math.pow(2, attempts - 1),
+      this.RECONNECT_MAX_DELAY
+    );
+
+    console.log(`🔄 将在 ${delay / 1000}s 后尝试重连 ${serverId}（第 ${attempts}/${this.RECONNECT_MAX_ATTEMPTS} 次）`);
+    this.emit('server:reconnecting', { serverId, attempts, delay });
+
+    const timer = setTimeout(async () => {
+      this.reconnectTimers.delete(serverId);
+
+      // 再次检查是否被手动断开
+      if (this.manualDisconnect.has(serverId)) {
+        console.log(`⏹️  重连已取消 ${serverId}：用户手动断开`);
+        return;
+      }
+
+      // 检查是否已连接
+      if (this.connections.has(serverId)) {
+        console.log(`✅ ${serverId} 已连接，取消重连`);
+        return;
+      }
+
+      try {
+        console.log(`🔌 正在重连 ${serverId}...`);
+        await this.connect(config);
+        console.log(`✅ 重连成功 ${serverId}`);
+      } catch (error) {
+        console.error(`❌ 重连失败 ${serverId}:`, error.message);
+        // 失败后继续调度下一次重连
+        this.scheduleReconnect(serverId);
+      }
+    }, delay);
+
+    this.reconnectTimers.set(serverId, timer);
   }
 
   /**
@@ -405,12 +507,23 @@ class RustPlusService extends EventEmitter {
 
     const camera = rustplus.getCamera(cameraId);
 
+    // 帧率限制：最小间隔 200ms（约 5 FPS），减少内存压力
+    let lastFrameTime = 0;
+    const MIN_FRAME_INTERVAL = 200;
+
     // 绑定事件
     camera.on('subscribing', () => this.emit('camera:subscribing', { serverId, cameraId }));
     camera.on('subscribed', () => this.emit('camera:subscribed', { serverId, cameraId }));
     camera.on('unsubscribed', () => this.emit('camera:unsubscribed', { serverId, cameraId }));
     camera.on('render', (buffer) => {
       try {
+        // 帧率限制检查
+        const now = Date.now();
+        if (now - lastFrameTime < MIN_FRAME_INTERVAL) {
+          return; // 跳过此帧
+        }
+        lastFrameTime = now;
+
         const imageBase64 = buffer.toString('base64');
         this.emit('camera:render', {
           serverId,
