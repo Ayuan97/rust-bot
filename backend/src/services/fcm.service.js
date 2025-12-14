@@ -136,6 +136,9 @@ class FCMService extends EventEmitter {
       throw new Error('凭证格式错误：需要 GCM 格式的凭证 (gcm.androidId, gcm.securityToken)');
     }
 
+    // 重置手动停止标志
+    this._manualStop = false;
+
     console.log('👂 开始监听 FCM 推送消息...');
     console.log('📋 凭证信息:');
     const maskStr = (str) => str ? `${String(str).substring(0, 6)}****` : 'N/A';
@@ -179,6 +182,12 @@ class FCMService extends EventEmitter {
     this.fcmListener.on('disconnect', () => {
       const now = Date.now();
 
+      // 如果是手动停止，不输出日志也不重连
+      if (this._manualStop) {
+        logger.debug('FCM disconnect 事件触发（手动停止，忽略）');
+        return;
+      }
+
       // 防止重复日志（1分钟内只输出一次）
       if (!this.lastDisconnectTime || (now - this.lastDisconnectTime) > 60000) {
         console.log('⚠️  FCM 连接已断开');
@@ -203,7 +212,7 @@ class FCMService extends EventEmitter {
 
       // 5 分钟后重连
       this.reconnectTimer = setTimeout(async () => {
-        if (!this.isListening && this.credentials) {
+        if (!this.isListening && this.credentials && !this._manualStop) {
           try {
             console.log('🔄 尝试重新连接 FCM...');
             await this.startListening();
@@ -246,60 +255,156 @@ class FCMService extends EventEmitter {
 
   /**
    * 通过 SOCKS5 代理连接到 FCM
-   * 原理：先通过代理建立 TCP 连接，然后在该连接上建立 TLS
+   *
+   * 问题：PushReceiverClient 的 connect() 会调用 checkIn()，
+   * checkIn 使用 HTTP 请求访问 android.clients.google.com，无法走代理。
+   *
+   * 解决方案：手动建立代理连接 + TLS 升级，跳过 checkIn
    */
   async _connectWithProxy() {
     const FCM_HOST = 'mtalk.google.com';
     const FCM_PORT = 5228;
 
-    // 保存原始的 tls.connect
-    const originalTlsConnect = tls.connect;
+    logger.info(`🌐 通过 SOCKS5 代理 ${this.proxyConfig.host}:${this.proxyConfig.port} 连接到 FCM...`);
 
-    // 创建代理连接
-    const proxySocket = await SocksClient.createConnection({
+    // 1. 创建 SOCKS5 代理连接
+    const proxyResult = await SocksClient.createConnection({
       proxy: {
         host: this.proxyConfig.host,
         port: this.proxyConfig.port,
-        type: 5, // SOCKS5
+        type: 5,
       },
       command: 'connect',
       destination: {
         host: FCM_HOST,
         port: FCM_PORT,
       },
+      timeout: 30000,
     });
 
-    console.log('✅ SOCKS5 代理连接已建立');
+    logger.info('✅ SOCKS5 代理 TCP 连接已建立');
 
-    // Monkey-patch tls.connect 让它使用代理 socket
-    tls.connect = (options) => {
-      // 只拦截连接到 FCM 的请求
-      if (options.host === FCM_HOST && options.port === FCM_PORT) {
-        console.log('🔒 在代理连接上建立 TLS...');
-        // 恢复原始函数
-        tls.connect = originalTlsConnect;
-        // 在代理 socket 上建立 TLS
-        return originalTlsConnect({
-          ...options,
-          socket: proxySocket.socket,
-        });
-      }
-      // 其他连接使用原始方法
-      return originalTlsConnect(options);
-    };
+    const proxySocket = proxyResult.socket;
 
-    // 调用原始的 connect 方法
-    await this.fcmListener.connect();
+    // 2. 初始化 protobuf
+    await this.fcmListener.constructor.init();
 
-    // 确保恢复原始函数
-    tls.connect = originalTlsConnect;
+    // 3. 在代理 socket 上进行 TLS 升级
+    logger.info('🔒 升级为 TLS 连接...');
+
+    return new Promise((resolve, reject) => {
+      let resolved = false;
+
+      const done = (err) => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeout);
+        if (err) reject(err);
+      };
+
+      // 超时处理
+      const timeout = setTimeout(() => {
+        done(new Error('TLS 连接超时'));
+        proxySocket.destroy();
+      }, 30000);
+
+      // 使用 tls.connect 升级连接
+      const tlsSocket = tls.connect({
+        socket: proxySocket,
+        servername: FCM_HOST,
+        rejectUnauthorized: true,
+        minVersion: 'TLSv1.2',
+      });
+
+      tlsSocket.setKeepAlive(true);
+
+      // TLS 握手完成
+      tlsSocket.once('secureConnect', async () => {
+        logger.info('✅ TLS 握手完成');
+
+        try {
+          // 设置到 fcmListener
+          this.fcmListener._socket = tlsSocket;
+
+          // 绑定事件
+          tlsSocket.on('close', this.fcmListener._onSocketClose);
+          tlsSocket.on('error', this.fcmListener._onSocketError);
+
+          // 发送登录请求
+          tlsSocket.write(this.fcmListener._loginBuffer());
+
+          // 初始化 parser
+          const { default: Parser } = await import('@liamcottle/push-receiver/src/parser.js');
+          await Parser.init();
+
+          this.fcmListener._parser = new Parser(tlsSocket);
+          this.fcmListener._parser.on('message', this.fcmListener._onMessage);
+          this.fcmListener._parser.on('error', this.fcmListener._onParserError);
+
+          // 禁用库内部重连
+          this.fcmListener._retry = () => {
+            logger.debug('🚫 库内部重连已被禁用');
+          };
+
+          logger.info('✅ FCM 代理连接完成');
+          this.fcmListener.emit('connect');
+          done();
+          resolve();
+        } catch (err) {
+          done(err);
+        }
+      });
+
+      // 错误处理
+      tlsSocket.once('error', (err) => {
+        logger.error('❌ TLS 错误:', err.message);
+        done(err);
+      });
+
+      proxySocket.once('error', (err) => {
+        logger.error('❌ 代理 Socket 错误:', err.message);
+        done(err);
+      });
+
+      proxySocket.once('close', (hadError) => {
+        if (!resolved) {
+          logger.error('❌ 代理连接被关闭, hadError:', hadError);
+          done(new Error('代理连接被关闭'));
+        }
+      });
+    });
   }
 
   /**
    * 停止监听
+   * @param {boolean} preventReconnect - 是否阻止自动重连（默认 true）
    */
-  stopListening() {
+  stopListening(preventReconnect = true) {
+    // 设置标志阻止 disconnect 事件触发重连
+    if (preventReconnect) {
+      this._manualStop = true;
+    }
+
+    // 恢复原始的 tls.connect（如果被修改了）
+    if (this._originalTlsConnect) {
+      tls.connect = this._originalTlsConnect;
+      logger.debug('✅ tls.connect 已恢复');
+    }
+
     if (this.fcmListener) {
+      // 先清除库的内部重连定时器
+      if (this.fcmListener._retryTimeout) {
+        clearTimeout(this.fcmListener._retryTimeout);
+        this.fcmListener._retryTimeout = null;
+      }
+
+      // 移除事件监听器，避免 destroy 触发 disconnect 事件
+      this.fcmListener.removeAllListeners('disconnect');
+      this.fcmListener.removeAllListeners('connect');
+      this.fcmListener.removeAllListeners('ON_DATA_RECEIVED');
+      this.fcmListener.removeAllListeners('ON_NOTIFICATION_RECEIVED');
+      this.fcmListener.removeAllListeners('error');
+
       this.fcmListener.destroy();
       this.fcmListener = null;
       this.isListening = false;
@@ -481,6 +586,14 @@ class FCMService extends EventEmitter {
    */
   getCredentials() {
     return this.credentials;
+  }
+
+  /**
+   * 清除内存中的凭证
+   */
+  clearCredentials() {
+    this.credentials = null;
+    console.log('🗑️  FCM 内存凭证已清除');
   }
 
   /**

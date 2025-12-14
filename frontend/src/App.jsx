@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   FaPlus, FaServer, FaQrcode, FaInfoCircle, FaComments,
-  FaGamepad, FaClock, FaHistory, FaCog, FaSignOutAlt, FaPlug, FaWifi
+  FaGamepad, FaClock, FaHistory, FaCog, FaSignOutAlt, FaPlug, FaWifi, FaGlobe
 } from 'react-icons/fa';
 import socketService from './services/socket';
 import { getServers, addServer as apiAddServer, deleteServer as apiDeleteServer } from './services/api';
+import proxyApi from './services/proxy';
 import { useToast } from './components/Toast';
 import { useConfirm } from './components/ConfirmModal';
 
@@ -20,17 +21,20 @@ import EventHistoryPanel from './components/EventHistoryPanel';
 import PlayerNotifications from './components/PlayerNotifications';
 import EmptyState from './components/EmptyState';
 import WelcomeGuide from './components/WelcomeGuide';
+import SettingsPanel from './components/SettingsPanel';
 
 function App() {
   const [servers, setServers] = useState([]);
   const [activeServer, setActiveServer] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPairingPanel, setShowPairingPanel] = useState(false);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('info'); // 'info', 'chat', 'devices', 'events', 'history'
   const [connectionLoading, setConnectionLoading] = useState(false);
   const [hasAutoSelected, setHasAutoSelected] = useState(false); // 记录是否已自动选择
   const [socketConnected, setSocketConnected] = useState(false); // Socket 连接状态
+  const [proxyStatus, setProxyStatus] = useState({ isRunning: false, node: null }); // 代理状态
 
   // 未读计数
   const [unreadChat, setUnreadChat] = useState(0);
@@ -49,6 +53,7 @@ function App() {
   useEffect(() => {
     socketService.connect();
     fetchServers();
+    fetchProxyStatus();
 
     // 订阅 Socket 连接状态，断网重连时自动刷新
     const unsubscribe = socketService.onConnectionChange((connected) => {
@@ -57,12 +62,22 @@ function App() {
         // 重连后刷新服务器列表，同步状态
         console.log('🔄 Socket 重连，刷新服务器状态...');
         fetchServers();
+        fetchProxyStatus();
       }
     });
 
     socketService.on('server:connected', handleServerConnected);
     socketService.on('server:disconnected', handleServerDisconnected);
     socketService.on('server:paired', handleServerPaired);
+
+    // 监听代理状态变化
+    const handleProxyStatusUpdate = (data) => {
+      setProxyStatus(prev => ({ ...prev, ...data }));
+    };
+    socketService.on('proxy:status', handleProxyStatusUpdate);
+    socketService.on('proxy:node:changed', (data) => {
+      setProxyStatus(prev => ({ ...prev, isRunning: true, node: { name: data.nodeName, type: data.nodeType } }));
+    });
 
     // 监听聊天消息（用于未读计数）
     const handleChatMessage = (data) => {
@@ -99,6 +114,8 @@ function App() {
       socketService.removeAllListeners('server:connected');
       socketService.removeAllListeners('server:disconnected');
       socketService.removeAllListeners('server:paired');
+      socketService.removeAllListeners('proxy:status');
+      socketService.removeAllListeners('proxy:node:changed');
       socketService.off('team:message', handleChatMessage);
       socketService.off('event:cargo:spawn', handleEventSpawn);
       socketService.off('event:cargo:leave', handleEventLeave);
@@ -130,6 +147,21 @@ function App() {
       console.error('Failed to fetch servers:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchProxyStatus = async () => {
+    try {
+      const res = await proxyApi.getProxyStatus();
+      if (res.data.success) {
+        setProxyStatus({
+          isRunning: res.data.data.isRunning,
+          node: res.data.data.node,
+          hasConfig: res.data.data.hasConfig
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch proxy status:', error);
     }
   };
 
@@ -312,17 +344,55 @@ function App() {
             >
                 <FaPlus className="text-gray-400" /> 手动添加
             </button>
-            {/* Socket 连接状态指示器 */}
-            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${
-              socketConnected
-                ? 'bg-green-500/10 text-green-400'
-                : 'bg-red-500/10 text-red-400'
-            }`}>
-              <FaWifi className={socketConnected ? 'text-green-400' : 'text-red-400'} />
-              <span>{socketConnected ? '后端已连接' : '后端断开'}</span>
-              <span className={`w-1.5 h-1.5 rounded-full ${
-                socketConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'
-              }`} />
+            <button
+                onClick={() => setShowSettingsPanel(true)}
+                className="w-full btn btn-secondary text-sm justify-start"
+            >
+                <FaCog className="text-gray-400" /> 设置
+            </button>
+
+            {/* 状态指示器区域 */}
+            <div className="pt-2 space-y-1.5 border-t border-white/5">
+              {/* Socket 连接状态 */}
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs ${
+                socketConnected
+                  ? 'bg-green-500/10 text-green-400'
+                  : 'bg-red-500/10 text-red-400'
+              }`}>
+                <FaWifi className={socketConnected ? 'text-green-400' : 'text-red-400'} />
+                <span>{socketConnected ? '后端已连接' : '后端断开'}</span>
+                <span className={`ml-auto w-1.5 h-1.5 rounded-full ${
+                  socketConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'
+                }`} />
+              </div>
+
+              {/* 代理状态指示器 */}
+              <button
+                onClick={() => setShowSettingsPanel(true)}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                  proxyStatus.isRunning
+                    ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20'
+                    : proxyStatus.hasConfig
+                      ? 'bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20'
+                      : 'bg-dark-700/50 text-gray-500 hover:bg-dark-700'
+                }`}
+              >
+                <FaGlobe className={
+                  proxyStatus.isRunning ? 'text-blue-400' :
+                  proxyStatus.hasConfig ? 'text-yellow-400' : 'text-gray-500'
+                } />
+                <span className="truncate">
+                  {proxyStatus.isRunning && proxyStatus.node
+                    ? proxyStatus.node.name
+                    : proxyStatus.hasConfig
+                      ? '代理已停止'
+                      : '代理未配置'
+                  }
+                </span>
+                {proxyStatus.isRunning && (
+                  <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                )}
+              </button>
             </div>
         </div>
       </aside>
@@ -416,6 +486,12 @@ function App() {
             </div>
         </div>
       )}
+
+      {/* Settings Panel */}
+      <SettingsPanel
+        isOpen={showSettingsPanel}
+        onClose={() => setShowSettingsPanel(false)}
+      />
     </div>
   );
 }

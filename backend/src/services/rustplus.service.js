@@ -1,4 +1,4 @@
-import RustPlus from '@liamcottle/rustplus.js';
+import RustPlusClient from '../lib/rustplus-client.js';
 import EventEmitter from 'events';
 import CommandsService from './commands.service.js';
 import EventMonitorService from './event-monitor.service.js';
@@ -24,6 +24,35 @@ class RustPlusService extends EventEmitter {
     this.RECONNECT_MAX_ATTEMPTS = 5;
     this.RECONNECT_BASE_DELAY = 5000; // 5秒基础延迟
     this.RECONNECT_MAX_DELAY = 60000; // 最大60秒延迟
+
+    // 是否使用 Facepunch 官方代理连接（通过 wss://companion-rust.facepunch.com）
+    // 当直接连接游戏服务器 IP 失败时，可以启用此选项
+    this.useFacepunchProxy = false;
+
+    // SOCKS5 代理配置（用于 WebSocket 连接）
+    this.proxyConfig = null; // { host: '127.0.0.1', port: 10808 }
+  }
+
+  /**
+   * 设置是否使用 Facepunch 代理
+   * @param {boolean} enabled - 是否启用
+   */
+  setUseFacepunchProxy(enabled) {
+    this.useFacepunchProxy = enabled;
+    console.log(`🌐 Rust+ 连接模式: ${enabled ? 'Facepunch 代理 (wss://companion-rust.facepunch.com)' : '直连游戏服务器'}`);
+  }
+
+  /**
+   * 设置 SOCKS5 代理配置（用于 WebSocket 连接）
+   * @param {Object} config - 代理配置 { host, port }
+   */
+  setProxyConfig(config) {
+    this.proxyConfig = config;
+    if (config) {
+      console.log(`🌐 Rust+ WebSocket 代理已配置: socks5://${config.host}:${config.port}`);
+    } else {
+      console.log(`🌐 Rust+ WebSocket 代理已禁用`);
+    }
   }
 
   /**
@@ -57,7 +86,11 @@ class RustPlusService extends EventEmitter {
     this.serverConfigs.set(serverId, config);
 
     try {
-      const rustplus = new RustPlus(ip, port, playerId, playerToken);
+      // 使用自定义 RustPlus 客户端，支持 SOCKS5 代理
+      const rustplus = new RustPlusClient(ip, port, playerId, playerToken, {
+        useFacepunchProxy: this.useFacepunchProxy,
+        proxy: this.proxyConfig,
+      });
 
       // 监听连接事件
       rustplus.on('connected', async () => {
@@ -269,7 +302,8 @@ class RustPlusService extends EventEmitter {
     const rustplus = this.connections.get(serverId);
     if (!rustplus) throw new Error('服务器未连接');
 
-    const res = await rustplus.sendRequestAsync({ getMap: {} });
+    // 地图数据量大，使用更长的超时时间（30秒）
+    const res = await rustplus.sendRequestAsync({ getMap: {} }, 30000);
     // 注意：AppMap.width/height 是地图图像尺寸（像素），并非世界尺寸。
     // 这里不写入 width/height 到缓存，避免错误覆盖世界尺寸。
     // 如果已经有缓存，则仅更新 lastUpdate。
@@ -371,19 +405,19 @@ class RustPlusService extends EventEmitter {
     // 直接请求 AppInfo 获取世界尺寸
     let mapSize = 4500;
     try {
-      const infoRes = await rustplus.sendRequestAsync({ getInfo: {} });
+      const infoRes = await rustplus.sendRequestAsync({ getInfo: {} }, 15000);
       if (infoRes?.info?.mapSize) {
         // 使用修正后的地图大小，确保与网格系统对齐
         mapSize = getCorrectedMapSize(infoRes.info.mapSize);
       }
     } catch (e) {
-      // 忽略错误，使用默认值
+      console.warn('⚠️  无法获取地图信息:', e.message + '，将使用默认值', mapSize);
     }
 
-    // 直接请求 AppMap 获取 oceanMargin
+    // 直接请求 AppMap 获取 oceanMargin（超时时间更长，因为数据量大）
     let oceanMargin = 0;
     try {
-      const mapRes = await rustplus.sendRequestAsync({ getMap: {} });
+      const mapRes = await rustplus.sendRequestAsync({ getMap: {} }, 30000);
       if (typeof mapRes?.map?.oceanMargin === 'number') {
         oceanMargin = mapRes.map.oceanMargin;
       }
@@ -472,7 +506,7 @@ class RustPlusService extends EventEmitter {
     const rustplus = this.connections.get(serverId);
     if (!rustplus) throw new Error('服务器未连接');
 
-    const res = await rustplus.sendRequestAsync({ getTeamInfo: {} });
+    const res = await rustplus.sendRequestAsync({ getTeamInfo: {} }, 15000);
     return res.teamInfo;
   }
 

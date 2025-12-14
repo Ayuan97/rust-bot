@@ -99,7 +99,10 @@ router.post('/reset', async (req, res) => {
     fcmService.stopListening();
     console.log('⏹️  FCM 监听已停止');
 
-    // 3. 删除 FCM 凭证
+    // 3. 清除内存中的凭证
+    fcmService.clearCredentials();
+
+    // 4. 删除数据库中的 FCM 凭证
     configStorage.deleteFCMCredentials();
     console.log('🗑️  FCM 凭证已删除');
 
@@ -221,6 +224,151 @@ router.post('/credentials/load-cli', async (req, res) => {
         hint: '请先运行 "rustplus-pairing-server" 获取凭证'
       });
     }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * FCM 凭证诊断 - 检查凭证问题
+ */
+router.get('/credentials/diagnose', (req, res) => {
+  try {
+    const credentials = fcmService.getCredentials();
+    const storedCredentials = configStorage.getFCMCredentials();
+    const status = fcmService.getStatus();
+
+    const issues = [];
+    const info = {};
+
+    // 1. 检查是否有凭证
+    if (!credentials && !storedCredentials) {
+      issues.push({
+        level: 'error',
+        message: '没有找到任何 FCM 凭证',
+        solution: '请通过设置页面配置 FCM 凭证，或从 companion-rust.facepunch.com 获取'
+      });
+      return res.json({
+        success: true,
+        hasIssues: true,
+        issues,
+        info: {},
+        recommendation: '需要先配置 FCM 凭证才能接收配对推送'
+      });
+    }
+
+    const creds = credentials || storedCredentials;
+
+    // 2. 检查凭证类型
+    if (!creds.gcm) {
+      issues.push({
+        level: 'error',
+        message: '凭证缺少 GCM 格式数据',
+        solution: '需要包含 gcm.androidId 和 gcm.securityToken 的凭证'
+      });
+    } else {
+      info.type = 'GCM';
+      info.androidId = creds.gcm.androidId ? `${String(creds.gcm.androidId).substring(0, 8)}****` : null;
+      info.hasSecurityToken = !!creds.gcm.securityToken;
+
+      if (!creds.gcm.androidId) {
+        issues.push({
+          level: 'error',
+          message: '缺少 androidId',
+          solution: '重新从 companion-rust.facepunch.com 获取凭证'
+        });
+      }
+
+      if (!creds.gcm.securityToken) {
+        issues.push({
+          level: 'error',
+          message: '缺少 securityToken',
+          solution: '重新从 companion-rust.facepunch.com 获取凭证'
+        });
+      }
+    }
+
+    // 3. 检查有效期
+    if (creds.expireDate || creds.companion?.expire_date) {
+      const expireTimestamp = creds.expireDate || creds.companion?.expire_date;
+      const expireTime = new Date(parseInt(expireTimestamp) * 1000);
+      const now = new Date();
+
+      info.expiresAt = expireTime.toISOString();
+      info.isExpired = now > expireTime;
+
+      if (now > expireTime) {
+        issues.push({
+          level: 'error',
+          message: `凭证已过期 (${expireTime.toLocaleString()})`,
+          solution: '请重新从 companion-rust.facepunch.com 获取新凭证'
+        });
+      } else {
+        const daysLeft = Math.ceil((expireTime - now) / (1000 * 60 * 60 * 24));
+        info.daysUntilExpire = daysLeft;
+        if (daysLeft <= 7) {
+          issues.push({
+            level: 'warning',
+            message: `凭证即将在 ${daysLeft} 天后过期`,
+            solution: '建议提前更新凭证'
+          });
+        }
+      }
+    } else {
+      info.expiresAt = '未知';
+      issues.push({
+        level: 'warning',
+        message: '凭证缺少有效期信息',
+        solution: '可能是旧版凭证，建议重新获取'
+      });
+    }
+
+    // 4. 检查 Steam ID
+    if (creds.steam?.steamId) {
+      info.steamId = creds.steam.steamId;
+    } else if (creds.companion?.steam_id) {
+      info.steamId = creds.companion.steam_id;
+    } else {
+      issues.push({
+        level: 'warning',
+        message: '凭证缺少 Steam ID',
+        solution: '可能导致推送无法正确路由到您的账号'
+      });
+    }
+
+    // 5. 检查监听状态
+    info.isListening = status.isListening;
+    if (!status.isListening && credentials) {
+      issues.push({
+        level: 'warning',
+        message: 'FCM 当前未在监听状态',
+        solution: '可能是连接断开，系统会自动重连'
+      });
+    }
+
+    // 6. 生成建议
+    let recommendation = '';
+    const errorCount = issues.filter(i => i.level === 'error').length;
+    const warningCount = issues.filter(i => i.level === 'warning').length;
+
+    if (errorCount > 0) {
+      recommendation = '存在严重问题，需要重新配置凭证。建议：1) 在设置中清除凭证 2) 重新从 companion-rust.facepunch.com 获取 3) 重新配置';
+    } else if (warningCount > 0) {
+      recommendation = '凭证基本正常，但有一些注意事项';
+    } else {
+      recommendation = '凭证配置正常';
+    }
+
+    res.json({
+      success: true,
+      hasIssues: issues.length > 0,
+      issues,
+      info,
+      recommendation
+    });
   } catch (error) {
     res.status(500).json({
       success: false,

@@ -20,3 +20,6 @@ export const submitCredentials = (credentials) => api.post('/pairing/credentials
 
 // 从 rustplus CLI 加载凭证
 export const loadCredentialsFromCLI = () => api.post('/pairing/credentials/load-cli');
+
+// 诊断 FCM 凭证问题
+export const diagnoseCredentials = () => api.get('/pairing/credentials/diagnose');

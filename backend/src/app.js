@@ -19,6 +19,7 @@ import logger from './utils/logger.js';
 
 import serverRoutes from './routes/server.routes.js';
 import pairingRoutes from './routes/pairing.routes.js';
+import proxyRoutes from './routes/proxy.routes.js';
 
 // 加载环境变量
 dotenv.config();
@@ -49,6 +50,7 @@ app.use(express.json());
 // 路由
 app.use('/api/servers', serverRoutes);
 app.use('/api/pairing', pairingRoutes);
+app.use('/api/proxy', proxyRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {
@@ -102,7 +104,12 @@ const initializeFCM = async () => {
       setImmediate(async () => {
         try {
           console.log('🔍 后台查找 Battlemetrics 信息...');
-          const battlemetricsId = await battlemetricsService.searchServerByAddress(serverInfo.ip, serverInfo.port);
+          // 传入服务器名称以提高匹配准确性
+          const battlemetricsId = await battlemetricsService.searchServerByAddress(
+            serverInfo.ip,
+            serverInfo.port,
+            serverInfo.name  // 使用服务器名称进行精确匹配
+          );
           if (battlemetricsId) {
             storage.updateServer(serverInfo.id, { battlemetrics_id: battlemetricsId });
             console.log('✅ Battlemetrics ID 已更新:', battlemetricsId);
@@ -368,30 +375,67 @@ server.listen(PORT, async () => {
 ╚═══════════════════════════════════════╝
   `);
 
-  // 初始化代理服务（如果配置了订阅链接）
-  const subscriptionUrl = process.env.PROXY_SUBSCRIPTION_URL;
-  if (subscriptionUrl) {
+  // 初始化代理服务（优先数据库配置，其次 .env）
+  let proxyInitialized = false;
+
+  // 1. 尝试从数据库加载配置
+  const dbProxyConfig = configStorage.getProxyConfig();
+  if (dbProxyConfig?.subscriptionUrl && dbProxyConfig.autoStart) {
     try {
-      console.log('\n🌐 初始化代理服务...\n');
-      const preferredNode = process.env.PROXY_NODE_NAME || null;
-      await proxyService.initialize(subscriptionUrl, preferredNode);
+      console.log('\n🌐 从数据库加载代理配置...\n');
+      await proxyService.initialize(dbProxyConfig.subscriptionUrl, dbProxyConfig.selectedNode);
 
-      // 将代理 Agent 传递给 FCM 服务（用于 HTTP 请求）
-      fcmService.setProxyAgent(proxyService.getProxyAgent());
-
-      // 配置 SOCKS5 代理（用于 FCM WebSocket 连接）
-      const proxyPort = parseInt(process.env.PROXY_PORT) || 10808;
+      // 将代理 Agent 传递给各服务
+      const proxyAgent = proxyService.getProxyAgent();
+      const proxyPort = dbProxyConfig.proxyPort || 10808;
+      fcmService.setProxyAgent(proxyAgent);
       fcmService.setProxyConfig({ host: '127.0.0.1', port: proxyPort });
+      battlemetricsService.setProxyAgent(proxyAgent);
+      rustPlusService.setProxyConfig({ host: '127.0.0.1', port: proxyPort });
 
       console.log('✅ 代理服务已启动\n');
+      proxyInitialized = true;
     } catch (error) {
-      console.error('❌ 代理服务初始化失败:', error.message);
-      console.error('   将在无代理模式下运行\n');
+      console.error('❌ 数据库代理配置加载失败:', error.message);
     }
-  } else {
-    console.log('\n💡 提示: 未配置代理订阅链接 (PROXY_SUBSCRIPTION_URL)');
-    console.log('   如需使用代理，请在 .env 中配置订阅链接\n');
   }
+
+  // 2. 如果数据库没有配置，尝试从 .env 加载（向后兼容）
+  if (!proxyInitialized) {
+    const subscriptionUrl = process.env.PROXY_SUBSCRIPTION_URL;
+    if (subscriptionUrl) {
+      try {
+        console.log('\n🌐 从环境变量加载代理配置...\n');
+        const preferredNode = process.env.PROXY_NODE_NAME || null;
+        await proxyService.initialize(subscriptionUrl, preferredNode);
+
+        // 将代理 Agent 传递给各服务
+        const proxyAgent = proxyService.getProxyAgent();
+        const proxyPort = parseInt(process.env.PROXY_PORT) || 10808;
+        fcmService.setProxyAgent(proxyAgent);
+        battlemetricsService.setProxyAgent(proxyAgent);
+        rustPlusService.setProxyConfig({ host: '127.0.0.1', port: proxyPort });
+
+        // 配置 SOCKS5 代理（用于 FCM WebSocket 连接）
+        fcmService.setProxyConfig({ host: '127.0.0.1', port: proxyPort });
+
+        console.log('✅ 代理服务已启动\n');
+        proxyInitialized = true;
+      } catch (error) {
+        console.error('❌ 代理服务初始化失败:', error.message);
+        console.error('   将在无代理模式下运行\n');
+      }
+    }
+  }
+
+  if (!proxyInitialized) {
+    console.log('\n💡 提示: 未配置代理订阅链接');
+    console.log('   可在 Web 界面设置中配置，或在 .env 中设置 PROXY_SUBSCRIPTION_URL\n');
+  }
+
+  // 注意：Facepunch 代理模式可能返回 418 错误，表示 Token 无效
+  // 默认使用直连模式，如果需要可以手动启用代理模式
+  // rustPlusService.setUseFacepunchProxy(true);
 
   // 初始化 FCM
   await initializeFCM();

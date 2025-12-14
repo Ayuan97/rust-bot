@@ -5,6 +5,27 @@ class BattlemetricsService extends EventEmitter {
   constructor() {
     super();
     this.servers = new Map(); // serverId -> battlemetrics data
+    this.proxyAgent = null;
+  }
+
+  /**
+   * 设置代理 Agent
+   */
+  setProxyAgent(proxyAgent) {
+    this.proxyAgent = proxyAgent;
+    console.log('✅ Battlemetrics 服务已配置代理');
+  }
+
+  /**
+   * 获取 axios 配置（带代理）
+   */
+  _getAxiosConfig() {
+    const config = { timeout: 15000 };
+    if (this.proxyAgent) {
+      config.httpsAgent = this.proxyAgent;
+      config.httpAgent = this.proxyAgent;
+    }
+    return config;
   }
 
   /**
@@ -14,9 +35,9 @@ class BattlemetricsService extends EventEmitter {
     try {
       const encodedName = encodeURI(name).replace('#', '*');
       const url = `https://api.battlemetrics.com/servers?filter[search]=${encodedName}&filter[game]=rust`;
-      
-      const response = await axios.get(url);
-      
+
+      const response = await axios.get(url, this._getAxiosConfig());
+
       if (response.status !== 200) {
         console.error('❌ Battlemetrics 搜索失败');
         return null;
@@ -51,12 +72,14 @@ class BattlemetricsService extends EventEmitter {
         console.log(`   服务器名称: ${serverName}`);
       }
 
+      const axiosConfig = this._getAxiosConfig();
+
       // 方法1: 优先通过服务器名称搜索（最可靠）
       if (serverName) {
         console.log(`\n🎯 方法1: 通过服务器名称搜索`);
         const encodedName = encodeURI(serverName).replace('#', '*');
         let url = `https://api.battlemetrics.com/servers?filter[search]=${encodedName}&filter[game]=rust`;
-        let response = await axios.get(url);
+        let response = await axios.get(url, axiosConfig);
 
         console.log(`📊 名称搜索结果: ${response.data.data.length} 个`);
 
@@ -77,7 +100,7 @@ class BattlemetricsService extends EventEmitter {
       // 方法2: 通过 IP 搜索，然后根据名称或端口匹配
       console.log(`\n🔍 方法2: 通过 IP 搜索`);
       let url = `https://api.battlemetrics.com/servers?filter[search]=${ip}&filter[game]=rust`;
-      let response = await axios.get(url);
+      let response = await axios.get(url, axiosConfig);
 
       console.log(`📊 IP 搜索结果: ${response.data.data.length} 个`);
 
@@ -133,9 +156,9 @@ class BattlemetricsService extends EventEmitter {
   async getServerInfo(battlemetricsId) {
     try {
       const url = `https://api.battlemetrics.com/servers/${battlemetricsId}?include=player`;
-      
-      const response = await axios.get(url);
-      
+
+      const response = await axios.get(url, this._getAxiosConfig());
+
       if (response.status !== 200) {
         console.error('❌ 获取 Battlemetrics 服务器信息失败');
         return null;
@@ -233,9 +256,9 @@ class BattlemetricsService extends EventEmitter {
       }
 
       const url = `https://api.battlemetrics.com/servers/${battlemetricsId}/relationships/leaderboards/time?filter[period]=${period}`;
-      
-      const response = await axios.get(url);
-      
+
+      const response = await axios.get(url, this._getAxiosConfig());
+
       if (response.status !== 200) {
         return [];
       }

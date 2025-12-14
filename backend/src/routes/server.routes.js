@@ -296,4 +296,51 @@ router.get('/:id/battlemetrics/top-players', async (req, res) => {
   }
 });
 
+/**
+ * 获取 Rust+ 连接设置
+ */
+router.get('/settings/connection', (req, res) => {
+  try {
+    res.json({
+      success: true,
+      settings: {
+        useFacepunchProxy: rustPlusService.useFacepunchProxy,
+        description: rustPlusService.useFacepunchProxy
+          ? '通过 Facepunch 官方代理 (wss://companion-rust.facepunch.com)'
+          : '直连游戏服务器 (ws://IP:PORT)'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * 设置 Rust+ 连接模式
+ * @body {boolean} useFacepunchProxy - 是否使用 Facepunch 代理
+ */
+router.post('/settings/connection', (req, res) => {
+  try {
+    const { useFacepunchProxy } = req.body;
+
+    if (typeof useFacepunchProxy !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'useFacepunchProxy 必须是布尔值' });
+    }
+
+    rustPlusService.setUseFacepunchProxy(useFacepunchProxy);
+
+    res.json({
+      success: true,
+      message: useFacepunchProxy
+        ? '已切换到 Facepunch 代理模式（需要重新连接服务器生效）'
+        : '已切换到直连模式（需要重新连接服务器生效）',
+      settings: {
+        useFacepunchProxy: rustPlusService.useFacepunchProxy
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

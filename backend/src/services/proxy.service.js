@@ -286,8 +286,10 @@ class ProxyService extends EventEmitter {
         logger.warn(`⚠️  Xray 进程已退出 (code: ${code})`);
         this.emit('stopped', code);
 
-        // 自动重连机制
-        if (this.shouldReconnect && code !== 0) {
+        // 自动重连机制 - 仅在意外退出时重连
+        // code === null 表示被 kill() 杀死（正常停止），不重连
+        // code === 0 表示正常退出，不重连
+        if (this.shouldReconnect && code !== 0 && code !== null) {
           this.handleReconnect();
         }
       });
@@ -438,7 +440,7 @@ class ProxyService extends EventEmitter {
       throw new Error(`节点不存在: ${nodeName}`);
     }
 
-    // 停止当前代理
+    // 停止当前代理（stopXray 内部会禁用重连）
     this.stopXray();
 
     // 更新节点
@@ -446,7 +448,14 @@ class ProxyService extends EventEmitter {
 
     // 重新生成配置并启动
     await this.generateXrayConfig(newNode);
+
+    // 重新启用重连机制
+    this.shouldReconnect = true;
+
     await this.startXray();
+
+    // 重建代理 Agent
+    this.proxyAgent = new SocksProxyAgent(`socks5://127.0.0.1:${this.localPort}`);
 
     logger.info(`✅ 已切换到节点: ${newNode.name}`);
     this.emit('node:changed', newNode);

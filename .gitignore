@@ -39,3 +39,6 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+backend/bin/xray.exe
+backend/bin/wxray.exe
+backend/bin/Xray-windows-64.zip
