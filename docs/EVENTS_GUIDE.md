@@ -93,7 +93,7 @@
 
 这些是从 `team:changed` 事件中解析出的具体玩家状态变化。
 
-#### `player:died` ⭐ 新增
+#### `player:died`
 队伍成员死亡时触发。
 
 **数据格式：**
@@ -108,7 +108,7 @@
 }
 ```
 
-#### `player:spawned` ⭐ 新增
+#### `player:spawned`
 队伍成员重生时触发。
 
 **数据格式：**
@@ -123,7 +123,7 @@
 }
 ```
 
-#### `player:online` ⭐ 新增
+#### `player:online`
 队伍成员上线时触发。
 
 **数据格式：**
@@ -138,7 +138,7 @@
 }
 ```
 
-#### `player:offline` ⭐ 新增
+#### `player:offline`
 队伍成员下线时触发。
 
 **数据格式：**
@@ -169,9 +169,126 @@
 
 ---
 
-### 5. 氏族相关事件
+### 5. 游戏事件
 
-#### `clan:changed` ⭐ 新增
+这些事件用于追踪游戏内的特殊事件（货船、直升机、油井等）。
+
+#### `event:cargo:spawn`
+货船刷新时触发。
+
+**数据格式：**
+```javascript
+{
+  serverId: string,   // 服务器 ID
+  markerId: number,   // 标记 ID
+  position: string,   // 位置 (如 "M15-3")
+  direction: string,  // 方向 (如 "右上")
+  time: number        // 时间戳
+}
+```
+
+#### `event:cargo:dock`
+货船停靠港口时触发。
+
+#### `event:cargo:egress`
+货船离开港口、辐射上升时触发。
+
+#### `event:cargo:leave`
+货船离开地图时触发。
+
+#### `event:heli:spawn`
+武装直升机刷新时触发。
+
+**数据格式：**
+```javascript
+{
+  serverId: string,   // 服务器 ID
+  markerId: number,   // 标记 ID
+  position: string,   // 位置 (如 "G14-2")
+  time: number        // 时间戳
+}
+```
+
+#### `event:heli:downed`
+武装直升机被击落时触发。
+
+#### `event:heli:leave`
+武装直升机离开地图时触发。
+
+#### `event:ch47:spawn`
+CH47 直升机出现时触发。
+
+#### `event:ch47:leave`
+CH47 直升机离开时触发。
+
+#### `event:crate:spawn`
+上锁箱子出现时触发（空投/直升机残骸）。
+
+**数据格式：**
+```javascript
+{
+  serverId: string,   // 服务器 ID
+  markerId: number,   // 标记 ID
+  position: string,   // 位置 (如 "发射场(H16-8)")
+  time: number        // 时间戳
+}
+```
+
+#### `event:crate:despawn`
+上锁箱子消失时触发。
+
+#### `event:small:triggered`
+小油井被触发时触发。
+
+**数据格式：**
+```javascript
+{
+  serverId: string,   // 服务器 ID
+  position: string,   // 位置
+  time: number        // 触发时间戳
+}
+```
+
+#### `event:small:unlocked`
+小油井箱子解锁时触发。
+
+#### `event:large:triggered`
+大油井被触发时触发。
+
+#### `event:large:unlocked`
+大油井箱子解锁时触发。
+
+#### `event:raid:detected`
+检测到袭击（爆炸声）时触发。
+
+**数据格式：**
+```javascript
+{
+  serverId: string,   // 服务器 ID
+  position: string,   // 位置
+  count: number,      // 爆炸次数
+  time: number        // 时间戳
+}
+```
+
+#### `event:vending:new`
+新售货机出现时触发。
+
+**数据格式：**
+```javascript
+{
+  serverId: string,   // 服务器 ID
+  position: string,   // 位置
+  itemCount: number,  // 商品数量
+  important: string[] // 重要物品列表
+}
+```
+
+---
+
+### 6. 氏族相关事件
+
+#### `clan:changed`
 氏族信息发生变化时触发。
 
 **数据格式：**
@@ -191,8 +308,8 @@
 }
 ```
 
-#### `clan:message` ⭐ 新增
-收到氏族聊天消息时触发。
+#### `clan:message`
+氏族聊天消息时触发。
 
 **数据格式：**
 ```javascript
@@ -208,7 +325,7 @@
 
 ---
 
-### 6. 摄像头事件
+### 7. 摄像头事件
 
 #### `camera:subscribing`
 开始订阅摄像头时触发。
@@ -236,7 +353,7 @@
 
 ---
 
-### 7. 调试事件
+### 8. 调试事件
 
 #### `rust:message`
 接收到的原始 Rust+ 消息（用于调试）。

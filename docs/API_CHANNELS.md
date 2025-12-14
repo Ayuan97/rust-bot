@@ -315,23 +315,27 @@ Companion API 使用保存的 ExponentPushToken 发送推送：
 }
 ```
 
-### 3. FCM → rustplus.js → 我们的代码
+### 3. FCM → PushReceiverClient → 我们的代码
 
 ```javascript
-// rustplus.js FCM.listen() 接收
-RustPlus.FCM.listen(credentials, (message) => {
-  // message 结构
-  {
-    data: {
-      channelId: "pairing",
-      title: "Server Name",
-      body: "{...json...}"
-    }
-  }
+// 使用 push-receiver 库接收 FCM 推送
+import PushReceiverClient from '@liamcottle/push-receiver/src/client.js';
+
+const client = new PushReceiverClient(androidId, securityToken, []);
+
+client.on('ON_DATA_RECEIVED', (data) => {
+  // data 结构
+  // {
+  //   channelId: "pairing",
+  //   title: "Server Name",
+  //   body: "{...json...}"
+  // }
 
   // 我们的处理
-  handleFCMMessage(message);
+  handleFCMMessage(data);
 });
+
+await client.connect();
 ```
 
 ---
@@ -418,6 +422,6 @@ fcmService.on('alarm', handleAlarm);
 
 ---
 
-**最后更新**: 2025-10-18
+**最后更新**: 2025-12-14
 
 **验证状态**: ✅ 完全符合官方规范

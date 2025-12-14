@@ -174,13 +174,25 @@ CREATE TABLE devices (
 
 ```sql
 CREATE TABLE fcm_credentials (
-  id INTEGER PRIMARY KEY,           -- 固定为 1
-  fcm_token TEXT NOT NULL,          -- FCM Token
-  fcm_push_set TEXT NOT NULL,       -- Push Set
-  keys TEXT NOT NULL,               -- 加密密钥 (JSON)
-  created_at INTEGER,               -- 创建时间
-  updated_at INTEGER                -- 更新时间
+  id INTEGER PRIMARY KEY CHECK (id = 1),  -- 强制单例
+  credentials_json TEXT NOT NULL,         -- 完整 GCM 凭证 JSON
+  credential_type TEXT NOT NULL,          -- "GCM"
+  created_at INTEGER,                     -- 创建时间
+  updated_at INTEGER                      -- 更新时间
 )
+```
+
+**凭证格式 (credentials_json)**:
+```json
+{
+  "gcm": {
+    "androidId": "...",
+    "securityToken": "..."
+  },
+  "steam": {
+    "steamId": "76561198..."
+  }
+}
 ```
 
 ## 核心服务
@@ -314,11 +326,20 @@ cd frontend && npm run build
 pm2 start backend/src/app.js --name rust-plus-backend
 ```
 
-### Docker 部署（待实现）
+### Docker 部署
 
-```dockerfile
-# TODO: 添加 Dockerfile
+```bash
+# 一键启动
+./docker-start.sh
+
+# 或使用 Docker Compose
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
 ```
+
+详细说明请参考 [DOCKER.md](../DOCKER.md)
 
 ## 故障排查
 
