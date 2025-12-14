@@ -1,42 +1,29 @@
 # Rust+ Web Dashboard
 
-一个基于 Web 的 Rust+ 游戏助手，支持服务器配对、设备控制、地图查看等功能。
+一个基于 Web 的 Rust+ 游戏助手，无需打开游戏即可监控服务器、与队友聊天、控制智能设备。
 
-## ✨ 特性
+## 功能特性
 
-- 🎮 **服务器配对** - 通过 FCM 推送自动配对游戏服务器
-- 🔌 **设备控制** - 控制游戏内智能设备（门、灯、开关等）
-- 🗺️ **地图查看** - 实时查看服务器地图和标记点
-- 📊 **服务器信息** - 查看服务器状态、玩家列表等
-- 🔔 **主动通知** - 队友上下线、死亡、挂机、游戏事件自动推送
-- 💬 **队伍聊天** - 从网页发送消息到游戏队伍聊天
-- 🤖 **游戏内命令** - 通过聊天发送 `!` 开头命令与机器人互动
-- 🎯 **精准坐标** - 子网格定位(M15-3)、古迹自动识别(发射场)
-- 🛒 **售货机搜索** - 搜索地图上所有售货机的物品
-- ⚠️ **袭击检测** - 检测爆炸声并发出警报
-
-## 🚀 快速开始
-
-### 部署方式
-
-本项目支持两种部署方式：
-
-1. **🐳 Docker 部署（推荐）** - 一键启动，无需配置环境
-2. **📦 本地部署** - 手动安装依赖和运行
+- **服务器监控** - 实时查看服务器状态、在线玩家、游戏时间
+- **队伍聊天** - 从网页发送消息到游戏内队伍聊天
+- **智能设备控制** - 远程控制游戏内的门、灯、开关等设备
+- **游戏事件追踪** - 货船、直升机、空投、油井等事件实时提醒
+- **队友动态** - 自动通知队友上下线、死亡、挂机状态
+- **游戏内命令** - 通过队伍聊天发送 `!` 命令与机器人互动
+- **精准定位** - 子网格坐标(M15-3)、古迹自动识别(发射场)
+- **售货机搜索** - 搜索地图上所有售货机的物品
+- **袭击检测** - 检测爆炸声并发出警报
 
 ---
 
-### 方式一：Docker 部署（推荐）
+## 快速开始
 
-#### 前置要求
+### Docker 部署（推荐）
 
-- Docker (>= 20.10)
-- Docker Compose (>= 2.0)
-
-#### 快速启动
+**前置要求：** Docker >= 20.10, Docker Compose >= 2.0
 
 ```bash
-# 一键启动（使用脚本）
+# 一键启动
 ./docker-start.sh
 
 # 或手动启动
@@ -46,266 +33,178 @@ docker-compose up -d
 docker-compose logs -f
 ```
 
-访问:
-- **前端**: http://localhost:3002
-- **后端**: http://localhost:3001/api
+**访问地址：**
+- 前端：http://localhost:3002
+- 后端：http://localhost:3001/api
 
-#### 修改端口
+**修改端口：** 编辑 `.env` 文件中的 `BACKEND_PORT` 和 `FRONTEND_PORT`
 
-**只需编辑一个文件！**
-
-1. 编辑 `.env` 文件：
-   ```bash
-   # 修改端口号
-   BACKEND_PORT=3001   # 改成你想要的后端端口
-   FRONTEND_PORT=3002  # 改成你想要的前端端口
-   ```
-
-2. 重新启动：
-   ```bash
-   ./docker-start.sh
-   ```
-
-**特点：**
-- ✅ 一键启动，环境隔离
-- ✅ 每次启动都是全新环境
-- ✅ 只需修改 .env 文件即可更改所有端口
-- ⚠️ 容器删除后数据清空
-
-**详细文档**: 查看 [Docker 部署指南](DOCKER.md)
+详细说明见 [Docker 部署指南](DOCKER.md)
 
 ---
 
-### 方式二：本地部署
+### 本地部署
 
-#### 前置要求
+**前置要求：** Node.js >= 16
 
-- Node.js >= 16
-- npm 或 yarn
-- Rust 游戏和 Steam 账号
+```bash
+# 1. 安装后端依赖
+cd backend && npm install
 
-#### 安装
+# 2. 安装前端依赖
+cd ../frontend && npm install
 
-1. **克隆项目**
-   ```bash
-   cd /Users/administer/Desktop/go/rust-bot-new
-   ```
+# 3. 启动后端（终端1）
+cd backend && npm start
 
-2. **安装后端依赖**
-   ```bash
-   cd backend
-   npm install
-   ```
+# 4. 启动前端（终端2）
+cd frontend && npm run dev
+```
 
-3. **安装前端依赖**
-   ```bash
-   cd frontend
-   npm install
-   ```
+**访问地址：**
+- 前端：http://localhost:5173
+- 后端：http://localhost:3000
 
-### 启动
+---
 
-1. **启动后端**
-   ```bash
-   cd backend
-   npm start
-   ```
-   后端将运行在 `http://localhost:3000`
+## 首次使用
 
-2. **启动前端**
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-   前端将运行在 `http://localhost:5173`
+### 第一步：获取凭证
 
-3. **访问应用**
-
-   打开浏览器访问 `http://localhost:5173`
-
-### FCM 注册（首次使用）
-
-1. 点击"自动注册（推荐）"
-2. 点击"开始注册"，会在新标签页打开 Steam 登录页面
+1. 打开网页后，点击「开始配对」
+2. 点击「自动注册」，会打开 Steam 登录页面
 3. 使用 Steam 账号登录
-4. 登录成功后，页面会显示凭证命令，类似：
+4. 登录成功后，页面会显示凭证命令：
    ```
    /credentials add gcm_android_id:xxx gcm_security_token:xxx steam_id:xxx ...
    ```
-5. 复制完整命令
-6. 切回 Dashboard 标签页，粘贴到输入框
-7. 点击"完成注册"
-8. 等待 FCM 连接建立
+5. 复制完整命令，粘贴到输入框
+6. 点击「完成注册」，等待连接建立
 
-### 服务器配对
+### 第二步：配对服务器
 
-1. 确保 FCM 注册完成并连接成功
-2. 进入 Rust 游戏并加入服务器
-3. 按 ESC 打开菜单
-4. 点击右下角 Rust+ 图标
-5. 点击 "Pair with Server"
-6. 网页会自动显示配对成功通知
-7. 服务器出现在列表中，可以开始使用
+1. 确保网页显示「FCM 已连接」
+2. 进入 Rust 游戏，加入服务器
+3. 按 ESC → 点击右下角 Rust+ 图标 → 点击「Pair with Server」
+4. 网页会自动显示配对成功通知
+5. 服务器出现在列表中，点击即可连接
 
-### 🤖 使用游戏内命令
+---
 
-连接服务器后，可以在游戏内通过队伍聊天与机器人互动：
+## 游戏内命令
 
-```
-!help           # 查看所有可用命令
-!time           # 查看当前游戏时间
-!online         # 查看在线队友
-!pos            # 查看队友位置
-!info           # 查看服务器信息
-!markers        # 查看地图标记
-!notify         # 控制自动通知（死亡/重生）
-!ping           # 测试机器人响应
-```
+连接服务器后，在游戏内队伍聊天中输入命令即可使用：
 
-**示例：**
-1. 在游戏中按 `Enter` 打开队伍聊天
-2. 输入 `!time` 并发送
-3. 机器人会自动回复当前游戏时间
+### 基础命令
 
-**🔔 自动通知功能：**
-- 机器人会自动检测队友死亡和重生事件
-- 默认会在队伍聊天发送通知消息
-- 使用 `!notify death off` 关闭死亡通知
-- 使用 `!notify spawn off` 关闭重生通知
+| 命令 | 说明 |
+|------|------|
+| `!help` | 显示所有可用命令 |
+| `!time` | 查看游戏时间，显示距离天亮/天黑的真实分钟数 |
+| `!pop` | 查看服务器人数和30分钟内变化趋势 |
 
-详见 [游戏内命令指南](docs/COMMANDS_GUIDE.md)
+### 队伍命令
 
-## 📖 详细文档
+| 命令 | 说明 |
+|------|------|
+| `!team` | 显示队伍统计（在线/离线/挂机人数） |
+| `!online` | 显示在线队友列表 |
+| `!afk` | 显示挂机队友及挂机时长 |
+| `!leader [名字]` | 移交队长权限给指定队友 |
 
-- 🐳 **[Docker 部署指南](DOCKER.md)** - Docker 容器化部署完整教程
-- 📘 **[快速测试指南](QUICK_TEST_GUIDE.md)** - 测试和故障排查
-- 🎮 **[游戏内命令指南](docs/COMMANDS_GUIDE.md)** - 机器人命令系统使用说明
-- 🎯 **[事件系统指南](docs/EVENTS_GUIDE.md)** - 所有可用事件类型和监听方法
-- 📗 **[FCM 简化流程](backend/FCM_SIMPLIFIED_FLOW.md)** - FCM 注册原理详解
-- 📕 **[实现总结](IMPLEMENTATION_SUMMARY.md)** - 完整实现说明
-- 📙 **[版本日志](CHANGELOG_FCM_V2.md)** - V2.0 更新内容
-- 📔 **[架构文档](docs/ARCHITECTURE.md)** - 系统架构设计
-- 📓 **[API 文档](docs/API_CHANNELS.md)** - API 接口说明
+### 事件命令
 
-## 🏗️ 项目结构
+| 命令 | 说明 |
+|------|------|
+| `!cargo` | 查看货船位置和剩余时间 |
+| `!heli` | 查看武装直升机位置 |
+| `!small` | 查看小油井状态和箱子解锁倒计时 |
+| `!large` | 查看大油井状态和箱子解锁倒计时 |
+| `!events` | 查看所有活跃事件 |
+| `!history` | 查看事件历史记录 |
 
-```
-rust-bot-new/
-├── backend/              # 后端服务
-│   ├── src/
-│   │   ├── routes/      # API 路由
-│   │   ├── services/    # 业务逻辑
-│   │   ├── models/      # 数据模型
-│   │   └── index.js     # 入口文件
-│   └── package.json
-│
-├── frontend/             # 前端应用
-│   ├── src/
-│   │   ├── components/  # React 组件
-│   │   ├── services/    # API 服务
-│   │   └── App.jsx      # 主应用
-│   └── package.json
-│
-└── docs/                 # 详细文档
-    ├── ARCHITECTURE.md   # 架构说明
-    ├── API_CHANNELS.md   # API 和通道文档
-    └── SETUP_GUIDE.md    # 详细设置指南
-```
+### 实用命令
 
-## 🔧 核心技术
+| 命令 | 说明 |
+|------|------|
+| `!shop [物品]` | 搜索售货机中的物品，显示位置和价格 |
+| `!smalllast` | 查看上次小油井触发时间 |
+| `!largelast` | 查看上次大油井触发时间 |
+| `!helilast` | 查看上次直升机事件时间 |
 
-### 后端
-- **Node.js + Express** - Web 服务器
-- **Socket.io** - WebSocket 实时通信
-- **@liamcottle/rustplus.js** - Rust+ API 封装
-- **@liamcottle/push-receiver** - FCM 推送接收
-- **better-sqlite3** - 数据持久化
+完整说明见 [命令指南](docs/COMMANDS_GUIDE.md)
 
-### 前端
-- **React + Vite** - UI 框架
-- **Socket.io-client** - WebSocket 客户端
-- **Axios** - HTTP 客户端
-- **React Icons** - 图标库
-- **Tailwind CSS** - 样式框架
+---
 
-## 💡 FCM 注册原理
+## 自动通知
 
-本项目使用**直连 MCS 复用已注册设备**的方式：
+机器人会自动在队伍聊天发送以下通知：
 
-1. 用户登录 Companion 获取已注册设备的凭证
-2. 我们使用这些凭证直接连接 FCM (mtalk.google.com:5228)
-3. Companion 后端已经认识这个设备，可以正常路由推送
-4. **不需要 auth_token**（因为不是注册新设备）
+### 队友动态
+- **上线通知** - `张三 在离线 2小时30分钟 后上线了`
+- **下线通知** - `张三 今天游玩了 3小时 (其中挂机 45分钟)`
+- **死亡通知** - `张三 在 发射场(M15-3) 死亡`
+- **挂机提醒** - `张三 已离开 5 分钟 - K12-7`
 
-详细说明见 `backend/FCM_SIMPLIFIED_FLOW.md`
+### 游戏事件
+- **货船** - 刷新、停靠、辐射上升、离开
+- **直升机** - 刷新、被击落、离开
+- **油井** - 触发、箱子解锁倒计时
+- **上锁箱子** - 出现位置
+- **CH47** - 出现和离开
 
-## ❓ 常见问题
+### 安全警报
+- **袭击检测** - `检测到袭击 位置: J11-4 (3次爆炸)`
 
-### Q: 收不到推送消息怎么办？
+---
 
-**检查步骤：**
-1. 后端日志是否显示"FCM 连接已建立"
-2. 是否有心跳日志（每 30 秒一次）
-3. 凭证是否过期（检查 expire_date）
-4. 尝试重新获取凭证并注册
+## 常见问题
 
-### Q: 凭证过期了怎么办？
+### 收不到推送消息？
 
-重新登录 `https://companion-rust.facepunch.com/login` 获取新凭证即可。
-凭证通常有效期约 2 周。
+1. 检查后端日志是否显示「FCM 连接已建立」
+2. 检查是否有心跳日志（每30秒一次）
+3. 凭证可能过期，重新获取凭证
 
-### Q: 为什么不需要 auth_token？
+### 凭证过期了？
 
-因为我们使用的是 Companion 的已注册设备凭证，不是注册新设备。
-设备已经绑定到用户的 Steam 账号，所以不需要再次证明身份。
+重新访问 https://companion-rust.facepunch.com/login 登录获取新凭证。凭证有效期约2周。
 
-详见：`backend/FCM_SIMPLIFIED_FLOW.md`
+### 配对失败？
 
-### Q: 能同时监听多个账号吗？
+1. 确保 FCM 已连接（网页显示绿色状态）
+2. 在游戏中重新点击「Pair with Server」
+3. 检查后端日志查看错误信息
 
-目前不支持，但可以在未来版本中添加多账号支持。
+### 设备无法控制？
 
-## 🔒 安全提醒
+1. 确保设备已在游戏中配对（按住 E → Pair）
+2. 检查设备是否有电源
+3. 刷新设备列表
 
-⚠️ **凭证保护：**
-- FCM 凭证可以接收你的游戏推送
-- 不要在公共场合展示凭证
-- 不要分享你的凭证命令
-- 凭证存储在本地 `~/.rustplus/config/` 目录
+---
 
-## 🛠️ 开发
+## 安全提醒
 
-### 后端开发
-```bash
-cd backend
-npm run dev  # 使用 nodemon 自动重启
-```
+- FCM 凭证可以接收你的游戏推送，不要分享给他人
+- 凭证存储在本地服务器，不会上传
+- 建议在私有网络中部署
 
-### 前端开发
-```bash
-cd frontend
-npm run dev  # Vite 热重载
-```
+---
 
-### 构建
-```bash
-# 前端构建
-cd frontend
-npm run build
-```
+## 相关文档
 
-## 📄 许可证
+- [Docker 部署指南](DOCKER.md)
+- [命令使用指南](docs/COMMANDS_GUIDE.md)
+- [代理配置（中国大陆）](docs/PROXY_SETUP.md)
 
-MIT
+---
 
-## 🙏 致谢
+## 致谢
 
 - [@liamcottle/rustplus.js](https://github.com/liamcottle/rustplus.js) - Rust+ API 库
-- [@liamcottle/push-receiver](https://github.com/MatthieuLemoine/push-receiver) - FCM 推送接收库
 - [Facepunch Studios](https://rust.facepunch.com/) - Rust 游戏开发商
 
 ---
 
-**版本:** 2.0.0
-**更新日期:** 2025-10-18
-**状态:** ✅ 稳定版
+**版本:** 2.1.0 | **更新日期:** 2025-12-14
