@@ -297,7 +297,7 @@ const setupPlayerEventNotifications = () => {
           position: position
         });
         await rustPlusService.sendTeamMessage(data.serverId, message);
-        logger.debug(`📨 已发送死亡通知: ${message}`);
+        console.log(`📨 已发送死亡通知: ${message}`);
 
         // 更新缓存
         serverMap.set(data.steamId, {

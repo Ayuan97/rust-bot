@@ -768,7 +768,7 @@ class RustPlusService extends EventEmitter {
 
           // 只有在状态翻转或有新的死亡时间时才触发（避免重复触发）
           if (isAliveFlipToDead || hasNewDeathTime) {
-            logger.debug(`💀 玩家死亡: ${newMember.name} (${steamId})`);
+            console.log(`💀 检测到玩家死亡: ${newMember.name} (${steamId})`);
             this.emit('player:died', {
               serverId,
               steamId,
