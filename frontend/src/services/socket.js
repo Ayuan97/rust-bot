@@ -1,6 +1,7 @@
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
+// Docker 部署时使用当前页面 origin（通过 nginx 代理），本地开发时使用环境变量
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '';
 
 class SocketService {
   constructor() {
