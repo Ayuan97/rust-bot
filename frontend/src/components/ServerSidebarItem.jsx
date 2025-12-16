@@ -53,3 +53,4 @@ function ServerSidebarItem({ server, isActive, onSelect }) {
 
 export default ServerSidebarItem;
 
+

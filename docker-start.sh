@@ -36,12 +36,19 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-# 检查 Docker Compose 是否安装
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+# 检测 Docker Compose 命令格式
+DOCKER_COMPOSE=""
+if docker compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+else
     echo "❌ 错误: 未安装 Docker Compose"
     echo "请访问 https://docs.docker.com/compose/install/ 安装 Docker Compose"
     exit 1
 fi
+
+echo "📦 使用命令: $DOCKER_COMPOSE"
 
 # 检查 Docker 是否运行
 if ! docker info &> /dev/null; then
@@ -56,18 +63,18 @@ echo ""
 
 # 停止旧容器（如果存在）
 echo "🛑 停止旧容器..."
-docker-compose down 2>/dev/null || true
+$DOCKER_COMPOSE down 2>/dev/null || true
 echo ""
 
 # 构建镜像
 echo "🔨 构建 Docker 镜像..."
-docker-compose build
+$DOCKER_COMPOSE build
 echo "✅ 镜像构建完成"
 echo ""
 
 # 启动服务
 echo "🚀 启动服务..."
-docker-compose up -d
+$DOCKER_COMPOSE up -d
 echo ""
 
 # 等待服务启动
@@ -79,7 +86,7 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📊 服务状态"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-docker-compose ps
+$DOCKER_COMPOSE ps
 echo ""
 
 # 健康检查
@@ -110,10 +117,9 @@ echo "  前端: http://localhost:$FRONTEND_PORT"
 echo "  后端: http://localhost:$BACKEND_PORT/api"
 echo ""
 echo "常用命令:"
-echo "  查看日志: docker-compose logs -f"
-echo "  停止服务: docker-compose down"
-echo "  重启服务: docker-compose restart"
+echo "  查看日志: $DOCKER_COMPOSE logs -f"
+echo "  停止服务: $DOCKER_COMPOSE down"
+echo "  重启服务: $DOCKER_COMPOSE restart"
 echo ""
 echo "💡 修改端口: 编辑 .env 文件，然后重新运行此脚本"
-echo "详细文档请查看: DOCKER.md"
 echo ""
