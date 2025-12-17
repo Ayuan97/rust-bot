@@ -10,6 +10,15 @@
 - **前端**: React + Vite + Tailwind CSS
 - **核心功能**: 连接 Rust+ 游戏服务器、FCM 推送监听、实时聊天、智能设备控制
 
+## 参考项目
+
+- **rustplusplus**: `D:\hello\code\rustplusplus`
+  - GitHub: https://github.com/alexemanuelol/rustplusplus
+  - 用途: 参考其死亡检测、队伍状态变化、AFK 检测等逻辑实现
+  - 关键文件:
+    - `src/handlers/teamHandler.js` - 队伍变化处理
+    - `src/structures/Player.js` - 玩家状态检测（isGoneDead, isGoneAfk 等）
+
 ## 开发命令
 
 ### 后端 (`backend/`)

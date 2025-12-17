@@ -31,6 +31,13 @@ class RustPlusService extends EventEmitter {
 
     // SOCKS5 代理配置（用于 WebSocket 连接）
     this.proxyConfig = null; // { host: '127.0.0.1', port: 10808 }
+
+    // 聊天消息队列配置（参考 rustplusplus）
+    this.chatQueues = new Map(); // serverId -> { queue: [], processing: false, timeout: null }
+    this.messagesSentByBot = new Map(); // serverId -> [messages] 用于 bot 消息去重
+    this.CHAT_MAX_LENGTH = 128; // Rust+ 消息最大长度
+    this.CHAT_SEND_DELAY = 2500; // 消息发送间隔（毫秒）
+    this.BOT_MESSAGE_HISTORY_LIMIT = 20; // bot 消息历史记录数量
   }
 
   /**
@@ -105,6 +112,13 @@ class RustPlusService extends EventEmitter {
           if (teamInfo) {
             this.teamStates.set(serverId, JSON.parse(JSON.stringify(teamInfo)));
             console.log(`📋 已初始化队伍状态 (${teamInfo.members?.length || 0} 名成员)`);
+            // 输出每个成员的死亡状态，便于调试
+            if (teamInfo.members) {
+              for (const m of teamInfo.members) {
+                const status = m.isAlive ? '存活' : `死亡(deathTime=${m.deathTime || 'N/A'})`;
+                console.log(`   └ ${m.name}: ${status}, 在线=${m.isOnline}`);
+              }
+            }
           }
         } catch (err) {
           console.warn(`⚠️  无法获取初始队伍状态: ${err.message}`);
@@ -213,6 +227,14 @@ class RustPlusService extends EventEmitter {
 
     // 清理地图缓存
     this.mapCache.delete(serverId);
+
+    // 清理聊天队列
+    const chatQueue = this.chatQueues.get(serverId);
+    if (chatQueue) {
+      if (chatQueue.timeout) clearTimeout(chatQueue.timeout);
+      this.chatQueues.delete(serverId);
+    }
+    this.messagesSentByBot.delete(serverId);
   }
 
   /**
@@ -468,15 +490,162 @@ class RustPlusService extends EventEmitter {
   }
 
   /**
-   * 发送队伍聊天消息
+   * 发送队伍聊天消息（支持长消息拆分和队列发送）
+   * @param {string} serverId - 服务器 ID
+   * @param {string} message - 消息内容
+   * @param {Object} options - 选项
+   * @param {boolean} options.isBot - 是否是 bot 发送的消息（用于去重）
    */
-  async sendTeamMessage(serverId, message) {
+  async sendTeamMessage(serverId, message, options = {}) {
     const rustplus = this.connections.get(serverId);
     if (!rustplus) throw new Error('服务器未连接');
 
-    await rustplus.sendRequestAsync({ sendTeamMessage: { message } });
-    logger.debug(`📨 发送消息到 ${serverId}: ${message}`);
-    return { success: true, message };
+    const { isBot = false } = options;
+
+    // 初始化队列
+    if (!this.chatQueues.has(serverId)) {
+      this.chatQueues.set(serverId, { queue: [], processing: false, timeout: null });
+    }
+
+    // 拆分长消息（参考 rustplusplus）
+    const messages = this.splitMessage(message);
+
+    // 将消息加入队列
+    const chatQueue = this.chatQueues.get(serverId);
+    for (const msg of messages) {
+      chatQueue.queue.push({ message: msg, isBot });
+    }
+
+    // 启动队列处理
+    this.processChatQueue(serverId);
+
+    logger.debug(`📨 消息已加入队列 (${serverId}): ${messages.length} 条`);
+    return { success: true, message, splitCount: messages.length };
+  }
+
+  /**
+   * 拆分长消息为多条短消息
+   * @param {string} message - 原始消息
+   * @returns {string[]} 拆分后的消息数组
+   */
+  splitMessage(message) {
+    if (!message) return [];
+
+    const maxLength = this.CHAT_MAX_LENGTH;
+
+    // 消息不需要拆分
+    if (message.length <= maxLength) {
+      return [message];
+    }
+
+    // 使用正则按词边界拆分，避免截断单词
+    const regex = new RegExp(`.{1,${maxLength}}(\\s|$)`, 'g');
+    const matches = message.match(regex);
+
+    if (matches) {
+      return matches.map(s => s.trim()).filter(s => s.length > 0);
+    }
+
+    // 如果没有空格（如中文），直接按长度拆分
+    const result = [];
+    for (let i = 0; i < message.length; i += maxLength) {
+      result.push(message.slice(i, i + maxLength));
+    }
+    return result;
+  }
+
+  /**
+   * 处理消息队列（带速率限制）
+   * @param {string} serverId - 服务器 ID
+   */
+  async processChatQueue(serverId) {
+    const chatQueue = this.chatQueues.get(serverId);
+    if (!chatQueue || chatQueue.processing || chatQueue.queue.length === 0) {
+      return;
+    }
+
+    chatQueue.processing = true;
+
+    const rustplus = this.connections.get(serverId);
+    if (!rustplus) {
+      chatQueue.processing = false;
+      chatQueue.queue = [];
+      return;
+    }
+
+    // 取出队列中的第一条消息
+    const { message, isBot } = chatQueue.queue.shift();
+
+    try {
+      await rustplus.sendRequestAsync({ sendTeamMessage: { message } });
+      logger.debug(`📨 发送消息 (${serverId}): ${message}`);
+
+      // 如果是 bot 消息，记录用于去重
+      if (isBot) {
+        this.recordBotMessage(serverId, message);
+      }
+    } catch (error) {
+      console.error(`❌ 发送消息失败 (${serverId}):`, error.message);
+    }
+
+    chatQueue.processing = false;
+
+    // 如果队列中还有消息，延迟后继续处理
+    if (chatQueue.queue.length > 0) {
+      chatQueue.timeout = setTimeout(() => {
+        this.processChatQueue(serverId);
+      }, this.CHAT_SEND_DELAY);
+    }
+  }
+
+  /**
+   * 记录 bot 发送的消息（用于去重）
+   * @param {string} serverId - 服务器 ID
+   * @param {string} message - 消息内容
+   */
+  recordBotMessage(serverId, message) {
+    if (!this.messagesSentByBot.has(serverId)) {
+      this.messagesSentByBot.set(serverId, []);
+    }
+    const messages = this.messagesSentByBot.get(serverId);
+    messages.unshift(message);
+
+    // 限制历史记录数量
+    if (messages.length > this.BOT_MESSAGE_HISTORY_LIMIT) {
+      messages.pop();
+    }
+  }
+
+  /**
+   * 检查是否是 bot 发送的消息（用于去重）
+   * @param {string} serverId - 服务器 ID
+   * @param {string} message - 消息内容
+   * @returns {boolean} 是否是 bot 消息
+   */
+  isBotMessage(serverId, message) {
+    const messages = this.messagesSentByBot.get(serverId);
+    if (!messages) return false;
+
+    const index = messages.indexOf(message);
+    if (index !== -1) {
+      // 找到后从列表中移除
+      messages.splice(index, 1);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 获取队伍聊天历史
+   * @param {string} serverId - 服务器 ID
+   * @returns {Promise<Array>} 聊天历史
+   */
+  async getTeamChat(serverId) {
+    const rustplus = this.connections.get(serverId);
+    if (!rustplus) throw new Error('服务器未连接');
+
+    const res = await rustplus.sendRequestAsync({ getTeamChat: {} }, 15000);
+    return res.teamChat?.messages || [];
   }
 
   /**
@@ -693,6 +862,7 @@ class RustPlusService extends EventEmitter {
 
     // 队伍变化（包含玩家死亡/复活/上线/下线等状态变化）
     if (broadcast.teamChanged) {
+      logger.debug(`📡 [广播] 收到 teamChanged 广播 (serverId=${serverId})`);
       this.handleTeamChanged(serverId, broadcast.teamChanged);
     }
 
@@ -743,78 +913,82 @@ class RustPlusService extends EventEmitter {
 
     if (!newTeamInfo || !newTeamInfo.members) return;
 
-    // 如果有旧状态，则比较变化
-    if (oldTeamState && oldTeamState.members) {
-      const oldMembers = new Map(
-        oldTeamState.members.map(m => [m.steamId?.toString(), m])
-      );
+    // 如果没有旧状态，初始化并返回（避免首次连接误报）
+    if (!oldTeamState || !oldTeamState.members) {
+      console.log(`📋 [队伍状态] 首次获取状态，初始化 ${newTeamInfo.members.length} 名成员`);
+      this.teamStates.set(serverId, JSON.parse(JSON.stringify(newTeamInfo)));
+      return;
+    }
 
-      for (const newMember of newTeamInfo.members) {
-        const steamId = newMember.steamId?.toString();
-        if (!steamId) continue;
+    // 比较新旧状态
+    const oldMembers = new Map(
+      oldTeamState.members.map(m => [m.steamId?.toString(), m])
+    );
 
-        const oldMember = oldMembers.get(steamId);
+    for (const newMember of newTeamInfo.members) {
+      const steamId = newMember.steamId?.toString();
+      if (!steamId) continue;
 
-        if (oldMember) {
-          // 检测死亡事件
-          // 条件：isAlive 从 true 变为 false
-          // 或者：deathTime 增加（表示新的一次死亡），且当前是死亡状态
-          const isAliveFlipToDead = oldMember.isAlive === true && newMember.isAlive === false;
-          const hasNewDeathTime =
-            typeof newMember.deathTime === 'number' &&
-            newMember.isAlive === false &&
-            typeof oldMember.deathTime === 'number' &&
-            newMember.deathTime > oldMember.deathTime;
+      const oldMember = oldMembers.get(steamId);
 
-          // 只有在状态翻转或有新的死亡时间时才触发（避免重复触发）
-          if (isAliveFlipToDead || hasNewDeathTime) {
-            console.log(`💀 检测到玩家死亡: ${newMember.name} (${steamId})`);
-            this.emit('player:died', {
-              serverId,
-              steamId,
-              name: newMember.name,
-              deathTime: newMember.deathTime,
-              x: newMember.x,
-              y: newMember.y
-            });
-          }
+      if (oldMember) {
+        // 检测死亡事件（与 rustplusplus 一致的逻辑）
+        // 条件1：isAlive 从 true 变为 false
+        // 条件2：deathTime 发生变化（不需要检查类型，直接比较值）
+        const isAliveFlipToDead = oldMember.isAlive === true && newMember.isAlive === false;
+        const isDeathTimeChanged = oldMember.deathTime !== newMember.deathTime;
 
-          // 检测复活/重生事件
-          if (!oldMember.isAlive && newMember.isAlive) {
-            logger.debug(`✨ 玩家复活: ${newMember.name} (${steamId})`);
-            this.emit('player:spawned', {
-              serverId,
-              steamId,
-              name: newMember.name,
-              spawnTime: newMember.spawnTime,
-              x: newMember.x,
-              y: newMember.y
-            });
-          }
-
-          // 检测上线事件
-          if (!oldMember.isOnline && newMember.isOnline) {
-            logger.debug(`🟢 玩家上线: ${newMember.name} (${steamId})`);
-            this.emit('player:online', {
-              serverId,
-              steamId,
-              name: newMember.name,
-              isAlive: newMember.isAlive,
-              x: newMember.x,
-              y: newMember.y
-            });
-          }
-
-          // 检测下线事件
-          if (oldMember.isOnline && !newMember.isOnline) {
-            logger.debug(`🔴 玩家下线: ${newMember.name} (${steamId})`);
-            this.emit('player:offline', {
-              serverId,
-              steamId,
-              name: newMember.name
-            });
-          }
+        // 任一条件满足即触发死亡事件
+        if (isAliveFlipToDead || isDeathTimeChanged) {
+          console.log(`💀 检测到玩家死亡: ${newMember.name} (${steamId}) [flip=${isAliveFlipToDead}, timeChanged=${isDeathTimeChanged}]`);
+          this.emit('player:died', {
+            serverId,
+            steamId,
+            name: newMember.name,
+            deathTime: newMember.deathTime,
+            x: newMember.x,
+            y: newMember.y
+          });
         }
+
+        // 检测复活/重生事件
+        if (oldMember.isAlive === false && newMember.isAlive === true) {
+          logger.debug(`✨ 玩家复活: ${newMember.name} (${steamId})`);
+          this.emit('player:spawned', {
+            serverId,
+            steamId,
+            name: newMember.name,
+            spawnTime: newMember.spawnTime,
+            x: newMember.x,
+            y: newMember.y
+          });
+        }
+
+        // 检测上线事件
+        if (!oldMember.isOnline && newMember.isOnline) {
+          logger.debug(`🟢 玩家上线: ${newMember.name} (${steamId})`);
+          this.emit('player:online', {
+            serverId,
+            steamId,
+            name: newMember.name,
+            isAlive: newMember.isAlive,
+            x: newMember.x,
+            y: newMember.y
+          });
+        }
+
+        // 检测下线事件
+        if (oldMember.isOnline && !newMember.isOnline) {
+          logger.debug(`🔴 玩家下线: ${newMember.name} (${steamId})`);
+          this.emit('player:offline', {
+            serverId,
+            steamId,
+            name: newMember.name
+          });
+        }
+      } else {
+        // 新加入的队员，记录但不触发事件
+        logger.debug(`👤 新队员加入: ${newMember.name} (${steamId})`);
       }
     }
 

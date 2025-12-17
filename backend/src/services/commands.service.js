@@ -1312,9 +1312,9 @@ class CommandsService {
         // 手动触发队伍状态检测（检测死亡/复活等事件）
         this.rustPlusService.handleTeamChanged(serverId, { teamInfo });
 
-        // 获取地图大小（用于坐标转换，必要时同步刷新）
-        const { mapSize, oceanMargin } = await this.rustPlusService.getLiveMapContext(serverId);
-        logger.debug(`[AFK检测] 地图大小: ${mapSize}`);
+        // 获取地图大小（使用缓存，避免频繁 API 请求）
+        const mapSize = this.rustPlusService.getMapSize(serverId);
+        const oceanMargin = this.rustPlusService.getMapOceanMargin(serverId);
 
         // 更新每个玩家的位置历史
         for (const member of teamInfo.members) {

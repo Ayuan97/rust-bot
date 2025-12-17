@@ -179,6 +179,30 @@ class SocketService {
     });
   }
 
+  getChatHistory(serverId) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        return reject(new Error('Socket 未连接'));
+      }
+      const timeout = setTimeout(() => {
+        this.socket?.off('chat:history:success');
+        this.socket?.off('chat:history:error');
+        reject(new Error('获取聊天历史超时'));
+      }, 15000);
+
+      this.socket.emit('chat:history', { serverId });
+
+      this.socket.once('chat:history:success', (data) => {
+        clearTimeout(timeout);
+        resolve(data.messages);
+      });
+      this.socket.once('chat:history:error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+    });
+  }
+
   // ========== 设备操作 ==========
 
   controlDevice(serverId, entityId, value) {

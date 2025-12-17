@@ -85,6 +85,22 @@ class WebSocketService {
         }
       });
 
+      // 获取聊天历史
+      socket.on('chat:history', async ({ serverId } = {}) => {
+        try {
+          if (!serverId) {
+            return socket.emit('chat:history:error', { error: '缺少 serverId' });
+          }
+          const messages = await rustPlusService.getTeamChat(serverId);
+          socket.emit('chat:history:success', { serverId, messages });
+        } catch (error) {
+          socket.emit('chat:history:error', {
+            serverId,
+            error: error.message
+          });
+        }
+      });
+
       // 控制设备
       socket.on('device:control', async ({ serverId, entityId, value } = {}) => {
         try {
