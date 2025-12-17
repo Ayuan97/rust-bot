@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FaUsers, FaClock, FaMap, FaSun, FaMoon, FaDownload, FaCopy, FaServer, FaMapMarkedAlt, FaChevronUp, FaChevronDown } from 'react-icons/fa';
+import { FaUsers, FaClock, FaMap, FaSun, FaMoon, FaDownload, FaCopy, FaServer, FaMapMarkedAlt, FaChevronUp, FaChevronDown, FaExternalLinkAlt } from 'react-icons/fa';
 import socketService from '../services/socket';
 import { getServer, getBattlemetricsInfo } from '../services/api';
 import { useToast } from './Toast';
@@ -12,9 +12,7 @@ function ServerInfo({ serverId }) {
   const [timeInfo, setTimeInfo] = useState(null);
   const [serverConfig, setServerConfig] = useState(null);
   const [bmInfo, setBmInfo] = useState(null);
-  const [mapData, setMapData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [loadingMap, setLoadingMap] = useState(false);
   const [showMapImage, setShowMapImage] = useState(false);
 
   const toast = useToast();
@@ -67,9 +65,6 @@ function ServerInfo({ serverId }) {
       } catch (error) {
         console.error('❌ 获取 Battlemetrics 信息失败:', error);
       }
-
-      // 预加载地图
-      loadMapData();
     } catch (error) {
       console.error('❌ 获取服务器信息失败:', error);
     } finally {
@@ -102,37 +97,6 @@ function ServerInfo({ serverId }) {
       }
     } catch (error) {
       console.error('❌ 刷新 Battlemetrics 信息失败:', error);
-    }
-  };
-
-  const loadMapData = async () => {
-    if (mapData) return;
-
-    setLoadingMap(true);
-    try {
-      console.log('📥 预加载地图数据...');
-      const map = await socketService.getMap(serverId);
-      console.log('✅ 地图数据加载成功');
-
-      if (map && map.jpgImage) {
-        try {
-          // jpgImage 现在是 base64 字符串
-          const imageUrl = `data:image/jpeg;base64,${map.jpgImage}`;
-          setMapData({
-            ...map,
-            imageUrl,
-            rawData: map.jpgImage // 保存原始 base64 数据
-          });
-        } catch (conversionError) {
-          console.error('❌ 地图数据转换失败:', conversionError);
-          // 静默失败，不影响其他功能，但不设置 mapData
-        }
-      }
-    } catch (error) {
-      console.error('❌ 加载地图失败:', error);
-      // 静默失败，不影响其他功能
-    } finally {
-      setLoadingMap(false);
     }
   };
 
@@ -291,7 +255,18 @@ function ServerInfo({ serverId }) {
             服务器地图
           </h3>
           <div className="flex gap-2">
-            {bmInfo && bmInfo.mapDownloadUrl && (
+            {bmInfo?.rustMapsUrl && (
+              <a
+                href={bmInfo.rustMapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-sm btn-secondary flex items-center gap-2"
+              >
+                <FaExternalLinkAlt />
+                RustMaps
+              </a>
+            )}
+            {bmInfo?.mapDownloadUrl && (
               <a
                 href={bmInfo.mapDownloadUrl}
                 target="_blank"
@@ -302,14 +277,15 @@ function ServerInfo({ serverId }) {
                 下载地图
               </a>
             )}
-            <button
-              onClick={() => setShowMapImage(!showMapImage)}
-              disabled={loadingMap}
-              className="btn btn-sm btn-secondary flex items-center gap-2"
-            >
-              {showMapImage ? <FaChevronUp /> : <FaChevronDown />}
-              {loadingMap ? '加载中...' : showMapImage ? '收起' : '展开'}
-            </button>
+            {bmInfo?.rustMapsThumbnail && (
+              <button
+                onClick={() => setShowMapImage(!showMapImage)}
+                className="btn btn-sm btn-secondary flex items-center gap-2"
+              >
+                {showMapImage ? <FaChevronUp /> : <FaChevronDown />}
+                {showMapImage ? '收起' : '展开'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -321,19 +297,19 @@ function ServerInfo({ serverId }) {
               <p className="font-semibold text-gray-200">{serverInfo.map}</p>
             </div>
           )}
-          {mapData?.size && (
+          {(bmInfo?.mapSize || serverInfo?.mapSize) && (
             <div className="p-3 bg-dark-900/30 rounded-lg border border-white/5">
               <p className="text-xs text-gray-500">Map Size</p>
-              <p className="font-semibold text-gray-200">{mapData.size}m</p>
+              <p className="font-semibold text-gray-200">{bmInfo?.mapSize || serverInfo?.mapSize}m</p>
             </div>
           )}
-          {mapData?.seed && (
+          {(bmInfo?.worldSeed || serverInfo?.seed) && (
             <div className="p-3 bg-dark-900/30 rounded-lg border border-white/5 col-span-2">
               <p className="text-xs text-gray-500">Seed</p>
               <div className="flex items-center justify-between">
-                <p className="font-semibold font-mono text-gray-200">{mapData.seed}</p>
+                <p className="font-semibold font-mono text-gray-200">{bmInfo?.worldSeed || serverInfo?.seed}</p>
                 <button
-                  onClick={() => copyToClipboard(mapData.seed.toString())}
+                  onClick={() => copyToClipboard((bmInfo?.worldSeed || serverInfo?.seed).toString())}
                   className="btn btn-sm btn-secondary"
                 >
                   <FaCopy />
@@ -344,18 +320,18 @@ function ServerInfo({ serverId }) {
         </div>
 
         {/* 地图图片 */}
-        {showMapImage && mapData && (
+        {showMapImage && bmInfo?.rustMapsThumbnail && (
           <div className="relative">
             <img
-              src={mapData.imageUrl}
+              src={bmInfo.rustMapsThumbnail}
               alt="Server Map"
               className="w-full rounded-lg border border-white/10"
             />
           </div>
         )}
 
-        {!mapData && !loadingMap && (
-          <p className="text-center text-gray-400 py-4">地图加载失败</p>
+        {!bmInfo?.rustMapsThumbnail && (
+          <p className="text-center text-gray-400 py-4">暂无地图预览</p>
         )}
       </div>
 
