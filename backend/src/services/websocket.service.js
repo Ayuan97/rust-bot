@@ -177,11 +177,23 @@ class WebSocketService {
       // 获取完整地图数据（包含图片）
       socket.on('map:get', async (serverId) => {
         try {
-          const map = await rustPlusService.getMap(serverId);
+          // 并行获取地图和服务器信息
+          const [map, serverInfo] = await Promise.all([
+            rustPlusService.getMap(serverId),
+            rustPlusService.getServerInfo(serverId).catch(() => null)
+          ]);
+
           // 将 jpgImage Buffer 转换为 base64 字符串，方便前端处理
           if (map && map.jpgImage) {
             map.jpgImage = Buffer.from(map.jpgImage).toString('base64');
           }
+
+          // 合并服务器信息中的 seed 和 mapSize 到地图数据
+          if (serverInfo) {
+            if (serverInfo.seed) map.seed = serverInfo.seed;
+            if (serverInfo.mapSize) map.size = serverInfo.mapSize;
+          }
+
           socket.emit('map:get:success', { serverId, map });
         } catch (error) {
           socket.emit('map:get:error', {
