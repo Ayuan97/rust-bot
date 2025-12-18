@@ -281,7 +281,7 @@ const setupPlayerEventNotifications = () => {
       const oceanMargin = rustPlusService.getMapOceanMargin(data.serverId);
       let position = formatPosition(data.x, data.y, mapSize, true, false, null, oceanMargin);
       if (!position || typeof position !== 'string' || position.includes('NaN')) {
-        position = `(${Math.round(data.x)},${Math.round(data.y)})`;
+        position = '未知位置';
       }
 
       // 发送通知

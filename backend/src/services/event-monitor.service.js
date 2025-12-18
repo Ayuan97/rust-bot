@@ -59,7 +59,11 @@ class EventMonitorService extends EventEmitter {
 
       explosions: [],                        // 爆炸记录 [{x, y, time}]
       knownVendingMachines: new Map(),       // id -> vending machine data
-      isFirstPoll: true                      // 是否首次轮询（防止重启时大量通知）
+      isFirstPoll: true,                     // 是否首次轮询（防止重启时大量通知）
+
+      // 队伍轮询相关（参考 rustplusplus）
+      teamMembers: new Map(),                // steamId -> { name, x, y, isOnline, isAlive, deathTime, spawnTime, lastMovement, afkSeconds }
+      isFirstTeamPoll: true                  // 首次队伍轮询标记
     });
 
     // 获取古迹位置（用于油井检测）
@@ -177,6 +181,9 @@ class EventMonitorService extends EventEmitter {
     await this.checkExplosions(serverId, currentMarkers, previousMarkers);
     await this.checkVendingMachines(serverId, currentMarkers, previousMarkers);
 
+    // 队伍状态轮询（参考 rustplusplus：主动检测玩家状态变化）
+    await this.checkTeamInfo(serverId);
+
     // 更新缓存
     this.previousMarkers.set(serverId, currentMarkers);
 
@@ -190,7 +197,7 @@ class EventMonitorService extends EventEmitter {
   /**
    * 检测货船事件
    */
-  checkCargoShips(serverId, currentMarkers, previousMarkers) {
+  async checkCargoShips(serverId, currentMarkers, previousMarkers) {
     const currentShips = currentMarkers.filter(m => m.type === AppMarkerType.CargoShip);
     const previousShips = previousMarkers.filter(m => m.type === AppMarkerType.CargoShip);
     const eventData = this.eventData.get(serverId);
@@ -205,7 +212,10 @@ class EventMonitorService extends EventEmitter {
       const position = formatPosition(ship.x, ship.y, mapSize);
       const now = Date.now();
 
-      console.log(`🚢 [货船刷新] 位置: ${position}`);
+      // 计算货船方向
+      const direction = this.getMapDirection(ship.x, ship.y, mapSize);
+
+      console.log(`🚢 [货船刷新] 位置: ${position} 方向: ${direction}`);
 
       // 记录事件时间
       eventData.lastEvents.cargoShipSpawn = now;
@@ -217,15 +227,24 @@ class EventMonitorService extends EventEmitter {
         x: ship.x,
         y: ship.y,
         position,
+        direction,
         time: now
       });
+
+      // 发送游戏内通知
+      try {
+        const msg = notify('cargo_spawn', { position, direction });
+        if (msg) {
+          await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+        }
+      } catch (e) {}
 
       // 启动 Egress 计时器（50分钟）
       const egressTimer = EventTimerManager.startTimer(
         `cargo_egress_${ship.id}`,
         serverId,
         EventTiming.CARGO_SHIP_EGRESS_TIME,
-        () => {
+        async () => {
           // 获取货船当前的实时位置（从追踪路径中获取最新位置）
           const tracer = eventData.cargoShipTracers.get(ship.id) || [];
           const currentPos = tracer.length > 0 ? tracer[tracer.length - 1] : { x: ship.x, y: ship.y };
@@ -238,11 +257,19 @@ class EventMonitorService extends EventEmitter {
             position: currentPosition,
             time: Date.now()
           });
+
+          // 发送游戏内通知
+          try {
+            const msg = notify('cargo_egress', { position: currentPosition });
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            }
+          } catch (e) {}
         }
       );
 
       // 添加Egress前5分钟警告
-      egressTimer.addWarning(EventTiming.CARGO_SHIP_EGRESS_WARNING_TIME, (timeLeft) => {
+      egressTimer.addWarning(EventTiming.CARGO_SHIP_EGRESS_WARNING_TIME, async (timeLeft) => {
         // 获取货船当前的实时位置（从追踪路径中获取最新位置）
         const tracer = eventData.cargoShipTracers.get(ship.id) || [];
         const currentPos = tracer.length > 0 ? tracer[tracer.length - 1] : { x: ship.x, y: ship.y };
@@ -257,6 +284,14 @@ class EventMonitorService extends EventEmitter {
           minutesLeft,
           time: Date.now()
         });
+
+        // 发送游戏内通知
+        try {
+          const msg = notify('cargo_egress_warning', { position: currentPosition, minutes: minutesLeft });
+          if (msg) {
+            await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+          }
+        } catch (e) {}
       });
 
       // 初始化追踪路径
@@ -287,6 +322,14 @@ class EventMonitorService extends EventEmitter {
         time: now
       });
 
+      // 发送游戏内通知
+      try {
+        const msg = notify('cargo_leave', { position });
+        if (msg) {
+          await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+        }
+      } catch (e) {}
+
       // 停止计时器
       EventTimerManager.stopTimer(`cargo_egress_${ship.id}`, serverId);
 
@@ -308,14 +351,14 @@ class EventMonitorService extends EventEmitter {
       eventData.cargoShipTracers.set(ship.id, tracer);
 
       // 检测港口停靠
-      this.checkHarborDocking(serverId, ship);
+      await this.checkHarborDocking(serverId, ship);
     }
   }
 
   /**
    * 检测货船港口停靠
    */
-  checkHarborDocking(serverId, ship) {
+  async checkHarborDocking(serverId, ship) {
     const eventData = this.eventData.get(serverId);
     const monuments = this.monuments.get(serverId) || [];
     const harbors = monuments.filter(m => m.token && m.token.includes('harbor'));
@@ -341,6 +384,14 @@ class EventMonitorService extends EventEmitter {
             harborName: harbor.name || 'Harbor',
             time: Date.now()
           });
+
+          // 发送游戏内通知
+          try {
+            const msg = notify('cargo_dock', { position });
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            }
+          } catch (e) {}
 
           // 标记已停靠
           eventData.cargoShipDockedStatus.set(ship.id, true);
@@ -493,7 +544,7 @@ class EventMonitorService extends EventEmitter {
   /**
    * 检测 CH47 事件（用于油井触发检测）
    */
-  checkCH47s(serverId, currentMarkers, previousMarkers) {
+  async checkCH47s(serverId, currentMarkers, previousMarkers) {
     const currentCH47s = currentMarkers.filter(m => m.type === AppMarkerType.CH47);
     const previousCH47s = previousMarkers.filter(m => m.type === AppMarkerType.CH47);
     const eventData = this.eventData.get(serverId);
@@ -527,12 +578,20 @@ class EventMonitorService extends EventEmitter {
             time: now
           });
 
+          // 发送游戏内通知
+          try {
+            const msg = notify('small_oil_triggered', {});
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            }
+          } catch (e) {}
+
           // 启动箱子解锁计时器（15分钟）
           const crateTimer = EventTimerManager.startTimer(
             `small_oil_rig_crate`,
             serverId,
             EventTiming.OIL_RIG_LOCKED_CRATE_UNLOCK_TIME,
-            () => {
+            async () => {
               const unlockTime = Date.now();
               console.log(`🛢️  [小油井箱子解锁]`);
 
@@ -544,11 +603,19 @@ class EventMonitorService extends EventEmitter {
                 serverId,
                 time: unlockTime
               });
+
+              // 发送游戏内通知
+              try {
+                const msg = notify('small_oil_unlocked', {});
+                if (msg) {
+                  await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                }
+              } catch (e) {}
             }
           );
 
           // 添加箱子解锁前3分钟警告
-          crateTimer.addWarning(EventTiming.OIL_RIG_CRATE_WARNING_TIME, (timeLeft) => {
+          crateTimer.addWarning(EventTiming.OIL_RIG_CRATE_WARNING_TIME, async (timeLeft) => {
             const minutesLeft = Math.floor(timeLeft / 60000);
             console.log(`🛢️  [小油井箱子警告] ${minutesLeft}分钟后解锁`);
             this.emit(EventType.SMALL_OIL_RIG_CRATE_WARNING, {
@@ -556,6 +623,14 @@ class EventMonitorService extends EventEmitter {
               minutesLeft,
               time: Date.now()
             });
+
+            // 发送游戏内通知
+            try {
+              const msg = notify('small_oil_warning', { minutes: minutesLeft });
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {}
           });
         }
       }
@@ -579,12 +654,20 @@ class EventMonitorService extends EventEmitter {
             time: now
           });
 
+          // 发送游戏内通知
+          try {
+            const msg = notify('large_oil_triggered', {});
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            }
+          } catch (e) {}
+
           // 启动箱子解锁计时器（15分钟）
           const crateTimer = EventTimerManager.startTimer(
             `large_oil_rig_crate`,
             serverId,
             EventTiming.OIL_RIG_LOCKED_CRATE_UNLOCK_TIME,
-            () => {
+            async () => {
               const unlockTime = Date.now();
               console.log(`🛢️  [大油井箱子解锁]`);
 
@@ -596,11 +679,19 @@ class EventMonitorService extends EventEmitter {
                 serverId,
                 time: unlockTime
               });
+
+              // 发送游戏内通知
+              try {
+                const msg = notify('large_oil_unlocked', {});
+                if (msg) {
+                  await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                }
+              } catch (e) {}
             }
           );
 
           // 添加箱子解锁前3分钟警告
-          crateTimer.addWarning(EventTiming.OIL_RIG_CRATE_WARNING_TIME, (timeLeft) => {
+          crateTimer.addWarning(EventTiming.OIL_RIG_CRATE_WARNING_TIME, async (timeLeft) => {
             const minutesLeft = Math.floor(timeLeft / 60000);
             console.log(`🛢️  [大油井箱子警告] ${minutesLeft}分钟后解锁`);
             this.emit(EventType.LARGE_OIL_RIG_CRATE_WARNING, {
@@ -608,6 +699,14 @@ class EventMonitorService extends EventEmitter {
               minutesLeft,
               time: Date.now()
             });
+
+            // 发送游戏内通知
+            try {
+              const msg = notify('large_oil_warning', { minutes: minutesLeft });
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {}
           });
         }
       }
@@ -796,6 +895,39 @@ class EventMonitorService extends EventEmitter {
   }
 
   /**
+   * 获取坐标在地图上的方向（东南西北）
+   * @param {number} x - X 坐标
+   * @param {number} y - Y 坐标
+   * @param {number} mapSize - 地图大小
+   * @returns {string} 方向描述（如 "东北"、"西南"）
+   */
+  getMapDirection(x, y, mapSize) {
+    const centerX = mapSize / 2;
+    const centerY = mapSize / 2;
+
+    const dx = x - centerX;
+    const dy = y - centerY;
+
+    let direction = '';
+
+    // Y轴：上为北，下为南
+    if (dy > mapSize * 0.1) {
+      direction += '北';
+    } else if (dy < -mapSize * 0.1) {
+      direction += '南';
+    }
+
+    // X轴：右为东，左为西
+    if (dx > mapSize * 0.1) {
+      direction += '东';
+    } else if (dx < -mapSize * 0.1) {
+      direction += '西';
+    }
+
+    return direction || '中部';
+  }
+
+  /**
    * 获取事件数据（用于命令查询）
    */
   getEventData(serverId) {
@@ -970,6 +1102,258 @@ class EventMonitorService extends EventEmitter {
   stopAll() {
     for (const serverId of this.pollIntervals.keys()) {
       this.stop(serverId);
+    }
+  }
+
+  /**
+   * 检测队伍状态变化（参考 rustplusplus 的 teamHandler）
+   * 通过主动轮询 getTeamInfo 来检测玩家状态，即使玩家不在游戏内也能工作
+   */
+  async checkTeamInfo(serverId) {
+    const eventData = this.eventData.get(serverId);
+    if (!eventData) return;
+
+    try {
+      const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
+      if (!teamInfo || !teamInfo.members) return;
+
+      const mapSize = this.rustPlusService.getMapSize(serverId);
+      const now = Date.now();
+
+      // 首次轮询：初始化成员状态
+      if (eventData.isFirstTeamPoll) {
+        console.log(`👥 首次队伍轮询：初始化 ${teamInfo.members.length} 名成员状态`);
+        for (const member of teamInfo.members) {
+          const steamId = member.steamId?.toString();
+          if (!steamId) continue;
+
+          eventData.teamMembers.set(steamId, {
+            name: member.name,
+            x: member.x,
+            y: member.y,
+            isOnline: member.isOnline,
+            isAlive: member.isAlive,
+            deathTime: member.deathTime,
+            spawnTime: member.spawnTime,
+            lastMovement: now,
+            afkSeconds: 0
+          });
+        }
+        eventData.isFirstTeamPoll = false;
+        return;
+      }
+
+      // 检测新加入和离开的成员
+      const currentSteamIds = new Set(teamInfo.members.map(m => m.steamId?.toString()).filter(Boolean));
+      const previousSteamIds = new Set(eventData.teamMembers.keys());
+
+      // 新加入的成员
+      for (const steamId of currentSteamIds) {
+        if (!previousSteamIds.has(steamId)) {
+          const member = teamInfo.members.find(m => m.steamId?.toString() === steamId);
+          if (member) {
+            console.log(`👥 [玩家加入队伍] ${member.name}`);
+            this.emit(EventType.PLAYER_JOINED_TEAM, {
+              serverId,
+              steamId,
+              name: member.name,
+              time: now
+            });
+
+            // 初始化新成员状态
+            eventData.teamMembers.set(steamId, {
+              name: member.name,
+              x: member.x,
+              y: member.y,
+              isOnline: member.isOnline,
+              isAlive: member.isAlive,
+              deathTime: member.deathTime,
+              spawnTime: member.spawnTime,
+              lastMovement: now,
+              afkSeconds: 0
+            });
+          }
+        }
+      }
+
+      // 离开的成员
+      for (const steamId of previousSteamIds) {
+        if (!currentSteamIds.has(steamId)) {
+          const oldMember = eventData.teamMembers.get(steamId);
+          console.log(`👥 [玩家离开队伍] ${oldMember?.name || steamId}`);
+          this.emit(EventType.PLAYER_LEFT_TEAM, {
+            serverId,
+            steamId,
+            name: oldMember?.name || 'Unknown',
+            time: now
+          });
+          eventData.teamMembers.delete(steamId);
+        }
+      }
+
+      // 检测每个成员的状态变化
+      for (const member of teamInfo.members) {
+        const steamId = member.steamId?.toString();
+        if (!steamId) continue;
+
+        const oldState = eventData.teamMembers.get(steamId);
+        if (!oldState) continue;
+
+        const position = formatPosition(member.x, member.y, mapSize);
+
+        // 检测死亡（参考 rustplusplus Player.isGoneDead）
+        const isAliveFlipToDead = oldState.isAlive === true && member.isAlive === false;
+        const isDeathTimeChanged = oldState.deathTime !== member.deathTime;
+
+        if (isAliveFlipToDead || isDeathTimeChanged) {
+          console.log(`💀 [轮询检测] 玩家死亡: ${member.name} @ ${position}`);
+          this.emit(EventType.PLAYER_DIED, {
+            serverId,
+            steamId,
+            name: member.name,
+            position,
+            x: member.x,
+            y: member.y,
+            deathTime: member.deathTime,
+            time: now
+          });
+
+          // 发送游戏内通知
+          try {
+            const msg = notify('player_died', { name: member.name, position });
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            }
+          } catch (e) {}
+        }
+
+        // 检测复活/重生
+        if (oldState.isAlive === false && member.isAlive === true) {
+          logger.debug(`✨ [轮询检测] 玩家复活: ${member.name}`);
+          this.emit(EventType.PLAYER_SPAWNED, {
+            serverId,
+            steamId,
+            name: member.name,
+            position,
+            x: member.x,
+            y: member.y,
+            spawnTime: member.spawnTime,
+            time: now
+          });
+        }
+
+        // 检测上线
+        if (oldState.isOnline === false && member.isOnline === true) {
+          console.log(`🟢 [轮询检测] 玩家上线: ${member.name}`);
+          this.emit(EventType.PLAYER_ONLINE, {
+            serverId,
+            steamId,
+            name: member.name,
+            time: now
+          });
+
+          // 发送游戏内通知
+          try {
+            const msg = notify('player_online', { name: member.name });
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            }
+          } catch (e) {}
+
+          // 重置 AFK 状态
+          oldState.lastMovement = now;
+          oldState.afkSeconds = 0;
+        }
+
+        // 检测下线
+        if (oldState.isOnline === true && member.isOnline === false) {
+          console.log(`🔴 [轮询检测] 玩家下线: ${member.name}`);
+          this.emit(EventType.PLAYER_OFFLINE, {
+            serverId,
+            steamId,
+            name: member.name,
+            time: now
+          });
+
+          // 发送游戏内通知
+          try {
+            const msg = notify('player_offline', { name: member.name });
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            }
+          } catch (e) {}
+        }
+
+        // 检测移动（用于 AFK 检测）
+        const hasMoved = oldState.x !== member.x || oldState.y !== member.y;
+
+        if (hasMoved) {
+          // 如果之前是 AFK 状态，检测返回
+          if (oldState.afkSeconds >= EventTiming.AFK_TIME_SECONDS) {
+            const afkMinutes = Math.floor(oldState.afkSeconds / 60);
+            console.log(`🔙 [轮询检测] 玩家从AFK返回: ${member.name} (挂机${afkMinutes}分钟)`);
+            this.emit(EventType.PLAYER_AFK_RETURNED, {
+              serverId,
+              steamId,
+              name: member.name,
+              afkMinutes,
+              time: now
+            });
+
+            // 发送游戏内通知
+            try {
+              const msg = notify('player_afk_returned', { name: member.name, minutes: afkMinutes });
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {}
+          }
+          oldState.lastMovement = now;
+          oldState.afkSeconds = 0;
+        } else if (member.isOnline) {
+          // 在线但未移动，累加 AFK 时间
+          oldState.afkSeconds = (now - oldState.lastMovement) / 1000;
+
+          // 检测刚刚变为 AFK
+          const wasAfk = (now - EventTiming.MAP_MARKERS_POLL_INTERVAL - oldState.lastMovement) / 1000 < EventTiming.AFK_TIME_SECONDS;
+          const isAfkNow = oldState.afkSeconds >= EventTiming.AFK_TIME_SECONDS;
+
+          if (!wasAfk && isAfkNow) {
+            console.log(`💤 [轮询检测] 玩家AFK: ${member.name}`);
+            this.emit(EventType.PLAYER_AFK, {
+              serverId,
+              steamId,
+              name: member.name,
+              position,
+              time: now
+            });
+
+            // 发送游戏内通知
+            try {
+              const msg = notify('player_afk', { name: member.name });
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {}
+          }
+        }
+
+        // 更新成员状态
+        oldState.name = member.name;
+        oldState.x = member.x;
+        oldState.y = member.y;
+        oldState.isOnline = member.isOnline;
+        oldState.isAlive = member.isAlive;
+        oldState.deathTime = member.deathTime;
+        oldState.spawnTime = member.spawnTime;
+      }
+    } catch (error) {
+      // 静默处理常见错误
+      const errorStr = JSON.stringify(error) || String(error);
+      if (errorStr.includes('not_found') || errorStr.includes('Timeout') || errorStr.includes('未连接')) {
+        return;
+      }
+      logger.debug(`队伍轮询失败: ${error?.message || errorStr}`);
     }
   }
 }

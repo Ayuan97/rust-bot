@@ -1455,7 +1455,7 @@ class CommandsService {
     // 发送通知
     const message = notify('afk_start', {
       name: member.name,
-      position: position || `(${Math.round(member.x)},${Math.round(member.y)})`,
+      position: position || '未知位置',
       minutes: afkTime
     });
     logger.debug(`[AFK通知] 最终消息: ${message}`);

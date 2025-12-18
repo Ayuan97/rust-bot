@@ -15,7 +15,6 @@ class RustPlusService extends EventEmitter {
     this.reconnectTimers = new Map(); // serverId -> 重连定时器
     this.manualDisconnect = new Set(); // 手动断开的服务器（不自动重连）
     this.cameras = new Map(); // `${serverId}:${cameraId}` -> Camera instance
-    this.teamStates = new Map(); // serverId -> 上一次的队伍状态（用于检测变化）
     this.mapCache = new Map(); // serverId -> { width, height, lastUpdate }
     this.eventMonitorService = new EventMonitorService(this); // 事件监控服务
     this.commandsService = new CommandsService(this, this.eventMonitorService); // 命令处理服务
@@ -101,16 +100,55 @@ class RustPlusService extends EventEmitter {
 
       // 监听连接事件
       rustplus.on('connected', async () => {
+        console.log(`🔌 WebSocket 已连接，正在验证连接有效性...`);
+
+        // 【连接验证】参考 rustplusplus：连接后立即验证，确保连接真正有效
+        // 使用 getInfo 验证（比 getMap 更快，数据量小）
+        const VALIDATION_TIMEOUT = 30000; // 30秒验证超时
+        let isValid = false;
+
+        try {
+          const info = await rustplus.sendRequestAsync({ getInfo: {} }, VALIDATION_TIMEOUT);
+
+          // 验证响应是否有效
+          if (info === undefined) {
+            console.error(`❌ 连接验证失败: 响应为空`);
+          } else if (info.error) {
+            console.error(`❌ 连接验证失败: ${info.error.error || info.error}`);
+          } else if (Object.keys(info).length === 0) {
+            console.error(`❌ 连接验证失败: 响应为空对象`);
+          } else if (info.info) {
+            isValid = true;
+            console.log(`✅ 连接验证通过: ${info.info.name || serverId}`);
+          } else {
+            console.error(`❌ 连接验证失败: 响应格式异常`);
+          }
+        } catch (err) {
+          const errMsg = err.message || String(err);
+          if (errMsg.includes('Timeout')) {
+            console.error(`❌ 连接验证失败: 请求超时 (${VALIDATION_TIMEOUT}ms)`);
+          } else {
+            console.error(`❌ 连接验证失败: ${errMsg}`);
+          }
+        }
+
+        // 验证失败，主动断开连接（会触发 disconnected 事件和自动重连）
+        if (!isValid) {
+          console.log(`🔌 验证失败，断开连接等待重连...`);
+          rustplus.disconnect();
+          return;
+        }
+
+        // 验证通过，正式标记为已连接
         console.log(`✅ 已连接到服务器: ${serverId}`);
         // 连接成功，重置重连计数
         this.reconnectAttempts.delete(serverId);
         this.emit('server:connected', { serverId });
 
-        // 主动获取初始队伍状态
+        // 主动获取初始队伍状态（仅用于调试输出）
         try {
           const teamInfo = await this.getTeamInfo(serverId);
           if (teamInfo) {
-            this.teamStates.set(serverId, JSON.parse(JSON.stringify(teamInfo)));
             console.log(`📋 已初始化队伍状态 (${teamInfo.members?.length || 0} 名成员)`);
             // 输出每个成员的死亡状态，便于调试
             if (teamInfo.members) {
@@ -221,9 +259,6 @@ class RustPlusService extends EventEmitter {
         this.cameras.delete(key);
       }
     }
-
-    // 清理队伍状态缓存
-    this.teamStates.delete(serverId);
 
     // 清理地图缓存
     this.mapCache.delete(serverId);
@@ -902,98 +937,13 @@ class RustPlusService extends EventEmitter {
   }
 
   /**
-   * 处理队伍状态变化，检测并触发玩家状态事件
+   * 处理队伍状态变化
+   * 注意：玩家状态检测（死亡/上线/下线/AFK）已移至 event-monitor.service.js 的轮询逻辑
+   * 这里只转发原始事件，供其他模块使用
    */
   handleTeamChanged(serverId, teamChanged) {
-    const newTeamInfo = teamChanged.teamInfo;
-    const oldTeamState = this.teamStates.get(serverId);
-
-    // 发送原始的队伍变化事件
+    // 发送原始的队伍变化事件（供 WebSocket 广播等使用）
     this.emit('team:changed', { serverId, data: teamChanged });
-
-    if (!newTeamInfo || !newTeamInfo.members) return;
-
-    // 如果没有旧状态，初始化并返回（避免首次连接误报）
-    if (!oldTeamState || !oldTeamState.members) {
-      console.log(`📋 [队伍状态] 首次获取状态，初始化 ${newTeamInfo.members.length} 名成员`);
-      this.teamStates.set(serverId, JSON.parse(JSON.stringify(newTeamInfo)));
-      return;
-    }
-
-    // 比较新旧状态
-    const oldMembers = new Map(
-      oldTeamState.members.map(m => [m.steamId?.toString(), m])
-    );
-
-    for (const newMember of newTeamInfo.members) {
-      const steamId = newMember.steamId?.toString();
-      if (!steamId) continue;
-
-      const oldMember = oldMembers.get(steamId);
-
-      if (oldMember) {
-        // 检测死亡事件（与 rustplusplus 一致的逻辑）
-        // 条件1：isAlive 从 true 变为 false
-        // 条件2：deathTime 发生变化（不需要检查类型，直接比较值）
-        const isAliveFlipToDead = oldMember.isAlive === true && newMember.isAlive === false;
-        const isDeathTimeChanged = oldMember.deathTime !== newMember.deathTime;
-
-        // 任一条件满足即触发死亡事件
-        if (isAliveFlipToDead || isDeathTimeChanged) {
-          console.log(`💀 检测到玩家死亡: ${newMember.name} (${steamId}) [flip=${isAliveFlipToDead}, timeChanged=${isDeathTimeChanged}]`);
-          this.emit('player:died', {
-            serverId,
-            steamId,
-            name: newMember.name,
-            deathTime: newMember.deathTime,
-            x: newMember.x,
-            y: newMember.y
-          });
-        }
-
-        // 检测复活/重生事件
-        if (oldMember.isAlive === false && newMember.isAlive === true) {
-          logger.debug(`✨ 玩家复活: ${newMember.name} (${steamId})`);
-          this.emit('player:spawned', {
-            serverId,
-            steamId,
-            name: newMember.name,
-            spawnTime: newMember.spawnTime,
-            x: newMember.x,
-            y: newMember.y
-          });
-        }
-
-        // 检测上线事件
-        if (!oldMember.isOnline && newMember.isOnline) {
-          logger.debug(`🟢 玩家上线: ${newMember.name} (${steamId})`);
-          this.emit('player:online', {
-            serverId,
-            steamId,
-            name: newMember.name,
-            isAlive: newMember.isAlive,
-            x: newMember.x,
-            y: newMember.y
-          });
-        }
-
-        // 检测下线事件
-        if (oldMember.isOnline && !newMember.isOnline) {
-          logger.debug(`🔴 玩家下线: ${newMember.name} (${steamId})`);
-          this.emit('player:offline', {
-            serverId,
-            steamId,
-            name: newMember.name
-          });
-        }
-      } else {
-        // 新加入的队员，记录但不触发事件
-        logger.debug(`👤 新队员加入: ${newMember.name} (${steamId})`);
-      }
-    }
-
-    // 保存当前状态供下次比较
-    this.teamStates.set(serverId, JSON.parse(JSON.stringify(newTeamInfo)));
   }
 
   /**

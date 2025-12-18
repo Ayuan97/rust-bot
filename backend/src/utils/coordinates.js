@@ -299,7 +299,8 @@ function formatPosition(x, y, mapSize, includeSubGrid = true, includeCoords = fa
     return monumentName;
   }
 
-  return `(${Math.round(adjX)},${Math.round(adjY)})`;
+  // 无法计算网格位置时返回 "未知位置"，不使用原始坐标
+  return '未知位置';
 }
 
 export {

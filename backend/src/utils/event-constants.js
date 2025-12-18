@@ -36,7 +36,10 @@ export const EventTiming = {
   EXPLOSION_RAID_MIN_COUNT: 3,                      // 最少爆炸次数判定为袭击
 
   // 轮询
-  MAP_MARKERS_POLL_INTERVAL: 5000                   // 5秒轮询一次
+  MAP_MARKERS_POLL_INTERVAL: 5000,                  // 5秒轮询一次
+
+  // 玩家状态（参考 rustplusplus）
+  AFK_TIME_SECONDS: 5 * 60                          // 5分钟判定为 AFK
 };
 
 // 事件类型定义
@@ -79,7 +82,17 @@ export const EventType = {
 
   // 爆炸
   EXPLOSION_DETECTED: 'explosion:detected',
-  RAID_DETECTED: 'raid:detected'
+  RAID_DETECTED: 'raid:detected',
+
+  // 玩家状态（通过轮询检测）
+  PLAYER_DIED: 'player:died',
+  PLAYER_SPAWNED: 'player:spawned',
+  PLAYER_ONLINE: 'player:online',
+  PLAYER_OFFLINE: 'player:offline',
+  PLAYER_AFK: 'player:afk',
+  PLAYER_AFK_RETURNED: 'player:afk_returned',
+  PLAYER_JOINED_TEAM: 'player:joined_team',
+  PLAYER_LEFT_TEAM: 'player:left_team'
 };
 
 // 古迹标记 (monument tokens)
