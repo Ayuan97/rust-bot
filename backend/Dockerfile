@@ -5,7 +5,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 # 安装 Python 和构建工具（better-sqlite3 需要）
-RUN apk add --no-cache python3 make g++
+# RUN apk add --no-cache python3 make g++
 
 # 复制 package.json
 COPY package.json ./
