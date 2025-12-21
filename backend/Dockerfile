@@ -1,5 +1,5 @@
 # 后端 Dockerfile
-FROM node:20-alpine
+FROM registry.cn-hangzhou.aliyuncs.com/library/node:20-alpine
 
 # 设置工作目录
 WORKDIR /app
