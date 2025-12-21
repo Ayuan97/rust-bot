@@ -1,6 +1,6 @@
 # 前端 Dockerfile - 多阶段构建
 # 阶段 1: 构建阶段
-FROM registry.cn-hangzhou.aliyuncs.com/library/node:20-alpine AS builder
+FROM docker.m.daocloud.io/library/node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -25,7 +25,7 @@ RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
 RUN npm run build
 
 # 阶段 2: 生产运行阶段
-FROM registry.cn-hangzhou.aliyuncs.com/library/nginx:alpine
+FROM docker.m.daocloud.io/library/nginx:alpine
 
 # 复制构建产物到 nginx
 COPY --from=builder /app/dist /usr/share/nginx/html

@@ -1,5 +1,5 @@
 # 后端 Dockerfile
-FROM registry.cn-hangzhou.aliyuncs.com/library/node:20-alpine
+FROM docker.m.daocloud.io/library/node:20-alpine
 
 # 设置工作目录
 WORKDIR /app
