@@ -29,7 +29,7 @@ class EventMonitorService extends EventEmitter {
       return;
     }
 
-    console.log(`🎮 启动服务器 ${serverId} 的事件监控 (轮询间隔: ${EventTiming.MAP_MARKERS_POLL_INTERVAL / 1000}秒)`);
+    logger.server(serverId, `🎮 事件监控已启动`);
 
     // 初始化事件数据
     this.eventData.set(serverId, {
@@ -107,7 +107,7 @@ class EventMonitorService extends EventEmitter {
       this.previousMarkers.delete(serverId);
       this.eventData.delete(serverId);
       EventTimerManager.stopAllTimers(serverId);
-      console.log(`⏹️  已停止服务器 ${serverId} 的事件监控`);
+      logger.server(serverId, `⏹️ 事件监控已停止`);
     }
   }
 
@@ -121,13 +121,13 @@ class EventMonitorService extends EventEmitter {
       if (map && map.monuments) {
         this.monuments.set(serverId, map.monuments);
         // 精简日志：仅必要信息
-        console.log(`🗺️  加载古迹位置: ${map.monuments.length} 个`);
+        logger.server(serverId, `🗺️ 加载古迹: ${map.monuments.length} 个`);
       }
     } catch (error) {
       // AppError { error: 'not_found' } 表示玩家不在服务器内，这是正常的
       const errorStr = JSON.stringify(error) || String(error);
       if (errorStr.includes('not_found')) {
-        console.log(`ℹ️  跳过加载古迹位置（玩家未在服务器内）`);
+        logger.server(serverId, `ℹ️ 跳过加载古迹（玩家未在服务器内）`);
         return;
       }
       console.error(`❌ 加载古迹位置失败:`, error);
@@ -213,7 +213,7 @@ class EventMonitorService extends EventEmitter {
       // 计算货船方向
       const direction = this.getMapDirection(ship.x, ship.y, mapSize);
 
-      console.log(`🚢 [货船刷新] 位置: ${position} 方向: ${direction}`);
+      logger.server(serverId, `🚢 货船刷新 @ ${position} ${direction}`);
 
       // 记录事件时间
       eventData.lastEvents.cargoShipSpawn = now;
@@ -248,7 +248,7 @@ class EventMonitorService extends EventEmitter {
           const currentPos = tracer.length > 0 ? tracer[tracer.length - 1] : { x: ship.x, y: ship.y };
           const currentPosition = formatPosition(currentPos.x, currentPos.y, mapSize);
 
-          console.log(`🚢 [货船Egress] 位置: ${currentPosition}`);
+          logger.server(serverId, `🚢 货船Egress @ ${currentPosition}`);
           this.emit(EventType.CARGO_EGRESS, {
             serverId,
             markerId: ship.id,
@@ -274,7 +274,7 @@ class EventMonitorService extends EventEmitter {
         const currentPosition = formatPosition(currentPos.x, currentPos.y, mapSize);
 
         const minutesLeft = Math.floor(timeLeft / 60000);
-        console.log(`🚢 [货船Egress警告] ${minutesLeft}分钟后Egress`);
+        logger.server(serverId, `🚢 货船${minutesLeft}分钟后Egress`);
         this.emit(EventType.CARGO_EGRESS_WARNING, {
           serverId,
           markerId: ship.id,
@@ -308,7 +308,7 @@ class EventMonitorService extends EventEmitter {
       const position = formatPosition(ship.x, ship.y, mapSize);
       const now = Date.now();
 
-      console.log(`🚢 [货船离开] 位置: ${position}`);
+      logger.server(serverId, `🚢 货船离开 @ ${position}`);
 
       // 记录事件时间
       eventData.lastEvents.cargoShipLeave = now;
@@ -373,7 +373,7 @@ class EventMonitorService extends EventEmitter {
           const mapSize = this.rustPlusService.getMapSize(serverId);
           const position = formatPosition(ship.x, ship.y, mapSize);
 
-          console.log(`🚢 [货船停靠] 港口: ${harbor.name || 'Harbor'}`);
+          logger.server(serverId, `🚢 货船停靠港口`);
 
           this.emit(EventType.CARGO_DOCK, {
             serverId,
@@ -564,7 +564,7 @@ class EventMonitorService extends EventEmitter {
 
         if (distance <= EventTiming.OIL_RIG_CHINOOK_MAX_SPAWN_DISTANCE) {
           const now = Date.now();
-          console.log(`🛢️  [小油井触发] CH47距离: ${Math.floor(distance)}米`);
+          logger.server(serverId, `🛢️ 小油井已触发`);
 
           // 记录触发时间
           eventData.lastEvents.smallOilRigTriggered = now;
@@ -591,7 +591,7 @@ class EventMonitorService extends EventEmitter {
             EventTiming.OIL_RIG_LOCKED_CRATE_UNLOCK_TIME,
             async () => {
               const unlockTime = Date.now();
-              console.log(`🛢️  [小油井箱子解锁]`);
+              logger.server(serverId, `🛢️ 小油井箱子已解锁`);
 
               // 记录箱子解锁时间
               const ed = this.eventData.get(serverId);
@@ -615,7 +615,7 @@ class EventMonitorService extends EventEmitter {
           // 添加箱子解锁前3分钟警告
           crateTimer.addWarning(EventTiming.OIL_RIG_CRATE_WARNING_TIME, async (timeLeft) => {
             const minutesLeft = Math.floor(timeLeft / 60000);
-            console.log(`🛢️  [小油井箱子警告] ${minutesLeft}分钟后解锁`);
+            logger.server(serverId, `🛢️ 小油井箱子${minutesLeft}分钟后解锁`);
             this.emit(EventType.SMALL_OIL_RIG_CRATE_WARNING, {
               serverId,
               minutesLeft,
@@ -640,7 +640,7 @@ class EventMonitorService extends EventEmitter {
 
         if (distance <= EventTiming.OIL_RIG_CHINOOK_MAX_SPAWN_DISTANCE) {
           const now = Date.now();
-          console.log(`🛢️  [大油井触发] CH47距离: ${Math.floor(distance)}米`);
+          logger.server(serverId, `🛢️ 大油井已触发`);
 
           // 记录触发时间
           eventData.lastEvents.largeOilRigTriggered = now;
@@ -667,7 +667,7 @@ class EventMonitorService extends EventEmitter {
             EventTiming.OIL_RIG_LOCKED_CRATE_UNLOCK_TIME,
             async () => {
               const unlockTime = Date.now();
-              console.log(`🛢️  [大油井箱子解锁]`);
+              logger.server(serverId, `🛢️ 大油井箱子已解锁`);
 
               // 记录箱子解锁时间
               const ed = this.eventData.get(serverId);
@@ -691,7 +691,7 @@ class EventMonitorService extends EventEmitter {
           // 添加箱子解锁前3分钟警告
           crateTimer.addWarning(EventTiming.OIL_RIG_CRATE_WARNING_TIME, async (timeLeft) => {
             const minutesLeft = Math.floor(timeLeft / 60000);
-            console.log(`🛢️  [大油井箱子警告] ${minutesLeft}分钟后解锁`);
+            logger.server(serverId, `🛢️ 大油井箱子${minutesLeft}分钟后解锁`);
             this.emit(EventType.LARGE_OIL_RIG_CRATE_WARNING, {
               serverId,
               minutesLeft,
@@ -711,7 +711,7 @@ class EventMonitorService extends EventEmitter {
 
       // 通用 CH47 刷新通知
       const ch47Time = Date.now();
-      console.log(`🚁 [CH47刷新] 位置: ${position}`);
+      logger.server(serverId, `🚁 CH47刷新 @ ${position}`);
 
       // 记录CH47刷新时间
       eventData.lastEvents.ch47Spawn = ch47Time;
@@ -735,7 +735,7 @@ class EventMonitorService extends EventEmitter {
       const mapSize = this.rustPlusService.getMapSize(serverId);
       const position = formatPosition(ch47.x, ch47.y, mapSize);
 
-      console.log(`🚁 [CH47离开] 位置: ${position}`);
+      logger.server(serverId, `🚁 CH47离开 @ ${position}`);
       this.emit(EventType.CH47_LEAVE, {
         serverId,
         markerId: ch47.id,
@@ -763,7 +763,7 @@ class EventMonitorService extends EventEmitter {
       const position = formatPosition(crate.x, crate.y, mapSize);
       const now = Date.now();
 
-      console.log(`🔒 [上锁箱子] 位置: ${position}`);
+      logger.server(serverId, `🔒 上锁箱子 @ ${position}`);
 
       // 记录上锁箱子出现时间
       eventData.lastEvents.lockedCrateSpawn = now;
@@ -860,7 +860,7 @@ class EventMonitorService extends EventEmitter {
       const position = formatPosition(explosion.x, explosion.y, mapSize);
       const now = Date.now();
 
-      console.log(`🔥 [袭击检测] 位置: ${position} (${recentExplosions.length}次爆炸)`);
+      logger.server(serverId, `🔥 检测到袭击 @ ${position} (${recentExplosions.length}次爆炸)`);
 
       // 记录袭击检测时间
       eventData.lastEvents.raidDetected = now;
@@ -1139,7 +1139,7 @@ class EventMonitorService extends EventEmitter {
         if (!previousSteamIds.has(steamId)) {
           const member = teamInfo.members.find(m => m.steamId?.toString() === steamId);
           if (member) {
-            console.log(`👥 [玩家加入队伍] ${member.name}`);
+            logger.server(serverId, `👥 ${member.name} 加入队伍`);
             this.emit(EventType.PLAYER_JOINED_TEAM, {
               serverId,
               steamId,
@@ -1167,7 +1167,7 @@ class EventMonitorService extends EventEmitter {
       for (const steamId of previousSteamIds) {
         if (!currentSteamIds.has(steamId)) {
           const oldMember = eventData.teamMembers.get(steamId);
-          console.log(`👥 [玩家离开队伍] ${oldMember?.name || steamId}`);
+          logger.server(serverId, `👥 ${oldMember?.name || steamId} 离开队伍`);
           this.emit(EventType.PLAYER_LEFT_TEAM, {
             serverId,
             steamId,
@@ -1193,7 +1193,7 @@ class EventMonitorService extends EventEmitter {
         const isDeathTimeChanged = oldState.deathTime !== member.deathTime;
 
         if (isAliveFlipToDead || isDeathTimeChanged) {
-          console.log(`💀 ${member.name} 死亡 @ ${position}`);
+          logger.server(serverId, `💀 ${member.name} 死亡 @ ${position}`);
           this.emit(EventType.PLAYER_DIED, {
             serverId,
             steamId,
@@ -1231,7 +1231,7 @@ class EventMonitorService extends EventEmitter {
 
         // 检测上线
         if (oldState.isOnline === false && member.isOnline === true) {
-          console.log(`🟢 ${member.name} 上线`);
+          logger.server(serverId, `🟢 ${member.name} 上线`);
           this.emit(EventType.PLAYER_ONLINE, {
             serverId,
             steamId,
@@ -1254,7 +1254,7 @@ class EventMonitorService extends EventEmitter {
 
         // 检测下线
         if (oldState.isOnline === true && member.isOnline === false) {
-          console.log(`🔴 ${member.name} 下线`);
+          logger.server(serverId, `🔴 ${member.name} 下线`);
           this.emit(EventType.PLAYER_OFFLINE, {
             serverId,
             steamId,

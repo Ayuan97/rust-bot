@@ -127,10 +127,12 @@ class RustPlusService extends EventEmitter {
         }
 
         // 验证通过，正式标记为已连接
-        console.log(`✅ 已连接: ${serverName}`);
+        // 保存服务器名称到 logger（供其他服务使用）
+        logger.setServerName(serverId, serverName);
+        logger.server(serverId, `✅ 已连接`);
         // 连接成功，重置重连计数
         this.reconnectAttempts.delete(serverId);
-        this.emit('server:connected', { serverId });
+        this.emit('server:connected', { serverId, serverName });
 
         // 主动获取初始队伍状态
         try {
@@ -153,7 +155,7 @@ class RustPlusService extends EventEmitter {
       });
 
       rustplus.on('disconnected', () => {
-        console.log(`❌ 服务器断开: ${serverId}`);
+        logger.server(serverId, `❌ 已断开`);
         this.connections.delete(serverId);
         this.emit('server:disconnected', { serverId });
         try { this.eventMonitorService.stop(serverId); } catch (e) {}
@@ -270,7 +272,7 @@ class RustPlusService extends EventEmitter {
       this.RECONNECT_MAX_DELAY
     );
 
-    console.log(`🔄 ${delay / 1000}s 后重连 (${attempts}/${this.RECONNECT_MAX_ATTEMPTS})`);
+    logger.server(serverId, `🔄 ${delay / 1000}s 后重连 (${attempts}/${this.RECONNECT_MAX_ATTEMPTS})`);
     this.emit('server:reconnecting', { serverId, attempts, delay });
 
     const timer = setTimeout(async () => {

@@ -1244,7 +1244,7 @@ class CommandsService {
       }
     }, 2 * 60 * 1000); // 每2分钟
 
-    console.log('✅ 服务器人数追踪已启动（每2分钟记录一次）');
+    logger.info('✅ 服务器人数追踪已启动');
   }
 
   /**
@@ -1254,7 +1254,7 @@ class CommandsService {
     if (this.playerCountTrackingInterval) {
       clearInterval(this.playerCountTrackingInterval);
       this.playerCountTrackingInterval = null;
-      console.log('✅ 服务器人数追踪已停止');
+      logger.info('✅ 服务器人数追踪已停止');
     }
   }
 
@@ -1274,7 +1274,7 @@ class CommandsService {
       }
     }, 30 * 1000);
 
-    console.log('✅ 挂机检测系统已启动（每30秒检测一次）');
+    logger.info('✅ 挂机检测系统已启动');
   }
 
   /**
@@ -1284,7 +1284,7 @@ class CommandsService {
     if (this.afkDetectionInterval) {
       clearInterval(this.afkDetectionInterval);
       this.afkDetectionInterval = null;
-      console.log('✅ 挂机检测系统已停止');
+      logger.info('✅ 挂机检测系统已停止');
     }
   }
 
@@ -1572,7 +1572,7 @@ class CommandsService {
       adminOnly: config.adminOnly || false
     });
 
-    console.log(`✅ Registered command: !${name}`);
+    logger.info(`✅ 注册命令: !${name}`);
   }
 
   /**
@@ -1598,7 +1598,7 @@ class CommandsService {
     const commandName = parts[0].toLowerCase();
     const args = parts.slice(1);
 
-    console.log(`🎮 Received command: !${commandName} (from ${name})`);
+    logger.server(serverId, `🎮 命令: !${commandName} (${name})`);
 
     // 查找命令
     const command = this.commands.get(commandName);
