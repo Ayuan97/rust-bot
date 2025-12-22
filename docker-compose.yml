@@ -13,6 +13,8 @@ services:
       - PORT=3001
       - FRONTEND_URL=http://localhost:${FRONTEND_PORT:-3002}
       - LOG_LEVEL=debug
+    volumes:
+      - rust-bot-data:/app/data
     networks:
       - rust-bot-network
     healthcheck:
@@ -48,3 +50,7 @@ services:
 networks:
   rust-bot-network:
     driver: bridge
+
+volumes:
+  rust-bot-data:
+    driver: local
