@@ -1,11 +1,17 @@
 # 后端 Dockerfile
-FROM docker.m.daocloud.io/library/node:20-alpine
+# 使用 Debian 基础镜像（xray 需要 glibc）
+FROM docker.m.daocloud.io/library/node:20-slim
 
 # 设置工作目录
 WORKDIR /app
 
-# 安装 Python 和构建工具（better-sqlite3 需要）
-RUN apk add --no-cache python3 make g++
+# 安装构建工具（better-sqlite3 需要）
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
 # 复制 package.json
 COPY package.json ./
