@@ -28,6 +28,7 @@
     "socket.io": "^4.6.1",
     "socks": "^2.8.7",
     "socks-proxy-agent": "^8.0.5",
+    "translate": "^3.0.1",
     "uuid": "^9.0.0"
   },
   "devDependencies": {

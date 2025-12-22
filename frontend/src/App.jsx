@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   FaPlus, FaServer, FaQrcode, FaInfoCircle, FaComments,
-  FaGamepad, FaClock, FaHistory, FaCog, FaSignOutAlt, FaPlug, FaWifi, FaGlobe
+  FaGamepad, FaCog, FaSignOutAlt, FaPlug, FaWifi, FaGlobe
 } from 'react-icons/fa';
 import socketService from './services/socket';
 import { getServers, addServer as apiAddServer, deleteServer as apiDeleteServer } from './services/api';
@@ -16,8 +16,6 @@ import DeviceControl from './components/DeviceControl';
 import ServerInfo from './components/ServerInfo';
 import AddServerModal from './components/AddServerModal';
 import PairingPanel from './components/PairingPanel';
-import EventsPanel from './components/EventsPanel';
-import EventHistoryPanel from './components/EventHistoryPanel';
 import PlayerNotifications from './components/PlayerNotifications';
 import EmptyState from './components/EmptyState';
 import WelcomeGuide from './components/WelcomeGuide';
@@ -30,7 +28,7 @@ function App() {
   const [showPairingPanel, setShowPairingPanel] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('info'); // 'info', 'chat', 'devices', 'events', 'history'
+  const [activeTab, setActiveTab] = useState('info'); // 'info', 'chat', 'devices'
   const [connectionLoading, setConnectionLoading] = useState(false);
   const [hasAutoSelected, setHasAutoSelected] = useState(false); // 记录是否已自动选择
   const [socketConnected, setSocketConnected] = useState(false); // Socket 连接状态
@@ -38,7 +36,6 @@ function App() {
 
   // 未读计数
   const [unreadChat, setUnreadChat] = useState(0);
-  const [activeEvents, setActiveEvents] = useState(0);
 
   const toast = useToast();
   const confirm = useConfirm();
@@ -86,28 +83,7 @@ function App() {
       }
     };
 
-    // 监听游戏事件（用于活跃事件计数）
-    const handleEventSpawn = (data) => {
-      if (activeServerRef.current?.id === data.serverId) {
-        setActiveEvents(prev => prev + 1);
-      }
-    };
-    const handleEventLeave = (data) => {
-      if (activeServerRef.current?.id === data.serverId) {
-        setActiveEvents(prev => Math.max(0, prev - 1));
-      }
-    };
-
     socketService.on('team:message', handleChatMessage);
-    socketService.on('event:cargo:spawn', handleEventSpawn);
-    socketService.on('event:cargo:leave', handleEventLeave);
-    socketService.on('event:heli:spawn', handleEventSpawn);
-    socketService.on('event:heli:downed', handleEventLeave);
-    socketService.on('event:heli:leave', handleEventLeave);
-    socketService.on('event:ch47:spawn', handleEventSpawn);
-    socketService.on('event:ch47:leave', handleEventLeave);
-    socketService.on('event:crate:spawn', handleEventSpawn);
-    socketService.on('event:crate:despawn', handleEventLeave);
 
     return () => {
       unsubscribe();
@@ -117,15 +93,6 @@ function App() {
       socketService.removeAllListeners('proxy:status');
       socketService.removeAllListeners('proxy:node:changed');
       socketService.off('team:message', handleChatMessage);
-      socketService.off('event:cargo:spawn', handleEventSpawn);
-      socketService.off('event:cargo:leave', handleEventLeave);
-      socketService.off('event:heli:spawn', handleEventSpawn);
-      socketService.off('event:heli:downed', handleEventLeave);
-      socketService.off('event:heli:leave', handleEventLeave);
-      socketService.off('event:ch47:spawn', handleEventSpawn);
-      socketService.off('event:ch47:leave', handleEventLeave);
-      socketService.off('event:crate:spawn', handleEventSpawn);
-      socketService.off('event:crate:despawn', handleEventLeave);
       socketService.disconnect();
     };
   }, []);
@@ -259,7 +226,6 @@ function App() {
     if (tabId === 'chat') {
       setUnreadChat(0);
     }
-    // events tab 不需要清除，因为显示的是活跃数量而非未读
   };
 
   // --- Render Helpers ---
@@ -271,8 +237,6 @@ function App() {
       case 'info': return <ServerInfo serverId={activeServer.id} />;
       case 'chat': return <ChatPanel serverId={activeServer.id} />;
       case 'devices': return <DeviceControl serverId={activeServer.id} />;
-      case 'events': return <EventsPanel serverId={activeServer.id} />;
-      case 'history': return <EventHistoryPanel serverId={activeServer.id} />;
       default: return <ServerInfo serverId={activeServer.id} />;
     }
   };
@@ -444,8 +408,6 @@ function App() {
                  <TabButton id="info" label="信息概览" icon={<FaInfoCircle />} active={activeTab} onClick={handleTabChange} />
                  <TabButton id="chat" label="队伍聊天" icon={<FaComments />} active={activeTab} onClick={handleTabChange} badge={unreadChat} />
                  <TabButton id="devices" label="智能设备" icon={<FaGamepad />} active={activeTab} onClick={handleTabChange} />
-                 <TabButton id="events" label="实时事件" icon={<FaClock />} active={activeTab} onClick={handleTabChange} badge={activeEvents} badgeType="info" />
-                 <TabButton id="history" label="历史记录" icon={<FaHistory />} active={activeTab} onClick={handleTabChange} />
               </div>
             )}
 

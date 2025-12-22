@@ -2,20 +2,20 @@ import { useState } from 'react';
 import { FaTimes, FaGlobe, FaCog, FaBell } from 'react-icons/fa';
 import ProxySettings from './ProxySettings';
 import FCMSettings from './FCMSettings';
+import NotificationSettings from './NotificationSettings';
 
 /**
  * 设置面板 - 包含代理配置等设置项
  */
 function SettingsPanel({ isOpen, onClose }) {
-  const [activeTab, setActiveTab] = useState('proxy');
+  const [activeTab, setActiveTab] = useState('notifications');
 
   if (!isOpen) return null;
 
   const tabs = [
+    { id: 'notifications', label: '通知设置', icon: <FaBell /> },
     { id: 'proxy', label: '代理设置', icon: <FaGlobe /> },
     { id: 'fcm', label: 'FCM 配置', icon: <FaBell /> },
-    // 未来可扩展其他设置项
-    // { id: 'appearance', label: '外观', icon: <FaPalette /> },
   ];
 
   return (
@@ -59,6 +59,7 @@ function SettingsPanel({ isOpen, onClose }) {
 
           {/* Tab Content */}
           <div className="flex-1 overflow-y-auto p-6">
+            {activeTab === 'notifications' && <NotificationSettings />}
             {activeTab === 'proxy' && <ProxySettings />}
             {activeTab === 'fcm' && <FCMSettings />}
           </div>

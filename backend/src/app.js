@@ -20,6 +20,7 @@ import logger from './utils/logger.js';
 import serverRoutes from './routes/server.routes.js';
 import pairingRoutes from './routes/pairing.routes.js';
 import proxyRoutes from './routes/proxy.routes.js';
+import settingsRoutes from './routes/settings.routes.js';
 
 // 加载环境变量
 dotenv.config();
@@ -51,6 +52,7 @@ app.use(express.json());
 app.use('/api/servers', serverRoutes);
 app.use('/api/pairing', pairingRoutes);
 app.use('/api/proxy', proxyRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {

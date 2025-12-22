@@ -5,6 +5,7 @@
 
 import { cmd, cmdConfig, allCommands, notify } from '../utils/messages.js';
 import { formatPosition } from '../utils/coordinates.js';
+import { getLanguageCode } from '../utils/languages.js';
 import EventTimerManager from '../utils/event-timer.js';
 import logger from '../utils/logger.js';
 
@@ -528,6 +529,87 @@ class CommandsService {
           console.error('❌ !shop 命令执行失败:', error);
           console.error('   错误堆栈:', error.stack);
           return cmd('shop', 'error');
+        }
+      }
+    });
+
+    // !tr - 翻译文本（自动检测源语言）
+    const trConfig = cmdConfig('tr') || {};
+    this.registerCommand('tr', {
+      description: trConfig.desc || '翻译文本',
+      usage: '!tr <语言> <文本>',
+      handler: async (serverId, args, context) => {
+        try {
+          if (args.length < 2) {
+            return cmd('tr', 'no_text');
+          }
+
+          const targetLang = args[0];
+          const text = args.slice(1).join(' ');
+
+          // 获取语言代码
+          const langCode = getLanguageCode(targetLang);
+          if (!langCode) {
+            return cmd('tr', 'lang_not_found', { lang: targetLang });
+          }
+
+          // 动态导入 translate 库
+          const translate = (await import('translate')).default;
+
+          // 翻译文本（自动检测源语言）
+          const result = await translate(text, langCode);
+
+          return cmd('tr', 'msg', {
+            to: langCode.toUpperCase(),
+            result
+          });
+        } catch (error) {
+          console.error('❌ 翻译失败:', error.message);
+          return cmd('tr', 'error');
+        }
+      }
+    });
+
+    // !trf - 指定源语言翻译
+    const trfConfig = cmdConfig('trf') || {};
+    this.registerCommand('trf', {
+      description: trfConfig.desc || '指定源语言翻译',
+      usage: '!trf <源语言> <目标语言> <文本>',
+      handler: async (serverId, args, context) => {
+        try {
+          if (args.length < 3) {
+            return cmd('trf', 'no_text');
+          }
+
+          const fromLang = args[0];
+          const toLang = args[1];
+          const text = args.slice(2).join(' ');
+
+          // 获取语言代码
+          const fromCode = getLanguageCode(fromLang);
+          if (!fromCode) {
+            return cmd('trf', 'lang_not_found', { lang: fromLang });
+          }
+
+          const toCode = getLanguageCode(toLang);
+          if (!toCode) {
+            return cmd('trf', 'lang_not_found', { lang: toLang });
+          }
+
+          // 动态导入 translate 库
+          const translate = (await import('translate')).default;
+
+          // 翻译文本（指定源语言和目标语言）
+          const result = await translate(text, { from: fromCode, to: toCode });
+
+          return cmd('trf', 'msg', {
+            from: fromCode.toUpperCase(),
+            to: toCode.toUpperCase(),
+            result
+          });
+        } catch (error) {
+          console.error('❌ 翻译失败:', error.message);
+          return cmd('trf', 'error');
         }
       }
     });

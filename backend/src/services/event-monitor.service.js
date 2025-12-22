@@ -10,6 +10,7 @@ import { notify } from '../utils/messages.js';
 import EventTimerManager from '../utils/event-timer.js';
 import { getItemName, isImportantItem } from '../utils/item-info.js';
 import logger from '../utils/logger.js';
+import { isNotificationEnabled } from '../routes/settings.routes.js';
 
 class EventMonitorService extends EventEmitter {
   constructor(rustPlusService) {
@@ -230,12 +231,14 @@ class EventMonitorService extends EventEmitter {
       });
 
       // 发送游戏内通知
-      try {
-        const msg = notify('cargo_spawn', { position, direction });
-        if (msg) {
-          await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-        }
-      } catch (e) {}
+      if (isNotificationEnabled('cargo_spawn')) {
+        try {
+          const msg = notify('cargo_spawn', { position, direction });
+          if (msg) {
+            await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+          }
+        } catch (e) {}
+      }
 
       // 启动 Egress 计时器（50分钟）
       const egressTimer = EventTimerManager.startTimer(
@@ -257,12 +260,14 @@ class EventMonitorService extends EventEmitter {
           });
 
           // 发送游戏内通知
-          try {
-            const msg = notify('cargo_egress', { position: currentPosition });
-            if (msg) {
-              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-            }
-          } catch (e) {}
+          if (isNotificationEnabled('cargo_egress')) {
+            try {
+              const msg = notify('cargo_egress', { position: currentPosition });
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {}
+          }
         }
       );
 
@@ -284,12 +289,14 @@ class EventMonitorService extends EventEmitter {
         });
 
         // 发送游戏内通知
-        try {
-          const msg = notify('cargo_egress_warning', { position: currentPosition, minutes: minutesLeft });
-          if (msg) {
-            await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-          }
-        } catch (e) {}
+        if (isNotificationEnabled('cargo_egress')) {
+          try {
+            const msg = notify('cargo_egress_warning', { position: currentPosition, minutes: minutesLeft });
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            }
+          } catch (e) {}
+        }
       });
 
       // 初始化追踪路径
@@ -321,12 +328,14 @@ class EventMonitorService extends EventEmitter {
       });
 
       // 发送游戏内通知
-      try {
-        const msg = notify('cargo_leave', { position });
-        if (msg) {
-          await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-        }
-      } catch (e) {}
+      if (isNotificationEnabled('cargo_leave')) {
+        try {
+          const msg = notify('cargo_leave', { position });
+          if (msg) {
+            await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+          }
+        } catch (e) {}
+      }
 
       // 停止计时器
       EventTimerManager.stopTimer(`cargo_egress_${ship.id}`, serverId);
@@ -384,12 +393,14 @@ class EventMonitorService extends EventEmitter {
           });
 
           // 发送游戏内通知
-          try {
-            const msg = notify('cargo_dock', { position });
-            if (msg) {
-              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-            }
-          } catch (e) {}
+          if (isNotificationEnabled('cargo_dock')) {
+            try {
+              const msg = notify('cargo_dock', { position });
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {}
+          }
 
           // 标记已停靠
           eventData.cargoShipDockedStatus.set(ship.id, true);
@@ -421,6 +432,7 @@ class EventMonitorService extends EventEmitter {
       // 使用实时世界尺寸换算
       const { mapSize } = await this.rustPlusService.getLiveMapContext(serverId);
       const position = formatPosition(heli.x, heli.y, mapSize);
+      const direction = this.getMapDirection(heli.x, heli.y, mapSize);
       const now = Date.now();
 
       // 预测最先到达的坐标（基于初始位置与 rotation，向内投射一段距离）
@@ -442,19 +454,22 @@ class EventMonitorService extends EventEmitter {
         x: heli.x,
         y: heli.y,
         position,
+        direction,
         predictedPosition,
         time: now
       });
 
       // 发送队伍通知（无表情、单行）
-      try {
-        const message = predictedPosition
-          ? notify('heli_spawn_predicted', { position, predicted: predictedPosition })
-          : notify('heli_spawn', { position });
-        if (message) {
-          await this.rustPlusService.sendTeamMessage(serverId, message);
-        }
-      } catch (e) {}
+      if (isNotificationEnabled('heli_spawn')) {
+        try {
+          const message = predictedPosition
+            ? notify('heli_spawn_predicted', { position, direction, predicted: predictedPosition })
+            : notify('heli_spawn', { position, direction });
+          if (message) {
+            await this.rustPlusService.sendTeamMessage(serverId, message);
+          }
+        } catch (e) {}
+      }
 
       // 初始化追踪路径
       if (!eventData.patrolHeliTracers.has(heli.id)) {
@@ -469,12 +484,14 @@ class EventMonitorService extends EventEmitter {
 
     for (const heli of leftHelis) {
       const { mapSize } = await this.rustPlusService.getLiveMapContext(serverId);
+      const monuments = this.monuments.get(serverId) || [];
 
       // 获取最后位置
       const tracer = eventData.patrolHeliTracers.get(heli.id) || [];
       const lastPos = tracer.length > 0 ? tracer[tracer.length - 1] : { x: heli.x, y: heli.y };
 
-      const position = formatPosition(lastPos.x, lastPos.y, mapSize);
+      const position = formatPosition(lastPos.x, lastPos.y, mapSize, true, false, monuments);
+      const direction = this.getMapDirection(lastPos.x, lastPos.y, mapSize);
 
       // 判断是击落还是离开
       const isNearEdge = this.isNearMapEdge(lastPos.x, lastPos.y, mapSize);
@@ -489,16 +506,19 @@ class EventMonitorService extends EventEmitter {
           serverId,
           markerId: heli.id,
           position,
+          direction,
           time: now
         });
 
         // 通知：离开
-        try {
-          const msg = notify('heli_leave', { position });
-          if (msg) {
-            await this.rustPlusService.sendTeamMessage(serverId, msg);
-          }
-        } catch (e) {}
+        if (isNotificationEnabled('heli_leave')) {
+          try {
+            const msg = notify('heli_leave', { position, direction });
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg);
+            }
+          } catch (e) {}
+        }
       } else {
         // 记录事件时间
         eventData.lastEvents.patrolHeliDowned = now;
@@ -509,16 +529,19 @@ class EventMonitorService extends EventEmitter {
           x: lastPos.x,
           y: lastPos.y,
           position,
+          direction,
           time: now
         });
 
         // 通知：被击落
-        try {
-          const msg = notify('heli_downed', { position });
-          if (msg) {
-            await this.rustPlusService.sendTeamMessage(serverId, msg);
-          }
-        } catch (e) {}
+        if (isNotificationEnabled('heli_downed')) {
+          try {
+            const msg = notify('heli_downed', { position, direction });
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg);
+            }
+          } catch (e) {}
+        }
       }
 
       // 清除追踪路径
@@ -577,12 +600,14 @@ class EventMonitorService extends EventEmitter {
           });
 
           // 发送游戏内通知
-          try {
-            const msg = notify('small_oil_triggered', {});
-            if (msg) {
-              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-            }
-          } catch (e) {}
+          if (isNotificationEnabled('oil_rig_triggered')) {
+            try {
+              const msg = notify('small_oil_triggered', {});
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {}
+          }
 
           // 启动箱子解锁计时器（15分钟）
           const crateTimer = EventTimerManager.startTimer(
@@ -603,12 +628,14 @@ class EventMonitorService extends EventEmitter {
               });
 
               // 发送游戏内通知
-              try {
-                const msg = notify('small_oil_unlocked', {});
-                if (msg) {
-                  await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-                }
-              } catch (e) {}
+              if (isNotificationEnabled('oil_rig_unlocked')) {
+                try {
+                  const msg = notify('small_oil_unlocked', {});
+                  if (msg) {
+                    await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                  }
+                } catch (e) {}
+              }
             }
           );
 
@@ -623,12 +650,14 @@ class EventMonitorService extends EventEmitter {
             });
 
             // 发送游戏内通知
-            try {
-              const msg = notify('small_oil_warning', { minutes: minutesLeft });
-              if (msg) {
-                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-              }
-            } catch (e) {}
+            if (isNotificationEnabled('oil_rig_warning')) {
+              try {
+                const msg = notify('small_oil_warning', { minutes: minutesLeft });
+                if (msg) {
+                  await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                }
+              } catch (e) {}
+            }
           });
         }
       }
@@ -653,12 +682,14 @@ class EventMonitorService extends EventEmitter {
           });
 
           // 发送游戏内通知
-          try {
-            const msg = notify('large_oil_triggered', {});
-            if (msg) {
-              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-            }
-          } catch (e) {}
+          if (isNotificationEnabled('oil_rig_triggered')) {
+            try {
+              const msg = notify('large_oil_triggered', {});
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {}
+          }
 
           // 启动箱子解锁计时器（15分钟）
           const crateTimer = EventTimerManager.startTimer(
@@ -679,12 +710,14 @@ class EventMonitorService extends EventEmitter {
               });
 
               // 发送游戏内通知
-              try {
-                const msg = notify('large_oil_unlocked', {});
-                if (msg) {
-                  await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-                }
-              } catch (e) {}
+              if (isNotificationEnabled('oil_rig_unlocked')) {
+                try {
+                  const msg = notify('large_oil_unlocked', {});
+                  if (msg) {
+                    await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                  }
+                } catch (e) {}
+              }
             }
           );
 
@@ -699,12 +732,14 @@ class EventMonitorService extends EventEmitter {
             });
 
             // 发送游戏内通知
-            try {
-              const msg = notify('large_oil_warning', { minutes: minutesLeft });
-              if (msg) {
-                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-              }
-            } catch (e) {}
+            if (isNotificationEnabled('oil_rig_warning')) {
+              try {
+                const msg = notify('large_oil_warning', { minutes: minutesLeft });
+                if (msg) {
+                  await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                }
+              } catch (e) {}
+            }
           });
         }
       }
@@ -1106,6 +1141,7 @@ class EventMonitorService extends EventEmitter {
       if (!teamInfo || !teamInfo.members) return;
 
       const mapSize = this.rustPlusService.getMapSize(serverId);
+      const monuments = this.monuments.get(serverId) || [];
       const now = Date.now();
 
       // 首次轮询：初始化成员状态
@@ -1186,7 +1222,7 @@ class EventMonitorService extends EventEmitter {
         const oldState = eventData.teamMembers.get(steamId);
         if (!oldState) continue;
 
-        const position = formatPosition(member.x, member.y, mapSize);
+        const position = formatPosition(member.x, member.y, mapSize, true, false, monuments);
 
         // 检测死亡（参考 rustplusplus Player.isGoneDead）
         const isAliveFlipToDead = oldState.isAlive === true && member.isAlive === false;
@@ -1206,12 +1242,14 @@ class EventMonitorService extends EventEmitter {
           });
 
           // 发送游戏内通知
-          try {
-            const msg = notify('player_died', { name: member.name, position });
-            if (msg) {
-              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-            }
-          } catch (e) {}
+          if (isNotificationEnabled('player_death')) {
+            try {
+              const msg = notify('player_died', { name: member.name, position });
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {}
+          }
         }
 
         // 检测复活/重生
@@ -1240,12 +1278,14 @@ class EventMonitorService extends EventEmitter {
           });
 
           // 发送游戏内通知
-          try {
-            const msg = notify('player_online', { name: member.name });
-            if (msg) {
-              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-            }
-          } catch (e) {}
+          if (isNotificationEnabled('player_online')) {
+            try {
+              const msg = notify('player_online', { name: member.name });
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {}
+          }
 
           // 重置 AFK 状态
           oldState.lastMovement = now;
@@ -1263,12 +1303,14 @@ class EventMonitorService extends EventEmitter {
           });
 
           // 发送游戏内通知
-          try {
-            const msg = notify('player_offline', { name: member.name });
-            if (msg) {
-              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-            }
-          } catch (e) {}
+          if (isNotificationEnabled('player_offline')) {
+            try {
+              const msg = notify('player_offline', { name: member.name });
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {}
+          }
         }
 
         // 检测移动（用于 AFK 检测）
@@ -1287,12 +1329,14 @@ class EventMonitorService extends EventEmitter {
             });
 
             // 发送游戏内通知
-            try {
-              const msg = notify('player_afk_returned', { name: member.name, minutes: afkMinutes });
-              if (msg) {
-                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-              }
-            } catch (e) {}
+            if (isNotificationEnabled('player_afk')) {
+              try {
+                const msg = notify('player_afk_returned', { name: member.name, minutes: afkMinutes });
+                if (msg) {
+                  await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                }
+              } catch (e) {}
+            }
           }
           oldState.lastMovement = now;
           oldState.afkSeconds = 0;
@@ -1316,12 +1360,14 @@ class EventMonitorService extends EventEmitter {
             });
 
             // 发送游戏内通知
-            try {
-              const msg = notify('player_afk', { name: member.name });
-              if (msg) {
-                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-              }
-            } catch (e) {}
+            if (isNotificationEnabled('player_afk')) {
+              try {
+                const msg = notify('player_afk', { name: member.name });
+                if (msg) {
+                  await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                }
+              } catch (e) {}
+            }
           }
         }
 

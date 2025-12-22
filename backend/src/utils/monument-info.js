@@ -27,7 +27,7 @@ export const MONUMENT_INFO = {
   },
   'train_yard_display_name': {
     name: '火车站',
-    radius: 110
+    radius: 115
   },
   'water_treatment_plant_display_name': {
     name: '污水处理厂',
@@ -140,7 +140,7 @@ export const MONUMENT_INFO = {
     radius: 28
   },
   'supermarket': {
-    name: '超市',
+    name: '废弃超市',
     radius: 19
   },
   'mining_outpost_display_name': {
@@ -163,7 +163,7 @@ export const MONUMENT_INFO = {
   },
   'underwater_lab': {
     name: '水下实验室',
-    radius: 0
+    radius: 75
   }
 };
 

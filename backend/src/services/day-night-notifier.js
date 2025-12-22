@@ -1,14 +1,29 @@
 /**
  * 昼夜自动提醒服务
- * 在距离天黑/天亮 8 分钟时自动发送通知
+ * 天亮：从配置的分钟数开始，每分钟提醒直到天亮
+ * 天黑：从配置的分钟数开始，每分钟提醒直到天黑
  */
+
+import { getNotificationSettings } from '../routes/settings.routes.js';
 
 class DayNightNotifier {
   constructor(rustPlusService) {
     this.rustPlusService = rustPlusService;
     this.timers = new Map(); // serverId -> timer
-    this.lastNotified = new Map(); // serverId -> 'day' | 'night'
+    this.lastNotifiedMinute = new Map(); // serverId -> { type: 'day'|'night', minute: number }
     this.checkInterval = 60 * 1000; // 每分钟检查一次
+  }
+
+  /**
+   * 获取昼夜提醒配置
+   */
+  getConfig() {
+    const settings = getNotificationSettings();
+    return {
+      enabled: settings.day_night_enabled !== false,
+      dayNotifyStart: settings.day_notify_minutes || 5,
+      nightNotifyStart: settings.night_notify_minutes || 8,
+    };
   }
 
   /**
@@ -44,7 +59,7 @@ class DayNightNotifier {
     if (timer) {
       clearInterval(timer);
       this.timers.delete(serverId);
-      this.lastNotified.delete(serverId);
+      this.lastNotifiedMinute.delete(serverId);
       console.log(`⏹️  已停止服务器 ${serverId} 的昼夜提醒`);
     }
   }
@@ -53,6 +68,14 @@ class DayNightNotifier {
    * 检查并发送通知
    */
   async checkAndNotify(serverId) {
+    // 每次检查时读取最新配置
+    const config = this.getConfig();
+
+    // 如果昼夜提醒被禁用，跳过
+    if (!config.enabled) {
+      return;
+    }
+
     const timeInfo = await this.rustPlusService.getTime(serverId);
     const currentTime = timeInfo.time || 0;
     const sunrise = timeInfo.sunrise || 6;
@@ -86,30 +109,34 @@ class DayNightNotifier {
     // 公式: 真实分钟 = 游戏时间差(小时) × (一天真实分钟数 / 24小时)
     const realMinutes = Math.floor(gameTimeDiff * (dayLengthMinutes / 24));
 
-    // 如果距离变化时间在 8 分钟内，且上次通知类型不同，则发送通知
-    if (realMinutes <= 8 && realMinutes > 0) {
-      const lastType = this.lastNotified.get(serverId);
+    // 根据类型获取通知开始时间（从配置读取）
+    const notifyStart = changeType === 'day' ? config.dayNotifyStart : config.nightNotifyStart;
 
-      if (lastType !== changeType) {
-        // 发送通知
+    // 检查是否在通知范围内（realMinutes <= notifyStart 且 > 0）
+    if (realMinutes <= notifyStart && realMinutes > 0) {
+      const lastNotify = this.lastNotifiedMinute.get(serverId);
+
+      // 避免同一分钟重复发送：检查类型和分钟数是否相同
+      if (!lastNotify || lastNotify.type !== changeType || lastNotify.minute !== realMinutes) {
+        // 发送通知（不使用表情符号）
         let message;
         if (changeType === 'night') {
-          message = ` ${realMinutes} 分钟后 天黑`;
+          message = `[提醒] ${realMinutes} 分钟后 天黑`;
         } else {
-          message = ` ${realMinutes} 分钟后 天亮`;
+          message = `[提醒] ${realMinutes} 分钟后 天亮`;
         }
 
         console.log(`🌓 [昼夜提醒] ${message}`);
         await this.rustPlusService.sendTeamMessage(serverId, message);
 
-        // 记录本次通知类型
-        this.lastNotified.set(serverId, changeType);
+        // 记录本次通知
+        this.lastNotifiedMinute.set(serverId, { type: changeType, minute: realMinutes });
       }
     }
 
-    // 如果距离变化时间超过 10 分钟，重置通知状态
-    if (realMinutes > 10) {
-      this.lastNotified.delete(serverId);
+    // 如果距离变化时间超过通知开始时间，重置通知状态
+    if (realMinutes > notifyStart + 2) {
+      this.lastNotifiedMinute.delete(serverId);
     }
   }
 

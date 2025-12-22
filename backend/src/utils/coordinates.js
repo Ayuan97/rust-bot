@@ -229,8 +229,8 @@ function getNearestMonument(x, y, monuments) {
   }
 
   for (const monument of monuments) {
-    // 跳过某些特殊古迹（地下基地、隧道系统等）
-    if (monument.token === 'DungeonBase' || monument.token === 'underwater_lab') {
+    // 跳过地下基地（无实际坐标）
+    if (monument.token === 'DungeonBase') {
       continue;
     }
 

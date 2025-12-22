@@ -90,6 +90,16 @@ class Storage {
       // 索引已存在，忽略
     }
 
+    // 创建通知设置表
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS notification_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        settings_json TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER DEFAULT (strftime('%s', 'now')),
+        updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+      )
+    `);
+
     console.log('✅ 数据库初始化完成');
   }
 
@@ -186,6 +196,43 @@ class Storage {
   clearEventLogs(serverId) {
     const stmt = this.db.prepare('DELETE FROM event_logs WHERE server_id = ?');
     return stmt.run(serverId);
+  }
+
+  // ========== 通知设置 ==========
+
+  getNotificationSettings() {
+    const stmt = this.db.prepare('SELECT settings_json FROM notification_settings WHERE id = 1');
+    const row = stmt.get();
+    if (row) {
+      try {
+        return JSON.parse(row.settings_json);
+      } catch (e) {
+        return {};
+      }
+    }
+    return {};
+  }
+
+  saveNotificationSettings(settings) {
+    const stmt = this.db.prepare(`
+      INSERT INTO notification_settings (id, settings_json, updated_at)
+      VALUES (1, ?, strftime('%s', 'now'))
+      ON CONFLICT(id) DO UPDATE SET
+        settings_json = excluded.settings_json,
+        updated_at = strftime('%s', 'now')
+    `);
+    return stmt.run(JSON.stringify(settings));
+  }
+
+  updateNotificationSettings(partialSettings) {
+    const current = this.getNotificationSettings();
+    const updated = { ...current, ...partialSettings };
+    return this.saveNotificationSettings(updated);
+  }
+
+  resetNotificationSettings() {
+    const stmt = this.db.prepare('DELETE FROM notification_settings WHERE id = 1');
+    return stmt.run();
   }
 }
 
