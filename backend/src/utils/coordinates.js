@@ -271,15 +271,17 @@ function formatPosition(x, y, mapSize, includeSubGrid = true, includeCoords = fa
   // 按 rustplusplus 约定，队伍坐标以世界坐标为基准（0..mapSize）
   // oceanMargin 仅用于地图图像边缘显示，不参与队伍坐标换算
   const playableSize = mapSize;
-  const adjX = x;
-  const adjY = y;
+
+  // 钳制坐标到地图边界（防止超出边界时显示"未知位置"）
+  const adjX = Math.max(0, Math.min(x, playableSize));
+  const adjY = Math.max(0, Math.min(y, playableSize));
 
   const grid = getGridPos(adjX, adjY, playableSize, includeSubGrid);
 
-  // 检查是否在古迹附近
+  // 检查是否在古迹附近（使用原始坐标）
   let monumentName = null;
   if (monuments) {
-    monumentName = getNearestMonument(adjX, adjY, monuments);
+    monumentName = getNearestMonument(x, y, monuments);
   }
 
   if (grid) {
@@ -299,8 +301,9 @@ function formatPosition(x, y, mapSize, includeSubGrid = true, includeCoords = fa
     return monumentName;
   }
 
-  // 无法计算网格位置时返回 "未知位置"，不使用原始坐标
-  return '未知位置';
+  // 兜底：使用方向描述
+  const direction = getDirection(x, y, mapSize);
+  return `地图${direction}边界`;
 }
 
 export {

@@ -100,78 +100,50 @@ class RustPlusService extends EventEmitter {
 
       // 监听连接事件
       rustplus.on('connected', async () => {
-        console.log(`🔌 WebSocket 已连接，正在验证连接有效性...`);
-
         // 【连接验证】参考 rustplusplus：连接后立即验证，确保连接真正有效
         // 使用 getInfo 验证（比 getMap 更快，数据量小）
         const VALIDATION_TIMEOUT = 30000; // 30秒验证超时
         let isValid = false;
+        let serverName = serverId;
 
         try {
           const info = await rustplus.sendRequestAsync({ getInfo: {} }, VALIDATION_TIMEOUT);
 
           // 验证响应是否有效
-          if (info === undefined) {
-            console.error(`❌ 连接验证失败: 响应为空`);
-          } else if (info.error) {
-            console.error(`❌ 连接验证失败: ${info.error.error || info.error}`);
-          } else if (Object.keys(info).length === 0) {
-            console.error(`❌ 连接验证失败: 响应为空对象`);
+          if (info === undefined || info.error || Object.keys(info).length === 0) {
+            // 验证失败，静默处理
           } else if (info.info) {
             isValid = true;
-            console.log(`✅ 连接验证通过: ${info.info.name || serverId}`);
-          } else {
-            console.error(`❌ 连接验证失败: 响应格式异常`);
+            serverName = info.info.name || serverId;
           }
         } catch (err) {
-          const errMsg = err.message || String(err);
-          if (errMsg.includes('Timeout')) {
-            console.error(`❌ 连接验证失败: 请求超时 (${VALIDATION_TIMEOUT}ms)`);
-          } else {
-            console.error(`❌ 连接验证失败: ${errMsg}`);
-          }
+          // 验证失败，静默处理
         }
 
         // 验证失败，主动断开连接（会触发 disconnected 事件和自动重连）
         if (!isValid) {
-          console.log(`🔌 验证失败，断开连接等待重连...`);
           rustplus.disconnect();
           return;
         }
 
         // 验证通过，正式标记为已连接
-        console.log(`✅ 已连接到服务器: ${serverId}`);
+        console.log(`✅ 已连接: ${serverName}`);
         // 连接成功，重置重连计数
         this.reconnectAttempts.delete(serverId);
         this.emit('server:connected', { serverId });
 
-        // 主动获取初始队伍状态（仅用于调试输出）
+        // 主动获取初始队伍状态
         try {
-          const teamInfo = await this.getTeamInfo(serverId);
-          if (teamInfo) {
-            console.log(`📋 已初始化队伍状态 (${teamInfo.members?.length || 0} 名成员)`);
-            // 输出每个成员的死亡状态，便于调试
-            if (teamInfo.members) {
-              for (const m of teamInfo.members) {
-                const status = m.isAlive ? '存活' : `死亡(deathTime=${m.deathTime || 'N/A'})`;
-                console.log(`   └ ${m.name}: ${status}, 在线=${m.isOnline}`);
-              }
-            }
-          }
+          await this.getTeamInfo(serverId);
         } catch (err) {
-          console.warn(`⚠️  无法获取初始队伍状态: ${err.message}`);
+          // 静默处理
         }
 
         // 主动获取地图信息以缓存地图大小
         try {
-          const mapInfo = await this.getMap(serverId);
-          if (mapInfo && mapInfo.width && mapInfo.height) {
-            console.log(`🗺️  已获取地图图像尺寸: ${mapInfo.width}x${mapInfo.height}（非世界尺寸）`);
-          } else {
-            console.warn(`⚠️  地图信息不完整，将使用默认值`);
-          }
+          await this.getMap(serverId);
         } catch (err) {
-          console.warn(`⚠️  无法获取地图信息: ${err.message}，将使用默认值 4500`);
+          // 静默处理
         }
 
         // 启动事件监控
@@ -298,7 +270,7 @@ class RustPlusService extends EventEmitter {
       this.RECONNECT_MAX_DELAY
     );
 
-    console.log(`🔄 将在 ${delay / 1000}s 后尝试重连 ${serverId}（第 ${attempts}/${this.RECONNECT_MAX_ATTEMPTS} 次）`);
+    console.log(`🔄 ${delay / 1000}s 后重连 (${attempts}/${this.RECONNECT_MAX_ATTEMPTS})`);
     this.emit('server:reconnecting', { serverId, attempts, delay });
 
     const timer = setTimeout(async () => {
@@ -306,22 +278,17 @@ class RustPlusService extends EventEmitter {
 
       // 再次检查是否被手动断开
       if (this.manualDisconnect.has(serverId)) {
-        console.log(`⏹️  重连已取消 ${serverId}：用户手动断开`);
         return;
       }
 
       // 检查是否已连接
       if (this.connections.has(serverId)) {
-        console.log(`✅ ${serverId} 已连接，取消重连`);
         return;
       }
 
       try {
-        console.log(`🔌 正在重连 ${serverId}...`);
         await this.connect(config);
-        console.log(`✅ 重连成功 ${serverId}`);
       } catch (error) {
-        console.error(`❌ 重连失败 ${serverId}:`, error.message);
         // 失败后继续调度下一次重连
         this.scheduleReconnect(serverId);
       }
@@ -394,7 +361,6 @@ class RustPlusService extends EventEmitter {
       const now = Date.now();
       
       if (now - cached.lastUpdate > CACHE_EXPIRE_TIME) {
-        console.log(`⚠️  地图缓存已过期 (${serverId})，后台刷新`);
         // 缓存过期，但仍返回缓存值（不阻塞当前操作）
         // 后台异步刷新
         this.refreshMapCacheInBackground(serverId);
@@ -505,9 +471,8 @@ class RustPlusService extends EventEmitter {
         // 退回 getMap 仅为更新时间戳
         await this.getMap(serverId);
       }
-      console.log(`✅ 地图缓存已刷新 (${serverId}) -> ${this.mapCache.get(serverId)?.width || 'unknown'}`);
     } catch (error) {
-      console.warn(`⚠️  刷新地图缓存失败 (${serverId}):`, error.message);
+      // 静默处理刷新失败
     } finally {
       delete this[refreshKey];
     }
@@ -722,7 +687,6 @@ class RustPlusService extends EventEmitter {
     if (!rustplus) throw new Error('服务器未连接');
 
     const res = await rustplus.sendRequestAsync({ entityId, setEntityValue: { value } });
-    console.log(`🎛️  设备控制 ${entityId}: ${value}`);
     return res.success || { ok: true };
   }
 

@@ -1168,7 +1168,6 @@ class CommandsService {
           duration: afkDuration,
           durationText: this.formatDuration(afkDuration)
         };
-        console.log(`[下线处理] 检测到挂机记录: ${afkInfo.durationText}`);
       }
     }
 
@@ -1176,7 +1175,6 @@ class CommandsService {
     sessionData.offlineTime = Date.now();
     sessionData.afkInfo = afkInfo; // 保存挂机信息供上线时使用
     sessionMap.set(steamIdStr, sessionData);
-    console.log(`[下线处理] 已更新离线时间: ${Date.now()}`);
 
     // 构建下线通知消息
     let message;
@@ -1195,7 +1193,6 @@ class CommandsService {
 
     try {
       await this.rustPlusService.sendTeamMessage(serverId, message);
-      console.log(`[下线通知] ${playerName} 游玩了 ${durationText}${afkInfo ? ` (挂机 ${afkInfo.durationText})` : ''}`);
     } catch (error) {
       console.error(`[错误] 发送下线通知失败:`, error.message);
     }
@@ -1297,17 +1294,12 @@ class CommandsService {
   async checkPlayerPositions() {
     const connectedServers = this.rustPlusService.getConnectedServers();
 
-    logger.debug(`[AFK检测] 开始检测，已连接服务器数: ${connectedServers.length}`);
-
     for (const serverId of connectedServers) {
       try {
         const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
         if (!teamInfo.members || teamInfo.members.length === 0) {
-          logger.debug(`[AFK检测] 服务器 ${serverId} 无队员`);
           continue;
         }
-
-        logger.debug(`[AFK检测] 服务器 ${serverId} 队员数: ${teamInfo.members.length}`);
 
         // 手动触发队伍状态检测（检测死亡/复活等事件）
         this.rustPlusService.handleTeamChanged(serverId, { teamInfo });
@@ -1325,7 +1317,6 @@ class CommandsService {
 
           // 格式化位置显示
           const position = formatPosition(member.x, member.y, mapSize, true, false, null, oceanMargin);
-          logger.debug(`[AFK检测] 玩家 ${member.name} 原始坐标: (${member.x.toFixed(2)}, ${member.y.toFixed(2)}) -> 网格: ${position}`);
 
           // 统一转换steamId为字符串
           const steamIdStr = member.steamId.toString();
@@ -1340,7 +1331,6 @@ class CommandsService {
 
           // 检测挂机并通知
           const afkTime = this.getPlayerAfkTime(serverId, steamIdStr);
-          logger.debug(`[AFK检测] 玩家 ${member.name} 挂机时长: ${afkTime} 分钟`);
 
           if (afkTime >= 3) {
             await this.notifyAfkPlayer(serverId, member, afkTime, mapSize);
@@ -1367,7 +1357,6 @@ class CommandsService {
   updatePlayerPosition(serverId, steamId, positionData) {
     if (!this.playerPositionHistory.has(serverId)) {
       this.playerPositionHistory.set(serverId, new Map());
-      logger.debug(`[位置更新] 初始化服务器 ${serverId} 的位置历史`);
     }
 
     const serverHistory = this.playerPositionHistory.get(serverId);
@@ -1379,7 +1368,6 @@ class CommandsService {
         currentPosition: positionData,  // 当前位置
         history: []  // 位置历史（用于调试）
       });
-      logger.debug(`[位置更新] 初始化玩家 ${steamId} 的位置数据`);
       return;
     }
 
@@ -1397,9 +1385,6 @@ class CommandsService {
     if (hasMoved) {
       // 玩家移动了，重置最后移动时间
       playerData.lastMovement = Date.now();
-      logger.debug(`[位置更新] 玩家 ${positionData.name} 移动了 ${distance.toFixed(2)}m，重置 lastMovement`);
-    } else {
-      logger.debug(`[位置更新] 玩家 ${positionData.name} 位置未变 (${distance.toFixed(2)}m)`);
     }
 
     // 更新当前位置
@@ -1497,7 +1482,6 @@ class CommandsService {
 
     try {
       await this.rustPlusService.sendTeamMessage(serverId, message);
-      console.log(`[回归通知] ${member.name} 挂机了 ${durationText}`);
     } catch (error) {
       console.error(`[错误] 发送回归通知失败:`, error.message);
     }
@@ -1512,13 +1496,11 @@ class CommandsService {
    */
   getPlayerAfkTime(serverId, steamId) {
     if (!this.playerPositionHistory.has(serverId)) {
-      logger.debug(`[AFK计算] 服务器 ${serverId} 无位置历史`);
       return 0;
     }
 
     const serverHistory = this.playerPositionHistory.get(serverId);
     if (!serverHistory.has(steamId)) {
-      logger.debug(`[AFK计算] 玩家 ${steamId} 无位置数据`);
       return 0;
     }
 
@@ -1528,8 +1510,6 @@ class CommandsService {
     const now = Date.now();
     const afkSeconds = (now - playerData.lastMovement) / 1000;
     const afkMinutes = Math.floor(afkSeconds / 60);
-
-    logger.debug(`[AFK计算] 玩家 ${playerData.currentPosition?.name || steamId} 最后移动: ${new Date(playerData.lastMovement).toLocaleTimeString()}, AFK时长: ${afkMinutes}分钟`);
 
     // 至少挂机3分钟才返回
     return afkMinutes >= 3 ? afkMinutes : 0;
@@ -1640,7 +1620,6 @@ class CommandsService {
         await this.rustPlusService.sendTeamMessage(serverId, response);
       }
 
-      console.log(`✅ Command executed: !${commandName}`);
       return true;
     } catch (error) {
       console.error(`❌ Command failed !${commandName}:`, error);

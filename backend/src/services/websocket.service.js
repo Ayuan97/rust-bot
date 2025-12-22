@@ -30,8 +30,6 @@ class WebSocketService {
    */
   setupEventHandlers() {
     this.io.on('connection', (socket) => {
-      console.log(`🔌 客户端连接: ${socket.id}`);
-
       // 客户端请求连接到 Rust+ 服务器
       socket.on('server:connect', async (config) => {
         try {
@@ -307,7 +305,7 @@ class WebSocketService {
       });
 
       socket.on('disconnect', () => {
-        console.log(`🔌 客户端断开: ${socket.id}`);
+        // 静默处理客户端断开
       });
     });
   }
@@ -318,7 +316,6 @@ class WebSocketService {
   setupRustPlusListeners() {
     // 防止重复注册监听器
     if (this.rustPlusListenersInitialized) {
-      console.log('⚠️ RustPlus 监听器已注册，跳过重复注册');
       return;
     }
     this.rustPlusListenersInitialized = true;
@@ -358,25 +355,21 @@ class WebSocketService {
     // 玩家死亡
     rustPlusService.on('player:died', (data) => {
       this.io.emit('player:died', data);
-      console.log(`💀 [${data.serverId}] ${data.name} 死亡`);
     });
 
     // 玩家复活/重生
     rustPlusService.on('player:spawned', (data) => {
       this.io.emit('player:spawned', data);
-      console.log(`✨ [${data.serverId}] ${data.name} 重生`);
     });
 
     // 玩家上线
     rustPlusService.on('player:online', (data) => {
       this.io.emit('player:online', data);
-      console.log(`🟢 [${data.serverId}] ${data.name} 上线`);
     });
 
     // 玩家下线
     rustPlusService.on('player:offline', (data) => {
       this.io.emit('player:offline', data);
-      console.log(`🔴 [${data.serverId}] ${data.name} 下线`);
     });
 
     // 氏族变化
@@ -387,13 +380,11 @@ class WebSocketService {
     // 氏族消息
     rustPlusService.on('clan:message', (data) => {
       this.io.emit('clan:message', data);
-      console.log(`🏰 [氏族消息 ${data.name}]: ${data.message}`);
     });
 
     // 设备状态变化
     rustPlusService.on('entity:changed', (data) => {
       this.io.emit('entity:changed', data);
-      console.log(`🔄 设备 ${data.entityId} 状态变化: ${data.value}`);
     });
 
     // 摄像头事件

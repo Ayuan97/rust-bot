@@ -26,7 +26,6 @@ class EventMonitorService extends EventEmitter {
    */
   start(serverId) {
     if (this.pollIntervals.has(serverId)) {
-      console.log(`🎮 服务器 ${serverId} 的事件监控已在运行`);
       return;
     }
 
@@ -190,7 +189,6 @@ class EventMonitorService extends EventEmitter {
     // 标记首次轮询已完成
     if (eventData && eventData.isFirstPoll) {
       eventData.isFirstPoll = false;
-      console.log(`✅ 服务器 ${serverId} 首次轮询完成，后续将正常发送通知`);
     }
   }
 
@@ -765,7 +763,7 @@ class EventMonitorService extends EventEmitter {
       const position = formatPosition(crate.x, crate.y, mapSize);
       const now = Date.now();
 
-      console.log(`🔒 [上锁箱子出现] 位置: ${position}`);
+      console.log(`🔒 [上锁箱子] 位置: ${position}`);
 
       // 记录上锁箱子出现时间
       eventData.lastEvents.lockedCrateSpawn = now;
@@ -786,10 +784,9 @@ class EventMonitorService extends EventEmitter {
     );
 
     for (const crate of despawnedCrates) {
+      // 静默处理箱子消失，不输出日志
       const mapSize = this.rustPlusService.getMapSize(serverId);
       const position = formatPosition(crate.x, crate.y, mapSize);
-
-      console.log(`🔒 [上锁箱子消失] 位置: ${position}`);
 
       this.emit(EventType.LOCKED_CRATE_DESPAWN, {
         serverId,
@@ -817,9 +814,7 @@ class EventMonitorService extends EventEmitter {
       const mapSize = this.rustPlusService.getMapSize(serverId);
       const position = formatPosition(explosion.x, explosion.y, mapSize);
 
-      console.log(`💥 [爆炸检测] 位置: ${position}`);
-
-      // 记录爆炸
+      // 记录爆炸（不输出日志，只在检测到袭击时通知）
       eventData.explosions.push({
         x: explosion.x,
         y: explosion.y,
@@ -944,7 +939,6 @@ class EventMonitorService extends EventEmitter {
 
     // 首次轮询：只初始化已知售货机列表，不发送通知（防止重启时大量通知）
     if (eventData.isFirstPoll) {
-      console.log(`🏪 首次轮询：初始化 ${currentVMs.length} 个售货机到已知列表（跳过通知）`);
       for (const vm of currentVMs) {
         eventData.knownVendingMachines.set(vm.id, {
           id: vm.id,
@@ -990,8 +984,6 @@ class EventMonitorService extends EventEmitter {
         }
       }
 
-      console.log(`🏪 [新售货机] 位置: ${position}, 商品: ${itemCount}件, 重要物品: ${importantItems.length}件`);
-
       // 发送新售货机事件
       this.emit(EventType.VENDING_MACHINE_NEW, {
         serverId,
@@ -1023,8 +1015,6 @@ class EventMonitorService extends EventEmitter {
     );
 
     for (const vm of removedVMs) {
-      console.log(`🏪 [售货机移除] ID: ${vm.id}`);
-
       this.emit(EventType.VENDING_MACHINE_REMOVED, {
         serverId,
         vendingMachineId: vm.id,
@@ -1047,8 +1037,6 @@ class EventMonitorService extends EventEmitter {
         const mapSize = this.rustPlusService.getMapSize(serverId);
         const monuments = this.monuments.get(serverId) || [];
         const position = formatPosition(vm.x, vm.y, mapSize, true, false, monuments);
-
-        logger.debug(`🏪 [售货机订单变化] 位置: ${position}`);
 
         this.emit(EventType.VENDING_MACHINE_ORDER_CHANGE, {
           serverId,
@@ -1122,7 +1110,6 @@ class EventMonitorService extends EventEmitter {
 
       // 首次轮询：初始化成员状态
       if (eventData.isFirstTeamPoll) {
-        console.log(`👥 首次队伍轮询：初始化 ${teamInfo.members.length} 名成员状态`);
         for (const member of teamInfo.members) {
           const steamId = member.steamId?.toString();
           if (!steamId) continue;
@@ -1206,7 +1193,7 @@ class EventMonitorService extends EventEmitter {
         const isDeathTimeChanged = oldState.deathTime !== member.deathTime;
 
         if (isAliveFlipToDead || isDeathTimeChanged) {
-          console.log(`💀 [轮询检测] 玩家死亡: ${member.name} @ ${position}`);
+          console.log(`💀 ${member.name} 死亡 @ ${position}`);
           this.emit(EventType.PLAYER_DIED, {
             serverId,
             steamId,
@@ -1244,7 +1231,7 @@ class EventMonitorService extends EventEmitter {
 
         // 检测上线
         if (oldState.isOnline === false && member.isOnline === true) {
-          console.log(`🟢 [轮询检测] 玩家上线: ${member.name}`);
+          console.log(`🟢 ${member.name} 上线`);
           this.emit(EventType.PLAYER_ONLINE, {
             serverId,
             steamId,
@@ -1267,7 +1254,7 @@ class EventMonitorService extends EventEmitter {
 
         // 检测下线
         if (oldState.isOnline === true && member.isOnline === false) {
-          console.log(`🔴 [轮询检测] 玩家下线: ${member.name}`);
+          console.log(`🔴 ${member.name} 下线`);
           this.emit(EventType.PLAYER_OFFLINE, {
             serverId,
             steamId,
@@ -1291,7 +1278,6 @@ class EventMonitorService extends EventEmitter {
           // 如果之前是 AFK 状态，检测返回
           if (oldState.afkSeconds >= EventTiming.AFK_TIME_SECONDS) {
             const afkMinutes = Math.floor(oldState.afkSeconds / 60);
-            console.log(`🔙 [轮询检测] 玩家从AFK返回: ${member.name} (挂机${afkMinutes}分钟)`);
             this.emit(EventType.PLAYER_AFK_RETURNED, {
               serverId,
               steamId,
@@ -1315,11 +1301,12 @@ class EventMonitorService extends EventEmitter {
           oldState.afkSeconds = (now - oldState.lastMovement) / 1000;
 
           // 检测刚刚变为 AFK
-          const wasAfk = (now - EventTiming.MAP_MARKERS_POLL_INTERVAL - oldState.lastMovement) / 1000 < EventTiming.AFK_TIME_SECONDS;
+          // wasNotAfk: 上次轮询时未移动秒数是否小于 AFK 阈值（即上次不是 AFK）
+          const wasNotAfk = (now - EventTiming.MAP_MARKERS_POLL_INTERVAL - oldState.lastMovement) / 1000 < EventTiming.AFK_TIME_SECONDS;
           const isAfkNow = oldState.afkSeconds >= EventTiming.AFK_TIME_SECONDS;
 
-          if (!wasAfk && isAfkNow) {
-            console.log(`💤 [轮询检测] 玩家AFK: ${member.name}`);
+          // 只在首次变为 AFK 时触发通知（上次不是 AFK，但现在是 AFK）
+          if (wasNotAfk && isAfkNow) {
             this.emit(EventType.PLAYER_AFK, {
               serverId,
               steamId,
