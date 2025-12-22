@@ -7,11 +7,11 @@
     "offline_with_duration": "`{playerName}` 今天游玩了 {duration}",
     "offline_with_afk": "`{playerName}` 今天游玩了 {duration} (其中挂机 {afkDuration})",
 
-    "player_died": "{name} 在 {position} 死亡",
-    "player_online": "{name} 上线了",
-    "player_offline": "{name} 下线了",
-    "player_afk": "{name} 已挂机",
-    "player_afk_returned": "{name} 在挂机 {minutes} 分钟后回来了",
+    "player_died": "`{name}` 在 {position} 死亡",
+    "player_online": "`{name}` 上线了",
+    "player_offline": "`{name}` 下线了",
+    "player_afk": "`{name}` 已挂机",
+    "player_afk_returned": "`{name}` 在挂机 {minutes} 分钟后回来了",
 
     "small_oil_triggered": "小油井已触发 重型科学家正在赶来",
     "small_oil_warning": "小油井箱子还有 {minutes} 分钟解锁",
@@ -86,15 +86,15 @@
       "desc": "显示队伍信息",
       "msg": "团队总人数({total}) 在线({online}) 离线({offline})",
       "afk_info": "挂机人员({count}人) {list}",
-      "afk_player": "{name}(挂机{minutes}分钟)",
+      "afk_player": "`{name}`(挂机{minutes}分钟)",
       "empty": "队伍为空",
       "error": "[错误] 获取队伍失败"
     },
     "leader": {
       "desc": "移交队长权限",
-      "msg": "已将队长移交给 {name}",
-      "already": "{name} 已经是队长了",
-      "not_found": "找不到玩家: {name}",
+      "msg": "已将队长移交给 `{name}`",
+      "already": "`{name}` 已经是队长了",
+      "not_found": "找不到玩家: `{name}`",
       "not_leader": "移交失败: 当前账号不是队长",
       "error": "移交队长失败"
     },
@@ -107,7 +107,7 @@
     "afk": {
       "desc": "显示挂机队友",
       "msg": "挂机({count}) {list}",
-      "item": "{name}({duration})",
+      "item": "`{name}`({duration})",
       "empty": "当前没有挂机队友",
       "error": "[错误] 获取队伍失败"
     },
