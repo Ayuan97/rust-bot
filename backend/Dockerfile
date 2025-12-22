@@ -20,6 +20,10 @@ RUN npm install --omit=dev
 COPY src ./src
 COPY config ./config
 
+# 复制 xray 二进制文件
+COPY bin ./bin
+RUN chmod +x ./bin/xray
+
 # 创建数据目录
 RUN mkdir -p data
 
