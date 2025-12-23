@@ -49,10 +49,20 @@ function DeviceControl({ serverId }) {
       }
     };
 
+    // 监听新设备配对
+    const handleDevicePaired = (data) => {
+      if (data.serverId === serverId) {
+        toast.success(`设备已配对: ${data.name}`);
+        fetchDevices();
+      }
+    };
+
     socketService.on('entity:changed', handleEntityChanged);
+    socketService.on('device:paired', handleDevicePaired);
 
     return () => {
       socketService.off('entity:changed', handleEntityChanged);
+      socketService.off('device:paired', handleDevicePaired);
     };
   }, [serverId]);
 
@@ -167,15 +177,24 @@ function DeviceControl({ serverId }) {
             <FaBolt className="text-rust-orange text-xl" />
             <h2 className="text-xl font-bold">智能设备</h2>
           </div>
-          <p className="text-xs text-gray-500 mt-1">远程控制游戏内的开关、灯光、门等设备</p>
+          <p className="text-xs text-gray-500 mt-1">在游戏中配对设备后自动添加</p>
         </div>
-        <button
-          className="btn btn-primary flex items-center gap-2 text-sm"
-          onClick={() => setShowAddForm(!showAddForm)}
-        >
-          <FaPlus />
-          添加设备
-        </button>
+        <div className="flex gap-2">
+          <button
+            className="btn btn-secondary flex items-center gap-2 text-sm"
+            onClick={fetchDevices}
+            title="刷新设备列表"
+          >
+            <FaSync />
+          </button>
+          <button
+            className="btn btn-secondary flex items-center gap-2 text-sm"
+            onClick={() => setShowAddForm(!showAddForm)}
+            title="手动添加设备"
+          >
+            <FaPlus />
+          </button>
+        </div>
       </div>
 
       {/* 添加设备表单 */}

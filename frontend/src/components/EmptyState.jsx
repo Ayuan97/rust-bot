@@ -27,11 +27,11 @@ function EmptyState({ type = 'default', title, message, action, showTips = true 
       iconColor: 'text-yellow-400',
       iconBg: 'bg-yellow-500/10',
       defaultTitle: '暂无设备',
-      defaultMessage: '添加智能设备后可在这里远程控制',
+      defaultMessage: '在游戏中配对设备后自动添加到这里',
       tips: [
-        '点击上方"添加设备"按钮',
-        '输入设备的 Entity ID（在游戏内查看）',
-        '支持开关、灯光、门等智能设备'
+        '进入游戏，找到你的智能设备',
+        '按 E 打开设备，点击 Pair with Rust+',
+        '设备会自动添加到此列表'
       ]
     },
     events: {

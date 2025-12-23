@@ -194,6 +194,71 @@ const initializeFCM = async () => {
       websocketService.broadcast('alarm', alarmInfo);
     });
 
+    // 监听智能设备配对（自动添加设备）
+    fcmService.on('entity:paired', async (entityInfo) => {
+      try {
+        console.log('🔌 收到设备配对:', entityInfo);
+
+        const { entityId, entityType, entityName, serverId } = entityInfo;
+
+        if (!entityId || !serverId) {
+          console.warn('⚠️ 设备配对信息不完整，跳过');
+          return;
+        }
+
+        // 检查服务器是否存在
+        const server = storage.getServer(serverId);
+        if (!server) {
+          console.warn(`⚠️ 服务器 ${serverId} 不存在，无法添加设备`);
+          return;
+        }
+
+        // 检查设备是否已存在
+        const existing = storage.getDeviceByEntityId(serverId, entityId);
+        if (existing) {
+          console.log(`📌 设备已存在: ${existing.name} (entityId=${entityId})`);
+          // 更新设备名称（如果有变化）
+          if (entityName && entityName !== existing.name) {
+            storage.updateDevice(serverId, entityId, { name: entityName });
+            console.log(`✏️ 设备名称已更新: ${existing.name} -> ${entityName}`);
+          }
+          return;
+        }
+
+        // 映射设备类型
+        let type = 'switch'; // 默认类型
+        if (entityType) {
+          const typeMap = {
+            '1': 'switch',      // Smart Switch
+            '2': 'alarm',       // Smart Alarm
+            '3': 'storage',     // Storage Monitor
+          };
+          type = typeMap[String(entityType)] || 'switch';
+        }
+
+        // 添加新设备
+        const deviceName = entityName || `设备 ${entityId}`;
+        storage.addDevice({
+          serverId,
+          entityId: parseInt(entityId),
+          name: deviceName,
+          type
+        });
+
+        console.log(`✅ 设备已自动添加: ${deviceName} (类型=${type}, entityId=${entityId})`);
+
+        // 广播给前端
+        websocketService.broadcast('device:paired', {
+          serverId,
+          entityId,
+          name: deviceName,
+          type
+        });
+      } catch (error) {
+        console.error('❌ 处理设备配对失败:', error.message);
+      }
+    });
+
     // 监听 Rust+ 实体变化触发的警报（entity:changed 中 value=true）
     rustPlusService.on('alarm:triggered', async ({ serverId, entityId, time }) => {
       try {
