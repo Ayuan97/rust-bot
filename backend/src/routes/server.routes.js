@@ -215,6 +215,102 @@ router.delete('/:id/devices/:entityId', (req, res) => {
   }
 });
 
+// 更新设备配置
+router.put('/:id/devices/:entityId', (req, res) => {
+  try {
+    const { id, entityId } = req.params;
+    const entityIdNum = parseInt(entityId);
+
+    if (isNaN(entityIdNum) || entityIdNum < 0) {
+      return res.status(400).json({ success: false, error: 'entityId 必须是非负整数' });
+    }
+
+    const { name, type, command, auto_mode } = req.body;
+    const updates = {};
+
+    // 验证并添加更新字段
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.length > 100) {
+        return res.status(400).json({ success: false, error: '设备名称无效或过长' });
+      }
+      updates.name = name;
+    }
+
+    if (type !== undefined) {
+      if (typeof type !== 'string' || type.length > 50) {
+        return res.status(400).json({ success: false, error: '设备类型无效或过长' });
+      }
+      updates.type = type;
+    }
+
+    if (command !== undefined) {
+      if (command !== null && (typeof command !== 'string' || command.length > 50)) {
+        return res.status(400).json({ success: false, error: '命令名称无效或过长' });
+      }
+      // 检查命令是否与内置命令冲突
+      const builtInCommands = ['help', 'time', 'pop', 'team', 'online', 'afk', 'cargo', 'small', 'large', 'heli', 'events', 'history', 'shop', 'leader', 'tr'];
+      if (command && builtInCommands.includes(command.toLowerCase())) {
+        return res.status(400).json({ success: false, error: `命令名称 "${command}" 与内置命令冲突` });
+      }
+      updates.command = command || null;
+    }
+
+    if (auto_mode !== undefined) {
+      const modeNum = parseInt(auto_mode);
+      if (isNaN(modeNum) || modeNum < 0 || modeNum > 8 || (modeNum >= 5 && modeNum <= 6)) {
+        return res.status(400).json({ success: false, error: '自动化模式必须是 0-4 或 7-8' });
+      }
+      updates.auto_mode = modeNum;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, error: '没有提供有效的更新字段' });
+    }
+
+    const result = storage.updateDevice(id, entityIdNum, updates);
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: '设备不存在' });
+    }
+
+    res.json({ success: true, message: '设备更新成功' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 获取设备实时状态
+router.get('/:id/devices/:entityId/status', async (req, res) => {
+  try {
+    const { id, entityId } = req.params;
+    const entityIdNum = parseInt(entityId);
+
+    if (isNaN(entityIdNum) || entityIdNum < 0) {
+      return res.status(400).json({ success: false, error: 'entityId 必须是非负整数' });
+    }
+
+    // 检查服务器是否连接
+    if (!rustPlusService.isConnected(id)) {
+      return res.status(400).json({ success: false, error: '服务器未连接' });
+    }
+
+    const info = await rustPlusService.getEntityInfo(id, entityIdNum);
+    if (!info || !info.payload) {
+      return res.status(404).json({ success: false, error: '无法获取设备状态' });
+    }
+
+    res.json({
+      success: true,
+      entityId: entityIdNum,
+      value: info.payload.value || false,
+      capacity: info.payload.capacity || 0,
+      hasProtection: info.payload.hasProtection || false,
+      protectionExpiry: info.payload.protectionExpiry || 0
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // 获取事件日志
 router.get('/:id/events', (req, res) => {
   try {

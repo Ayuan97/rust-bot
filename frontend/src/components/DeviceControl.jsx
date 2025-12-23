@@ -1,16 +1,29 @@
 import { useState, useEffect } from 'react';
-import { FaLightbulb, FaPlus, FaTrash, FaSync, FaPowerOff, FaBolt } from 'react-icons/fa';
+import { FaLightbulb, FaPlus, FaTrash, FaSync, FaPowerOff, FaBolt, FaEdit, FaTerminal, FaRobot } from 'react-icons/fa';
 import socketService from '../services/socket';
 import { getDevices, addDevice as apiAddDevice, deleteDevice as apiDeleteDevice } from '../services/api';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmModal';
 import EmptyState from './EmptyState';
 import { DeviceListSkeleton } from './Skeleton';
+import DeviceEditModal from './DeviceEditModal';
+
+// 自动化模式名称映射
+const AUTO_MODE_NAMES = {
+  0: null,
+  1: '白天开',
+  2: '夜晚开',
+  3: '始终开',
+  4: '始终关',
+  7: '在线开',
+  8: '在线关'
+};
 
 function DeviceControl({ serverId }) {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingDevice, setEditingDevice] = useState(null);
   const [newDevice, setNewDevice] = useState({
     entityId: '',
     name: '',
@@ -239,11 +252,29 @@ function DeviceControl({ serverId }) {
                   <h3 className="font-semibold">{device.name}</h3>
                   <p className="text-sm text-gray-400">
                     ID: {device.entity_id} · {device.type}
+                    {device.command && (
+                      <span className="ml-2 text-rust-orange">
+                        <FaTerminal className="inline mr-1" />!{device.command}
+                      </span>
+                    )}
+                    {AUTO_MODE_NAMES[device.auto_mode] && (
+                      <span className="ml-2 text-green-400">
+                        <FaRobot className="inline mr-1" />{AUTO_MODE_NAMES[device.auto_mode]}
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
+                <button
+                  className="btn btn-secondary px-3 py-2"
+                  onClick={() => setEditingDevice(device)}
+                  title="编辑设备"
+                  aria-label={`编辑 ${device.name}`}
+                >
+                  <FaEdit aria-hidden="true" />
+                </button>
                 <button
                   className="btn btn-secondary px-3 py-2"
                   onClick={() => handleRefreshDevice(device)}
@@ -277,6 +308,16 @@ function DeviceControl({ serverId }) {
           ))
         )}
       </div>
+
+      {/* 编辑设备模态框 */}
+      {editingDevice && (
+        <DeviceEditModal
+          device={editingDevice}
+          serverId={serverId}
+          onClose={() => setEditingDevice(null)}
+          onSaved={fetchDevices}
+        />
+      )}
     </div>
   );
 }

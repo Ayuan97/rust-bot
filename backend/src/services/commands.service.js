@@ -8,6 +8,8 @@ import { formatPosition } from '../utils/coordinates.js';
 import { getLanguageCode } from '../utils/languages.js';
 import EventTimerManager from '../utils/event-timer.js';
 import logger from '../utils/logger.js';
+import storage from '../models/storage.model.js';
+import { parseTimeString, formatSeconds, timeSince } from '../utils/timer.js';
 
 class CommandsService {
   constructor(rustPlusService, eventMonitorService = null) {
@@ -25,6 +27,7 @@ class CommandsService {
     this.eventListenersInitialized = false; // 防止重复注册监听器
     this.isProcessingAfk = false; // AFK 检测并发保护
     this.isProcessingPlayerCount = false; // 人数追踪并发保护
+    this.switchTimeouts = new Map(); // 设备定时操作 `${serverId}:${entityId}` -> timeout
 
     // 注册内置命令
     this.registerBuiltInCommands();
@@ -1630,7 +1633,16 @@ class CommandsService {
 
     logger.server(serverId, `🎮 命令: !${commandName} (${name})`);
 
-    // 查找命令
+    // 优先检查设备命令
+    const deviceResponse = await this.tryDeviceCommand(serverId, commandName, args, { name, steamId, message });
+    if (deviceResponse !== null) {
+      if (deviceResponse) {
+        await this.rustPlusService.sendTeamMessage(serverId, deviceResponse);
+      }
+      return true;
+    }
+
+    // 查找内置命令
     const command = this.commands.get(commandName);
     if (!command) {
       await this.rustPlusService.sendTeamMessage(
@@ -1655,6 +1667,139 @@ class CommandsService {
       console.error(`❌ Command failed !${commandName}:`, error);
       await this.rustPlusService.sendTeamMessage(serverId, cmd('error', 'msg'));
       return true;
+    }
+  }
+
+  /**
+   * 尝试匹配并执行设备命令
+   * @returns {string|null} 响应消息，null 表示不是设备命令
+   */
+  async tryDeviceCommand(serverId, commandName, args, context) {
+    // 获取所有带命令的设备
+    const devices = storage.getDevicesWithCommand(serverId);
+    if (!devices || devices.length === 0) {
+      return null;
+    }
+
+    // 查找匹配的设备
+    const device = devices.find(d => d.command && d.command.toLowerCase() === commandName);
+    if (!device) {
+      return null;
+    }
+
+    // 根据设备类型处理
+    if (device.type === 'alarm') {
+      return this.handleAlarmCommand(serverId, device, args, context);
+    } else {
+      return this.handleSwitchCommand(serverId, device, args, context);
+    }
+  }
+
+  /**
+   * 处理警报设备命令
+   */
+  handleAlarmCommand(serverId, device, args, context) {
+    if (!device.last_trigger) {
+      return `警报 ${device.name} 尚未触发过`;
+    }
+    const timeAgo = timeSince(device.last_trigger);
+    return `警报 ${device.name} ${timeAgo}前触发`;
+  }
+
+  /**
+   * 处理开关设备命令
+   */
+  async handleSwitchCommand(serverId, device, args, context) {
+    const entityId = device.entity_id;
+    const subCommand = args[0]?.toLowerCase();
+    const timeArg = args.slice(1).join('');
+
+    // status 命令
+    if (subCommand === 'status') {
+      try {
+        const info = await this.rustPlusService.getEntityInfo(serverId, entityId);
+        const isOn = info?.payload?.value || false;
+        return `${device.name} 当前 ${isOn ? '开启' : '关闭'}`;
+      } catch (e) {
+        return `${device.name} 无法通信`;
+      }
+    }
+
+    // 确定目标状态
+    let targetValue = null;
+    if (subCommand === 'on') {
+      targetValue = true;
+    } else if (subCommand === 'off') {
+      targetValue = false;
+    } else if (!subCommand) {
+      // 无参数：切换状态
+      try {
+        const info = await this.rustPlusService.getEntityInfo(serverId, entityId);
+        targetValue = !(info?.payload?.value || false);
+      } catch (e) {
+        return `${device.name} 无法通信`;
+      }
+    } else {
+      return `用法: !${device.command} [on|off|status] [时间]`;
+    }
+
+    // 清除之前的定时器
+    const timeoutKey = `${serverId}:${entityId}`;
+    if (this.switchTimeouts.has(timeoutKey)) {
+      clearTimeout(this.switchTimeouts.get(timeoutKey));
+      this.switchTimeouts.delete(timeoutKey);
+    }
+
+    // 执行操作
+    try {
+      if (targetValue) {
+        await this.rustPlusService.turnSmartSwitchOn(serverId, entityId);
+      } else {
+        await this.rustPlusService.turnSmartSwitchOff(serverId, entityId);
+      }
+    } catch (e) {
+      return `${device.name} 操作失败`;
+    }
+
+    // 解析定时参数
+    const timeSeconds = parseTimeString(timeArg);
+    if (timeSeconds && timeSeconds > 0) {
+      const timeout = setTimeout(async () => {
+        try {
+          // 自动反转
+          if (targetValue) {
+            await this.rustPlusService.turnSmartSwitchOff(serverId, entityId);
+          } else {
+            await this.rustPlusService.turnSmartSwitchOn(serverId, entityId);
+          }
+          await this.rustPlusService.sendTeamMessage(
+            serverId,
+            `${device.name} 已自动${targetValue ? '关闭' : '开启'}`
+          );
+        } catch (e) {
+          console.error(`❌ 定时操作失败 ${device.name}:`, e.message);
+        }
+        this.switchTimeouts.delete(timeoutKey);
+      }, timeSeconds * 1000);
+
+      this.switchTimeouts.set(timeoutKey, timeout);
+
+      const durationStr = formatSeconds(timeSeconds);
+      return `${device.name} 已${targetValue ? '开启' : '关闭'}，${durationStr}后自动${targetValue ? '关闭' : '开启'}`;
+    }
+
+    return `${device.name} 已${targetValue ? '开启' : '关闭'}`;
+  }
+
+  /**
+   * 清理服务器相关的定时器
+   */
+  clearServerTimeouts(serverId) {
+    for (const [key, timeout] of this.switchTimeouts.entries()) {
+      if (key.startsWith(`${serverId}:`)) {
+        clearTimeout(timeout);
+        this.switchTimeouts.delete(key);
+      }
     }
   }
 

@@ -13,14 +13,13 @@ import configStorage from './models/config.model.js';
 import storage from './models/storage.model.js';
 import rustPlusService from './services/rustplus.service.js';
 import battlemetricsService from './services/battlemetrics.service.js';
-import { formatPosition } from './utils/coordinates.js';
-import { notify } from './utils/messages.js';
-import logger from './utils/logger.js';
 
 import serverRoutes from './routes/server.routes.js';
 import pairingRoutes from './routes/pairing.routes.js';
 import proxyRoutes from './routes/proxy.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
+import { formatPosition } from './utils/coordinates.js';
+import AutomationService from './services/automation.service.js';
 
 // 加载环境变量
 dotenv.config();
@@ -64,8 +63,6 @@ websocketService.initialize(server, '*');
 
 // 初始化 FCM 服务
 let fcmInitialized = false;
-// 死亡通知去重缓存：serverId -> Map(steamId -> { deathTime, lastSentAt })
-const deathNotifyCache = new Map();
 const initializeFCM = async () => {
   try {
     console.log('\n🔐 初始化 FCM 服务...\n');
@@ -197,10 +194,74 @@ const initializeFCM = async () => {
       websocketService.broadcast('alarm', alarmInfo);
     });
 
+    // 监听 Rust+ 实体变化触发的警报（entity:changed 中 value=true）
+    rustPlusService.on('alarm:triggered', async ({ serverId, entityId, time }) => {
+      try {
+        // 查询设备信息，验证类型为 alarm
+        const device = storage.getDeviceByEntityId(serverId, entityId);
+        if (!device || device.type !== 'alarm') {
+          return; // 不是已注册的警报设备，忽略
+        }
+
+        // 更新触发时间
+        storage.updateDeviceLastTrigger(serverId, entityId, time);
+        console.log(`🚨 警报触发: ${device.name} (entityId=${entityId})`);
+
+        // 获取服务器信息和地图大小
+        let position = null;
+        try {
+          const serverInfo = await rustPlusService.getServerInfo(serverId);
+          if (serverInfo && device.x && device.y) {
+            position = formatPosition(device.x, device.y, serverInfo.mapSize);
+          }
+        } catch (e) {
+          // 位置信息获取失败，继续处理
+        }
+
+        // 发送游戏内消息通知
+        const message = position
+          ? `警报 ${device.name} 已触发 @ ${position}`
+          : `警报 ${device.name} 已触发`;
+        await rustPlusService.sendTeamMessage(serverId, message);
+
+        // WebSocket 广播给前端
+        websocketService.broadcast('alarm:triggered', {
+          serverId,
+          entityId,
+          name: device.name,
+          position,
+          time
+        });
+      } catch (error) {
+        console.error('❌ 处理警报触发失败:', error.message);
+      }
+    });
+
     // 监听其他通知
     fcmService.on('notification', (notificationInfo) => {
       console.log('📬 通知:', notificationInfo);
       websocketService.broadcast('notification', notificationInfo);
+    });
+
+    // 初始化自动化服务
+    const automationService = new AutomationService(rustPlusService);
+
+    // 监听服务器连接事件，启动自动化
+    rustPlusService.on('server:connected', ({ serverId }) => {
+      automationService.start(serverId);
+    });
+
+    // 监听服务器断开事件，停止自动化
+    rustPlusService.on('server:disconnected', ({ serverId }) => {
+      automationService.stop(serverId);
+      // 清理命令服务中的定时器
+      const commandsService = rustPlusService.getCommandsService();
+      commandsService?.clearServerTimeouts?.(serverId);
+    });
+
+    // 监听自动化执行事件，广播给前端
+    automationService.on('automation:executed', (data) => {
+      websocketService.broadcast('automation:executed', data);
     });
 
     // 标记事件监听器已注册
@@ -243,92 +304,6 @@ const initializeFCM = async () => {
   } catch (error) {
     console.error('❌ FCM 初始化失败:', error);
   }
-};
-
-// 设置玩家事件自动通知
-const setupPlayerEventNotifications = () => {
-  const commandsService = rustPlusService.getCommandsService();
-
-  // 玩家死亡自动通知
-  // 简化的去重逻辑：只使用 deathTime 去重，避免过度抑制
-  rustPlusService.on('player:died', async (data) => {
-    try {
-      const settings = commandsService.getServerSettings(data.serverId);
-      if (!settings.deathNotify) {
-        return; // 功能未启用
-      }
-
-      // 去重：使用 deathTime 作为唯一去重依据
-      const serverMap = deathNotifyCache.get(data.serverId) || new Map();
-      const cached = serverMap.get(data.steamId) || { deathTime: null, lastSentAt: 0 };
-      const nowTs = Date.now();
-
-      // 检查是否重复
-      if (typeof data.deathTime === 'number') {
-        // 有 deathTime：相同值不重复发送
-        if (cached.deathTime === data.deathTime) {
-          logger.debug(`💀 跳过重复死亡通知 (相同deathTime): ${data.name}`);
-          return;
-        }
-      } else {
-        // 无 deathTime：5秒内不重复发送
-        if (nowTs - cached.lastSentAt < 5000) {
-          logger.debug(`💀 跳过重复死亡通知 (5秒内): ${data.name}`);
-          return;
-        }
-      }
-
-      // 获取坐标（使用缓存避免频繁请求）
-      const mapSize = rustPlusService.getMapSize(data.serverId);
-      const oceanMargin = rustPlusService.getMapOceanMargin(data.serverId);
-      let position = formatPosition(data.x, data.y, mapSize, true, false, null, oceanMargin);
-      if (!position || typeof position !== 'string' || position.includes('NaN')) {
-        position = '未知位置';
-      }
-
-      // 发送通知
-      const message = notify('death', {
-        playerName: data.name,
-        position: position
-      });
-      await rustPlusService.sendTeamMessage(data.serverId, message);
-      console.log(`📨 已发送死亡通知: ${message}`);
-
-      // 更新缓存
-      serverMap.set(data.steamId, {
-        deathTime: typeof data.deathTime === 'number' ? data.deathTime : null,
-        lastSentAt: nowTs
-      });
-      deathNotifyCache.set(data.serverId, serverMap);
-
-    } catch (error) {
-      const errMsg = error?.message || error?.error || JSON.stringify(error);
-      console.error('❌ 发送死亡通知失败:', errMsg);
-      // 不再设置抑制窗口，下次死亡仍会尝试发送
-    }
-  });
-
-  // 玩家重生通知
-  rustPlusService.on('player:spawned', async (data) => {
-    try {
-      const settings = commandsService.getServerSettings(data.serverId);
-      if (settings.spawnNotify) {
-        const message = `✨ ${data.name} 重生了！`;
-        await rustPlusService.sendTeamMessage(data.serverId, message);
-        console.log(`📨 已发送重生通知: ${data.name}`);
-      }
-    } catch (error) {
-      console.error('❌ 发送重生通知失败:', error.message);
-    }
-  });
-
-  // 服务器断开时清理死亡通知缓存
-  rustPlusService.on('server:disconnected', (data) => {
-    deathNotifyCache.delete(data.serverId);
-    logger.debug(`🧹 已清理服务器 ${data.serverId} 的死亡通知缓存`);
-  });
-
-  console.log('✅ 玩家事件自动通知已启用（可通过 !notify 命令控制）');
 };
 
 // 启动服务器
@@ -440,9 +415,6 @@ server.listen(PORT, async () => {
   } catch (error) {
     console.error('❌ 自动重连失败:', error.message);
   }
-
-  // 设置玩家事件自动通知
-  setupPlayerEventNotifications();
 });
 
 // 优雅关闭函数

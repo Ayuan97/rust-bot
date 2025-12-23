@@ -28,7 +28,11 @@ export const getDevices = (serverId) => api.get(`/servers/${serverId}/devices`);
 
 export const addDevice = (serverId, device) => api.post(`/servers/${serverId}/devices`, device);
 
+export const updateDevice = (serverId, entityId, updates) => api.put(`/servers/${serverId}/devices/${entityId}`, updates);
+
 export const deleteDevice = (serverId, entityId) => api.delete(`/servers/${serverId}/devices/${entityId}`);
+
+export const getDeviceStatus = (serverId, entityId) => api.get(`/servers/${serverId}/devices/${entityId}/status`);
 
 // ========== 事件日志 ==========
 

@@ -876,6 +876,15 @@ class RustPlusService extends EventEmitter {
         value: payload.value,
         capacity: payload.capacity
       });
+
+      // 检测警报触发（value 变为 true 时）
+      if (payload.value === true) {
+        this.emit('alarm:triggered', {
+          serverId,
+          entityId,
+          time: Date.now()
+        });
+      }
     }
 
     // 氏族变化

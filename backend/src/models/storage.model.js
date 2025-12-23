@@ -81,11 +81,29 @@ class Storage {
       )
     `);
 
+    // 设备表新列迁移（自动化和命令功能）
+    const deviceColumnsToAdd = [
+      { name: 'command', type: 'TEXT DEFAULT NULL' },           // 自定义命令名
+      { name: 'auto_mode', type: 'INTEGER DEFAULT 0' },         // 自动化模式 0-8
+      { name: 'reachable', type: 'INTEGER DEFAULT 1' },         // 是否可达
+      { name: 'last_trigger', type: 'INTEGER DEFAULT NULL' }    // 警报触发时间
+    ];
+
+    for (const col of deviceColumnsToAdd) {
+      try {
+        this.db.exec(`ALTER TABLE devices ADD COLUMN ${col.name} ${col.type}`);
+        console.log(`✅ devices 表添加 ${col.name} 列`);
+      } catch (error) {
+        // 列已存在，忽略错误
+      }
+    }
+
     // 创建索引以提升查询性能
     try {
       this.db.exec(`CREATE INDEX IF NOT EXISTS idx_event_logs_server_id ON event_logs(server_id)`);
       this.db.exec(`CREATE INDEX IF NOT EXISTS idx_event_logs_created_at ON event_logs(created_at)`);
       this.db.exec(`CREATE INDEX IF NOT EXISTS idx_devices_server_id ON devices(server_id)`);
+      this.db.exec(`CREATE INDEX IF NOT EXISTS idx_devices_auto_mode ON devices(auto_mode)`);
     } catch (e) {
       // 索引已存在，忽略
     }
@@ -167,6 +185,47 @@ class Storage {
   deleteDevice(serverId, entityId) {
     const stmt = this.db.prepare('DELETE FROM devices WHERE server_id = ? AND entity_id = ?');
     return stmt.run(serverId, entityId);
+  }
+
+  getDeviceByEntityId(serverId, entityId) {
+    const stmt = this.db.prepare('SELECT * FROM devices WHERE server_id = ? AND entity_id = ?');
+    return stmt.get(serverId, entityId);
+  }
+
+  updateDevice(serverId, entityId, updates) {
+    const allowedFields = ['name', 'type', 'command', 'auto_mode', 'reachable', 'last_trigger'];
+    const fields = Object.keys(updates).filter(k => allowedFields.includes(k));
+    if (fields.length === 0) return { changes: 0 };
+
+    const setClause = fields.map(k => `${k} = ?`).join(', ');
+    const values = fields.map(k => updates[k]);
+    const stmt = this.db.prepare(`UPDATE devices SET ${setClause} WHERE server_id = ? AND entity_id = ?`);
+    return stmt.run(...values, serverId, entityId);
+  }
+
+  updateDeviceLastTrigger(serverId, entityId, time) {
+    const stmt = this.db.prepare('UPDATE devices SET last_trigger = ? WHERE server_id = ? AND entity_id = ?');
+    return stmt.run(time, serverId, entityId);
+  }
+
+  updateDeviceReachable(serverId, entityId, reachable) {
+    const stmt = this.db.prepare('UPDATE devices SET reachable = ? WHERE server_id = ? AND entity_id = ?');
+    return stmt.run(reachable ? 1 : 0, serverId, entityId);
+  }
+
+  getDevicesWithCommand(serverId) {
+    const stmt = this.db.prepare('SELECT * FROM devices WHERE server_id = ? AND command IS NOT NULL AND command != ""');
+    return stmt.all(serverId);
+  }
+
+  getDevicesWithAutoMode(serverId) {
+    const stmt = this.db.prepare('SELECT * FROM devices WHERE server_id = ? AND auto_mode > 0');
+    return stmt.all(serverId);
+  }
+
+  getAllDevicesWithAutoMode() {
+    const stmt = this.db.prepare('SELECT * FROM devices WHERE auto_mode > 0');
+    return stmt.all();
   }
 
   // ========== 事件日志 ==========
