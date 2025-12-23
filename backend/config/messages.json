@@ -1,15 +1,11 @@
 {
   "notifications": {
     "death": "`{playerName}` 在 {position} 死亡",
-    "online": " `{playerName}` 上线了",
-    "online_after_offline": "`{playerName}` 在离线 {duration} 后上线了",
-    "offline": "`{playerName}` 下线了",
-    "offline_with_duration": "`{playerName}` 今天游玩了 {duration}",
-    "offline_with_afk": "`{playerName}` 今天游玩了 {duration} (其中挂机 {afkDuration})",
-
     "player_died": "`{name}` 在 {position} 死亡",
     "player_online": "`{name}` 上线了",
+    "player_online_with_duration": "`{name}` 上线了 上次游玩是在 {duration} 前",
     "player_offline": "`{name}` 下线了",
+    "player_offline_with_duration": "`{name}` 在游玩了 {duration} 后下线了",
     "player_afk": "`{name}` 已离开 {minutes} 分钟",
     "player_afk_returned": "`{name}` 在挂机 {duration} 后回来了",
 

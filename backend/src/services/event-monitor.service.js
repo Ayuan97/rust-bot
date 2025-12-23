@@ -1168,7 +1168,10 @@ class EventMonitorService extends EventEmitter {
             deathTime: member.deathTime,
             spawnTime: member.spawnTime,
             lastMovement: now,
-            afkSeconds: 0
+            afkSeconds: 0,
+            // 上下线时间追踪
+            lastOnlineTime: member.isOnline ? now : null,
+            lastOfflineTime: member.isOnline ? null : now
           });
         }
         eventData.isFirstTeamPoll = false;
@@ -1202,7 +1205,10 @@ class EventMonitorService extends EventEmitter {
               deathTime: member.deathTime,
               spawnTime: member.spawnTime,
               lastMovement: now,
-              afkSeconds: 0
+              afkSeconds: 0,
+              // 上下线时间追踪
+              lastOnlineTime: member.isOnline ? now : null,
+              lastOfflineTime: member.isOnline ? null : now
             });
           }
         }
@@ -1289,16 +1295,25 @@ class EventMonitorService extends EventEmitter {
           // 发送游戏内通知
           if (isNotificationEnabled('player_online')) {
             try {
-              const msg = notify('player_online', { name: member.name });
+              let msg;
+              // 如果有上次下线时间，计算离线时长
+              if (oldState.lastOfflineTime) {
+                const offlineDuration = now - oldState.lastOfflineTime;
+                const durationStr = formatDuration(offlineDuration);
+                msg = notify('player_online_with_duration', { name: member.name, duration: durationStr });
+              } else {
+                msg = notify('player_online', { name: member.name });
+              }
               if (msg) {
                 await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
               }
             } catch (e) {}
           }
 
-          // 重置 AFK 状态
+          // 重置 AFK 状态，记录上线时间
           oldState.lastMovement = now;
           oldState.afkSeconds = 0;
+          oldState.lastOnlineTime = now;
         }
 
         // 检测下线
@@ -1314,12 +1329,23 @@ class EventMonitorService extends EventEmitter {
           // 发送游戏内通知
           if (isNotificationEnabled('player_offline')) {
             try {
-              const msg = notify('player_offline', { name: member.name });
+              let msg;
+              // 如果有上线时间，计算游玩时长
+              if (oldState.lastOnlineTime) {
+                const playDuration = now - oldState.lastOnlineTime;
+                const durationStr = formatDuration(playDuration);
+                msg = notify('player_offline_with_duration', { name: member.name, duration: durationStr });
+              } else {
+                msg = notify('player_offline', { name: member.name });
+              }
               if (msg) {
                 await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
               }
             } catch (e) {}
           }
+
+          // 记录下线时间
+          oldState.lastOfflineTime = now;
         }
 
         // 检测移动（用于 AFK 检测）
