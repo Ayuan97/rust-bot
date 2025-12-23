@@ -15,9 +15,6 @@ export const resetPairing = () => api.post('/pairing/reset');
 // 获取 FCM 凭证
 export const getCredentials = () => api.get('/pairing/credentials');
 
-// 手动提交 FCM 凭证
-export const submitCredentials = (credentials) => api.post('/pairing/credentials/manual', credentials);
-
 // 从 rustplus CLI 加载凭证
 export const loadCredentialsFromCLI = () => api.post('/pairing/credentials/load-cli');
 

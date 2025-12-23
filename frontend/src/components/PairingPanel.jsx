@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { FaQrcode, FaPlay, FaStop, FaSync, FaCheckCircle, FaTimesCircle, FaKey, FaRocket } from 'react-icons/fa';
-import { getPairingStatus, startPairing, stopPairing, resetPairing, submitCredentials } from '../services/pairing';
+import { FaQrcode, FaPlay, FaStop, FaSync, FaCheckCircle, FaTimesCircle, FaRocket } from 'react-icons/fa';
+import { getPairingStatus, startPairing, stopPairing, resetPairing } from '../services/pairing';
 import socketService from '../services/socket';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmModal';
-import CredentialsInput from './CredentialsInput';
 import AutoRegisterPanel from './AutoRegisterPanel';
 
 function PairingPanel({ onServerPaired }) {
@@ -16,7 +15,6 @@ function PairingPanel({ onServerPaired }) {
   });
   const [loading, setLoading] = useState(false);
   const [waitingForPairing, setWaitingForPairing] = useState(false);
-  const [showCredentialsInput, setShowCredentialsInput] = useState(false);
   const [showAutoRegister, setShowAutoRegister] = useState(false);
 
   const toast = useToast();
@@ -141,28 +139,12 @@ function PairingPanel({ onServerPaired }) {
       // 更新状态
       await fetchStatus();
 
-      // 显示凭证输入界面
-      setShowCredentialsInput(true);
+      // 显示自动注册界面
+      setShowAutoRegister(true);
     } catch (error) {
       console.error('重置失败:', error);
       const errorMsg = error.response?.data?.error || error.message || '未知错误';
       toast.error('重置失败: ' + errorMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCredentialsSubmit = async (credentials) => {
-    setLoading(true);
-    try {
-      await submitCredentials(credentials);
-      setShowCredentialsInput(false);
-      setWaitingForPairing(true);
-      await fetchStatus();
-      toast.success('凭证已保存并开始监听');
-    } catch (error) {
-      console.error('提交凭证失败:', error);
-      toast.error('提交失败: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -190,18 +172,6 @@ function PairingPanel({ onServerPaired }) {
                 await fetchStatus();
               }}
               onClose={() => setShowAutoRegister(false)}
-            />
-          </div>
-        </ModalPortal>
-      )}
-
-      {/* 手动凭证输入模态框 - 使用 Portal */}
-      {showCredentialsInput && (
-        <ModalPortal>
-          <div className="w-full max-w-3xl animate-fade-in">
-            <CredentialsInput
-              onSubmit={handleCredentialsSubmit}
-              onClose={() => setShowCredentialsInput(false)}
             />
           </div>
         </ModalPortal>
@@ -264,26 +234,17 @@ function PairingPanel({ onServerPaired }) {
         {!status.hasStoredCredentials && (
           <div className="mb-4 p-4 bg-rust-accent/10 border border-rust-accent/30 rounded-lg">
             <p className="text-sm text-gray-300 mb-3">
-              ⚠️ 未找到 FCM 凭证。请选择注册方式：
+              ⚠️ 未找到 FCM 凭证，请点击下方按钮进行注册：
             </p>
-            <div className="space-y-2">
-              <button
-                className="btn btn-primary w-full flex items-center justify-center gap-2"
-                onClick={() => setShowAutoRegister(true)}
-              >
-                <FaRocket />
-                自动注册（推荐）
-              </button>
-              <button
-                className="btn btn-secondary w-full flex items-center justify-center gap-2"
-                onClick={() => setShowCredentialsInput(true)}
-              >
-                <FaKey />
-                手动输入凭证
-              </button>
-            </div>
+            <button
+              className="btn btn-primary w-full flex items-center justify-center gap-2"
+              onClick={() => setShowAutoRegister(true)}
+            >
+              <FaRocket />
+              自动注册
+            </button>
             <p className="text-xs text-gray-400 mt-3">
-              推荐使用自动注册，只需点击按钮并完成 Steam 登录即可
+              点击按钮后按照提示完成 Steam 登录即可
             </p>
           </div>
         )}

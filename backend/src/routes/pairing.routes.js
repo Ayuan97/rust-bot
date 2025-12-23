@@ -153,53 +153,6 @@ router.get('/credentials', (req, res) => {
 });
 
 /**
- * 手动设置 FCM 凭证
- */
-router.post('/credentials/manual', async (req, res) => {
-  try {
-    const credentialsData = req.body;
-
-    // 验证凭证格式
-    if (!credentialsData || typeof credentialsData !== 'object') {
-      return res.status(400).json({ success: false, error: '凭证数据格式无效' });
-    }
-
-    // 验证必须有 gcm 或 fcm 凭证
-    if (!credentialsData.gcm && !credentialsData.fcm) {
-      return res.status(400).json({ success: false, error: '缺少 gcm 或 fcm 凭证' });
-    }
-
-    // 如果是 GCM 凭证，验证必要字段
-    if (credentialsData.gcm) {
-      if (!credentialsData.gcm.androidId || !credentialsData.gcm.securityToken) {
-        return res.status(400).json({ success: false, error: 'GCM 凭证缺少 androidId 或 securityToken' });
-      }
-    }
-
-    // 设置凭证
-    fcmService.setManualCredentials(credentialsData);
-
-    // 保存凭证
-    configStorage.saveFCMCredentials(fcmService.getCredentials());
-
-    // 开始监听
-    await fcmService.startListening();
-
-    res.json({
-      success: true,
-      message: 'FCM 凭证已保存并开始监听',
-      isListening: true
-    });
-  } catch (error) {
-    console.error('设置手动凭证失败:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-/**
  * 尝试从 rustplus CLI 加载凭证
  */
 router.post('/credentials/load-cli', async (req, res) => {
