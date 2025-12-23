@@ -13,11 +13,11 @@
     "player_afk": "`{name}` 已离开 {minutes} 分钟",
     "player_afk_returned": "`{name}` 在挂机 {duration} 后回来了",
 
-    "small_oil_triggered": "{direction} 小油井已触发 重型科学家正在赶来",
+    "small_oil_triggered": " 小油井已触发 {direction} 重型科学家正在赶来",
     "small_oil_warning": "小油井箱子还有 {minutes} 分钟解锁",
     "small_oil_unlocked": "小油井箱子已解锁！",
 
-    "large_oil_triggered": "{direction} 大油井已触发 重型科学家正在赶来",
+    "large_oil_triggered": " 大油井已触发 {direction} 重型科学家正在赶来",
     "large_oil_warning": "大油井箱子还有 {minutes} 分钟解锁",
     "large_oil_unlocked": "大油井箱子已解锁！",
 
