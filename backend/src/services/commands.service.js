@@ -3,7 +3,7 @@
  * 处理以 ! 开头的队伍聊天命令
  */
 
-import { cmd, cmdConfig, allCommands, notify } from '../utils/messages.js';
+import { cmd, cmdConfig, allCommands, notify, formatDuration } from '../utils/messages.js';
 import { formatPosition } from '../utils/coordinates.js';
 import { getLanguageCode } from '../utils/languages.js';
 import EventTimerManager from '../utils/event-timer.js';
@@ -388,7 +388,7 @@ class CommandsService {
             const afkTime = this.getPlayerAfkTime(serverId, m.steamId?.toString?.() ?? m.steamId);
             if (afkTime >= 3) {
               const displayName = m.name.length > 12 ? m.name.substring(0, 12) + '..' : m.name;
-              const durationText = this.formatDuration(afkTime * 60 * 1000);
+              const durationText = formatDuration(afkTime * 60 * 1000);
               afkPlayers.push({ name: displayName, minutes: afkTime, duration: durationText });
             }
           });
@@ -676,7 +676,7 @@ class CommandsService {
           if (!last) return cmd('smalllast', 'empty');
           const now = Date.now();
           const minutes = Math.floor((now - last) / 60000);
-          const time = this.formatDuration(minutes * 60 * 1000);
+          const time = formatDuration(minutes * 60 * 1000);
           return cmd('smalllast', 'msg', { time });
         } catch (error) {
           return cmd('smalllast', 'error');
@@ -700,7 +700,7 @@ class CommandsService {
           if (!last) return cmd('largelast', 'empty');
           const now = Date.now();
           const minutes = Math.floor((now - last) / 60000);
-          const time = this.formatDuration(minutes * 60 * 1000);
+          const time = formatDuration(minutes * 60 * 1000);
           return cmd('largelast', 'msg', { time });
         } catch (error) {
           return cmd('largelast', 'error');
@@ -725,7 +725,7 @@ class CommandsService {
           const last = Math.max(...candidates);
           const now = Date.now();
           const minutes = Math.floor((now - last) / 60000);
-          const time = this.formatDuration(minutes * 60 * 1000);
+          const time = formatDuration(minutes * 60 * 1000);
           return cmd('helilast', 'msg', { time });
         } catch (error) {
           return cmd('helilast', 'error');
@@ -747,7 +747,7 @@ class CommandsService {
           const { smallOilRigTriggered, smallOilRigCrateUnlocked } = eventData.lastEvents;
           const last = smallOilRigTriggered || smallOilRigCrateUnlocked;
           if (!last) return cmd('smalllast', 'empty');
-          const time = this.formatDuration(Date.now() - last);
+          const time = formatDuration(Date.now() - last);
           return cmd('smalllast', 'msg', { time });
         } catch (error) {
           return cmd('smalllast', 'error');
@@ -769,7 +769,7 @@ class CommandsService {
           const { largeOilRigTriggered, largeOilRigCrateUnlocked } = eventData.lastEvents;
           const last = largeOilRigTriggered || largeOilRigCrateUnlocked;
           if (!last) return cmd('largelast', 'empty');
-          const time = this.formatDuration(Date.now() - last);
+          const time = formatDuration(Date.now() - last);
           return cmd('largelast', 'msg', { time });
         } catch (error) {
           return cmd('largelast', 'error');
@@ -792,7 +792,7 @@ class CommandsService {
           const candidates = [patrolHeliSpawn, patrolHeliDowned, patrolHeliLeave].filter(Boolean);
           if (candidates.length === 0) return cmd('helilast', 'empty');
           const last = Math.max(...candidates);
-          const time = this.formatDuration(Date.now() - last);
+          const time = formatDuration(Date.now() - last);
           return cmd('helilast', 'msg', { time });
         } catch (error) {
           return cmd('helilast', 'error');
@@ -1148,7 +1148,7 @@ class CommandsService {
       // 计算离线时长
       if (sessionData.offlineTime) {
         const offlineDuration = Date.now() - sessionData.offlineTime;
-        const offlineDurationText = this.formatDuration(offlineDuration);
+        const offlineDurationText = formatDuration(offlineDuration);
 
         // 构建上线通知消息
         const message = notify('online_after_offline', {
@@ -1237,7 +1237,7 @@ class CommandsService {
 
     // 计算今日游玩时长
     const playDuration = Date.now() - sessionData.onlineTime;
-    const durationText = this.formatDuration(playDuration);
+    const durationText = formatDuration(playDuration);
 
     // 检查是否有挂机记录
     let afkInfo = null;
@@ -1248,7 +1248,7 @@ class CommandsService {
         const afkDuration = Date.now() - afkRecord.afkStartTime;
         afkInfo = {
           duration: afkDuration,
-          durationText: this.formatDuration(afkDuration)
+          durationText: formatDuration(afkDuration)
         };
       }
     }
@@ -1280,20 +1280,6 @@ class CommandsService {
     }
 
     // 不清除挂机记录，保留到上线时处理
-  }
-
-  /**
-   * 格式化时长
-   */
-  formatDuration(milliseconds) {
-    const hours = Math.floor(milliseconds / (60 * 60 * 1000));
-    const minutes = Math.floor((milliseconds % (60 * 60 * 1000)) / (60 * 1000));
-
-    if (hours > 0) {
-      return `${hours}小时${minutes}分钟`;
-    } else {
-      return `${minutes}分钟`;
-    }
   }
 
   /**
@@ -1486,7 +1472,7 @@ class CommandsService {
   }
 
   /**
-   * 通知挂机玩家
+   * 记录挂机玩家（通知已迁移到 event-monitor.service.js）
    */
   async notifyAfkPlayer(serverId, member, afkTime, mapSize) {
     // 初始化通知记录
@@ -1497,7 +1483,7 @@ class CommandsService {
     const notifiedMap = this.afkNotifiedPlayers.get(serverId);
     const steamId = member.steamId.toString();
 
-    // 如果已经通知过，不再重复通知
+    // 如果已经记录过，不再重复记录
     if (notifiedMap.has(steamId)) {
       return;
     }
@@ -1507,36 +1493,15 @@ class CommandsService {
 
     notifiedMap.set(steamId, {
       name: member.name,
-      afkStartTime: realAfkStartTime  // 使用真实的开始时间，而不是通知时间
+      afkStartTime: realAfkStartTime
     });
 
-    // 格式化位置
-    logger.debug(`[AFK通知] 准备格式化 - 原始坐标: x=${member.x}, y=${member.y}, mapSize=${mapSize}`);
-    const position = formatPosition(member.x, member.y, mapSize);
-    logger.debug(`[AFK通知] 格式化结果: "${position}" (类型: ${typeof position})`);
-    
-    if (!position || position === 'null' || position.includes('NaN')) {
-      console.error(`❌ [AFK通知] 坐标格式化失败！使用原始坐标`);
-    }
-
-    // 发送通知
-    const message = notify('afk_start', {
-      name: member.name,
-      position: position || '未知位置',
-      minutes: afkTime
-    });
-    logger.debug(`[AFK通知] 最终消息: ${message}`);
-
-    try {
-      await this.rustPlusService.sendTeamMessage(serverId, message);
-      logger.info(`[挂机通知] ${member.name} (${afkTime}分钟) at ${position}`);
-    } catch (error) {
-      console.error(`[错误] 发送挂机通知失败:`, error.message);
-    }
+    // 通知由 event-monitor.service.js 统一发送
   }
 
   /**
    * 通知玩家回归
+   * 注意：AFK 返回通知已迁移到 event-monitor.service.js，此处仅清理状态
    */
   async notifyPlayerReturn(serverId, member) {
     if (!this.afkNotifiedPlayers.has(serverId)) {
@@ -1551,24 +1516,7 @@ class CommandsService {
       return;
     }
 
-    // 获取挂机记录
-    const afkRecord = notifiedMap.get(steamId);
-    const afkDuration = Date.now() - afkRecord.afkStartTime;
-    const durationText = this.formatDuration(afkDuration);
-
-    // 发送回归通知
-    const message = notify('afk_return', {
-      name: member.name,
-      duration: durationText
-    });
-
-    try {
-      await this.rustPlusService.sendTeamMessage(serverId, message);
-    } catch (error) {
-      console.error(`[错误] 发送回归通知失败:`, error.message);
-    }
-
-    // 清除挂机记录
+    // 清除挂机记录（通知由 event-monitor.service.js 统一发送）
     notifiedMap.delete(steamId);
   }
 

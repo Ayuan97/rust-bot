@@ -6,7 +6,7 @@
 import EventEmitter from 'events';
 import { AppMarkerType, EventTiming, EventType } from '../utils/event-constants.js';
 import { formatPosition, getDistance } from '../utils/coordinates.js';
-import { notify } from '../utils/messages.js';
+import { notify, formatDuration } from '../utils/messages.js';
 import EventTimerManager from '../utils/event-timer.js';
 import { getItemName, isImportantItem } from '../utils/item-info.js';
 import logger from '../utils/logger.js';
@@ -1319,19 +1319,20 @@ class EventMonitorService extends EventEmitter {
         if (hasMoved) {
           // 如果之前是 AFK 状态，检测返回
           if (oldState.afkSeconds >= EventTiming.AFK_TIME_SECONDS) {
-            const afkMinutes = Math.floor(oldState.afkSeconds / 60);
+            const afkMs = oldState.afkSeconds * 1000;
+            const afkDuration = formatDuration(afkMs);
             this.emit(EventType.PLAYER_AFK_RETURNED, {
               serverId,
               steamId,
               name: member.name,
-              afkMinutes,
+              afkDuration,
               time: now
             });
 
             // 发送游戏内通知
             if (isNotificationEnabled('player_afk')) {
               try {
-                const msg = notify('player_afk_returned', { name: member.name, minutes: afkMinutes });
+                const msg = notify('player_afk_returned', { name: member.name, duration: afkDuration });
                 if (msg) {
                   await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
                 }

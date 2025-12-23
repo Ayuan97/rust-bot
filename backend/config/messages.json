@@ -11,7 +11,7 @@
     "player_online": "`{name}` 上线了",
     "player_offline": "`{name}` 下线了",
     "player_afk": "`{name}` 已挂机",
-    "player_afk_returned": "`{name}` 在挂机 {minutes} 分钟后回来了",
+    "player_afk_returned": "`{name}` 在挂机 {duration} 后回来了",
 
     "small_oil_triggered": "小油井已触发 重型科学家正在赶来",
     "small_oil_warning": "小油井箱子还有 {minutes} 分钟解锁",
@@ -41,10 +41,7 @@
     "cargo_leave": "货船已离开地图",
 
     "ch47_spawn": "CH47已出现 位置: {position}",
-    "ch47_leave": "CH47已离开",
-
-    "afk_start": "`{name}` 已离开 {minutes} 分钟  -{position} ",
-    "afk_return": "`{name}` 在 {duration} 后回来了"
+    "ch47_leave": "CH47已离开"
   },
   "commands": {
     "help": {
