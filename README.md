@@ -49,7 +49,6 @@
 
 ## 📸 界面预览
 
-<!-- 请替换为实际截图 -->
 <p align="center">
   <img src="docs/assets/screenshot-dashboard.png" alt="Dashboard" width="80%" />
 </p>
@@ -57,9 +56,9 @@
 <details>
 <summary>查看更多截图</summary>
 
-| 服务器信息 | 队伍聊天 | 设备控制 |
-|:---:|:---:|:---:|
-| ![Server](docs/assets/screenshot-server.png) | ![Chat](docs/assets/screenshot-chat.png) | ![Devices](docs/assets/screenshot-devices.png) |
+| 队伍聊天 | 设备控制 |
+|:---:|:---:|
+| ![Chat](docs/assets/screenshot-chat.png) | ![Devices](docs/assets/screenshot-devices.png) |
 
 </details>
 
@@ -671,4 +670,8 @@ SOFTWARE.
 
 <p align="center">
   💬 需要帮助？添加微信：<b>Ayuan-223</b>
+</p>
+
+<p align="center">
+  <img src="docs/assets/wechat.jpg" alt="WeChat" width="200" />
 </p>
