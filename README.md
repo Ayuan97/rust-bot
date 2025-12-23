@@ -668,3 +668,7 @@ SOFTWARE.
 <p align="center">
   如有问题或建议，欢迎提交 <a href="https://github.com/your-repo/rust-bot/issues">Issue</a>
 </p>
+
+<p align="center">
+  💬 需要帮助？添加微信：<b>Ayuan-223</b>
+</p>
