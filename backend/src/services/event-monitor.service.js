@@ -587,6 +587,7 @@ class EventMonitorService extends EventEmitter {
 
         if (distance <= EventTiming.OIL_RIG_CHINOOK_MAX_SPAWN_DISTANCE) {
           const now = Date.now();
+          const direction = this.getMapDirection(smallOilRig.x, smallOilRig.y, mapSize);
           logger.server(serverId, `🛢️ 小油井已触发`);
 
           // 记录触发时间
@@ -596,13 +597,14 @@ class EventMonitorService extends EventEmitter {
             serverId,
             markerId: ch47.id,
             position,
+            direction,
             time: now
           });
 
           // 发送游戏内通知
           if (isNotificationEnabled('oil_rig_triggered')) {
             try {
-              const msg = notify('small_oil_triggered', {});
+              const msg = notify('small_oil_triggered', { direction });
               if (msg) {
                 await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
               }
@@ -669,6 +671,7 @@ class EventMonitorService extends EventEmitter {
 
         if (distance <= EventTiming.OIL_RIG_CHINOOK_MAX_SPAWN_DISTANCE) {
           const now = Date.now();
+          const direction = this.getMapDirection(largeOilRig.x, largeOilRig.y, mapSize);
           logger.server(serverId, `🛢️ 大油井已触发`);
 
           // 记录触发时间
@@ -678,13 +681,14 @@ class EventMonitorService extends EventEmitter {
             serverId,
             markerId: ch47.id,
             position,
+            direction,
             time: now
           });
 
           // 发送游戏内通知
           if (isNotificationEnabled('oil_rig_triggered')) {
             try {
-              const msg = notify('large_oil_triggered', {});
+              const msg = notify('large_oil_triggered', { direction });
               if (msg) {
                 await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
               }
