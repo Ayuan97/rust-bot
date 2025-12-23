@@ -1675,8 +1675,16 @@ class CommandsService {
    * @returns {string|null} 响应消息，null 表示不是设备命令
    */
   async tryDeviceCommand(serverId, commandName, args, context) {
-    // 获取所有带命令的设备
-    const devices = storage.getDevicesWithCommand(serverId);
+    // 获取所有带命令的设备（添加错误处理，避免影响内置命令）
+    let devices;
+    try {
+      devices = storage.getDevicesWithCommand(serverId);
+    } catch (error) {
+      // 数据库查询失败时静默处理，不影响内置命令
+      logger.debug(`设备命令查询失败: ${error.message}`);
+      return null;
+    }
+
     if (!devices || devices.length === 0) {
       return null;
     }
