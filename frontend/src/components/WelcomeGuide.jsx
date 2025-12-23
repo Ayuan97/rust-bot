@@ -208,7 +208,7 @@ const colorMap = {
  * WelcomeGuide - 新用户欢迎引导页面
  * 全面介绍产品功能和使用方法
  */
-function WelcomeGuide({ onStartPairing, onManualAdd }) {
+function WelcomeGuide({ onStartPairing }) {
   const [activeFeature, setActiveFeature] = useState(0);
   const [expandedFaq, setExpandedFaq] = useState(null);
   const [demoStep, setDemoStep] = useState(0);
@@ -270,7 +270,7 @@ function WelcomeGuide({ onStartPairing, onManualAdd }) {
               ))}
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="flex justify-center">
               <button
                 onClick={onStartPairing}
                 className="btn btn-primary text-lg px-8 py-4 shadow-xl shadow-rust-accent/30 group"
@@ -278,13 +278,6 @@ function WelcomeGuide({ onStartPairing, onManualAdd }) {
                 <FaQrcode className="group-hover:rotate-12 transition-transform" />
                 开始配对服务器
                 <FaChevronRight className="text-sm opacity-50" />
-              </button>
-              <button
-                onClick={onManualAdd}
-                className="btn btn-secondary text-lg px-8 py-4"
-              >
-                <FaServer />
-                手动添加
               </button>
             </div>
 

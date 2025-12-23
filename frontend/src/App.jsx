@@ -421,7 +421,6 @@ function App() {
         ) : servers.length === 0 ? (
           <WelcomeGuide
             onStartPairing={() => setShowPairingPanel(true)}
-            onManualAdd={() => setShowAddModal(true)}
           />
         ) : (
           <EmptyState type="server" />
