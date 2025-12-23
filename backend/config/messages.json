@@ -10,7 +10,7 @@
     "player_died": "`{name}` 在 {position} 死亡",
     "player_online": "`{name}` 上线了",
     "player_offline": "`{name}` 下线了",
-    "player_afk": "`{name}` 已挂机",
+    "player_afk": "`{name}` 已离开 {minutes} 分钟",
     "player_afk_returned": "`{name}` 在挂机 {duration} 后回来了",
 
     "small_oil_triggered": "小油井已触发 重型科学家正在赶来",

@@ -1357,18 +1357,20 @@ class EventMonitorService extends EventEmitter {
 
           // 只在首次变为 AFK 时触发通知（上次不是 AFK，但现在是 AFK）
           if (wasNotAfk && isAfkNow) {
+            const afkMinutes = Math.floor(oldState.afkSeconds / 60);
             this.emit(EventType.PLAYER_AFK, {
               serverId,
               steamId,
               name: member.name,
               position,
+              afkMinutes,
               time: now
             });
 
             // 发送游戏内通知
             if (isNotificationEnabled('player_afk')) {
               try {
-                const msg = notify('player_afk', { name: member.name });
+                const msg = notify('player_afk', { name: member.name, minutes: afkMinutes });
                 if (msg) {
                   await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
                 }
