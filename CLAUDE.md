@@ -8,7 +8,13 @@
 
 - **后端**: Node.js + Express + Socket.io + SQLite
 - **前端**: React + Vite + Tailwind CSS
-- **核心功能**: 连接 Rust+ 游戏服务器、FCM 推送监听、实时聊天、智能设备控制
+- **核心功能**:
+  - 连接 Rust+ 游戏服务器、FCM 推送监听
+  - 游戏内命令系统（队伍聊天命令）
+  - 事件监控（货船、直升机、油井、玩家状态）
+  - 智能设备控制和自动化（日夜开关、在线触发）
+  - 通知设置（可配置各类事件通知）
+  - 代理支持（xray 集成）
 
 ## 参考项目
 
@@ -54,10 +60,10 @@ npm run preview
 ## 整体架构
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      浏览器客户端                        │
-│                  (React, localhost:5173)                │
-└───────────────┬─────────────────────┬───────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│                     浏览器客户端                            │
+│                 (React, localhost:5173)                    │
+└────────────────────────────────────────────────────────────┘
                 │                     │
          REST API (Axios)      WebSocket (Socket.io)
                 │                     │
@@ -103,6 +109,20 @@ npm run preview
 ```
 
 ## 关键架构模式
+
+### 0. 服务层概览（新增）
+
+项目采用多服务协作架构，主要服务包括：
+
+| 服务 | 文件 | 职责 |
+|------|------|------|
+| **RustPlusService** | `rustplus.service.js` | 游戏服务器连接池管理 |
+| **EventMonitorService** | `event-monitor.service.js` | 事件监控（轮询地图标记） |
+| **CommandsService** | `commands.service.js` | 游戏内命令处理 |
+| **AutomationService** | `automation.service.js` | 设备自动化控制 |
+| **FCMService** | `fcm.service.js` | FCM 推送监听 |
+| **ProxyService** | `proxy.service.js` | xray 代理管理 |
+| **WebSocketService** | `websocket.service.js` | 前端实时通信 |
 
 ### 1. 服务层通信 (EventEmitter 发布/订阅)
 
@@ -351,6 +371,135 @@ export const socketService = {
 };
 ```
 
+### 7. 游戏内命令系统
+
+游戏内以 `!` 开头的队伍聊天命令由 `CommandsService` 处理：
+
+**内置命令**：
+| 命令 | 说明 |
+|------|------|
+| `!help` | 显示可用命令 |
+| `!time` | 游戏时间和天亮/天黑倒计时 |
+| `!pop` | 服务器人数和30分钟变化趋势 |
+| `!team` | 队伍统计（在线/离线/挂机） |
+| `!online` | 在线队友列表 |
+| `!afk` | 挂机队友和时长 |
+| `!leader [名]` | 移交队长 |
+| `!cargo` | 货船状态 |
+| `!heli` | 直升机状态 |
+| `!small` / `!large` | 油井状态 |
+| `!events` | 活跃事件 |
+| `!shop [物品]` | 搜索售货机 |
+| `!tr <语言> <文本>` | 翻译 |
+
+**设备命令**：
+- 设备可配置自定义命令（如 `!灯`）
+- 支持 `on`/`off`/`status` 子命令
+- 支持定时操作（如 `!灯 on 5m`）
+
+**详细文档**: `docs/COMMANDS_GUIDE.md`
+
+### 8. 事件监控系统
+
+`EventMonitorService` 通过轮询地图标记检测游戏事件：
+
+**事件类型** (`utils/event-constants.js`)：
+```javascript
+// 地图标记类型
+AppMarkerType = {
+  VendingMachine: 3,     // 售货机
+  CH47: 4,               // Chinook
+  CargoShip: 5,          // 货船
+  Crate: 6,              // 上锁箱子
+  PatrolHelicopter: 8    // 武装直升机
+}
+
+// 事件时间常量
+EventTiming = {
+  CARGO_SHIP_EGRESS_TIME: 50 * 60 * 1000,    // 50分钟
+  OIL_RIG_LOCKED_CRATE_UNLOCK_TIME: 15 * 60 * 1000,  // 15分钟
+  MAP_MARKERS_POLL_INTERVAL: 5000,           // 5秒轮询
+  AFK_TIME_SECONDS: 5 * 60                   // 5分钟判定AFK
+}
+```
+
+**事件检测流程**：
+1. 每5秒轮询地图标记
+2. 比较前后两次标记差异
+3. 检测新增/消失的实体
+4. 触发相应事件和计时器
+5. 发送游戏内通知（根据通知设置）
+
+### 9. 设备自动化系统
+
+`AutomationService` 支持智能设备自动控制：
+
+**自动化模式** (`AutoMode`)：
+```javascript
+NONE: 0,        // 无自动化
+DAY_ON: 1,      // 白天开启
+NIGHT_ON: 2,    // 夜晚开启
+ALWAYS_ON: 3,   // 始终开启
+ALWAYS_OFF: 4,  // 始终关闭
+ONLINE_ON: 7,   // 有人在线时开启
+ONLINE_OFF: 8   // 有人在线时关闭
+```
+
+**设备属性**（`devices` 表新增列）：
+- `command` - 自定义命令名
+- `auto_mode` - 自动化模式（0-8）
+- `reachable` - 设备是否可达
+- `last_trigger` - 警报触发时间
+
+### 10. 通知设置系统
+
+`settings.routes.js` 管理游戏内通知开关：
+
+```javascript
+// 默认通知设置
+DEFAULT_NOTIFICATION_SETTINGS = {
+  player_death: true,      // 玩家死亡
+  player_online: true,     // 上线
+  player_offline: true,    // 下线
+  player_afk: true,        // 挂机
+  cargo_spawn: true,       // 货船刷新
+  heli_spawn: true,        // 直升机刷新
+  oil_rig_triggered: true, // 油井触发
+  // ...
+}
+```
+
+**API**：
+- `GET /api/settings/notifications` - 获取设置
+- `POST /api/settings/notifications` - 更新设置
+- `POST /api/settings/notifications/reset` - 重置
+
+### 11. 日志系统
+
+`utils/logger.js` 提供统一日志输出：
+
+```javascript
+import logger from '../utils/logger.js';
+
+// 基础日志
+logger.info('信息');
+logger.warn('警告');
+logger.error('错误');
+logger.debug('调试');  // 需 LOG_LEVEL=debug
+
+// 带服务器名称的日志
+logger.server(serverId, '消息');  // 输出: [10:30:45] [服务器名] 消息
+
+// 设置服务器名称
+logger.setServerName(serverId, '服务器名');
+```
+
+**日志级别** (`LOG_LEVEL` 环境变量)：
+- `error` - 仅错误
+- `warn` - 错误 + 警告
+- `info` - 默认，常规信息
+- `debug` - 包含调试信息
+
 ## 常见问题和解决方案
 
 ### 数据库错误
@@ -456,21 +605,34 @@ FRONTEND_URL=http://localhost:5173
 
 **服务层（单例模式）**
 - `backend/src/services/rustplus.service.js` - 游戏服务器连接池
+- `backend/src/services/event-monitor.service.js` - 事件监控（货船、直升机、油井、玩家状态）
+- `backend/src/services/commands.service.js` - 游戏内命令处理、AFK检测、人数追踪
+- `backend/src/services/automation.service.js` - 设备自动化（日夜开关、在线触发）
 - `backend/src/services/fcm.service.js` - FCM 推送监听器
+- `backend/src/services/proxy.service.js` - xray 代理管理
 - `backend/src/services/websocket.service.js` - WebSocket 实时通信桥
-- `backend/src/services/commands.service.js` - 游戏内命令处理
+- `backend/src/services/battlemetrics.service.js` - Battlemetrics API 集成
 
 **工具层**
 - `backend/src/utils/messages.js` - 消息模板系统
 - `backend/src/utils/coordinates.js` - 坐标转换工具
+- `backend/src/utils/event-constants.js` - 事件类型和时间常量
+- `backend/src/utils/event-timer.js` - 事件计时器管理
+- `backend/src/utils/logger.js` - 日志工具（支持 LOG_LEVEL）
+- `backend/src/utils/timer.js` - 时间解析工具（5m, 1h30m 格式）
+- `backend/src/utils/item-info.js` - 物品信息和搜索
+- `backend/src/utils/monument-info.js` - 古迹信息
+- `backend/src/utils/languages.js` - 语言代码映射
 
 **数据层**
-- `backend/src/models/storage.model.js` - 服务器、设备、事件日志
-- `backend/src/models/config.model.js` - FCM 凭证（单例表）
+- `backend/src/models/storage.model.js` - 服务器、设备、事件日志、通知设置
+- `backend/src/models/config.model.js` - FCM 凭证、代理配置
 
 **路由层**
 - `backend/src/routes/server.routes.js` - 服务器/设备 CRUD
 - `backend/src/routes/pairing.routes.js` - FCM 管理和配对
+- `backend/src/routes/settings.routes.js` - 通知设置管理
+- `backend/src/routes/proxy.routes.js` - 代理配置管理
 
 ### 前端核心
 
@@ -482,13 +644,19 @@ FRONTEND_URL=http://localhost:5173
 - `frontend/src/services/api.js` - REST API 客户端
 - `frontend/src/services/socket.js` - WebSocket 客户端封装
 - `frontend/src/services/pairing.js` - 配对服务 API
+- `frontend/src/services/proxy.js` - 代理配置 API
 
 **组件层**
 - `frontend/src/components/ServerCard.jsx` - 服务器卡片
 - `frontend/src/components/ChatPanel.jsx` - 队伍聊天
 - `frontend/src/components/DeviceControl.jsx` - 设备控制
+- `frontend/src/components/DeviceEditModal.jsx` - 设备编辑（命令、自动化）
 - `frontend/src/components/PairingPanel.jsx` - 配对面板
 - `frontend/src/components/CredentialsInput.jsx` - 凭证输入
+- `frontend/src/components/SettingsPanel.jsx` - 设置面板
+- `frontend/src/components/NotificationSettings.jsx` - 通知设置
+- `frontend/src/components/ProxySettings.jsx` - 代理设置
+- `frontend/src/components/PlayerNotifications.jsx` - 玩家状态通知
 
 **配置**
 - `frontend/vite.config.js` - Vite 配置（代理设置）
@@ -505,6 +673,11 @@ CREATE TABLE servers (
   port TEXT NOT NULL,            -- 端口
   player_id TEXT NOT NULL,       -- Steam 64位 ID
   player_token TEXT NOT NULL,    -- 配对令牌（负数）
+  battlemetrics_id TEXT,         -- Battlemetrics 服务器 ID
+  img TEXT,                      -- 服务器背景图
+  logo TEXT,                     -- 服务器 Logo
+  url TEXT,                      -- 服务器网站
+  description TEXT,              -- 服务器描述
   created_at INTEGER             -- 创建时间戳
 )
 ```
@@ -516,9 +689,14 @@ CREATE TABLE devices (
   server_id TEXT NOT NULL,       -- 外键 → servers.id
   entity_id INTEGER NOT NULL,    -- 设备实体 ID
   name TEXT NOT NULL,            -- 设备名称
-  type TEXT,                     -- 设备类型（可选）
+  type TEXT,                     -- 设备类型（switch/alarm/storage）
+  command TEXT,                  -- 自定义命令名（如 "灯"）
+  auto_mode INTEGER DEFAULT 0,   -- 自动化模式（0-8）
+  reachable INTEGER DEFAULT 1,   -- 是否可达
+  last_trigger INTEGER,          -- 警报触发时间
   created_at INTEGER,
-  UNIQUE(server_id, entity_id)   -- 每个服务器的设备 ID 唯一
+  FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE,
+  UNIQUE(server_id, entity_id)
 )
 ```
 
@@ -529,7 +707,18 @@ CREATE TABLE event_logs (
   server_id TEXT NOT NULL,       -- 外键 → servers.id
   event_type TEXT NOT NULL,      -- 事件类型
   event_data TEXT,               -- JSON 格式事件数据
-  created_at INTEGER             -- 时间戳
+  created_at INTEGER,
+  FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+)
+```
+
+### notification_settings - 通知设置（单例表）
+```sql
+CREATE TABLE notification_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  settings_json TEXT NOT NULL DEFAULT '{}',  -- 通知开关配置
+  created_at INTEGER,
+  updated_at INTEGER
 )
 ```
 
@@ -544,12 +733,29 @@ CREATE TABLE fcm_credentials (
 )
 ```
 
+### proxy_config - 代理配置（单例表）
+```sql
+CREATE TABLE proxy_config (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  subscription_url TEXT,          -- 订阅链接
+  selected_node TEXT,             -- 选中的节点名称
+  proxy_port INTEGER DEFAULT 10808,
+  auto_start INTEGER DEFAULT 0,   -- 是否自动启动
+  created_at INTEGER,
+  updated_at INTEGER
+)
+```
+
 ## 环境变量
 
 ### 后端 (`backend/.env`)
 ```env
 PORT=3000                                    # HTTP 服务器端口
 FRONTEND_URL=http://localhost:5173          # 前端 URL（CORS）
+LOG_LEVEL=info                              # 日志级别: error/warn/info/debug
+PROXY_SUBSCRIPTION_URL=                     # 代理订阅链接（可选，推荐在 Web 界面配置）
+PROXY_NODE_NAME=                            # 首选节点名称
+PROXY_PORT=10808                            # 本地代理端口
 ```
 
 ### 前端 (`frontend/.env`)
@@ -565,12 +771,15 @@ VITE_SOCKET_URL=http://localhost:3000       # WebSocket 地址
 1. 加载 `.env` 环境变量
 2. 创建 `data/` 目录（如不存在）
 3. 初始化 Express + HTTP 服务器
-4. 配置 CORS（允许前端跨域）
-5. 挂载路由 (`/api/servers`, `/api/pairing`, `/api/health`)
+4. 配置 CORS（允许所有来源跨域）
+5. 挂载路由 (`/api/servers`, `/api/pairing`, `/api/proxy`, `/api/settings`, `/api/health`)
 6. 初始化 WebSocketService（Socket.io）
-7. 初始化 FCMService（3 种策略加载凭证）
-8. 设置优雅关闭处理器（SIGTERM）
-9. 监听端口 3000
+7. 初始化代理服务（优先数据库配置，其次 .env）
+8. 初始化 FCMService（3 种策略加载凭证）
+9. 自动重连到已保存的服务器
+10. 为每个连接的服务器启动 AutomationService 和 EventMonitorService
+11. 设置优雅关闭处理器（SIGTERM/SIGINT）
+12. 监听端口 3000
 
 ## 代码风格约定
 
@@ -619,19 +828,26 @@ VITE_SOCKET_URL=http://localhost:3000       # WebSocket 地址
 - `docs/ARCHITECTURE.md` - 技术架构说明
 - `docs/API_CHANNELS.md` - API 和 WebSocket 事件说明
 - `docs/COORDINATES.md` - 坐标转换系统详解
+- `docs/COMMANDS_GUIDE.md` - 游戏内命令系统完整指南
+- `docs/PROXY_SETUP.md` - 代理配置说明
 - `start.sh` - 启动脚本（同时启动前后端）
 
 ## 调试技巧
 
 ### 后端日志
 
-后端使用 Emoji 前缀的彩色日志：
+后端使用统一的日志系统（`utils/logger.js`），支持时间戳和服务器名称：
 ```
-✅ FCM 注册成功
-🔌 已连接到服务器: MyServer
-💬 [PlayerName]: Hello team!
-🚨 智能警报: Motion detected
-❌ 连接失败: Connection timeout
+[10:30:45] ✅ FCM 注册成功
+[10:30:46] [MyServer] 🔌 已连接到服务器
+[10:30:47] [MyServer] 💬 [PlayerName]: Hello team!
+[10:30:48] 🚨 智能警报: Motion detected
+[10:30:49] ❌ 连接失败: Connection timeout
+```
+
+**启用调试日志**：
+```bash
+LOG_LEVEL=debug npm run dev
 ```
 
 ### 前端控制台
@@ -653,17 +869,24 @@ curl http://localhost:3000/api/pairing/status
 
 ## 扩展性考虑
 
+**已实现**：
+- 自动重连到已保存的服务器
+- 代理支持（xray 集成）
+- 游戏内命令系统
+- 设备自动化控制
+- 事件监控和通知
+
 **当前限制**：
 - SQLite（单线程） - 适合小规模部署
-- 内存连接池 - 服务器重启丢失连接状态
+- 内存事件状态 - 服务器重启丢失活跃事件
 - 单实例部署 - 无集群支持
 
 **扩展路径**：
 - 切换到 PostgreSQL（支持多后端实例）
-- 使用 Redis 存储连接状态
-- 实现 RustPlus 连接池
+- 使用 Redis 存储事件状态
 - 添加速率限制和请求验证
 - Docker 容器化部署
+- Web 推送通知（浏览器通知）
 
 ---
 没有要求不能私自创建文档-必须遵守
