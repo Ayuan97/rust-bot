@@ -54,46 +54,6 @@ const features = [
   }
 ];
 
-const scenarios = [
-  {
-    icon: FaDesktop,
-    title: '工作时摸鱼',
-    description: '老板看你在认真看网页，其实你在监控基地有没有被抄'
-  },
-  {
-    icon: FaMobile,
-    title: '外出时掌控',
-    description: '手机打开网页，随时查看服务器状态和队友动态'
-  },
-  {
-    icon: FaClock,
-    title: '半夜守货船',
-    description: '设置通知提醒，货船刷新第一时间收到推送'
-  },
-  {
-    icon: FaShieldAlt,
-    title: '远程护家',
-    description: '智能警报触发时立即收到通知，远程开灯吓退入侵者'
-  }
-];
-
-const comparisons = [
-  { feature: '网页访问', us: true, official: false },
-  { feature: '多服务器管理', us: true, official: false },
-  { feature: '游戏内命令(!time等)', us: true, official: false },
-  { feature: '队友上下线/挂机通知', us: true, official: false },
-  { feature: '子网格精确定位(M15-3)', us: true, official: false },
-  { feature: '古迹自动识别', us: true, official: false },
-  { feature: '事件历史记录', us: true, official: false },
-  { feature: '售货机搜索', us: true, official: false },
-  { feature: '袭击检测警报', us: true, official: false },
-  { feature: '队友位置追踪', us: true, official: true },
-  { feature: '智能设备控制', us: true, official: true },
-  { feature: '队伍聊天', us: true, official: true },
-  { feature: '游戏事件通知', us: true, official: true },
-  { feature: '免费使用', us: true, official: true },
-];
-
 const faqs = [
   {
     q: '这个工具安全吗？会不会被封号？',
@@ -341,7 +301,7 @@ function WelcomeGuide({ onStartPairing, onManualAdd }) {
             <p className="text-gray-400">看看你将获得什么</p>
           </div>
 
-          <div className="grid lg:grid-cols-2 gap-6">
+          <div className="max-w-md mx-auto">
             {/* Mock Server Card */}
             <div className="bg-dark-900/50 rounded-xl p-4 border border-white/5">
               <div className="flex items-center gap-3 mb-4">
@@ -397,54 +357,6 @@ function WelcomeGuide({ onStartPairing, onManualAdd }) {
                 ))}
               </div>
             </div>
-
-            {/* Mock Events & Chat */}
-            <div className="space-y-4">
-              {/* Events */}
-              <div className="bg-dark-900/50 rounded-xl p-4 border border-white/5">
-                <div className="text-xs text-gray-400 mb-3 flex items-center gap-2">
-                  <FaBell className="text-rust-accent" /> 实时事件
-                </div>
-                <div className="space-y-2">
-                  <div className={`flex items-center gap-2 p-2 rounded-lg transition-all ${demoStep === 0 ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-dark-800/30'}`}>
-                    <FaShip className="text-blue-400" />
-                    <span className="text-sm text-gray-300">货船已刷新</span>
-                    <span className="text-xs text-gray-500 ml-auto">刚刚</span>
-                  </div>
-                  <div className={`flex items-center gap-2 p-2 rounded-lg transition-all ${demoStep === 1 ? 'bg-red-500/10 border border-red-500/20' : 'bg-dark-800/30'}`}>
-                    <FaHelicopter className="text-red-400" />
-                    <span className="text-sm text-gray-300">武装直升机出现</span>
-                    <span className="text-xs text-gray-500 ml-auto">2分钟前</span>
-                  </div>
-                  <div className={`flex items-center gap-2 p-2 rounded-lg transition-all ${demoStep === 2 ? 'bg-purple-500/10 border border-purple-500/20' : 'bg-dark-800/30'}`}>
-                    <FaBox className="text-purple-400" />
-                    <span className="text-sm text-gray-300">上锁箱子出现</span>
-                    <span className="text-xs text-gray-500 ml-auto">5分钟前</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Devices */}
-              <div className="bg-dark-900/50 rounded-xl p-4 border border-white/5">
-                <div className="text-xs text-gray-400 mb-3 flex items-center gap-2">
-                  <FaLightbulb className="text-yellow-400" /> 智能设备
-                </div>
-                <div className="flex gap-2">
-                  <button className={`flex-1 p-3 rounded-lg transition-all ${demoStep === 3 ? 'bg-rust-accent text-white' : 'bg-dark-800/50 text-gray-400'}`}>
-                    <FaPowerOff className="mx-auto mb-1" />
-                    <div className="text-xs">大门</div>
-                  </button>
-                  <button className="flex-1 p-3 rounded-lg bg-rust-accent text-white">
-                    <FaLightbulb className="mx-auto mb-1" />
-                    <div className="text-xs">灯光</div>
-                  </button>
-                  <button className="flex-1 p-3 rounded-lg bg-dark-800/50 text-gray-400">
-                    <FaBell className="mx-auto mb-1" />
-                    <div className="text-xs">警报</div>
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
         </section>
 
@@ -498,26 +410,6 @@ function WelcomeGuide({ onStartPairing, onManualAdd }) {
                 </button>
               );
             })}
-          </div>
-        </section>
-
-        {/* ==================== Use Cases ==================== */}
-        <section className="panel p-6 sm:p-8">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-white mb-2">使用场景</h2>
-            <p className="text-gray-400">无论何时何地，都能掌控你的 Rust 世界</p>
-          </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {scenarios.map((scenario, i) => (
-              <div key={i} className="p-4 bg-dark-900/50 rounded-xl border border-white/5 hover:border-rust-accent/30 transition-colors group">
-                <div className="w-10 h-10 rounded-lg bg-rust-accent/10 flex items-center justify-center mb-3 group-hover:bg-rust-accent/20 transition-colors">
-                  <scenario.icon className="text-rust-accent" />
-                </div>
-                <h3 className="font-bold text-white mb-1">{scenario.title}</h3>
-                <p className="text-sm text-gray-500">{scenario.description}</p>
-              </div>
-            ))}
           </div>
         </section>
 
@@ -707,47 +599,6 @@ function WelcomeGuide({ onStartPairing, onManualAdd }) {
                 </div>
               </div>
             </div>
-          </div>
-        </section>
-
-        {/* ==================== Comparison ==================== */}
-        <section>
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-white mb-2">为什么选择我们？</h2>
-            <p className="text-gray-400">与官方 Rust+ App 功能对比</p>
-          </div>
-
-          <div className="panel overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-white/10">
-                  <th className="text-left p-4 text-gray-400 font-medium">功能</th>
-                  <th className="text-center p-4 text-rust-accent font-bold">Web Dashboard</th>
-                  <th className="text-center p-4 text-gray-400 font-medium">官方 App</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comparisons.map((row, i) => (
-                  <tr key={i} className="border-b border-white/5 last:border-0">
-                    <td className="p-4 text-gray-300">{row.feature}</td>
-                    <td className="p-4 text-center">
-                      {row.us ? (
-                        <FaCheck className="text-green-400 mx-auto" />
-                      ) : (
-                        <FaTimes className="text-red-400 mx-auto" />
-                      )}
-                    </td>
-                    <td className="p-4 text-center">
-                      {row.official ? (
-                        <FaCheck className="text-green-400 mx-auto" />
-                      ) : (
-                        <FaTimes className="text-gray-600 mx-auto" />
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         </section>
 
