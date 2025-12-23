@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { FaLightbulb, FaPlus, FaTrash, FaSync, FaPowerOff, FaBolt, FaEdit, FaTerminal, FaRobot } from 'react-icons/fa';
+import { FaLightbulb, FaTrash, FaSync, FaPowerOff, FaBolt, FaEdit, FaTerminal, FaRobot } from 'react-icons/fa';
 import socketService from '../services/socket';
-import { getDevices, addDevice as apiAddDevice, deleteDevice as apiDeleteDevice } from '../services/api';
+import { getDevices, deleteDevice as apiDeleteDevice } from '../services/api';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmModal';
 import EmptyState from './EmptyState';
@@ -22,13 +22,7 @@ const AUTO_MODE_NAMES = {
 function DeviceControl({ serverId }) {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
   const [editingDevice, setEditingDevice] = useState(null);
-  const [newDevice, setNewDevice] = useState({
-    entityId: '',
-    name: '',
-    type: 'switch'
-  });
 
   const toast = useToast();
   const confirm = useConfirm();
@@ -75,31 +69,6 @@ function DeviceControl({ serverId }) {
       console.error('获取设备列表失败:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleAddDevice = async (e) => {
-    e.preventDefault();
-
-    if (!newDevice.entityId || !newDevice.name) {
-      toast.warning('请填写所有必填字段');
-      return;
-    }
-
-    try {
-      await apiAddDevice(serverId, {
-        entityId: parseInt(newDevice.entityId),
-        name: newDevice.name,
-        type: newDevice.type
-      });
-
-      setNewDevice({ entityId: '', name: '', type: 'switch' });
-      setShowAddForm(false);
-      fetchDevices();
-      toast.success('设备添加成功');
-    } catch (error) {
-      console.error('添加设备失败:', error);
-      toast.error('添加失败: ' + error.message);
     }
   };
 
@@ -179,75 +148,14 @@ function DeviceControl({ serverId }) {
           </div>
           <p className="text-xs text-gray-500 mt-1">在游戏中配对设备后自动添加</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            className="btn btn-secondary flex items-center gap-2 text-sm"
-            onClick={fetchDevices}
-            title="刷新设备列表"
-          >
-            <FaSync />
-          </button>
-          <button
-            className="btn btn-secondary flex items-center gap-2 text-sm"
-            onClick={() => setShowAddForm(!showAddForm)}
-            title="手动添加设备"
-          >
-            <FaPlus />
-          </button>
-        </div>
+        <button
+          className="btn btn-secondary flex items-center gap-2 text-sm"
+          onClick={fetchDevices}
+          title="刷新设备列表"
+        >
+          <FaSync />
+        </button>
       </div>
-
-      {/* 添加设备表单 */}
-      {showAddForm && (
-        <form onSubmit={handleAddDevice} className="mb-4 p-4 bg-rust-gray rounded-lg">
-          <div className="grid grid-cols-1 gap-3">
-            <input
-              type="number"
-              className="input"
-              placeholder="设备 ID (Entity ID)"
-              value={newDevice.entityId}
-              onChange={(e) =>
-                setNewDevice({ ...newDevice, entityId: e.target.value })
-              }
-              required
-            />
-            <input
-              type="text"
-              className="input"
-              placeholder="设备名称"
-              value={newDevice.name}
-              onChange={(e) =>
-                setNewDevice({ ...newDevice, name: e.target.value })
-              }
-              required
-            />
-            <select
-              className="input"
-              value={newDevice.type}
-              onChange={(e) =>
-                setNewDevice({ ...newDevice, type: e.target.value })
-              }
-            >
-              <option value="switch">开关</option>
-              <option value="light">灯光</option>
-              <option value="door">门</option>
-              <option value="alarm">警报</option>
-            </select>
-            <div className="flex gap-2">
-              <button type="submit" className="btn btn-primary flex-1">
-                确认添加
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary flex-1"
-                onClick={() => setShowAddForm(false)}
-              >
-                取消
-              </button>
-            </div>
-          </div>
-        </form>
-      )}
 
       {/* 设备列表 */}
       <div className="flex-1 overflow-y-auto space-y-2">

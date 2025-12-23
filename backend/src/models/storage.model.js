@@ -89,12 +89,18 @@ class Storage {
       { name: 'last_trigger', type: 'INTEGER DEFAULT NULL' }    // 警报触发时间
     ];
 
+    // 获取现有列信息
+    const existingColumns = this.db.prepare("PRAGMA table_info(devices)").all();
+    const existingColumnNames = new Set(existingColumns.map(col => col.name));
+
     for (const col of deviceColumnsToAdd) {
-      try {
-        this.db.exec(`ALTER TABLE devices ADD COLUMN ${col.name} ${col.type}`);
-        console.log(`✅ devices 表添加 ${col.name} 列`);
-      } catch (error) {
-        // 列已存在，忽略错误
+      if (!existingColumnNames.has(col.name)) {
+        try {
+          this.db.exec(`ALTER TABLE devices ADD COLUMN ${col.name} ${col.type}`);
+          console.log(`✅ devices 表添加 ${col.name} 列`);
+        } catch (error) {
+          console.error(`❌ devices 表添加 ${col.name} 列失败:`, error.message);
+        }
       }
     }
 
