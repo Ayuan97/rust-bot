@@ -20,6 +20,7 @@ import proxyRoutes from './routes/proxy.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import { formatPosition } from './utils/coordinates.js';
 import AutomationService from './services/automation.service.js';
+import DayNightNotifier from './services/day-night-notifier.js';
 
 // 加载环境变量
 dotenv.config();
@@ -35,6 +36,10 @@ if (!existsSync(dataDir)) {
 
 const app = express();
 const server = createServer(app);
+
+// 模块级服务实例（用于优雅关闭）
+let automationService = null;
+let dayNightNotifier = null;
 
 // 设置 server 超时，加速优雅关闭
 server.keepAliveTimeout = 5000;
@@ -309,16 +314,21 @@ const initializeFCM = async () => {
     });
 
     // 初始化自动化服务
-    const automationService = new AutomationService(rustPlusService);
+    automationService = new AutomationService(rustPlusService);
 
-    // 监听服务器连接事件，启动自动化
+    // 初始化昼夜提醒服务
+    dayNightNotifier = new DayNightNotifier(rustPlusService);
+
+    // 监听服务器连接事件，启动自动化和昼夜提醒
     rustPlusService.on('server:connected', ({ serverId }) => {
       automationService.start(serverId);
+      dayNightNotifier.start(serverId);
     });
 
-    // 监听服务器断开事件，停止自动化
+    // 监听服务器断开事件，停止自动化和昼夜提醒
     rustPlusService.on('server:disconnected', ({ serverId }) => {
       automationService.stop(serverId);
+      dayNightNotifier.stop(serverId);
       // 清理命令服务中的定时器
       const commandsService = rustPlusService.getCommandsService();
       commandsService?.clearServerTimeouts?.(serverId);
@@ -519,6 +529,20 @@ const gracefulShutdown = async (signal) => {
       rustPlusService.eventMonitorService?.stopAll();
     } catch (err) {
       console.warn('⚠️  停止事件监控失败:', err.message);
+    }
+
+    // 3.1 停止自动化服务
+    try {
+      automationService?.stopAll();
+    } catch (err) {
+      console.warn('⚠️  停止自动化服务失败:', err.message);
+    }
+
+    // 3.2 停止昼夜提醒服务
+    try {
+      dayNightNotifier?.stopAll();
+    } catch (err) {
+      console.warn('⚠️  停止昼夜提醒服务失败:', err.message);
     }
 
     // 4. 停止命令服务中的定时器（AFK检测、人数追踪）
