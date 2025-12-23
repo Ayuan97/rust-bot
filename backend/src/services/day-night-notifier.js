@@ -121,9 +121,9 @@ class DayNightNotifier {
         // 发送通知（不使用表情符号）
         let message;
         if (changeType === 'night') {
-          message = `[提醒] ${realMinutes} 分钟后 天黑`;
+          message = `${realMinutes} 分钟后 天黑`;
         } else {
-          message = `[提醒] ${realMinutes} 分钟后 天亮`;
+          message = `${realMinutes} 分钟后 天亮`;
         }
 
         console.log(`🌓 [昼夜提醒] ${message}`);
