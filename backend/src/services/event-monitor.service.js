@@ -938,23 +938,28 @@ class EventMonitorService extends EventEmitter {
     const dx = x - centerX;
     const dy = y - centerY;
 
-    let direction = '';
+    let ns = ''; // 南北
+    let ew = ''; // 东西
 
     // Y轴：上为北，下为南
     if (dy > mapSize * 0.1) {
-      direction += '北';
+      ns = '北';
     } else if (dy < -mapSize * 0.1) {
-      direction += '南';
+      ns = '南';
     }
 
     // X轴：右为东，左为西
     if (dx > mapSize * 0.1) {
-      direction += '东';
+      ew = '东';
     } else if (dx < -mapSize * 0.1) {
-      direction += '西';
+      ew = '西';
     }
 
-    return direction || '中部';
+    // 中文习惯：东北、东南、西北、西南（先东西后南北）
+    if (ew && ns) {
+      return ew + ns;
+    }
+    return ew || ns || '中部';
   }
 
   /**
