@@ -21,26 +21,26 @@
     "large_oil_warning": "大油井箱子还有 {minutes} 分钟解锁",
     "large_oil_unlocked": "大油井箱子已解锁！",
 
-    "heli_spawn": "武装直升机出现 {direction} {position}",
-    "heli_spawn_predicted": "武装直升机出现 {direction} {position} 预测到达: {predicted}",
-    "heli_downed": "武装直升机被击落 {direction} {position}",
+    "heli_spawn": "武装直升机出现 {direction} 位于 {position}",
+    "heli_spawn_predicted": "武装直升机出现 {direction} 位于 {position} 预测到达 {predicted}",
+    "heli_downed": "武装直升机被击落 {direction} 位于 {position}",
     "heli_leave": "武装直升机已离开 {direction}",
 
-    "crate_spawn": "上锁箱子出现 {position}",
+    "crate_spawn": "上锁箱子出现 位于 {position}",
 
-    "raid_detected": "检测到袭击 {position} ({count}次爆炸)",
+    "raid_detected": "检测到袭击 位于 {position} ({count}次爆炸)",
 
-    "vending_new": "新售货机出现 {position} 共{count}件商品",
+    "vending_new": "新售货机出现 位于 {position} 共{count}件商品",
     "vending_important": " 重要物品: {items}",
 
-    "cargo_spawn": "货船出现 {direction} {position}",
+    "cargo_spawn": "货船出现 {direction} 位于 {position}",
     "cargo_spawn_direction_only": "货船出现 {direction}",
-    "cargo_dock": "货船已停靠港口 {position}",
-    "cargo_egress_warning": "货船将在 {minutes} 分钟后Egress {position}",
-    "cargo_egress": "货船Egress 辐射快速上升 {position} 赶紧撤离！",
+    "cargo_dock": "货船已停靠港口 位于 {position}",
+    "cargo_egress_warning": "货船将在 {minutes} 分钟后Egress 位于 {position}",
+    "cargo_egress": "货船Egress 辐射快速上升 位于 {position} 赶紧撤离！",
     "cargo_leave": "货船已离开地图",
 
-    "ch47_spawn": "CH47出现 {position}",
+    "ch47_spawn": "CH47出现 位于 {position}",
     "ch47_leave": "CH47已离开"
   },
   "commands": {
