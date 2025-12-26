@@ -88,7 +88,7 @@ class ProxyService extends EventEmitter {
   async generateXrayConfig(node) {
     const config = {
       log: {
-        loglevel: 'warning',
+        loglevel: 'none',
       },
       inbounds: [
         {

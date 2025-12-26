@@ -113,9 +113,12 @@ class EventMonitorService extends EventEmitter {
   }
 
   /**
-   * 加载古迹位置
+   * 加载古迹位置（带重试机制）
    */
-  async loadMonuments(serverId) {
+  async loadMonuments(serverId, retryCount = 0) {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAYS = [1000, 2000, 4000]; // 递增延迟
+
     try {
       // 使用 getMap 获取包含 monuments 的地图信息
       const map = await this.rustPlusService.getMap(serverId);
@@ -125,13 +128,28 @@ class EventMonitorService extends EventEmitter {
         logger.server(serverId, `🗺️ 加载古迹: ${map.monuments.length} 个`);
       }
     } catch (error) {
-      // AppError { error: 'not_found' } 表示玩家不在服务器内，这是正常的
       const errorStr = JSON.stringify(error) || String(error);
+
+      // AppError { error: 'not_found' } 表示玩家不在服务器内，这是正常的
       if (errorStr.includes('not_found')) {
         logger.server(serverId, `ℹ️ 跳过加载古迹（玩家未在服务器内）`);
         return;
       }
-      console.error(`❌ 加载古迹位置失败:`, error);
+
+      // 超时错误时进行重试
+      if (errorStr.includes('Timeout') && retryCount < MAX_RETRIES) {
+        const delay = RETRY_DELAYS[retryCount] || 4000;
+        logger.server(serverId, `⏳ 加载古迹超时，${delay / 1000}秒后重试 (${retryCount + 1}/${MAX_RETRIES})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this.loadMonuments(serverId, retryCount + 1);
+      }
+
+      // 重试次数用尽或其他错误
+      if (retryCount >= MAX_RETRIES) {
+        logger.server(serverId, `❌ 加载古迹失败（已重试${MAX_RETRIES}次）`);
+      } else {
+        console.error(`❌ 加载古迹位置失败:`, error);
+      }
     }
   }
 

@@ -20,9 +20,8 @@ class RustPlusService extends EventEmitter {
     this.commandsService = new CommandsService(this, this.eventMonitorService); // 命令处理服务
 
     // 重连配置
-    this.RECONNECT_MAX_ATTEMPTS = 5;
-    this.RECONNECT_BASE_DELAY = 5000; // 5秒基础延迟
-    this.RECONNECT_MAX_DELAY = 60000; // 最大60秒延迟
+    this.RECONNECT_INITIAL_DELAYS = [5000, 10000, 20000, 40000, 60000]; // 前5次递增延迟
+    this.RECONNECT_INTERVAL = 60000; // 之后每60秒重试一次（无限重试）
 
     // 是否使用 Facepunch 官方代理连接（通过 wss://companion-rust.facepunch.com）
     // 当直接连接游戏服务器 IP 失败时，可以启用此选项
@@ -247,7 +246,7 @@ class RustPlusService extends EventEmitter {
   }
 
   /**
-   * 调度自动重连（指数退避）
+   * 调度自动重连（前5次递增延迟，之后每60秒无限重试）
    */
   scheduleReconnect(serverId) {
     const config = this.serverConfigs.get(serverId);
@@ -257,22 +256,14 @@ class RustPlusService extends EventEmitter {
     }
 
     const attempts = (this.reconnectAttempts.get(serverId) || 0) + 1;
-    if (attempts > this.RECONNECT_MAX_ATTEMPTS) {
-      console.log(`❌ 服务器 ${serverId} 重连失败：已达最大尝试次数 (${this.RECONNECT_MAX_ATTEMPTS})`);
-      this.emit('server:reconnect:failed', { serverId, attempts });
-      this.reconnectAttempts.delete(serverId);
-      return;
-    }
-
     this.reconnectAttempts.set(serverId, attempts);
 
-    // 指数退避：5s, 10s, 20s, 40s, 60s
-    const delay = Math.min(
-      this.RECONNECT_BASE_DELAY * Math.pow(2, attempts - 1),
-      this.RECONNECT_MAX_DELAY
-    );
+    // 前5次使用递增延迟，之后固定60秒
+    const delay = attempts <= this.RECONNECT_INITIAL_DELAYS.length
+      ? this.RECONNECT_INITIAL_DELAYS[attempts - 1]
+      : this.RECONNECT_INTERVAL;
 
-    logger.server(serverId, `🔄 ${delay / 1000}s 后重连 (${attempts}/${this.RECONNECT_MAX_ATTEMPTS})`);
+    logger.server(serverId, `🔄 ${delay / 1000}s 后重连 (第 ${attempts} 次)`);
     this.emit('server:reconnecting', { serverId, attempts, delay });
 
     const timer = setTimeout(async () => {
