@@ -1680,8 +1680,7 @@ class CommandsService {
     try {
       devices = storage.getDevicesWithCommand(serverId);
     } catch (error) {
-      // 数据库查询失败时静默处理，不影响内置命令
-      logger.debug(`设备命令查询失败: ${error.message}`);
+
       return null;
     }
 

@@ -512,7 +512,6 @@ class RustPlusService extends EventEmitter {
     // 启动队列处理
     this.processChatQueue(serverId);
 
-    logger.debug(`📨 消息已加入队列 (${serverId}): ${messages.length} 条`);
     return { success: true, message, splitCount: messages.length };
   }
 
