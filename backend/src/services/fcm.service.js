@@ -27,7 +27,6 @@ class FCMService extends EventEmitter {
     this.fcmListener = null;
     this.credentials = null;
     this.isListening = false;
-    this.heartbeatInterval = null;
     this.reconnectTimer = null;
     this.lastDisconnectTime = null;
     this.proxyAgent = null; // 代理 Agent (用于 HTTP 请求)
@@ -168,14 +167,6 @@ class FCMService extends EventEmitter {
     this.fcmListener.on('connect', () => {
       console.log('🔗 FCM 连接已建立');
       console.log('📡 开始接收推送通知...');
-
-      // 每30秒输出一次心跳日志，确认连接活跃
-      if (this.heartbeatInterval) {
-        clearInterval(this.heartbeatInterval);
-      }
-      this.heartbeatInterval = setInterval(() => {
-        logger.debug(`💓 FCM 连接心跳检查 - 状态: ${this.isListening ? '活跃' : '已断开'} - ${new Date().toLocaleTimeString()}`);
-      }, 30000);
     });
 
     // 添加断开连接事件监听（正确的事件名是 'disconnect'）
@@ -199,11 +190,6 @@ class FCMService extends EventEmitter {
       }
 
       this.isListening = false;
-
-      if (this.heartbeatInterval) {
-        clearInterval(this.heartbeatInterval);
-        this.heartbeatInterval = null;
-      }
 
       // 清除之前的重连定时器
       if (this.reconnectTimer) {
@@ -409,11 +395,6 @@ class FCMService extends EventEmitter {
       this.fcmListener = null;
       this.isListening = false;
 
-      if (this.heartbeatInterval) {
-        clearInterval(this.heartbeatInterval);
-        this.heartbeatInterval = null;
-      }
-
       if (this.reconnectTimer) {
         clearTimeout(this.reconnectTimer);
         this.reconnectTimer = null;
@@ -471,7 +452,7 @@ class FCMService extends EventEmitter {
         data = { ...data, ...convertedData };
       }
 
-      console.log('📨 处理后的数据:', JSON.stringify(data, null, 2));
+      // console.log('📨 处理后的数据:', JSON.stringify(data, null, 2));
 
       // 解析消息数据 - body 可能是字符串或对象
       let body = {};
