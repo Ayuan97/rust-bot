@@ -1,11 +1,90 @@
 import { Server } from 'socket.io';
+import jwt from 'jsonwebtoken';
+import { PrismaClient } from '@prisma/client';
 import rustPlusService from './rustplus.service.js';
 import logger from '../utils/logger.js';
+
+const prisma = new PrismaClient();
 
 class WebSocketService {
   constructor() {
     this.io = null;
     this.rustPlusListenersInitialized = false;
+  }
+
+  /**
+   * Socket.io 认证中间件
+   * 验证 JWT token 并将 userId 附加到 socket
+   */
+  async authenticateSocket(socket, next) {
+    try {
+      // 1. 从 auth 或 headers 中获取 token
+      let token = socket.handshake.auth?.token;
+
+      if (!token) {
+        const authHeader = socket.handshake.headers?.authorization;
+        if (authHeader) {
+          const parts = authHeader.split(' ');
+          if (parts.length === 2 && parts[0] === 'Bearer') {
+            token = parts[1];
+          }
+        }
+      }
+
+      if (!token) {
+        return next(new Error('未提供认证令牌'));
+      }
+
+      // 2. 验证 token
+      let decoded;
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET);
+      } catch (error) {
+        if (error.name === 'TokenExpiredError') {
+          return next(new Error('认证令牌已过期'));
+        }
+        if (error.name === 'JsonWebTokenError') {
+          return next(new Error('无效的认证令牌'));
+        }
+        throw error;
+      }
+
+      // 3. 从数据库获取用户信息
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        include: {
+          subscription: true
+        }
+      });
+
+      if (!user) {
+        return next(new Error('用户不存在'));
+      }
+
+      // 4. 检查用户状态
+      if (!user.isActive) {
+        return next(new Error('账号已被禁用'));
+      }
+
+      // 5. 检查订阅是否过期
+      if (user.subscription && new Date() > user.subscription.endDate) {
+        return next(new Error('订阅已过期，请续费'));
+      }
+
+      // 6. 将用户信息附加到 socket
+      socket.userId = user.id;
+      socket.username = user.username;
+      socket.email = user.email;
+      socket.isAdmin = user.isAdmin;
+
+      logger.debug(`✅ Socket 认证成功: 用户 ${user.username} (${user.id})`);
+
+      // 认证成功
+      next();
+    } catch (error) {
+      logger.error('Socket 认证错误:', error.message);
+      next(new Error('认证失败'));
+    }
   }
 
   /**
@@ -19,10 +98,13 @@ class WebSocketService {
       }
     });
 
+    // 注册认证中间件
+    this.io.use((socket, next) => this.authenticateSocket(socket, next));
+
     this.setupEventHandlers();
     this.setupRustPlusListeners();
 
-    console.log('✅ WebSocket 服务已启动');
+    console.log('✅ WebSocket 服务已启动（已启用认证）');
   }
 
   /**
@@ -30,6 +112,13 @@ class WebSocketService {
    */
   setupEventHandlers() {
     this.io.on('connection', (socket) => {
+      // 用户连接时加入专属房间
+      const roomName = `user:${socket.userId}`;
+      socket.join(roomName);
+
+      logger.info(`👤 用户 ${socket.username} (${socket.userId}) 已连接 WebSocket`);
+      logger.debug(`   已加入房间: ${roomName}`);
+
       // 客户端请求连接到 Rust+ 服务器
       socket.on('server:connect', async (config) => {
         try {
@@ -305,7 +394,7 @@ class WebSocketService {
       });
 
       socket.on('disconnect', () => {
-        // 静默处理客户端断开
+        logger.info(`👋 用户 ${socket.username} (${socket.userId}) 断开 WebSocket 连接`);
       });
     });
   }
