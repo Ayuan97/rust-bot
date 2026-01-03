@@ -16,6 +16,11 @@ backend/data/
 *.sqlite
 *.sqlite3
 
+# Prisma
+node_modules/.prisma/
+backend/prisma/migrations/
+!backend/prisma/schema.prisma
+
 # Build output
 dist/
 build/
