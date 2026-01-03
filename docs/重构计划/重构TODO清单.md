@@ -539,9 +539,11 @@
 
 ---
 
-#### TODO-015: Commands 用户隔离 ⏳
+#### TODO-015: Commands 用户隔离 ✅
 **优先级**: P0
 **预计工时**: 8 小时
+**实际工时**: 6 小时
+**完成时间**: 2026-01-03
 
 **任务描述**：
 1. 创建 `services/user-commands.js`
@@ -552,11 +554,55 @@
 3. 集成到 UserServiceManager
 
 **完成标准**：
-- [ ] 每个用户有独立的命令系统
-- [ ] 命令响应正确隔离
-- [ ] 自定义设备命令正常工作
+- [x] 每个用户有独立的命令系统
+- [x] 命令响应正确隔离
+- [x] 自定义设备命令正常工作
 
 **依赖**：TODO-014
+
+**实现细节**：
+- **backend/src/services/user-commands.js**：
+  * 构造函数接收 userId、rustPlusService 和 eventMonitorService
+  * registerBuiltInCommands() - 注册所有内置命令
+  * handleMessage(serverId, name, steamId, message) - 命令处理入口
+  * tryDeviceCommand() - 尝试执行设备命令
+  * getDeviceCommands(serverId) - 从 Prisma 查询用户设备命令
+  * handleSwitchCommand() - 处理开关命令（on/off/status/toggle + 延迟）
+  * handleAlarmCommand() - 处理警报命令
+  * 内置命令：help, time, pop, team, online, afk, cargo, heli, small, large
+  * 设备命令支持时间延迟（5m, 1h30m 格式）
+  * 所有命令在用户上下文中执行
+
+- **backend/src/services/user-service-manager.js**：
+  * 导入 UserCommands
+  * 构造函数中实例化 commandsService
+  * team:message 事件绑定自动调用 commandsService.handleMessage()
+  * getStatus() 返回命令服务状态
+
+- **backend/test-commands.js**：
+  * 创建两个测试用户并初始化服务
+  * 创建测试服务器和设备（自定义命令）
+  * 验证 UserCommands 实例化
+  * 验证用户隔离（userId 字段）
+  * 验证设备命令查询（用户级别隔离）
+  * 验证内置命令注册（10个）
+  * 验证命令处理功能
+  * 验证跨用户查询返回空
+  * 所有测试通过 ✅
+
+- 提交: 8e7583e
+
+**测试覆盖**：
+- ✅ UserCommands 创建和初始化
+- ✅ 用户隔离验证（userId 字段）
+- ✅ 设备命令查询用户级别隔离
+- ✅ 内置命令注册验证（10个命令）
+- ✅ 命令处理功能验证
+- ✅ 跨用户查询返回空（命令隔离）
+- ✅ 数据库查询通过 server.userId 过滤
+- ✅ 集成到 UserServiceManager
+- ✅ 服务状态验证
+- ✅ 命令前缀配置验证
 
 ---
 
@@ -1013,10 +1059,10 @@
 ## 进度追踪
 
 **当前阶段**: 阶段 2 - 核心功能重构
-**当前任务**: TODO-012 WebSocket 房间隔离
-**已完成**: 11/34
+**当前任务**: TODO-016 订阅检查定时任务
+**已完成**: 15/34
 **进行中**: 0/34
-**待开始**: 23/34
+**待开始**: 19/34
 
 **完成任务列表**：
 - ✅ TODO-001: Docker Compose 环境搭建
@@ -1030,8 +1076,12 @@
 - ✅ TODO-009: RustPlusManager 用户隔离
 - ✅ TODO-010: FCMManager 用户隔离
 - ✅ TODO-011: WebSocket 认证
+- ✅ TODO-012: WebSocket 房间隔离
+- ✅ TODO-013: EventMonitor 用户隔离
+- ✅ TODO-014: Automation 用户隔离
+- ✅ TODO-015: Commands 用户隔离
 
-**更新时间**: 2026-01-03 15:50
+**更新时间**: 2026-01-03 19:20
 
 ---
 
