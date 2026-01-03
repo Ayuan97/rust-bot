@@ -150,7 +150,7 @@ class UserServiceManager extends EventEmitter {
       // TODO: 从用户配置或全局代理配置中加载代理设置
       // this.rustPlusService.setProxyConfig({ host: '127.0.0.1', port: 10808 });
 
-      // 2. 绑定 RustPlus 事件到 UserServiceManager
+      // 2. 绑定 RustPlus 事件到 UserServiceManager（转发所有事件）
       this.rustPlusService.on('server:connected', (data) => {
         console.log(`  ✅ 服务器 ${data.serverId} 已连接`);
         this.emit('server:connected', data);
@@ -164,6 +164,58 @@ class UserServiceManager extends EventEmitter {
       this.rustPlusService.on('server:error', (data) => {
         console.error(`  ⚠️  服务器 ${data.serverId} 错误:`, data.error);
         this.emit('server:error', data);
+      });
+
+      this.rustPlusService.on('server:reconnecting', (data) => {
+        this.emit('server:reconnecting', data);
+      });
+
+      this.rustPlusService.on('rust:message', (data) => {
+        this.emit('rust:message', data);
+      });
+
+      this.rustPlusService.on('team:message', (data) => {
+        this.emit('team:message', data);
+      });
+
+      this.rustPlusService.on('team:changed', (data) => {
+        this.emit('team:changed', data);
+      });
+
+      this.rustPlusService.on('entity:changed', (data) => {
+        this.emit('entity:changed', data);
+      });
+
+      this.rustPlusService.on('alarm:triggered', (data) => {
+        this.emit('alarm:triggered', data);
+      });
+
+      this.rustPlusService.on('clan:changed', (data) => {
+        this.emit('clan:changed', data);
+      });
+
+      this.rustPlusService.on('clan:message', (data) => {
+        this.emit('clan:message', data);
+      });
+
+      this.rustPlusService.on('camera:subscribing', (data) => {
+        this.emit('camera:subscribing', data);
+      });
+
+      this.rustPlusService.on('camera:subscribed', (data) => {
+        this.emit('camera:subscribed', data);
+      });
+
+      this.rustPlusService.on('camera:unsubscribed', (data) => {
+        this.emit('camera:unsubscribed', data);
+      });
+
+      this.rustPlusService.on('camera:render', (data) => {
+        this.emit('camera:render', data);
+      });
+
+      this.rustPlusService.on('camera:rays', (data) => {
+        this.emit('camera:rays', data);
       });
 
       // 3. 绑定 FCM 事件到 UserServiceManager

@@ -300,18 +300,115 @@ class GlobalServiceManager extends EventEmitter {
 
   /**
    * 绑定用户服务事件监听器
+   * 转发所有事件到 GlobalServiceManager，供 WebSocketService 监听
    * @private
    */
   _attachUserServiceListeners(userId, userService) {
+    // 监听初始化事件
+    userService.on('initialized', (data) => {
+      this.emit('user:initialized', { ...data, userId });
+    });
+
+    // 监听关闭事件
+    userService.on('shutdown', (data) => {
+      console.log(`🛑 用户 ${userId} 服务已停止`);
+      this.emit('user:shutdown', { ...data, userId });
+    });
+
     // 监听错误事件
     userService.on('error', (error) => {
       console.error(`❌ 用户 ${userId} 服务错误:`, error.message);
       this.emit('user:service:error', { userId, error });
     });
 
-    // 监听服务停止事件
-    userService.on('shutdown', () => {
-      console.log(`🛑 用户 ${userId} 服务已停止`);
+    // === RustPlus 游戏服务器事件 ===
+
+    userService.on('server:connected', (data) => {
+      this.emit('server:connected', data); // data 已包含 userId
+    });
+
+    userService.on('server:disconnected', (data) => {
+      this.emit('server:disconnected', data);
+    });
+
+    userService.on('server:error', (data) => {
+      this.emit('server:error', data);
+    });
+
+    userService.on('server:reconnecting', (data) => {
+      this.emit('server:reconnecting', data);
+    });
+
+    userService.on('rust:message', (data) => {
+      this.emit('rust:message', data);
+    });
+
+    userService.on('team:message', (data) => {
+      this.emit('team:message', data);
+    });
+
+    userService.on('team:changed', (data) => {
+      this.emit('team:changed', data);
+    });
+
+    userService.on('entity:changed', (data) => {
+      this.emit('entity:changed', data);
+    });
+
+    userService.on('alarm:triggered', (data) => {
+      this.emit('alarm:triggered', data);
+    });
+
+    userService.on('clan:changed', (data) => {
+      this.emit('clan:changed', data);
+    });
+
+    userService.on('clan:message', (data) => {
+      this.emit('clan:message', data);
+    });
+
+    // === 摄像头事件 ===
+
+    userService.on('camera:subscribing', (data) => {
+      this.emit('camera:subscribing', data);
+    });
+
+    userService.on('camera:subscribed', (data) => {
+      this.emit('camera:subscribed', data);
+    });
+
+    userService.on('camera:unsubscribed', (data) => {
+      this.emit('camera:unsubscribed', data);
+    });
+
+    userService.on('camera:render', (data) => {
+      this.emit('camera:render', data);
+    });
+
+    userService.on('camera:rays', (data) => {
+      this.emit('camera:rays', data);
+    });
+
+    // === FCM 推送事件 ===
+
+    userService.on('server:paired', (data) => {
+      this.emit('server:paired', data);
+    });
+
+    userService.on('entity:paired', (data) => {
+      this.emit('entity:paired', data);
+    });
+
+    userService.on('fcm:listening', (data) => {
+      this.emit('fcm:listening', data);
+    });
+
+    userService.on('fcm:stopped', (data) => {
+      this.emit('fcm:stopped', data);
+    });
+
+    userService.on('fcm:error', (data) => {
+      this.emit('fcm:error', data);
     });
   }
 
