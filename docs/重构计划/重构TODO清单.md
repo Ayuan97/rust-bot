@@ -219,9 +219,11 @@
 
 ### Week 3: RustPlus 和 FCM 用户隔离
 
-#### TODO-009: RustPlusManager 用户隔离 ⏳
+#### TODO-009: RustPlusManager 用户隔离 ✅
 **优先级**: P0
 **预计工时**: 10 小时
+**实际工时**: 8 小时
+**完成时间**: 2026-01-03
 
 **任务描述**：
 1. 创建 `services/user-rustplus-manager.js`
@@ -234,12 +236,20 @@
 3. 所有操作仅针对该用户的服务器
 
 **完成标准**：
-- [ ] 每个用户有独立的连接池
-- [ ] 用户 A 看不到用户 B 的服务器
-- [ ] 连接、断开功能正常
-- [ ] 事件正确触发
+- [x] 每个用户有独立的连接池
+- [x] 用户 A 看不到用户 B 的服务器
+- [x] 连接、断开功能正常
+- [x] 事件正确触发
 
 **依赖**：TODO-008
+
+**实现细节**：
+- 创建了 `backend/src/services/user-rustplus-manager.js`（972 行）
+- 集成到 `UserServiceManager`，在构造函数中实例化
+- 实现了完整的连接池管理、自动重连、消息队列、摄像头管理
+- 所有事件携带 `userId` 字段，便于多租户事件路由
+- 创建了 `backend/test-rustplus-manager.js` 完整测试脚本
+- 提交: e0c34e7
 
 ---
 
@@ -827,13 +837,24 @@
 
 ## 进度追踪
 
-**当前阶段**: 待开始
-**当前任务**: 无
-**已完成**: 0/34
+**当前阶段**: 阶段 2 - 核心功能重构
+**当前任务**: TODO-010 FCMManager 用户隔离
+**已完成**: 9/34
 **进行中**: 0/34
-**待开始**: 34/34
+**待开始**: 25/34
 
-**更新时间**: 2026-01-03
+**完成任务列表**：
+- ✅ TODO-001: Docker Compose 环境搭建
+- ✅ TODO-002: Prisma Schema 设计
+- ✅ TODO-003: 用户注册 API
+- ✅ TODO-004: 用户登录 API
+- ✅ TODO-005: JWT 认证中间件
+- ✅ TODO-006: 数据库多租户改造（部分完成，pairing/proxy 待定）
+- ✅ TODO-007: GlobalServiceManager 实现
+- ✅ TODO-008: UserServiceManager 基础实现
+- ✅ TODO-009: RustPlusManager 用户隔离
+
+**更新时间**: 2026-01-03 15:30
 
 ---
 
