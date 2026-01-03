@@ -456,6 +456,12 @@ class GlobalServiceManager extends EventEmitter {
     userService.on('player:afk', (data) => {
       this.emit('player:afk', data);
     });
+
+    // === Automation 自动化事件 ===
+
+    userService.on('automation:executed', (data) => {
+      this.emit('automation:executed', data);
+    });
   }
 
   /**

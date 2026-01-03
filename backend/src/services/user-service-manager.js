@@ -8,6 +8,7 @@ import { PrismaClient } from '@prisma/client';
 import UserRustPlusManager from './user-rustplus-manager.js';
 import UserFCMManager from './user-fcm-manager.js';
 import UserEventMonitor from './user-event-monitor.js';
+import UserAutomation from './user-automation.js';
 
 const prisma = new PrismaClient();
 
@@ -30,7 +31,7 @@ class UserServiceManager extends EventEmitter {
     this.rustPlusService = new UserRustPlusManager(userId);  // Rust+ 连接管理
     this.fcmService = new UserFCMManager(userId);            // FCM 推送监听
     this.eventMonitorService = new UserEventMonitor(userId, this.rustPlusService);  // 事件监控
-    this.automationService = null;    // 设备自动化（待实现）
+    this.automationService = new UserAutomation(userId, this.rustPlusService);      // 设备自动化
     this.commandsService = null;      // 游戏内命令（待实现）
     this.dayNightNotifier = null;     // 昼夜提醒（待实现）
 
@@ -291,8 +292,12 @@ class UserServiceManager extends EventEmitter {
         this.emit('player:afk', data);
       });
 
-      // 5. TODO: 初始化其他服务
-      // this.automationService = new UserAutomationService(this.userId, this.rustPlusService);
+      // 5. 绑定 Automation 事件到 UserServiceManager
+      this.automationService.on('automation:executed', (data) => {
+        this.emit('automation:executed', data);
+      });
+
+      // 6. TODO: 初始化其他服务
       // this.commandsService = new UserCommandsService(this.userId, this.rustPlusService);
       // this.dayNightNotifier = new UserDayNightNotifier(this.userId, this.rustPlusService);
 
@@ -327,9 +332,12 @@ class UserServiceManager extends EventEmitter {
           });
           console.log(`  ✅ 已连接到服务器: ${server.name || server.id}`);
 
-          // 连接成功后启动事件监控
+          // 连接成功后启动事件监控和自动化
           if (this.eventMonitorService) {
             await this.eventMonitorService.start(server.id);
+          }
+          if (this.automationService) {
+            this.automationService.start(server.id);
           }
         } catch (error) {
           console.error(`  ❌ 连接服务器 ${server.name || server.id} 失败:`, error.message);
@@ -393,8 +401,16 @@ class UserServiceManager extends EventEmitter {
         }
       }
 
+      // 停止自动化
+      if (this.automationService) {
+        try {
+          this.automationService.stopAll();
+        } catch (error) {
+          console.error(`  ⚠️  停止自动化服务失败:`, error.message);
+        }
+      }
+
       // TODO: 停止其他子服务
-      // if (this.automationService) await this.automationService.stop();
       // if (this.commandsService) await this.commandsService.stop();
       // if (this.dayNightNotifier) await this.dayNightNotifier.stop();
 
@@ -426,6 +442,9 @@ class UserServiceManager extends EventEmitter {
     const eventMonitorStatus = this.eventMonitorService ? {
       monitoringServers: Array.from(this.eventMonitorService.pollIntervals.keys())
     } : null;
+    const automationStatus = this.automationService ? {
+      activeServers: Array.from(this.automationService.pollIntervals.keys())
+    } : null;
 
     return {
       userId: this.userId,
@@ -443,7 +462,8 @@ class UserServiceManager extends EventEmitter {
       },
       rustPlusStats,
       fcmStatus,
-      eventMonitorStatus
+      eventMonitorStatus,
+      automationStatus
     };
   }
 }
