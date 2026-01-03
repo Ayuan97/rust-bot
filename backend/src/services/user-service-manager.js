@@ -5,6 +5,7 @@
 
 import { EventEmitter } from 'events';
 import { PrismaClient } from '@prisma/client';
+import UserRustPlusManager from './user-rustplus-manager.js';
 
 const prisma = new PrismaClient();
 
@@ -23,13 +24,13 @@ class UserServiceManager extends EventEmitter {
     // 用户信息
     this.user = null;
 
-    // 各个服务实例（后续实现）
-    this.rustPlusService = null;
-    this.fcmService = null;
-    this.eventMonitorService = null;
-    this.automationService = null;
-    this.commandsService = null;
-    this.dayNightNotifier = null;
+    // 各个服务实例
+    this.rustPlusService = new UserRustPlusManager(userId);  // Rust+ 连接管理
+    this.fcmService = null;           // FCM 推送监听（待实现）
+    this.eventMonitorService = null;  // 事件监控（待实现）
+    this.automationService = null;    // 设备自动化（待实现）
+    this.commandsService = null;      // 游戏内命令（待实现）
+    this.dayNightNotifier = null;     // 昼夜提醒（待实现）
 
     console.log(`👤 UserServiceManager 已创建 (userId: ${userId})`);
   }
@@ -144,15 +145,34 @@ class UserServiceManager extends EventEmitter {
     try {
       console.log(`  🔧 初始化子服务...`);
 
-      // TODO: 这里将初始化各个服务实例
-      // this.rustPlusService = new RustPlusService(this.userId);
-      // this.fcmService = new FCMService(this.userId);
-      // this.eventMonitorService = new EventMonitorService(this.userId);
-      // this.automationService = new AutomationService(this.userId);
-      // this.commandsService = new CommandsService(this.userId);
-      // this.dayNightNotifier = new DayNightNotifier(this.userId);
+      // 1. RustPlus 服务已在构造函数中创建，这里可以设置代理等配置
+      // TODO: 从用户配置或全局代理配置中加载代理设置
+      // this.rustPlusService.setProxyConfig({ host: '127.0.0.1', port: 10808 });
 
-      console.log(`  ✅ 子服务初始化完成（占位符）`);
+      // 2. 绑定 RustPlus 事件到 UserServiceManager
+      this.rustPlusService.on('server:connected', (data) => {
+        console.log(`  ✅ 服务器 ${data.serverId} 已连接`);
+        this.emit('server:connected', data);
+      });
+
+      this.rustPlusService.on('server:disconnected', (data) => {
+        console.log(`  ❌ 服务器 ${data.serverId} 已断开`);
+        this.emit('server:disconnected', data);
+      });
+
+      this.rustPlusService.on('server:error', (data) => {
+        console.error(`  ⚠️  服务器 ${data.serverId} 错误:`, data.error);
+        this.emit('server:error', data);
+      });
+
+      // 3. TODO: 初始化其他服务
+      // this.fcmService = new UserFCMService(this.userId);
+      // this.eventMonitorService = new UserEventMonitorService(this.userId, this.rustPlusService);
+      // this.automationService = new UserAutomationService(this.userId, this.rustPlusService);
+      // this.commandsService = new UserCommandsService(this.userId, this.rustPlusService);
+      // this.dayNightNotifier = new UserDayNightNotifier(this.userId, this.rustPlusService);
+
+      console.log(`  ✅ 子服务初始化完成`);
     } catch (error) {
       throw new Error(`初始化子服务失败: ${error.message}`);
     }
@@ -171,12 +191,28 @@ class UserServiceManager extends EventEmitter {
 
       console.log(`  🔌 连接到 ${this.user.servers.length} 个服务器...`);
 
-      // TODO: 这里将连接到用户的所有服务器
-      // for (const server of this.user.servers) {
-      //   await this.rustPlusService.connect(server);
-      // }
+      // 连接到所有服务器（并发连接）
+      const connectionPromises = this.user.servers.map(async (server) => {
+        try {
+          await this.rustPlusService.connect({
+            serverId: server.id,
+            ip: server.ip,
+            port: server.port,
+            playerId: server.playerId,
+            playerToken: server.playerToken
+          });
+          console.log(`  ✅ 已连接到服务器: ${server.name || server.id}`);
+        } catch (error) {
+          console.error(`  ❌ 连接服务器 ${server.name || server.id} 失败:`, error.message);
+          // 不抛出错误，允许部分失败
+        }
+      });
 
-      console.log(`  ✅ 服务器连接完成（占位符）`);
+      // 等待所有连接尝试完成
+      await Promise.allSettled(connectionPromises);
+
+      const connectedCount = this.rustPlusService.getConnectedServers().length;
+      console.log(`  ✅ 服务器连接完成: ${connectedCount}/${this.user.servers.length} 个成功`);
     } catch (error) {
       console.error(`  ⚠️  连接服务器失败: ${error.message}`);
       // 不抛出错误，允许部分失败
@@ -191,12 +227,12 @@ class UserServiceManager extends EventEmitter {
     try {
       console.log(`  🔌 断开服务器连接...`);
 
-      // TODO: 这里将断开所有服务器连接
-      // if (this.rustPlusService) {
-      //   await this.rustPlusService.disconnectAll();
-      // }
+      // 使用 RustPlus 服务断开所有连接
+      if (this.rustPlusService) {
+        await this.rustPlusService.disconnectAll();
+      }
 
-      console.log(`  ✅ 服务器已断开（占位符）`);
+      console.log(`  ✅ 服务器已断开`);
     } catch (error) {
       console.error(`  ⚠️  断开服务器失败: ${error.message}`);
     }
@@ -240,11 +276,14 @@ class UserServiceManager extends EventEmitter {
    * 获取服务状态
    */
   getStatus() {
+    const rustPlusStats = this.rustPlusService ? this.rustPlusService.getStats() : null;
+
     return {
       userId: this.userId,
       isInitialized: this.isInitialized,
       isShuttingDown: this.isShuttingDown,
       serverCount: this.user?.servers?.length || 0,
+      connectedServers: rustPlusStats?.connectedServers || 0,
       services: {
         rustPlus: !!this.rustPlusService,
         fcm: !!this.fcmService,
@@ -252,7 +291,8 @@ class UserServiceManager extends EventEmitter {
         automation: !!this.automationService,
         commands: !!this.commandsService,
         dayNight: !!this.dayNightNotifier
-      }
+      },
+      rustPlusStats
     };
   }
 }
