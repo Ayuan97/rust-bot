@@ -669,9 +669,11 @@
 
 ---
 
-#### TODO-017: 服务启动逻辑 ⏳
+#### TODO-017: 服务启动逻辑 ✅
 **优先级**: P0
 **预计工时**: 6 小时
+**实际工时**: 4 小时
+**完成时间**: 2026-01-03
 
 **任务描述**：
 1. 修改 `backend/src/app.js`
@@ -684,11 +686,50 @@
    - 关闭数据库连接
 
 **完成标准**：
-- [ ] 应用启动时自动初始化所有用户
-- [ ] 优雅关闭正常工作
-- [ ] 日志完整清晰
+- [x] 应用启动时自动初始化所有用户
+- [x] 优雅关闭正常工作
+- [x] 日志完整清晰
 
 **依赖**：TODO-016
+
+**实现细节**：
+- **backend/src/app.js**：
+  * 完全重构为多租户架构（~165 行，原 618 行）
+  * 移除所有全局单例服务（fcmService, rustPlusService, proxyService, AutomationService等）
+  * 移除 SQLite 模型依赖（configStorage, storage）
+  * 应用启动时调用 globalServiceManager.initializeAllActiveUsers()
+  * 简化优雅关闭逻辑为单一调用 globalServiceManager.shutdownAll()
+  * 超时时间增加到 10 秒（多租户清理需要更多时间）
+  * 健康检查返回活跃用户数
+  * 监听订阅即将过期事件
+
+- **backend/src/app-old.js**：
+  * 备份原 app.js（618 行）
+  * 保留旧的启动逻辑作为参考
+
+- **暂时禁用的路由**：
+  * serverRoutes - 依赖旧的 rustPlusService（TODO-006）
+  * pairingRoutes - 依赖 SQLite models（TODO-006）
+  * proxyRoutes - 依赖 SQLite models（TODO-006）
+
+- **保留的路由**：
+  * authRoutes - 已支持多租户
+  * settingsRoutes - 已支持多租户
+
+- 提交: 925fc02
+
+**测试覆盖**：
+- ✅ 应用成功启动
+- ✅ GlobalServiceManager 创建成功
+- ✅ WebSocket 认证和房间隔离启用
+- ✅ HTTP 服务器运行在 3000 端口
+- ✅ 多租户服务自动初始化（0个用户，符合预期）
+- ✅ 订阅检查定时器启动
+- ✅ 日志输出清晰完整
+
+**注意事项**：
+- serverRoutes/pairingRoutes/proxyRoutes 需要在 TODO-006 中完成多租户改造
+- 当前只有 auth 和 settings 路由可用
 
 ---
 
@@ -1099,10 +1140,10 @@
 ## 进度追踪
 
 **当前阶段**: 阶段 2 - 核心功能重构
-**当前任务**: TODO-017 服务启动逻辑
-**已完成**: 16/34
+**当前任务**: TODO-018 数据迁移脚本
+**已完成**: 17/34
 **进行中**: 0/34
-**待开始**: 18/34
+**待开始**: 17/34
 
 **完成任务列表**：
 - ✅ TODO-001: Docker Compose 环境搭建
@@ -1110,7 +1151,7 @@
 - ✅ TODO-003: 用户注册 API
 - ✅ TODO-004: 用户登录 API
 - ✅ TODO-005: JWT 认证中间件
-- ✅ TODO-006: 数据库多租户改造（部分完成，pairing/proxy 待定）
+- ✅ TODO-006: 数据库多租户改造（部分完成，pairing/proxy/server 路由待定）
 - ✅ TODO-007: GlobalServiceManager 实现
 - ✅ TODO-008: UserServiceManager 基础实现
 - ✅ TODO-009: RustPlusManager 用户隔离
@@ -1121,8 +1162,9 @@
 - ✅ TODO-014: Automation 用户隔离
 - ✅ TODO-015: Commands 用户隔离
 - ✅ TODO-016: 订阅检查定时任务
+- ✅ TODO-017: 服务启动逻辑
 
-**更新时间**: 2026-01-03 19:40
+**更新时间**: 2026-01-03 19:50
 
 ---
 
