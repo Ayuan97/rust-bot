@@ -292,9 +292,11 @@
 
 ---
 
-#### TODO-011: WebSocket 认证 ⏳
+#### TODO-011: WebSocket 认证 ✅
 **优先级**: P0
 **预计工时**: 4 小时
+**实际工时**: 3 小时
+**完成时间**: 2026-01-03
 
 **任务描述**：
 1. 修改 `services/websocket.service.js`
@@ -306,11 +308,33 @@
    - `socket.join(`user:${userId}`)`
 
 **完成标准**：
-- [ ] 无效 Token 无法连接
-- [ ] socket.userId 正确设置
-- [ ] 用户加入专属房间
+- [x] 无效 Token 无法连接
+- [x] socket.userId 正确设置
+- [x] 用户加入专属房间
 
 **依赖**：TODO-005
+
+**实现细节**：
+- 修改了 `backend/src/services/websocket.service.js`：
+  * 添加 `authenticateSocket()` 中间件方法
+  * 支持两种 token 传递方式（auth.token 和 Authorization header）
+  * 从数据库加载用户信息并验证状态
+  * 将 userId、username、email、isAdmin 附加到 socket
+  * 连接时自动加入 `user:${userId}` 房间
+  * 增强连接/断开日志输出
+- 创建了 `backend/test-websocket-auth.js` 完整测试脚本
+- 安装了 `socket.io-client` 依赖用于测试
+- 提交: f321bdc
+
+**测试覆盖**：
+- ✅ 无 token 连接被拒绝
+- ✅ 无效 token 连接被拒绝
+- ✅ 过期 token 连接被拒绝
+- ✅ 有效 token 连接成功（auth.token）
+- ✅ Authorization header 连接成功
+- ✅ 被禁用用户连接被拒绝
+- ✅ 订阅过期用户连接被拒绝
+- ✅ 用户房间隔离已验证（通过日志）
 
 ---
 
@@ -853,10 +877,10 @@
 ## 进度追踪
 
 **当前阶段**: 阶段 2 - 核心功能重构
-**当前任务**: TODO-011 WebSocket 认证
-**已完成**: 10/34
+**当前任务**: TODO-012 WebSocket 房间隔离
+**已完成**: 11/34
 **进行中**: 0/34
-**待开始**: 24/34
+**待开始**: 23/34
 
 **完成任务列表**：
 - ✅ TODO-001: Docker Compose 环境搭建
@@ -869,8 +893,9 @@
 - ✅ TODO-008: UserServiceManager 基础实现
 - ✅ TODO-009: RustPlusManager 用户隔离
 - ✅ TODO-010: FCMManager 用户隔离
+- ✅ TODO-011: WebSocket 认证
 
-**更新时间**: 2026-01-03 15:40
+**更新时间**: 2026-01-03 15:50
 
 ---
 
