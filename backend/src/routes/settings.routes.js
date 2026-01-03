@@ -1,11 +1,17 @@
 /**
- * 设置相关路由
+ * 设置相关路由（多租户版本）
+ * 每个用户独立的通知设置
  */
 
 import { Router } from 'express';
-import storage from '../models/storage.model.js';
+import { PrismaClient } from '@prisma/client';
+import { authenticate } from '../middleware/auth.middleware.js';
 
 const router = Router();
+const prisma = new PrismaClient();
+
+// 所有路由都需要认证
+router.use(authenticate);
 
 // 默认通知设置
 const DEFAULT_NOTIFICATION_SETTINGS = {
@@ -45,13 +51,31 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
 
 /**
  * GET /api/settings/notifications
- * 获取通知设置
+ * 获取当前用户的通知设置
  */
-router.get('/notifications', (req, res) => {
+router.get('/notifications', async (req, res) => {
   try {
-    const saved = storage.getNotificationSettings();
+    // 查找或创建用户的通知设置
+    let notificationSettings = await prisma.notificationSettings.findUnique({
+      where: { userId: req.user.id }
+    });
+
+    // 如果不存在，创建默认设置
+    if (!notificationSettings) {
+      notificationSettings = await prisma.notificationSettings.create({
+        data: {
+          userId: req.user.id,
+          settings: DEFAULT_NOTIFICATION_SETTINGS
+        }
+      });
+    }
+
     // 合并默认设置和已保存的设置
-    const settings = { ...DEFAULT_NOTIFICATION_SETTINGS, ...saved };
+    const settings = {
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      ...(typeof notificationSettings.settings === 'object' ? notificationSettings.settings : {})
+    };
+
     res.json({ success: true, settings });
   } catch (error) {
     console.error('❌ 获取通知设置失败:', error);
@@ -61,15 +85,44 @@ router.get('/notifications', (req, res) => {
 
 /**
  * POST /api/settings/notifications
- * 更新通知设置（部分更新）
+ * 更新当前用户的通知设置（部分更新）
  */
-router.post('/notifications', (req, res) => {
+router.post('/notifications', async (req, res) => {
   try {
     const partialSettings = req.body;
-    storage.updateNotificationSettings(partialSettings);
 
-    const updated = storage.getNotificationSettings();
-    const settings = { ...DEFAULT_NOTIFICATION_SETTINGS, ...updated };
+    // 查找或创建用户的通知设置
+    let notificationSettings = await prisma.notificationSettings.findUnique({
+      where: { userId: req.user.id }
+    });
+
+    if (!notificationSettings) {
+      // 创建新设置
+      notificationSettings = await prisma.notificationSettings.create({
+        data: {
+          userId: req.user.id,
+          settings: { ...DEFAULT_NOTIFICATION_SETTINGS, ...partialSettings }
+        }
+      });
+    } else {
+      // 更新现有设置（合并）
+      const currentSettings = typeof notificationSettings.settings === 'object'
+        ? notificationSettings.settings
+        : {};
+
+      notificationSettings = await prisma.notificationSettings.update({
+        where: { userId: req.user.id },
+        data: {
+          settings: { ...currentSettings, ...partialSettings }
+        }
+      });
+    }
+
+    // 合并默认设置
+    const settings = {
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      ...(typeof notificationSettings.settings === 'object' ? notificationSettings.settings : {})
+    };
 
     res.json({ success: true, settings });
   } catch (error) {
@@ -80,11 +133,22 @@ router.post('/notifications', (req, res) => {
 
 /**
  * POST /api/settings/notifications/reset
- * 重置通知设置为默认值
+ * 重置当前用户的通知设置为默认值
  */
-router.post('/notifications/reset', (req, res) => {
+router.post('/notifications/reset', async (req, res) => {
   try {
-    storage.resetNotificationSettings();
+    // 更新或创建默认设置
+    await prisma.notificationSettings.upsert({
+      where: { userId: req.user.id },
+      update: {
+        settings: DEFAULT_NOTIFICATION_SETTINGS
+      },
+      create: {
+        userId: req.user.id,
+        settings: DEFAULT_NOTIFICATION_SETTINGS
+      }
+    });
+
     res.json({ success: true, settings: DEFAULT_NOTIFICATION_SETTINGS });
   } catch (error) {
     console.error('❌ 重置通知设置失败:', error);
@@ -94,17 +158,37 @@ router.post('/notifications/reset', (req, res) => {
 
 /**
  * 获取通知设置的辅助函数（供其他服务使用）
+ * @param {string} userId - 用户 ID
+ * @returns {Promise<object>} 通知设置对象
  */
-export function getNotificationSettings() {
-  const saved = storage.getNotificationSettings();
-  return { ...DEFAULT_NOTIFICATION_SETTINGS, ...saved };
+export async function getNotificationSettings(userId) {
+  try {
+    const notificationSettings = await prisma.notificationSettings.findUnique({
+      where: { userId }
+    });
+
+    if (!notificationSettings) {
+      return DEFAULT_NOTIFICATION_SETTINGS;
+    }
+
+    return {
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      ...(typeof notificationSettings.settings === 'object' ? notificationSettings.settings : {})
+    };
+  } catch (error) {
+    console.error('获取通知设置失败:', error);
+    return DEFAULT_NOTIFICATION_SETTINGS;
+  }
 }
 
 /**
  * 检查某个通知是否启用
+ * @param {string} userId - 用户 ID
+ * @param {string} key - 通知键名
+ * @returns {Promise<boolean>} 是否启用
  */
-export function isNotificationEnabled(key) {
-  const settings = getNotificationSettings();
+export async function isNotificationEnabled(userId, key) {
+  const settings = await getNotificationSettings(userId);
   return settings[key] !== false; // 默认启用
 }
 
