@@ -7,6 +7,7 @@ import { EventEmitter } from 'events';
 import { PrismaClient } from '@prisma/client';
 import UserRustPlusManager from './user-rustplus-manager.js';
 import UserFCMManager from './user-fcm-manager.js';
+import UserEventMonitor from './user-event-monitor.js';
 
 const prisma = new PrismaClient();
 
@@ -28,7 +29,7 @@ class UserServiceManager extends EventEmitter {
     // 各个服务实例
     this.rustPlusService = new UserRustPlusManager(userId);  // Rust+ 连接管理
     this.fcmService = new UserFCMManager(userId);            // FCM 推送监听
-    this.eventMonitorService = null;  // 事件监控（待实现）
+    this.eventMonitorService = new UserEventMonitor(userId, this.rustPlusService);  // 事件监控
     this.automationService = null;    // 设备自动化（待实现）
     this.commandsService = null;      // 游戏内命令（待实现）
     this.dayNightNotifier = null;     // 昼夜提醒（待实现）
@@ -244,8 +245,53 @@ class UserServiceManager extends EventEmitter {
         this.emit('fcm:error', data);
       });
 
-      // 4. TODO: 初始化其他服务
-      // this.eventMonitorService = new UserEventMonitorService(this.userId, this.rustPlusService);
+      // 4. 绑定 EventMonitor 事件到 UserServiceManager
+      // 转发所有事件（事件已包含 userId）
+      this.eventMonitorService.on('cargo:spawn', (data) => {
+        this.emit('cargo:spawn', data);
+      });
+
+      this.eventMonitorService.on('cargo:egress', (data) => {
+        this.emit('cargo:egress', data);
+      });
+
+      this.eventMonitorService.on('cargo:dock', (data) => {
+        this.emit('cargo:dock', data);
+      });
+
+      this.eventMonitorService.on('cargo:leave', (data) => {
+        this.emit('cargo:leave', data);
+      });
+
+      this.eventMonitorService.on('heli:spawn', (data) => {
+        this.emit('heli:spawn', data);
+      });
+
+      this.eventMonitorService.on('heli:downed', (data) => {
+        this.emit('heli:downed', data);
+      });
+
+      this.eventMonitorService.on('heli:leave', (data) => {
+        this.emit('heli:leave', data);
+      });
+
+      this.eventMonitorService.on('player:died', (data) => {
+        this.emit('player:died', data);
+      });
+
+      this.eventMonitorService.on('player:online', (data) => {
+        this.emit('player:online', data);
+      });
+
+      this.eventMonitorService.on('player:offline', (data) => {
+        this.emit('player:offline', data);
+      });
+
+      this.eventMonitorService.on('player:afk', (data) => {
+        this.emit('player:afk', data);
+      });
+
+      // 5. TODO: 初始化其他服务
       // this.automationService = new UserAutomationService(this.userId, this.rustPlusService);
       // this.commandsService = new UserCommandsService(this.userId, this.rustPlusService);
       // this.dayNightNotifier = new UserDayNightNotifier(this.userId, this.rustPlusService);
@@ -280,6 +326,11 @@ class UserServiceManager extends EventEmitter {
             playerToken: server.playerToken
           });
           console.log(`  ✅ 已连接到服务器: ${server.name || server.id}`);
+
+          // 连接成功后启动事件监控
+          if (this.eventMonitorService) {
+            await this.eventMonitorService.start(server.id);
+          }
         } catch (error) {
           console.error(`  ❌ 连接服务器 ${server.name || server.id} 失败:`, error.message);
           // 不抛出错误，允许部分失败
@@ -333,8 +384,16 @@ class UserServiceManager extends EventEmitter {
         }
       }
 
+      // 停止事件监控
+      if (this.eventMonitorService) {
+        try {
+          this.eventMonitorService.stopAll();
+        } catch (error) {
+          console.error(`  ⚠️  停止事件监控服务失败:`, error.message);
+        }
+      }
+
       // TODO: 停止其他子服务
-      // if (this.eventMonitorService) await this.eventMonitorService.stop();
       // if (this.automationService) await this.automationService.stop();
       // if (this.commandsService) await this.commandsService.stop();
       // if (this.dayNightNotifier) await this.dayNightNotifier.stop();
@@ -364,6 +423,9 @@ class UserServiceManager extends EventEmitter {
   getStatus() {
     const rustPlusStats = this.rustPlusService ? this.rustPlusService.getStats() : null;
     const fcmStatus = this.fcmService ? this.fcmService.getStatus() : null;
+    const eventMonitorStatus = this.eventMonitorService ? {
+      monitoringServers: Array.from(this.eventMonitorService.pollIntervals.keys())
+    } : null;
 
     return {
       userId: this.userId,
@@ -380,7 +442,8 @@ class UserServiceManager extends EventEmitter {
         dayNight: !!this.dayNightNotifier
       },
       rustPlusStats,
-      fcmStatus
+      fcmStatus,
+      eventMonitorStatus
     };
   }
 }

@@ -410,6 +410,52 @@ class GlobalServiceManager extends EventEmitter {
     userService.on('fcm:error', (data) => {
       this.emit('fcm:error', data);
     });
+
+    // === EventMonitor 事件监控事件 ===
+
+    userService.on('cargo:spawn', (data) => {
+      this.emit('cargo:spawn', data);
+    });
+
+    userService.on('cargo:egress', (data) => {
+      this.emit('cargo:egress', data);
+    });
+
+    userService.on('cargo:dock', (data) => {
+      this.emit('cargo:dock', data);
+    });
+
+    userService.on('cargo:leave', (data) => {
+      this.emit('cargo:leave', data);
+    });
+
+    userService.on('heli:spawn', (data) => {
+      this.emit('heli:spawn', data);
+    });
+
+    userService.on('heli:downed', (data) => {
+      this.emit('heli:downed', data);
+    });
+
+    userService.on('heli:leave', (data) => {
+      this.emit('heli:leave', data);
+    });
+
+    userService.on('player:died', (data) => {
+      this.emit('player:died', data);
+    });
+
+    userService.on('player:online', (data) => {
+      this.emit('player:online', data);
+    });
+
+    userService.on('player:offline', (data) => {
+      this.emit('player:offline', data);
+    });
+
+    userService.on('player:afk', (data) => {
+      this.emit('player:afk', data);
+    });
   }
 
   /**
