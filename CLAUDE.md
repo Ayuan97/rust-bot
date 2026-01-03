@@ -909,24 +909,3 @@ curl http://localhost:3000/api/pairing/status
 [为什么这样修改 / 注意事项]
 ═══════════════════════════════════════════════════════════════
 ```
-
-示例：
-
-```
-═══════════════════════════════════════════════════════════════
-【问题】
-TypeError: Cannot read properties of undefined (reading 'listen')
-
-【原因】
-使用了不存在的 RustPlus.FCM.listen() API
-
-【修改】
-- backend/src/services/fcm.service.js:1-7 - 导入正确模块
-- backend/src/services/fcm.service.js:62-104 - 使用 PushReceiverClient
-- backend/src/models/config.model.js:15-71 - 添加数据库迁移
-
-【说明】
-rustplus.js 库未暴露 FCM API，需使用 push-receiver 库。
-数据库会自动迁移，nodemon 会自动重启。
-═══════════════════════════════════════════════════════════════
-```
