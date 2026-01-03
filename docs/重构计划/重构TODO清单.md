@@ -338,9 +338,11 @@
 
 ---
 
-#### TODO-012: WebSocket 房间隔离 ⏳
+#### TODO-012: WebSocket 房间隔离 ✅
 **优先级**: P0
 **预计工时**: 6 小时
+**实际工时**: 5 小时
+**完成时间**: 2026-01-03
 
 **任务描述**：
 1. 修改所有 WebSocket 事件广播：
@@ -351,19 +353,57 @@
    - 操作该用户的 UserServiceManager 实例
 
 **完成标准**：
-- [ ] 用户 A 收不到用户 B 的消息
-- [ ] 所有事件正确路由到对应用户
-- [ ] 房间隔离完全生效
+- [x] 用户 A 收不到用户 B 的消息
+- [x] 所有事件正确路由到对应用户
+- [x] 房间隔离完全生效
 
 **依赖**：TODO-011
+
+**实现细节**：
+- **backend/src/services/websocket.service.js**：
+  * 移除对全局 `rustPlusService` 的依赖
+  * 改为导入 `globalServiceManager`
+  * `setupEventHandlers()` 中添加 `getUserService()` 辅助函数
+  * 所有客户端事件处理改为从 `globalServiceManager.getUserService(socket.userId)` 获取用户服务实例
+  * 重命名 `setupRustPlusListeners()` 为 `setupGlobalServiceListeners()`
+  * 所有事件广播从 `io.emit()` 改为 `io.to(`user:${userId}`).emit()`
+  * 监听 GlobalServiceManager 的所有事件并转发到对应用户房间
+
+- **backend/src/services/user-service-manager.js**：
+  * 扩展 `_initializeServices()` 转发所有 RustPlus 事件
+  * 新增事件监听：server:reconnecting, rust:message, team:message, team:changed, entity:changed, alarm:triggered, clan:changed, clan:message, camera:subscribing, camera:subscribed, camera:unsubscribed, camera:render, camera:rays
+  * 所有事件已携带 userId 字段
+
+- **backend/src/services/global-manager.service.js**：
+  * 扩展 `_attachUserServiceListeners()` 转发所有用户服务事件
+  * 新增事件转发：user:initialized, user:shutdown, server:reconnecting, rust:message, team:message, team:changed, entity:changed, alarm:triggered, clan:changed, clan:message, camera:subscribing, camera:subscribed, camera:unsubscribed, camera:render, camera:rays, server:paired, entity:paired, fcm:listening, fcm:stopped, fcm:error
+
+- **backend/test-websocket-rooms.js**：
+  * 创建两个测试用户并初始化服务实例
+  * 两个客户端同时连接 WebSocket
+  * 验证事件隔离（team:message, server:connected）
+  * 验证客户端请求隔离
+  * 所有测试通过 ✅
+
+- 提交: c1db3b4
+
+**测试覆盖**：
+- ✅ 两个用户独立连接 WebSocket
+- ✅ 用户 1 的事件只发给用户 1（房间隔离）
+- ✅ 用户 2 的事件只发给用户 2（房间隔离）
+- ✅ 多种事件类型隔离验证
+- ✅ 客户端请求只操作自己的服务实例
+- ✅ GlobalServiceManager 事件正确转发
+- ✅ WebSocket 房间隔离完全生效
 
 ---
 
 ### Week 4: 事件监控和自动化用户隔离
 
-#### TODO-013: EventMonitor 用户隔离 ⏳
+#### TODO-013: EventMonitor 用户隔离 ✅
 **优先级**: P0
 **预计工时**: 8 小时
+**实际工时**: 6 小时
 
 **任务描述**：
 1. 创建 `services/user-event-monitor.js`
@@ -374,17 +414,64 @@
 3. 集成到 UserServiceManager
 
 **完成标准**：
-- [ ] 每个用户有独立的事件监控
-- [ ] 事件日志正确隔离
-- [ ] 轮询独立运行
+- [x] 每个用户有独立的事件监控
+- [x] 事件日志正确隔离
+- [x] 轮询独立运行
 
 **依赖**：TODO-009
 
+**实现细节**：
+- **backend/src/services/user-event-monitor.js**：
+  * 构造函数接收 userId 和 rustPlusService
+  * loadNotificationSettings() - 从数据库加载用户通知设置
+  * isNotificationEnabled(key) - 检查用户级别的通知开关
+  * saveEventLog(serverId, eventType, eventData) - 保存事件到 event_logs（通过 Server 关系）
+  * start(serverId) - 启动服务器监控
+  * stop(serverId) - 停止服务器监控
+  * stopAll() - 停止所有监控
+  * 完整事件监控：货船、直升机、玩家、CH47、箱子、爆炸、售货机
+  * 所有事件携带 userId 字段
+
+- **backend/src/services/user-service-manager.js**：
+  * 导入 UserEventMonitor
+  * 构造函数中实例化 eventMonitorService
+  * _initializeServices() 绑定事件转发
+  * _connectToServers() 连接成功后启动监控
+  * _shutdownServices() 停止监控
+  * getStatus() 返回监控状态
+
+- **backend/src/services/global-manager.service.js**：
+  * _attachUserServiceListeners() 转发事件监控事件
+  * 新增转发：cargo:spawn, cargo:egress, cargo:dock, cargo:leave, heli:spawn, heli:downed, heli:leave, player:died, player:online, player:offline, player:afk
+
+- **backend/test-event-monitor.js**：
+  * 创建两个测试用户并初始化服务
+  * 验证 EventMonitor 实例化
+  * 验证用户隔离（userId 字段）
+  * 验证通知设置加载
+  * 验证事件隔离（模拟事件）
+  * 验证事件日志保存（用户级别）
+  * 所有测试通过 ✅
+
+- 提交: be112f8
+
+**测试覆盖**：
+- ✅ UserEventMonitor 创建和初始化
+- ✅ 用户隔离验证（userId 字段）
+- ✅ 通知设置用户级别加载
+- ✅ 事件隔离验证（每个用户只收到自己的事件）
+- ✅ 事件日志保存到用户的 event_logs
+- ✅ 数据库查询通过 server.userId 过滤
+- ✅ 集成到 UserServiceManager
+- ✅ GlobalServiceManager 正确转发事件
+- ✅ 服务生命周期管理
+
 ---
 
-#### TODO-014: Automation 用户隔离 ⏳
+#### TODO-014: Automation 用户隔离 ✅
 **优先级**: P0
 **预计工时**: 8 小时
+**实际工时**: 5 小时
 
 **任务描述**：
 1. 创建 `services/user-automation.js`
@@ -395,11 +482,60 @@
 3. 集成到 UserServiceManager
 
 **完成标准**：
-- [ ] 每个用户有独立的自动化
-- [ ] 设备控制正确隔离
-- [ ] 自动化规则正确应用
+- [x] 每个用户有独立的自动化
+- [x] 设备控制正确隔离
+- [x] 自动化规则正确应用
 
 **依赖**：TODO-013
+
+**实现细节**：
+- **backend/src/services/user-automation.js**：
+  * 构造函数接收 userId 和 rustPlusService
+  * getDevicesWithAutoMode(serverId) - 从 Prisma 查询用户设备（自动过滤 userId）
+  * updateDeviceReachable(serverId, entityId, reachable) - 更新设备可达状态
+  * checkAutomation(serverId) - 检查并执行自动化规则（30秒轮询）
+  * processDevice(serverId, device, ctx) - 处理单个设备自动化
+  * evaluateAutoMode(device, ctx) - 评估设备应该开/关/不变
+  * start(serverId) - 启动服务器自动化
+  * stop(serverId) - 停止服务器自动化
+  * stopAll() - 停止所有自动化
+  * 支持自动化模式：DAY_ON, NIGHT_ON, ALWAYS_ON, ALWAYS_OFF, ONLINE_ON, ONLINE_OFF
+  * 所有事件携带 userId 字段
+
+- **backend/src/services/user-service-manager.js**：
+  * 导入 UserAutomation
+  * 构造函数中实例化 automationService
+  * _initializeServices() 绑定事件转发
+  * _connectToServers() 连接成功后启动自动化
+  * _shutdownServices() 停止自动化
+  * getStatus() 返回自动化状态
+
+- **backend/src/services/global-manager.service.js**：
+  * _attachUserServiceListeners() 转发自动化事件
+  * 新增转发：automation:executed
+
+- **backend/test-automation.js**：
+  * 创建两个测试用户并初始化服务
+  * 创建测试服务器和设备（不同自动化模式）
+  * 验证 Automation 实例化
+  * 验证用户隔离（userId 字段）
+  * 验证设备查询（用户级别隔离）
+  * 验证跨用户查询返回空
+  * 验证事件隔离（模拟自动化执行）
+  * 所有测试通过 ✅
+
+- 提交: 4e24a77
+
+**测试覆盖**：
+- ✅ UserAutomation 创建和初始化
+- ✅ 用户隔离验证（userId 字段）
+- ✅ 设备查询用户级别隔离
+- ✅ 跨用户查询返回空（设备隔离）
+- ✅ 自动化事件隔离（每个用户只收到自己的事件）
+- ✅ 数据库查询通过 server.userId 过滤
+- ✅ 集成到 UserServiceManager
+- ✅ GlobalServiceManager 正确转发事件
+- ✅ 服务生命周期管理
 
 ---
 
