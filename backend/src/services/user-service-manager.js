@@ -9,6 +9,7 @@ import UserRustPlusManager from './user-rustplus-manager.js';
 import UserFCMManager from './user-fcm-manager.js';
 import UserEventMonitor from './user-event-monitor.js';
 import UserAutomation from './user-automation.js';
+import UserCommands from './user-commands.js';
 
 const prisma = new PrismaClient();
 
@@ -32,7 +33,7 @@ class UserServiceManager extends EventEmitter {
     this.fcmService = new UserFCMManager(userId);            // FCM 推送监听
     this.eventMonitorService = new UserEventMonitor(userId, this.rustPlusService);  // 事件监控
     this.automationService = new UserAutomation(userId, this.rustPlusService);      // 设备自动化
-    this.commandsService = null;      // 游戏内命令（待实现）
+    this.commandsService = new UserCommands(userId, this.rustPlusService, this.eventMonitorService);  // 游戏内命令
     this.dayNightNotifier = null;     // 昼夜提醒（待实现）
 
     console.log(`👤 UserServiceManager 已创建 (userId: ${userId})`);
@@ -177,7 +178,20 @@ class UserServiceManager extends EventEmitter {
       });
 
       this.rustPlusService.on('team:message', (data) => {
+        // 转发事件
         this.emit('team:message', data);
+
+        // 处理命令（如果消息以 ! 开头）
+        if (this.commandsService && data.message && data.message.startsWith('!')) {
+          this.commandsService.handleMessage(
+            data.serverId,
+            data.name,
+            data.steamId,
+            data.message
+          ).catch(error => {
+            console.error(`  ⚠️  命令处理失败:`, error.message);
+          });
+        }
       });
 
       this.rustPlusService.on('team:changed', (data) => {
