@@ -6,6 +6,7 @@
 import { EventEmitter } from 'events';
 import { PrismaClient } from '@prisma/client';
 import UserRustPlusManager from './user-rustplus-manager.js';
+import UserFCMManager from './user-fcm-manager.js';
 
 const prisma = new PrismaClient();
 
@@ -26,7 +27,7 @@ class UserServiceManager extends EventEmitter {
 
     // 各个服务实例
     this.rustPlusService = new UserRustPlusManager(userId);  // Rust+ 连接管理
-    this.fcmService = null;           // FCM 推送监听（待实现）
+    this.fcmService = new UserFCMManager(userId);            // FCM 推送监听
     this.eventMonitorService = null;  // 事件监控（待实现）
     this.automationService = null;    // 设备自动化（待实现）
     this.commandsService = null;      // 游戏内命令（待实现）
@@ -165,8 +166,33 @@ class UserServiceManager extends EventEmitter {
         this.emit('server:error', data);
       });
 
-      // 3. TODO: 初始化其他服务
-      // this.fcmService = new UserFCMService(this.userId);
+      // 3. 绑定 FCM 事件到 UserServiceManager
+      this.fcmService.on('server:paired', (data) => {
+        console.log(`  🎮 收到服务器配对推送: ${data.name}`);
+        this.emit('server:paired', data);
+      });
+
+      this.fcmService.on('entity:paired', (data) => {
+        console.log(`  🔌 收到设备配对推送`);
+        this.emit('entity:paired', data);
+      });
+
+      this.fcmService.on('listening', (data) => {
+        console.log(`  👂 FCM 监听已启动`);
+        this.emit('fcm:listening', data);
+      });
+
+      this.fcmService.on('stopped', (data) => {
+        console.log(`  🛑 FCM 监听已停止`);
+        this.emit('fcm:stopped', data);
+      });
+
+      this.fcmService.on('error', (data) => {
+        console.error(`  ⚠️  FCM 错误:`, data.error);
+        this.emit('fcm:error', data);
+      });
+
+      // 4. TODO: 初始化其他服务
       // this.eventMonitorService = new UserEventMonitorService(this.userId, this.rustPlusService);
       // this.automationService = new UserAutomationService(this.userId, this.rustPlusService);
       // this.commandsService = new UserCommandsService(this.userId, this.rustPlusService);
@@ -246,14 +272,22 @@ class UserServiceManager extends EventEmitter {
     try {
       console.log(`  🔧 停止子服务...`);
 
-      // TODO: 这里将停止所有子服务
-      // if (this.fcmService) await this.fcmService.stop();
+      // 停止 FCM 监听
+      if (this.fcmService && this.fcmService.isListening) {
+        try {
+          this.fcmService.stop();
+        } catch (error) {
+          console.error(`  ⚠️  停止 FCM 服务失败:`, error.message);
+        }
+      }
+
+      // TODO: 停止其他子服务
       // if (this.eventMonitorService) await this.eventMonitorService.stop();
       // if (this.automationService) await this.automationService.stop();
       // if (this.commandsService) await this.commandsService.stop();
       // if (this.dayNightNotifier) await this.dayNightNotifier.stop();
 
-      console.log(`  ✅ 子服务已停止（占位符）`);
+      console.log(`  ✅ 子服务已停止`);
     } catch (error) {
       console.error(`  ⚠️  停止子服务失败: ${error.message}`);
     }
@@ -277,6 +311,7 @@ class UserServiceManager extends EventEmitter {
    */
   getStatus() {
     const rustPlusStats = this.rustPlusService ? this.rustPlusService.getStats() : null;
+    const fcmStatus = this.fcmService ? this.fcmService.getStatus() : null;
 
     return {
       userId: this.userId,
@@ -292,7 +327,8 @@ class UserServiceManager extends EventEmitter {
         commands: !!this.commandsService,
         dayNight: !!this.dayNightNotifier
       },
-      rustPlusStats
+      rustPlusStats,
+      fcmStatus
     };
   }
 }
