@@ -608,9 +608,11 @@
 
 ### Week 5: 订阅管理和数据迁移
 
-#### TODO-016: 订阅检查定时任务 ⏳
+#### TODO-016: 订阅检查定时任务 ✅
 **优先级**: P0
 **预计工时**: 4 小时
+**实际工时**: 2 小时（功能已在 TODO-007 中实现）
+**完成时间**: 2026-01-03
 
 **任务描述**：
 1. 在 GlobalServiceManager 中实现定时任务
@@ -621,11 +623,49 @@
 3. 使用 node-cron 或 setInterval
 
 **完成标准**：
-- [ ] 定时任务正常运行
-- [ ] 到期用户自动停止
-- [ ] 日志正确记录
+- [x] 定时任务正常运行
+- [x] 到期用户自动停止
+- [x] 日志正确记录
 
 **依赖**：TODO-007
+
+**实现细节**：
+**注意**：订阅检查功能已在 TODO-007 (GlobalServiceManager 实现) 时完成，本任务主要是验证功能正确性。
+
+- **backend/src/services/global-manager.service.js** （已存在）：
+  * CHECK_INTERVAL = 60 * 60 * 1000 （1小时）
+  * startSubscriptionCheck() - 启动定时器，立即执行一次检查
+  * stopSubscriptionCheck() - 停止定时器
+  * checkExpiredSubscriptions() - 检查并清理过期订阅
+  * 遍历所有活跃用户，检查订阅状态
+  * 订阅已过期 → 调用 removeUserService() 停止服务
+  * 订阅3天内到期 → 发出 subscription:expiring:soon 事件
+  * 发出 subscription:checked 事件记录检查结果
+
+- **backend/test-subscription-check.js** （新增）：
+  * 创建三个不同订阅状态的测试用户
+  * 验证过期用户创建服务被拒绝
+  * 验证定时器方法存在性
+  * 手动执行订阅检查
+  * 验证即将过期用户发出警告
+  * 验证 CHECK_INTERVAL 配置
+  * 测试启动和停止定时器
+  * 验证过期用户自动清理
+  * 所有测试通过 ✅
+
+- 提交: d8b3f17
+
+**测试覆盖**：
+- ✅ checkExpiredSubscriptions() 方法正常
+- ✅ startSubscriptionCheck() 方法正常
+- ✅ stopSubscriptionCheck() 方法正常
+- ✅ CHECK_INTERVAL 配置正确（1小时）
+- ✅ 过期用户自动清理
+- ✅ 即将过期用户发出警告（3天内）
+- ✅ 定时器启动和停止正常
+
+**后续任务**：
+- TODO-017 中需要在 app.js 调用 globalServiceManager.initializeAllActiveUsers() 来真正启用此功能
 
 ---
 
@@ -1059,10 +1099,10 @@
 ## 进度追踪
 
 **当前阶段**: 阶段 2 - 核心功能重构
-**当前任务**: TODO-016 订阅检查定时任务
-**已完成**: 15/34
+**当前任务**: TODO-017 服务启动逻辑
+**已完成**: 16/34
 **进行中**: 0/34
-**待开始**: 19/34
+**待开始**: 18/34
 
 **完成任务列表**：
 - ✅ TODO-001: Docker Compose 环境搭建
@@ -1080,8 +1120,9 @@
 - ✅ TODO-013: EventMonitor 用户隔离
 - ✅ TODO-014: Automation 用户隔离
 - ✅ TODO-015: Commands 用户隔离
+- ✅ TODO-016: 订阅检查定时任务
 
-**更新时间**: 2026-01-03 19:20
+**更新时间**: 2026-01-03 19:40
 
 ---
 
