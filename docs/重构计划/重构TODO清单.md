@@ -253,9 +253,11 @@
 
 ---
 
-#### TODO-010: FCMManager 用户隔离 ⏳
+#### TODO-010: FCMManager 用户隔离 ✅
 **优先级**: P0
 **预计工时**: 8 小时
+**实际工时**: 6 小时
+**完成时间**: 2026-01-03
 
 **任务描述**：
 1. 创建 `services/user-fcm-manager.js`
@@ -268,12 +270,25 @@
 3. 配对推送仅保存到该用户的数据库
 
 **完成标准**：
-- [ ] 每个用户有独立的 FCM 监听器
-- [ ] 用户 A 的推送不会影响用户 B
-- [ ] 配对推送正确保存
-- [ ] 启动/停止功能正常
+- [x] 每个用户有独立的 FCM 监听器
+- [x] 用户 A 的推送不会影响用户 B
+- [x] 配对推送正确保存
+- [x] 启动/停止功能正常
 
 **依赖**：TODO-009
+
+**实现细节**：
+- 创建了 `backend/src/services/user-fcm-manager.js`（782 行）
+- 集成到 `UserServiceManager`，在构造函数中实例化
+- 实现了完整的 FCM 注册、监听、凭证管理
+- 所有事件携带 `userId` 字段，便于多租户事件路由
+- 支持 SOCKS5 代理和 HTTP 代理
+- 创建了 `backend/test-fcm-manager.js` 完整测试脚本
+- 提交: 32020aa
+
+**注意事项**：
+- FCM 凭证目前通过 loadCredentials() 方法加载，暂未实现数据库存储
+- 后续可添加 User 表的 fcmCredentials 字段（JSON 类型）存储
 
 ---
 
@@ -838,10 +853,10 @@
 ## 进度追踪
 
 **当前阶段**: 阶段 2 - 核心功能重构
-**当前任务**: TODO-010 FCMManager 用户隔离
-**已完成**: 9/34
+**当前任务**: TODO-011 WebSocket 认证
+**已完成**: 10/34
 **进行中**: 0/34
-**待开始**: 25/34
+**待开始**: 24/34
 
 **完成任务列表**：
 - ✅ TODO-001: Docker Compose 环境搭建
@@ -853,8 +868,9 @@
 - ✅ TODO-007: GlobalServiceManager 实现
 - ✅ TODO-008: UserServiceManager 基础实现
 - ✅ TODO-009: RustPlusManager 用户隔离
+- ✅ TODO-010: FCMManager 用户隔离
 
-**更新时间**: 2026-01-03 15:30
+**更新时间**: 2026-01-03 15:40
 
 ---
 
