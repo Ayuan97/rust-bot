@@ -18,6 +18,7 @@ import serverRoutes from './routes/server.routes.js';
 import pairingRoutes from './routes/pairing.routes.js';
 import proxyRoutes from './routes/proxy.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
+import authRoutes from './routes/auth.routes.js';
 import { formatPosition } from './utils/coordinates.js';
 import AutomationService from './services/automation.service.js';
 import DayNightNotifier from './services/day-night-notifier.js';
@@ -53,6 +54,7 @@ app.use(cors({
 app.use(express.json());
 
 // 路由
+app.use('/api/auth', authRoutes);
 app.use('/api/servers', serverRoutes);
 app.use('/api/pairing', pairingRoutes);
 app.use('/api/proxy', proxyRoutes);
