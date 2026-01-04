@@ -1,7 +1,3 @@
-// Prisma Schema for Rust+ Multi-tenant Dashboard
-// 数据库提供者: MySQL 8.0
-// ORM: Prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,216 +7,163 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================================
-// 用户与订阅模块
-// ============================================================
+model devices {
+  id          String           @id
+  serverId    String
+  entityId    Int
+  name        String           @db.VarChar(100)
+  type        devices_type
+  command     String?          @db.VarChar(50)
+  autoMode    devices_autoMode @default(NONE)
+  isActive    Boolean          @default(true)
+  reachable   Boolean          @default(true)
+  lastTrigger DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime
+  servers     servers          @relation(fields: [serverId], references: [id], onDelete: Cascade)
 
-/// 用户表
-model User {
-  id        String   @id @default(uuid())
-  username  String   @unique @db.VarChar(50)
-  email     String   @unique @db.VarChar(100)
-  password  String   @db.VarChar(255) // bcrypt hash
+  @@unique([serverId, entityId])
+  @@index([serverId])
+}
 
-  // 用户状态
-  isActive  Boolean  @default(true)
-  isAdmin   Boolean  @default(false)
+model event_logs {
+  id        String               @id
+  serverId  String
+  eventType event_logs_eventType
+  eventData Json
+  createdAt DateTime             @default(now())
+  servers   servers              @relation(fields: [serverId], references: [id], onDelete: Cascade)
 
-  // 时间戳
+  @@index([createdAt])
+  @@index([eventType])
+  @@index([serverId])
+}
+
+model notification_settings {
+  id        String   @id
+  userId    String   @unique
+  settings  Json
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  lastLogin DateTime?
+  updatedAt DateTime
+  users     users    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // 关系
-  subscription          Subscription?
-  servers               Server[]
-  notificationSettings  NotificationSettings?
+  @@index([userId])
+}
+
+model orders {
+  id            String               @id
+  userId        String
+  planType      orders_planType
+  amount        Decimal              @db.Decimal(10, 2)
+  paymentMethod orders_paymentMethod
+  status        orders_status        @default(PENDING)
+  tradeNo       String?              @db.VarChar(100)
+  qrCode        String?              @db.Text
+  expireAt      DateTime?
+  paidAt        DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime
+  users         users                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([tradeNo])
+  @@index([userId])
+}
+
+model proxy_config {
+  id              Int      @id @default(1)
+  subscriptionUrl String?  @db.Text
+  selectedNode    String?  @db.VarChar(255)
+  proxyPort       Int      @default(10808)
+  autoStart       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime
+}
+
+model servers {
+  id              String       @id
+  userId          String
+  name            String       @db.VarChar(100)
+  ip              String       @db.VarChar(45)
+  port            String       @db.VarChar(10)
+  playerId        String       @db.VarChar(50)
+  playerToken     String       @db.VarChar(50)
+  battlemetricsId String?      @db.VarChar(50)
+  img             String?      @db.Text
+  logo            String?      @db.Text
+  url             String?      @db.VarChar(255)
+  description     String?      @db.Text
+  fcmCredentials  Json?
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime
+  devices         devices[]
+  event_logs      event_logs[]
+  users           users        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, ip, port])
+  @@index([playerId])
+  @@index([userId])
+}
+
+model subscriptions {
+  id            String                       @id
+  userId        String                       @unique
+  planType      subscriptions_planType       @default(TRIAL)
+  startDate     DateTime                     @default(now())
+  endDate       DateTime
+  amount        Decimal?                     @db.Decimal(10, 2)
+  paymentMethod subscriptions_paymentMethod?
+  transactionId String?                      @db.VarChar(100)
+  autoRenew     Boolean                      @default(false)
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime
+  users         users                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([endDate])
+  @@index([userId])
+}
+
+model users {
+  id                    String                 @id
+  username              String                 @unique @db.VarChar(50)
+  email                 String                 @unique @db.VarChar(100)
+  password              String                 @db.VarChar(255)
+  isActive              Boolean                @default(true)
+  isAdmin               Boolean                @default(false)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime
+  lastLogin             DateTime?
+  notification_settings notification_settings?
+  orders                orders[]
+  servers               servers[]
+  subscriptions         subscriptions?
 
   @@index([email])
   @@index([username])
-  @@map("users")
 }
 
-/// 订阅表
-model Subscription {
-  id      String @id @default(uuid())
-  userId  String @unique
-
-  // 订阅计划类型
-  planType     SubscriptionPlan @default(TRIAL)
-
-  // 订阅时间
-  startDate    DateTime         @default(now())
-  endDate      DateTime         // 服务到期时间
-
-  // 支付信息
-  amount       Decimal?         @db.Decimal(10, 2)
-  paymentMethod PaymentMethod?
-  transactionId String?         @db.VarChar(100)
-
-  // 自动续费
-  autoRenew    Boolean          @default(false)
-
-  // 时间戳
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-
-  // 关系
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([endDate])
-  @@map("subscriptions")
+enum orders_planType {
+  TRIAL
+  MONTHLY
+  QUARTERLY
+  YEARLY
 }
 
-/// 订阅计划枚举
-enum SubscriptionPlan {
-  TRIAL    // 试用：7天免费
-  MONTHLY  // 月付：¥29/月
-  QUARTERLY // 季付：¥79/季
-  YEARLY   // 年付：¥299/年
+enum subscriptions_planType {
+  TRIAL
+  MONTHLY
+  QUARTERLY
+  YEARLY
 }
 
-/// 支付方式枚举
-enum PaymentMethod {
-  ALIPAY  // 支付宝
-  WECHAT  // 微信支付
-}
-
-// ============================================================
-// 游戏服务器与设备模块
-// ============================================================
-
-/// 服务器表
-model Server {
-  id        String   @id @default(uuid())
-  userId    String   // 外键 → User
-
-  // 服务器基本信息
-  name        String   @db.VarChar(100)
-  ip          String   @db.VarChar(45) // 支持 IPv6
-  port        String   @db.VarChar(10)
-
-  // Rust+ 认证信息
-  playerId    String   @db.VarChar(50)
-  playerToken String   @db.VarChar(50)
-
-  // 服务器扩展信息
-  battlemetricsId String?  @db.VarChar(50)
-  img             String?  @db.Text
-  logo            String?  @db.Text
-  url             String?  @db.VarChar(255)
-  description     String?  @db.Text
-
-  // FCM 推送凭证（每个服务器独立）
-  fcmCredentials Json?    // GCM 格式: {gcm: {androidId, securityToken}, steam: {steamId}}
-
-  // 服务器状态
-  isActive    Boolean  @default(true)
-
-  // 时间戳
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // 关系
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  devices    Device[]
-  eventLogs  EventLog[]
-
-  @@unique([userId, ip, port]) // 同一用户不能添加重复的服务器
-  @@index([userId])
-  @@index([playerId])
-  @@map("servers")
-}
-
-/// 设备表
-model Device {
-  id       String @id @default(uuid())
-  serverId String // 外键 → Server
-
-  // 设备基本信息
-  entityId Int    // Rust+ 设备实体 ID
-  name     String @db.VarChar(100)
-  type     DeviceType
-
-  // 自定义命令
-  command  String? @db.VarChar(50) // 游戏内命令名（如 "灯"）
-
-  // 自动化模式
-  autoMode AutoMode @default(NONE)
-
-  // 设备状态
-  isActive   Boolean  @default(true)
-  reachable  Boolean  @default(true) // 设备是否可达
-
-  // 警报触发时间（仅 ALARM 类型）
-  lastTrigger DateTime?
-
-  // 时间戳
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // 关系
-  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
-
-  @@unique([serverId, entityId]) // 同一服务器不能有重复的设备实体 ID
-  @@index([serverId])
-  @@map("devices")
-}
-
-/// 设备类型枚举
-enum DeviceType {
-  SWITCH  // 智能开关
-  ALARM   // 智能警报
-  STORAGE // 存储监视器
-}
-
-/// 自动化模式枚举
-enum AutoMode {
-  NONE        // 0: 无自动化
-  DAY_ON      // 1: 白天开启
-  NIGHT_ON    // 2: 夜晚开启
-  ALWAYS_ON   // 3: 始终开启
-  ALWAYS_OFF  // 4: 始终关闭
-  ONLINE_ON   // 7: 有人在线时开启
-  ONLINE_OFF  // 8: 有人在线时关闭
-}
-
-// ============================================================
-// 事件日志与通知模块
-// ============================================================
-
-/// 事件日志表
-model EventLog {
-  id        String   @id @default(uuid())
-  serverId  String   // 外键 → Server
-
-  // 事件信息
-  eventType EventType
-  eventData Json     // 事件详细数据（JSON 格式）
-
-  // 时间戳
-  createdAt DateTime @default(now())
-
-  // 关系
-  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
-
-  @@index([serverId])
-  @@index([eventType])
-  @@index([createdAt])
-  @@map("event_logs")
-}
-
-/// 事件类型枚举
-enum EventType {
-  // 玩家事件
+enum event_logs_eventType {
   PLAYER_DEATH
   PLAYER_ONLINE
   PLAYER_OFFLINE
   PLAYER_AFK
   PLAYER_RETURN
-
-  // 游戏事件
   CARGO_SPAWN
   CARGO_LEAVE
   HELI_SPAWN
@@ -228,59 +171,44 @@ enum EventType {
   OIL_RIG_TRIGGERED
   OIL_RIG_UNLOCKED
   CHINOOK_SPAWN
-
-  // 设备事件
   ALARM_TRIGGERED
   DEVICE_OFFLINE
-
-  // 系统事件
   SERVER_CONNECTED
   SERVER_DISCONNECTED
   FCM_CONNECTED
   FCM_DISCONNECTED
 }
 
-/// 通知设置表（每个用户一条记录）
-model NotificationSettings {
-  id     String @id @default(uuid())
-  userId String @unique
-
-  // 通知开关配置（JSON 格式）
-  // 格式: { "player_death": true, "cargo_spawn": false, ... }
-  settings Json   @default("{}")
-
-  // 时间戳
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // 关系
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("notification_settings")
+enum orders_paymentMethod {
+  ALIPAY
+  WECHAT
 }
 
-// ============================================================
-// 系统配置模块
-// ============================================================
+enum devices_type {
+  SWITCH
+  ALARM
+  STORAGE
+}
 
-/// 代理配置表（全局单例）
-model ProxyConfig {
-  id Int @id @default(1) // 强制单例
+enum orders_status {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+  EXPIRED
+}
 
-  // 代理订阅
-  subscriptionUrl String? @db.Text
-  selectedNode    String? @db.VarChar(255)
+enum devices_autoMode {
+  NONE
+  DAY_ON
+  NIGHT_ON
+  ALWAYS_ON
+  ALWAYS_OFF
+  ONLINE_ON
+  ONLINE_OFF
+}
 
-  // 代理端口
-  proxyPort Int @default(10808)
-
-  // 自动启动
-  autoStart Boolean @default(false)
-
-  // 时间戳
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("proxy_config")
+enum subscriptions_paymentMethod {
+  ALIPAY
+  WECHAT
 }

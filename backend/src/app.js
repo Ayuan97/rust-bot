@@ -16,6 +16,9 @@ import websocketService from './services/websocket.service.js';
 // import proxyRoutes from './routes/proxy.routes.js';     // TODO: 适配多租户（TODO-006）
 import settingsRoutes from './routes/settings.routes.js';
 import authRoutes from './routes/auth.routes.js';
+import paymentRoutes from './routes/payment.routes.js';
+import userRoutes from './routes/user.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 
 // 加载环境变量
 dotenv.config();
@@ -45,6 +48,9 @@ app.use(express.json());
 
 // 路由
 app.use('/api/auth', authRoutes);
+app.use('/api/payment', paymentRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/admin', adminRoutes);
 // app.use('/api/servers', serverRoutes);  // TODO: 适配多租户（TODO-006）
 // app.use('/api/pairing', pairingRoutes); // TODO: 适配多租户（TODO-006）
 // app.use('/api/proxy', proxyRoutes);     // TODO: 适配多租户（TODO-006）

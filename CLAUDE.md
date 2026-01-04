@@ -4,11 +4,16 @@
 
 ## 项目概述
 
-**Rust+ Web Dashboard** - 一个基于 Web 的 Rust 游戏服务器管理面板。
+**Rust+ Web Dashboard** - 一个基于 Web 的多租户 SaaS Rust 游戏服务器管理面板。
 
-- **后端**: Node.js + Express + Socket.io + SQLite
-- **前端**: React + Vite + Tailwind CSS
+- **后端**: Node.js + Express + Prisma + MySQL + Socket.io
+- **前端**: React + Vite + Tailwind CSS + React Router
+- **架构**: 多租户 SaaS，支持用户注册、订阅管理、在线支付
 - **核心功能**:
+  - 用户系统：注册/登录、JWT认证、7天免费试用
+  - 订阅管理：月付/季付/年付套餐、自动续费提醒
+  - 支付集成：支付宝扫码支付、订单管理
+  - 多租户隔离：每个用户独立的服务实例和数据
   - 连接 Rust+ 游戏服务器、FCM 推送监听
   - 游戏内命令系统（队伍聊天命令）
   - 事件监控（货船、直升机、油井、玩家状态）
@@ -62,48 +67,75 @@ npm run preview
 ```
 ┌────────────────────────────────────────────────────────────┐
 │                     浏览器客户端                            │
-│                 (React, localhost:5173)                    │
+│            (React Router + JWT认证)                        │
 └────────────────────────────────────────────────────────────┘
                 │                     │
          REST API (Axios)      WebSocket (Socket.io)
+         (带JWT Token)          (房间隔离)
                 │                     │
 ┌───────────────┴─────────────────────┴───────────────────┐
 │              后端服务 (Express, localhost:3000)          │
 │  ┌─────────────────────────────────────────────────┐   │
-│  │              WebSocket 服务层                    │   │
-│  │    (广播事件给所有连接的客户端)                  │   │
+│  │         认证路由 (auth.routes.js)               │   │
+│  │  - 用户注册 (7天试用)                           │   │
+│  │  - 用户登录 (JWT签发)                           │   │
+│  │  - JWT验证中间件                                 │   │
+│  └─────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │         支付路由 (payment.routes.js)            │   │
+│  │  - 创建订单、支付宝扫码支付                      │   │
+│  │  - 支付回调、订阅延长                           │   │
+│  └─────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │      GlobalServiceManager (全局服务管理器)      │   │
+│  │  - initializeAllActiveUsers() 启动所有用户      │   │
+│  │  - createUserService(userId) 创建用户实例       │   │
+│  │  - removeUserService(userId) 移除用户实例       │   │
+│  │  - checkExpiredSubscriptions() 定时检查订阅     │   │
 │  └──────────────────┬──────────────────────────────┘   │
 │                     │                                    │
-│  ┌──────────────────┼──────────────────────────────┐   │
-│  │              三大核心服务                         │   │
+│  ┌──────────────────┴──────────────────────────────┐   │
+│  │   UserServiceManager (用户级服务实例)           │   │
+│  │   每个用户一个实例，完全数据隔离                 │   │
 │  │                                                   │   │
 │  │  ┌─────────────────────────────────────────┐    │   │
-│  │  │ RustPlusService (游戏服务器连接池)      │    │   │
-│  │  │ - 管理多个 Rust+ 服务器连接             │    │   │
-│  │  │ - 处理游戏内事件 (聊天、设备状态等)     │    │   │
+│  │  │ UserRustPlusManager                     │    │   │
+│  │  │ - 用户专属的游戏服务器连接池             │    │   │
 │  │  └─────────────────────────────────────────┘    │   │
-│  │                                                   │   │
 │  │  ┌─────────────────────────────────────────┐    │   │
-│  │  │ FCMService (推送通知监听器)             │    │   │
-│  │  │ - 监听 Rust+ 配对通知                   │    │   │
-│  │  │ - 处理玩家登录/死亡/警报等推送          │    │   │
+│  │  │ UserFCMManager                          │    │   │
+│  │  │ - 用户专属的FCM推送监听                  │    │   │
 │  │  └─────────────────────────────────────────┘    │   │
-│  │                                                   │   │
 │  │  ┌─────────────────────────────────────────┐    │   │
-│  │  │ WebSocketService (实时通信桥接)         │    │   │
-│  │  │ - 处理客户端 WebSocket 连接             │    │   │
-│  │  │ - 路由命令到 RustPlusService             │    │   │
+│  │  │ UserEventMonitor                        │    │   │
+│  │  │ - 用户专属的事件监控                     │    │   │
+│  │  └─────────────────────────────────────────┘    │   │
+│  │  ┌─────────────────────────────────────────┐    │   │
+│  │  │ UserAutomation                          │    │   │
+│  │  │ - 用户专属的设备自动化                   │    │   │
+│  │  └─────────────────────────────────────────┘    │   │
+│  │  ┌─────────────────────────────────────────┐    │   │
+│  │  │ UserCommands                            │    │   │
+│  │  │ - 用户专属的命令处理                     │    │   │
 │  │  └─────────────────────────────────────────┘    │   │
 │  └───────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │      WebSocketService (实时通信)                │   │
+│  │  - JWT认证中间件                                 │   │
+│  │  - 用户房间隔离 (user:${userId})                │   │
+│  │  - 事件只广播给对应用户                          │   │
+│  └─────────────────────────────────────────────────┘   │
 │                     │                                    │
 │  ┌──────────────────┴──────────────────────────────┐   │
-│  │              数据层 (models/)                    │   │
-│  │  - Storage: 服务器、设备、事件日志              │   │
-│  │  - ConfigStorage: FCM 凭证存储                   │   │
+│  │         Prisma ORM (数据访问层)                  │   │
+│  │  - 自动添加 userId 过滤                          │   │
+│  │  - 关系级联删除                                  │   │
 │  └──────────────────┬──────────────────────────────┘   │
 │                     │                                    │
 │  ┌──────────────────┴──────────────────────────────┐   │
-│  │         SQLite 数据库 (data/database.db)         │   │
+│  │         MySQL 数据库 (多租户)                    │   │
+│  │  users │ subscriptions │ servers │ devices       │   │
+│  │  event_logs │ orders (所有表带userId外键)        │   │
 │  └──────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -230,71 +262,185 @@ await client.connect();
 
 **完整实现参考**: `backend/src/services/fcm.service.js`
 
-### 2. 数据库 Schema 变更
+### 2. 数据库迁移管理 (Prisma)
 
-修改数据库结构时，必须添加迁移逻辑：
+项目使用 **Prisma ORM** 进行数据库管理，所有 Schema 变更通过 Prisma 迁移完成：
 
-```javascript
-// config.model.js 示例
-initDatabase() {
-  // 1. 检查旧结构
-  const tableInfo = this.db.prepare("PRAGMA table_info(fcm_credentials)").all();
-  const hasOldSchema = tableInfo.some(col => col.name === 'fcm_token');
+```bash
+# 创建新迁移
+npx prisma migrate dev --name add_new_field
 
-  if (hasOldSchema) {
-    // 2. 备份数据
-    const oldData = this.db.prepare('SELECT * FROM fcm_credentials').get();
+# 应用迁移到生产环境
+npx prisma migrate deploy
 
-    // 3. 删除旧表
-    this.db.exec('DROP TABLE IF EXISTS fcm_credentials');
+# 生成 Prisma Client
+npx prisma generate
 
-    // 4. 创建新表
-    this.db.exec(`CREATE TABLE fcm_credentials (...)`);
-
-    // 5. 迁移数据
-    if (oldData) {
-      // 转换格式并插入
-    }
-  }
-}
+# 查看数据库（Web UI）
+npx prisma studio
 ```
 
-**启动时自动创建**: `backend/data/` 目录在服务器启动时自动创建。
-
-### 3. RustPlus 连接池管理
+**多租户数据隔离**：所有业务表都包含 `userId` 字段，Prisma 自动处理关联过滤：
 
 ```javascript
-// rustplus.service.js
-class RustPlusService {
-  constructor() {
-    this.servers = new Map();  // serverId → RustPlus 实例
+// prisma/schema.prisma
+model Server {
+  id       String   @id @default(cuid())
+  userId   String   // 多租户关键字段
+  name     String
+  ip       String
+  port     String
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  devices  Device[]
+  eventLogs EventLog[]
+
+  @@index([userId])
+}
+
+// 查询时自动过滤
+const servers = await prisma.server.findMany({
+  where: { userId: req.user.id }  // 只返回该用户的服务器
+});
+
+// 关联查询自动隔离
+const server = await prisma.server.findUnique({
+  where: { id: serverId },
+  include: {
+    devices: true,  // 自动只返回该服务器的设备
+    eventLogs: { take: 100 }
+  }
+});
+```
+
+**从 SQLite 迁移到 MySQL**：
+- 迁移脚本: `backend/scripts/migrate-sqlite-to-mysql.js`
+- 自动创建默认管理员用户
+- 保留所有历史数据并归属到默认用户
+
+### 3. 用户级服务实例管理
+
+每个用户拥有独立的 `UserServiceManager` 实例，包含该用户专属的所有服务：
+
+```javascript
+// user-service-manager.js
+class UserServiceManager extends EventEmitter {
+  constructor(userId) {
+    super();
+    this.userId = userId;
+
+    // 用户专属服务实例
+    this.rustPlusService = new UserRustPlusManager(userId);
+    this.fcmService = new UserFCMManager(userId);
+    this.eventMonitorService = new UserEventMonitor(userId, this.rustPlusService);
+    this.automationService = new UserAutomation(userId, this.rustPlusService);
+    this.commandsService = new UserCommands(userId, this.rustPlusService);
   }
 
-  connect(config) {
-    const rustplus = new RustPlus(ip, port, playerId, playerToken);
-    this.servers.set(serverId, rustplus);
+  async initialize() {
+    // 启动 FCM 监听
+    await this.fcmService.start();
 
-    rustplus.on('connected', () => {
-      this.emit('server:connected', serverId);
-    });
+    // 自动连接到用户的所有服务器
+    await this._connectToServers();
+  }
 
-    rustplus.connect();
+  async shutdown() {
+    // 停止所有服务
+    await this.rustPlusService.disconnectAll();
+    await this.fcmService.stop();
+    await this.eventMonitorService.stopAll();
+    await this.automationService.stopAll();
+  }
+}
+
+// global-manager.service.js
+class GlobalServiceManager {
+  constructor() {
+    this.userServices = new Map();  // userId → UserServiceManager
+  }
+
+  async createUserService(userId) {
+    const manager = new UserServiceManager(userId);
+    await manager.initialize();
+    this.userServices.set(userId, manager);
+    return manager;
+  }
+
+  getUserService(userId) {
+    return this.userServices.get(userId);
   }
 }
 ```
 
 **注意**：
-- 连接状态在内存中，服务器重启后丢失
-- 操作前必须检查 `this.servers.has(serverId)`
-- 每个服务器独立连接，互不影响
+- 每个用户的服务状态完全隔离
+- 用户 A 的操作不会影响用户 B
+- 订阅过期时自动停止并移除该用户的服务实例
+- 用户续费后自动重新创建服务实例
 
-### 4. WebSocket 事件命名规范
+### 4. WebSocket 房间隔离和认证
+
+**JWT 认证中间件**：所有 WebSocket 连接必须先通过 JWT 验证
+
+```javascript
+// websocket.service.js
+io.use(async (socket, next) => {
+  try {
+    // 从 auth.token 或 Authorization header 获取 token
+    const token = socket.handshake.auth.token ||
+                  socket.handshake.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return next(new Error('未提供认证令牌'));
+    }
+
+    // 验证 JWT
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // 从数据库加载用户信息
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      include: { subscription: true }
+    });
+
+    if (!user || !user.isActive) {
+      return next(new Error('用户不存在或已禁用'));
+    }
+
+    if (user.subscription.endDate < new Date()) {
+      return next(new Error('订阅已过期'));
+    }
+
+    // 将用户信息附加到 socket
+    socket.userId = user.id;
+    socket.username = user.username;
+
+    // 加入用户专属房间
+    socket.join(`user:${user.id}`);
+
+    next();
+  } catch (error) {
+    next(new Error('认证失败'));
+  }
+});
+```
+
+**事件命名规范**：
 
 **客户端 → 服务器**：
 - 操作类: `resource:action` (如 `server:connect`, `device:control`)
 - 请求类: `resource:info` (如 `server:info`, `team:info`)
 
-**服务器 → 客户端**：
+**服务器 → 客户端（房间隔离广播）**：
+```javascript
+// ❌ 错误：广播给所有用户
+io.emit('server:connected', { serverId });
+
+// ✅ 正确：只广播给该用户
+io.to(`user:${userId}`).emit('server:connected', { serverId });
+```
+
 - 状态类: `resource:state` (如 `server:connected`, `server:disconnected`)
 - 推送类: `event:type` (如 `team:message`, `player:login`)
 - 响应类: `action:result` (如 `device:control:success`, `message:send:error`)
@@ -474,7 +620,67 @@ DEFAULT_NOTIFICATION_SETTINGS = {
 - `POST /api/settings/notifications` - 更新设置
 - `POST /api/settings/notifications/reset` - 重置
 
-### 11. 日志系统
+### 11. 管理后台 API
+
+管理后台提供完整的用户管理、订单管理和系统监控功能。所有接口需要管理员权限（`isAdmin: true`）。
+
+**权限验证**：
+```javascript
+// 所有管理接口都使用双重验证
+router.use(authenticate, requireAdmin);
+```
+
+**核心 API 端点**：
+
+**用户管理**：
+- `GET /api/admin/users` - 获取用户列表（分页、搜索、筛选）
+  - 查询参数：`page`, `limit`, `search`, `status`, `planType`
+  - 返回：用户列表 + 服务运行状态（连接的服务器、FCM监听状态）
+- `GET /api/admin/users/:id` - 获取用户详情
+  - 返回：用户信息 + 统计数据（服务器数、订单数、总消费）+ 服务状态
+- `PUT /api/admin/users/:id/status` - 启用/禁用用户
+  - 禁用时自动停止该用户的 UserServiceManager 实例
+  - 启用时自动创建服务实例（如订阅有效）
+- `PUT /api/admin/users/:id/subscription` - 手动调整订阅时间
+  - 延长订阅后自动创建服务实例
+- `DELETE /api/admin/users/:userId/servers/:serverId` - 强制断开用户服务器连接
+- `GET /api/admin/users/:id/servers` - 获取用户的服务器列表（含连接状态）
+- `GET /api/admin/users/:id/events` - 获取用户的事件日志（分页）
+
+**订单管理**：
+- `GET /api/admin/orders` - 获取所有订单（分页、筛选）
+  - 查询参数：`page`, `limit`, `status`, `userId`
+
+**统计数据**：
+- `GET /api/admin/stats` - 获取系统统计数据
+  - 用户统计：总用户、活跃用户、试用用户、付费用户、封禁用户
+  - 订阅统计：即将过期用户（7天内）、已过期用户
+  - 订单统计：总订单、成功订单、待支付订单、总收入、今日收入
+  - Rust+业务统计：总服务器数、已连接服务器数、总设备数、活跃连接数、FCM活跃用户数
+  - 事件统计：今日事件数、总事件日志数
+
+**系统监控**：
+- `GET /api/admin/system` - 获取系统运行状态
+  - 运行时长、内存使用、活跃 UserServiceManager 实例数
+  - GlobalServiceManager 配置信息
+
+**集成说明**：
+- 所有用户操作都会触发 `globalServiceManager` 的相应方法
+- 用户详情中包含实时服务状态（从内存 Map 中获取）
+- 统计数据直接查询 Prisma 数据库，确保准确性
+
+**默认管理员账户**：
+```bash
+# 创建默认管理员
+node backend/prisma/seed-admin.js
+
+# 默认凭证
+邮箱: admin@localhost
+密码: admin123456 (可通过 ADMIN_DEFAULT_PASSWORD 环境变量自定义)
+订阅: 永久订阅（至 2099-12-31）
+```
+
+### 12. 日志系统
 
 `utils/logger.js` 提供统一日志输出：
 
@@ -629,6 +835,10 @@ FRONTEND_URL=http://localhost:5173
 - `backend/src/models/config.model.js` - FCM 凭证、代理配置
 
 **路由层**
+- `backend/src/routes/auth.routes.js` - 用户注册/登录
+- `backend/src/routes/user.routes.js` - 用户信息管理
+- `backend/src/routes/payment.routes.js` - 支付宝支付、订单管理
+- `backend/src/routes/admin.routes.js` - 管理后台 API（用户管理、订单管理、统计数据、系统监控）
 - `backend/src/routes/server.routes.js` - 服务器/设备 CRUD
 - `backend/src/routes/pairing.routes.js` - FCM 管理和配对
 - `backend/src/routes/settings.routes.js` - 通知设置管理
@@ -662,100 +872,191 @@ FRONTEND_URL=http://localhost:5173
 - `frontend/vite.config.js` - Vite 配置（代理设置）
 - `frontend/tailwind.config.js` - Tailwind 主题配置
 
-## 数据库表结构
+## 数据库表结构 (Prisma + MySQL)
 
-### servers - 游戏服务器配置
-```sql
-CREATE TABLE servers (
-  id TEXT PRIMARY KEY,           -- 服务器唯一标识
-  name TEXT NOT NULL,            -- 服务器名称
-  ip TEXT NOT NULL,              -- IP 地址
-  port TEXT NOT NULL,            -- 端口
-  player_id TEXT NOT NULL,       -- Steam 64位 ID
-  player_token TEXT NOT NULL,    -- 配对令牌（负数）
-  battlemetrics_id TEXT,         -- Battlemetrics 服务器 ID
-  img TEXT,                      -- 服务器背景图
-  logo TEXT,                     -- 服务器 Logo
-  url TEXT,                      -- 服务器网站
-  description TEXT,              -- 服务器描述
-  created_at INTEGER             -- 创建时间戳
-)
+### User - 用户表
+```prisma
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  email     String   @unique
+  password  String   // bcrypt 加密
+  isAdmin   Boolean  @default(false)
+  isActive  Boolean  @default(true)
+
+  subscription Subscription?
+  servers      Server[]
+  devices      Device[]
+  eventLogs    EventLog[]
+  orders       Order[]
+
+  createdAt DateTime @default(now())
+  lastLogin DateTime?
+
+  @@index([email])
+}
 ```
 
-### devices - 智能设备配置
-```sql
-CREATE TABLE devices (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  server_id TEXT NOT NULL,       -- 外键 → servers.id
-  entity_id INTEGER NOT NULL,    -- 设备实体 ID
-  name TEXT NOT NULL,            -- 设备名称
-  type TEXT,                     -- 设备类型（switch/alarm/storage）
-  command TEXT,                  -- 自定义命令名（如 "灯"）
-  auto_mode INTEGER DEFAULT 0,   -- 自动化模式（0-8）
-  reachable INTEGER DEFAULT 1,   -- 是否可达
-  last_trigger INTEGER,          -- 警报触发时间
-  created_at INTEGER,
-  FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE,
-  UNIQUE(server_id, entity_id)
-)
+### Subscription - 订阅表
+```prisma
+model Subscription {
+  id       String   @id @default(cuid())
+  userId   String   @unique
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  planType  SubscriptionPlan  // TRIAL, MONTHLY, QUARTERLY, YEARLY
+  startDate DateTime
+  endDate   DateTime
+  status    SubscriptionStatus @default(ACTIVE)  // ACTIVE, EXPIRED, CANCELLED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum SubscriptionPlan {
+  TRIAL      // 试用版（7天）
+  MONTHLY    // 月付（¥29/月）
+  QUARTERLY  // 季付（¥79/季）
+  YEARLY     // 年付（¥299/年）
+}
 ```
 
-### event_logs - 事件日志
-```sql
-CREATE TABLE event_logs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  server_id TEXT NOT NULL,       -- 外键 → servers.id
-  event_type TEXT NOT NULL,      -- 事件类型
-  event_data TEXT,               -- JSON 格式事件数据
-  created_at INTEGER,
-  FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
-)
+### Order - 订单表
+```prisma
+model Order {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  amount    Int      // 金额（分）
+  planType  SubscriptionPlan
+  duration  Int      // 时长（天）
+
+  paymentMethod PaymentMethod  // ALIPAY, WECHAT
+  status        OrderStatus @default(PENDING)  // PENDING, SUCCESS, FAILED, CANCELLED
+
+  tradeNo       String?  // 支付宝/微信交易号
+  paidAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
 ```
 
-### notification_settings - 通知设置（单例表）
-```sql
-CREATE TABLE notification_settings (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  settings_json TEXT NOT NULL DEFAULT '{}',  -- 通知开关配置
-  created_at INTEGER,
-  updated_at INTEGER
-)
+### Server - 游戏服务器配置（多租户）
+```prisma
+model Server {
+  id       String   @id @default(cuid())
+  userId   String   // 多租户关键字段
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name     String
+  ip       String
+  port     String
+  playerId String
+  playerToken String
+
+  battlemetricsId String?
+  img             String?
+  logo            String?
+  url             String?
+  description     String?
+
+  devices   Device[]
+  eventLogs EventLog[]
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
 ```
 
-### fcm_credentials - FCM 凭证（单例表）
-```sql
-CREATE TABLE fcm_credentials (
-  id INTEGER PRIMARY KEY CHECK (id = 1),  -- 强制单例
-  credentials_json TEXT NOT NULL,         -- 完整 GCM 凭证 JSON
-  credential_type TEXT NOT NULL,          -- "FCM" 或 "GCM"
-  created_at INTEGER,
-  updated_at INTEGER
-)
+### Device - 智能设备配置（多租户）
+```prisma
+model Device {
+  id       String  @id @default(cuid())
+  serverId String
+  server   Server  @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  userId   String  // 冗余字段，便于直接查询
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  entityId    Int
+  name        String
+  type        DeviceType?  // SWITCH, ALARM, STORAGE_MONITOR
+  command     String?      // 自定义命令名
+  autoMode    Int @default(0)  // 自动化模式（0-8）
+  reachable   Boolean @default(true)
+  lastTrigger DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([serverId, entityId])
+  @@index([userId])
+}
 ```
 
-### proxy_config - 代理配置（单例表）
-```sql
-CREATE TABLE proxy_config (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  subscription_url TEXT,          -- 订阅链接
-  selected_node TEXT,             -- 选中的节点名称
-  proxy_port INTEGER DEFAULT 10808,
-  auto_start INTEGER DEFAULT 0,   -- 是否自动启动
-  created_at INTEGER,
-  updated_at INTEGER
-)
+### EventLog - 事件日志（多租户）
+```prisma
+model EventLog {
+  id       String   @id @default(cuid())
+  serverId String
+  server   Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  userId   String   // 冗余字段
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  eventType String
+  eventData Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([serverId])
+  @@index([createdAt])
+}
 ```
+
+**多租户隔离特性**：
+- 所有业务表都包含 `userId` 外键
+- 级联删除：删除用户时自动清理所有关联数据
+- 索引优化：userId、serverId、createdAt 都建立了索引
+- Prisma 自动处理关联查询的用户过滤
 
 ## 环境变量
 
 ### 后端 (`backend/.env`)
 ```env
-PORT=3000                                    # HTTP 服务器端口
-FRONTEND_URL=http://localhost:5173          # 前端 URL（CORS）
-LOG_LEVEL=info                              # 日志级别: error/warn/info/debug
-PROXY_SUBSCRIPTION_URL=                     # 代理订阅链接（可选，推荐在 Web 界面配置）
-PROXY_NODE_NAME=                            # 首选节点名称
-PROXY_PORT=10808                            # 本地代理端口
+# 数据库
+DATABASE_URL="mysql://user:password@localhost:3306/rust_dashboard"
+
+# JWT认证
+JWT_SECRET=your-secret-key-here          # JWT签名密钥（必须修改）
+JWT_EXPIRES_IN=7d                        # Token过期时间
+
+# 服务器配置
+PORT=3000                                # HTTP 服务器端口
+FRONTEND_URL=http://localhost:5173       # 前端 URL（CORS）
+LOG_LEVEL=info                          # 日志级别: error/warn/info/debug
+
+# 支付宝配置
+ALIPAY_APP_ID=your_app_id
+ALIPAY_PRIVATE_KEY=your_private_key
+ALIPAY_PUBLIC_KEY=alipay_public_key
+ALIPAY_GATEWAY=https://openapi.alipaydev.com/gateway.do  # 沙箱环境
+ALIPAY_NOTIFY_URL=https://your-domain.com/api/payment/callback/alipay
+ALIPAY_RETURN_URL=https://your-domain.com/payment/success
+
+# 代理配置（可选）
+PROXY_SUBSCRIPTION_URL=                  # 代理订阅链接
+PROXY_NODE_NAME=                         # 首选节点名称
+PROXY_PORT=10808                         # 本地代理端口
+
+# 管理员账户（首次部署）
+ADMIN_DEFAULT_PASSWORD=admin123456       # 默认管理员密码
 ```
 
 ### 前端 (`frontend/.env`)
@@ -766,30 +1067,46 @@ VITE_SOCKET_URL=http://localhost:3000       # WebSocket 地址
 
 ## 服务器初始化流程
 
-后端启动顺序（`backend/src/app.js`）：
+后端启动顺序（`backend/src/app.js`）- **多租户架构**：
 
 1. 加载 `.env` 环境变量
-2. 创建 `data/` 目录（如不存在）
+2. 初始化 Prisma Client 连接 MySQL
 3. 初始化 Express + HTTP 服务器
-4. 配置 CORS（允许所有来源跨域）
-5. 挂载路由 (`/api/servers`, `/api/pairing`, `/api/proxy`, `/api/settings`, `/api/health`)
-6. 初始化 WebSocketService（Socket.io）
-7. 初始化代理服务（优先数据库配置，其次 .env）
-8. 初始化 FCMService（3 种策略加载凭证）
-9. 自动重连到已保存的服务器
-10. 为每个连接的服务器启动 AutomationService 和 EventMonitorService
-11. 设置优雅关闭处理器（SIGTERM/SIGINT）
-12. 监听端口 3000
+4. 配置 CORS（允许前端跨域）
+5. 挂载路由：
+   - `/api/auth` - 用户注册/登录
+   - `/api/user` - 用户信息管理
+   - `/api/payment` - 支付宝支付、订单管理
+   - `/api/admin` - 管理后台 API（需 isAdmin=true）
+   - `/api/settings` - 通知设置管理
+   - `/api/health` - 健康检查
+6. 初始化 **GlobalServiceManager**
+7. 初始化 **WebSocketService** （Socket.io + JWT认证中间件）
+8. 调用 `globalServiceManager.initializeAllActiveUsers()`：
+   - 查询所有 `isActive=true` 且订阅未过期的用户
+   - 为每个用户创建 UserServiceManager 实例
+   - 每个实例包含：UserRustPlusManager, UserFCMManager, UserEventMonitor, UserAutomation, UserCommands
+9. 启动订阅检查定时任务（每小时检查一次）：
+   - 检查订阅过期用户并自动停止服务
+   - 检查即将过期用户（3天内）并发出提醒
+10. 设置优雅关闭处理器（SIGTERM/SIGINT）：
+    - 调用 `globalServiceManager.shutdownAll()`
+    - 停止所有用户服务实例
+    - 关闭 Prisma 数据库连接
+11. 监听端口 3000
 
 ## 代码风格约定
 
 ### 后端
 
 - **模块系统**: ES6 模块 (`import`/`export`)
-- **服务模式**: 单例 + EventEmitter
+- **服务模式**:
+  - **全局层**: 单例 + EventEmitter（GlobalServiceManager、WebSocketService）
+  - **用户层**: 每用户一个实例（UserServiceManager 及其子服务）
+- **数据库**: Prisma ORM，所有查询自动添加 userId 过滤
 - **日志格式**: Emoji 前缀（✅ 成功、❌ 错误、🔌 连接、📨 消息）
 - **错误处理**: 路由层 try/catch，服务层 emit error 事件
-- **数据库**: 始终使用 prepared statements（防 SQL 注入）
+- **认证**: JWT Token，7天过期，所有 API 和 WebSocket 都需验证
 
 ### 前端
 
