@@ -24,6 +24,7 @@
     "@liamcottle/rustplus.js": "file:./lib/rustplus",
     "@prisma/client": "^5.8.0",
     "adm-zip": "^0.5.16",
+    "alipay-sdk": "^3.4.0",
     "axios": "^1.6.0",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
@@ -32,12 +33,14 @@
     "https-proxy-agent": "^7.0.6",
     "js-yaml": "^4.1.1",
     "jsonwebtoken": "^9.0.2",
+    "qrcode": "^1.5.3",
     "socket.io": "^4.6.1",
     "socket.io-client": "^4.8.3",
     "socks": "^2.8.7",
     "socks-proxy-agent": "^8.0.5",
     "translate": "^3.0.1",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "wechatpay-node-v3": "^2.2.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1",

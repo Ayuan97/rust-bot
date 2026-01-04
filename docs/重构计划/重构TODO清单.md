@@ -1128,12 +1128,335 @@
 
 ---
 
+## 阶段 6：管理后台（1 周）
+
+### Week 11: 管理后台开发
+
+#### TODO-035: 管理员权限中间件验证 ⏳
+**优先级**: P1
+**预计工时**: 1 小时
+
+**任务描述**：
+1. 验证 `middleware/auth.middleware.js` 中的 `requireAdmin` 中间件可用
+2. 确保只有 isAdmin=true 的用户可以访问管理接口
+3. 简单的权限检查即可（单管理员场景）
+
+**完成标准**：
+- [ ] requireAdmin 中间件正常工作
+- [ ] 非管理员访问返回 403 错误
+- [ ] 错误信息清晰
+
+**依赖**：TODO-005
+
+**注意**：
+- 项目为单管理员场景，无需复杂权限系统
+- 只需检查 req.user.isAdmin 即可
+
+---
+
+#### TODO-036: 管理后台 API 实现 ⏳
+**优先级**: P1
+**预计工时**: 10 小时
+
+**任务描述**：
+1. 创建 `routes/admin.routes.js`
+2. 实现管理后台核心 API：
+   - `GET /api/admin/users` - 获取所有用户列表（分页）
+   - `GET /api/admin/users/:id` - 获取用户详情
+   - `GET /api/admin/users/:id/servers` - 获取用户的服务器列表
+   - `GET /api/admin/users/:id/devices` - 获取用户的设备列表
+   - `GET /api/admin/users/:id/events` - 获取用户的事件日志
+   - `PUT /api/admin/users/:id/status` - 启用/禁用用户
+   - `PUT /api/admin/users/:id/subscription` - 手动调整订阅时间
+   - `DELETE /api/admin/users/:id/servers/:serverId` - 强制断开用户服务器
+   - `GET /api/admin/orders` - 获取所有订单（分页、筛选）
+   - `GET /api/admin/stats` - 获取统计数据
+   - `GET /api/admin/system` - 获取系统运行状态
+3. 创建 `services/admin.service.js` 封装业务逻辑
+4. 所有接口需要 authenticate + requireAdmin 双重验证
+
+**完成标准**：
+- [ ] 所有 API 正常工作
+- [ ] 非管理员无法访问
+- [ ] 分页和筛选功能正常
+- [ ] 订阅调整正确生效并触发服务重启/停止
+- [ ] 统计数据准确（包含Rust+业务指标）
+- [ ] 可以查看用户的服务器和设备
+- [ ] 可以强制断开用户的服务器连接
+- [ ] 系统状态监控正常
+
+**依赖**：TODO-035
+
+**API 详细设计**：
+
+**用户管理**：
+```javascript
+GET /api/admin/users?page=1&limit=20&search=&status=
+Response: {
+  users: [...],
+  total: 100,
+  page: 1,
+  limit: 20
+}
+
+PUT /api/admin/users/:id/status
+Body: { isActive: true/false }
+
+PUT /api/admin/users/:id/subscription
+Body: { endDate: "2026-12-31T23:59:59Z" }
+```
+
+**订单管理**：
+```javascript
+GET /api/admin/orders?page=1&limit=20&status=&userId=
+Response: {
+  orders: [...],
+  total: 200,
+  page: 1,
+  limit: 20
+}
+```
+
+**统计数据**：
+```javascript
+GET /api/admin/stats
+Response: {
+  // 用户统计
+  totalUsers: 150,
+  activeUsers: 120,        // isActive=true
+  trialUsers: 30,          // planType=TRIAL
+  paidUsers: 90,           // planType!=TRIAL
+  bannedUsers: 5,          // isActive=false
+
+  // 订阅统计
+  expiringSoonUsers: 8,    // 7天内到期
+  expiredUsers: 12,        // 已过期但未清理
+
+  // 订单统计
+  totalOrders: 200,
+  pendingOrders: 5,        // PENDING
+  successOrders: 180,      // SUCCESS
+  totalRevenue: 5800,      // 总收入（元）
+  todayRevenue: 58,        // 今日收入
+
+  // Rust+ 业务统计
+  totalServers: 145,       // 总服务器数
+  connectedServers: 95,    // 已连接的服务器
+  totalDevices: 567,       // 总设备数
+  activeConnections: 45,   // 活跃WebSocket连接
+  fcmActiveUsers: 38,      // FCM监听中的用户数
+
+  // 事件统计
+  todayEvents: 1234,       // 今日事件数
+  totalEventLogs: 45678    // 总事件日志数
+}
+```
+
+**系统状态**：
+```javascript
+GET /api/admin/system
+Response: {
+  uptime: 3600000,                    // 运行时长（毫秒）
+  activeUserServices: 45,             // 活跃的UserServiceManager实例数
+  memoryUsage: {
+    rss: 234567890,
+    heapUsed: 123456789
+  },
+  databaseConnections: 10,            // 数据库连接数
+  globalServiceManager: {
+    userCount: 45,
+    subscriptionCheckInterval: 3600000
+  }
+}
+```
+
+**用户详情（扩展）**：
+```javascript
+GET /api/admin/users/:id
+Response: {
+  user: {
+    id, username, email, isAdmin, isActive,
+    subscription: { planType, endDate, ... },
+    createdAt, lastLogin
+  },
+  stats: {
+    serverCount: 3,        // 服务器数量
+    deviceCount: 12,       // 设备数量
+    eventCount: 234,       // 事件日志数量
+    orderCount: 2,         // 订单数量
+    totalSpent: 58         // 总消费金额
+  },
+  serviceStatus: {
+    isServiceRunning: true,      // UserServiceManager是否运行
+    connectedServers: ['srv1'],  // 已连接的服务器ID
+    fcmListening: true           // FCM是否监听中
+  }
+}
+```
+
+---
+
+#### TODO-037: 管理后台前端页面 ⏳
+**优先级**: P1
+**预计工时**: 12 小时
+
+**任务描述**：
+1. 创建 `pages/AdminPage.jsx` 管理后台主页面
+2. 创建子组件：
+   - `components/admin/UserList.jsx` - 用户列表（表格、分页、搜索）
+   - `components/admin/UserDetail.jsx` - 用户详情（订阅、服务器、设备、订单、服务状态）
+   - `components/admin/ServerMonitor.jsx` - 用户服务器监控（连接状态、设备数量）
+   - `components/admin/OrderList.jsx` - 订单列表（状态筛选）
+   - `components/admin/StatsDashboard.jsx` - 统计看板（用户、订阅、订单、Rust+业务）
+   - `components/admin/SystemStatus.jsx` - 系统状态监控（运行时长、内存、连接数）
+   - `components/admin/SubscriptionEditor.jsx` - 订阅时间编辑器
+3. 添加路由 `/admin` 到 `main.jsx`
+4. 实现权限检查（非管理员重定向到首页）
+5. 实现实时刷新（WebSocket或轮询获取最新数据）
+
+**完成标准**：
+- [ ] 管理后台页面可访问
+- [ ] 用户列表正常显示
+- [ ] 可以搜索和筛选用户
+- [ ] 可以查看用户详情（包含服务器、设备、服务状态）
+- [ ] 可以启用/禁用用户（触发服务启停）
+- [ ] 可以手动调整订阅时间（触发服务恢复）
+- [ ] 可以强制断开用户服务器连接
+- [ ] 订单列表正常显示
+- [ ] 统计数据正确展示（包含Rust+业务指标）
+- [ ] 系统状态监控正常（运行时长、内存、连接数）
+- [ ] 数据可以自动刷新
+- [ ] 非管理员无法访问
+
+**依赖**：TODO-036
+
+**页面布局**：
+```
+/admin
+  ├── 顶部导航 (退出、返回仪表板)
+  ├── 侧边栏菜单
+  │   ├── 统计概览
+  │   ├── 系统状态
+  │   ├── 用户管理
+  │   └── 订单管理
+  └── 主内容区
+      ├── 统计看板 (默认)
+      │   ├── 用户数据卡片 (总数、活跃、试用、付费、封禁)
+      │   ├── 订阅数据卡片 (即将过期、已过期)
+      │   ├── 收入数据卡片 (总收入、今日收入、订单数)
+      │   ├── Rust+业务卡片 (服务器数、设备数、活跃连接)
+      │   └── 事件统计卡片 (今日事件、总事件日志)
+      ├── 系统状态
+      │   ├── 运行时长和内存使用
+      │   ├── 活跃UserServiceManager实例数
+      │   ├── 数据库连接池状态
+      │   └── GlobalServiceManager配置
+      ├── 用户管理
+      │   ├── 搜索栏 (用户名、邮箱)
+      │   ├── 筛选器 (状态、订阅类型、服务状态)
+      │   ├── 用户表格 (包含服务器数、设备数、服务状态列)
+      │   ├── 操作按钮 (查看详情、编辑订阅、禁用、强制断开)
+      │   └── 用户详情弹窗
+      │       ├── 基本信息和订阅状态
+      │       ├── 服务器列表（连接状态、设备数）
+      │       ├── 设备列表
+      │       ├── 订单历史
+      │       └── 服务运行状态 (UserServiceManager、FCM)
+      └── 订单管理
+          ├── 筛选器 (状态、时间范围、用户)
+          ├── 订单表格 (包含用户信息、金额、状态)
+          └── 收入趋势图表
+```
+
+**UI 设计要点**：
+- 使用 Tailwind CSS 保持风格一致
+- 表格使用分页，每页 20 条
+- 操作需要二次确认（禁用用户、修改订阅、强制断开）
+- 成功/失败使用 Toast 提示
+- 服务器连接状态使用绿/红点指示
+- 统计数据每30秒自动刷新
+- 用户详情支持实时查看服务状态
+- 禁用用户后自动调用 globalServiceManager.removeUserService()
+- 恢复用户订阅后自动调用 globalServiceManager.createUserService()
+
+---
+
+#### TODO-038: 创建默认管理员账户 ⏳
+**优先级**: P1
+**预计工时**: 2 小时
+
+**任务描述**：
+1. 修改 `prisma/seed.js` 或创建新的种子脚本
+2. 创建默认管理员账户：
+   - 用户名: admin
+   - 邮箱: admin@localhost
+   - 密码: 从环境变量读取 (ADMIN_DEFAULT_PASSWORD)
+   - isAdmin: true
+   - 永久订阅（endDate 设置为 2099-12-31）
+3. 添加到项目启动文档
+
+**完成标准**：
+- [ ] 种子脚本可以运行
+- [ ] 管理员账户创建成功
+- [ ] 可以使用管理员账户登录
+- [ ] 可以访问管理后台
+- [ ] 密码可配置
+
+**依赖**：TODO-002
+
+**实现示例**：
+```javascript
+// prisma/seed-admin.js
+import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcrypt';
+
+const prisma = new PrismaClient();
+
+async function main() {
+  const password = process.env.ADMIN_DEFAULT_PASSWORD || 'admin123456';
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@localhost' },
+    update: {},
+    create: {
+      username: 'admin',
+      email: 'admin@localhost',
+      password: hashedPassword,
+      isAdmin: true,
+      isActive: true,
+      subscription: {
+        create: {
+          planType: 'YEARLY',
+          startDate: new Date(),
+          endDate: new Date('2099-12-31T23:59:59Z')
+        }
+      }
+    }
+  });
+
+  console.log('✅ 管理员账户创建成功:', admin.username);
+}
+
+main()
+  .catch(console.error)
+  .finally(() => prisma.$disconnect());
+```
+
+**使用方法**：
+```bash
+# 首次部署时运行
+ADMIN_DEFAULT_PASSWORD=your_secure_password node prisma/seed-admin.js
+```
+
+---
+
 ## 总计
 
-- **总任务数**: 34 个
-- **预计总工时**: 约 210 小时（10 周 × 21 小时/周）
+- **总任务数**: 38 个
+- **预计总工时**: 约 235 小时（11 周 × 21.4 小时/周）
 - **P0 任务**: 24 个
-- **P1 任务**: 10 个
+- **P1 任务**: 14 个
 
 ---
 
@@ -1141,9 +1464,9 @@
 
 **当前阶段**: 阶段 2 - 核心功能重构
 **当前任务**: TODO-018 数据迁移脚本
-**已完成**: 17/34
-**进行中**: 0/34
-**待开始**: 17/34
+**已完成**: 17/38
+**进行中**: 0/38
+**待开始**: 21/38
 
 **完成任务列表**：
 - ✅ TODO-001: Docker Compose 环境搭建
@@ -1164,7 +1487,13 @@
 - ✅ TODO-016: 订阅检查定时任务
 - ✅ TODO-017: 服务启动逻辑
 
-**更新时间**: 2026-01-03 19:50
+**更新时间**: 2026-01-04 00:50
+
+**待开始任务列表（管理后台相关）**：
+- ⏳ TODO-035: 管理员权限中间件完善
+- ⏳ TODO-036: 管理后台 API 实现
+- ⏳ TODO-037: 管理后台前端页面
+- ⏳ TODO-038: 创建默认管理员账户
 
 ---
 
@@ -1177,4 +1506,13 @@
 
 ---
 
-**最后更新**: 2026-01-03
+**最后更新**: 2026-01-04
+
+**新增内容**（2026-01-04）：
+- 新增阶段 6：管理后台开发（Week 11）
+- 新增 TODO-035: 管理员权限中间件完善
+- 新增 TODO-036: 管理后台 API 实现（用户管理、订单管理、统计数据）
+- 新增 TODO-037: 管理后台前端页面（用户列表、订单列表、统计看板）
+- 新增 TODO-038: 创建默认管理员账户（种子脚本）
+- 总任务数从 34 个增加到 38 个
+- P1 任务从 10 个增加到 14 个
