@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  FaPlus, FaServer, FaQrcode, FaInfoCircle, FaComments,
-  FaGamepad, FaCog, FaSignOutAlt, FaPlug, FaWifi, FaGlobe
+  FaServer, FaQrcode, FaInfoCircle, FaComments,
+  FaGamepad, FaCog, FaSignOutAlt, FaPlug, FaUser, FaUserShield
 } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
 import socketService from './services/socket';
-import { getServers, addServer as apiAddServer, deleteServer as apiDeleteServer } from './services/api';
-import proxyApi from './services/proxy';
+import { getServers, deleteServer as apiDeleteServer } from './services/api';
 import { useToast } from './components/Toast';
 import { useConfirm } from './components/ConfirmModal';
 
@@ -14,25 +14,25 @@ import ServerSidebarItem from './components/ServerSidebarItem';
 import ChatPanel from './components/ChatPanel';
 import DeviceControl from './components/DeviceControl';
 import ServerInfo from './components/ServerInfo';
-import AddServerModal from './components/AddServerModal';
 import PairingPanel from './components/PairingPanel';
 import PlayerNotifications from './components/PlayerNotifications';
 import EmptyState from './components/EmptyState';
 import WelcomeGuide from './components/WelcomeGuide';
 import SettingsPanel from './components/SettingsPanel';
+import SubscriptionStatus from './components/SubscriptionStatus';
+import SubscriptionExpiryReminder from './components/SubscriptionExpiryReminder';
 
 function App() {
+  const navigate = useNavigate();
   const [servers, setServers] = useState([]);
   const [activeServer, setActiveServer] = useState(null);
-  const [showAddModal, setShowAddModal] = useState(false);
   const [showPairingPanel, setShowPairingPanel] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('info'); // 'info', 'chat', 'devices'
   const [connectionLoading, setConnectionLoading] = useState(false);
   const [hasAutoSelected, setHasAutoSelected] = useState(false); // 记录是否已自动选择
-  const [socketConnected, setSocketConnected] = useState(false); // Socket 连接状态
-  const [proxyStatus, setProxyStatus] = useState({ isRunning: false, node: null }); // 代理状态
+  const [currentUser, setCurrentUser] = useState(null); // 当前登录用户信息
 
   // 未读计数
   const [unreadChat, setUnreadChat] = useState(0);
@@ -48,33 +48,31 @@ function App() {
 
   // --- Initial Setup & Socket Listeners ---
   useEffect(() => {
+    // 加载用户信息
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        setCurrentUser(user);
+      } catch (err) {
+        console.error('Failed to parse user info:', err);
+      }
+    }
+
     socketService.connect();
     fetchServers();
-    fetchProxyStatus();
 
-    // 订阅 Socket 连接状态，断网重连时自动刷新
+    // Socket 重连时自动刷新
     const unsubscribe = socketService.onConnectionChange((connected) => {
-      setSocketConnected(connected);
       if (connected) {
-        // 重连后刷新服务器列表，同步状态
         console.log('🔄 Socket 重连，刷新服务器状态...');
         fetchServers();
-        fetchProxyStatus();
       }
     });
 
     socketService.on('server:connected', handleServerConnected);
     socketService.on('server:disconnected', handleServerDisconnected);
     socketService.on('server:paired', handleServerPaired);
-
-    // 监听代理状态变化
-    const handleProxyStatusUpdate = (data) => {
-      setProxyStatus(prev => ({ ...prev, ...data }));
-    };
-    socketService.on('proxy:status', handleProxyStatusUpdate);
-    socketService.on('proxy:node:changed', (data) => {
-      setProxyStatus(prev => ({ ...prev, isRunning: true, node: { name: data.nodeName, type: data.nodeType } }));
-    });
 
     // 监听聊天消息（用于未读计数）
     const handleChatMessage = (data) => {
@@ -90,8 +88,6 @@ function App() {
       socketService.removeAllListeners('server:connected');
       socketService.removeAllListeners('server:disconnected');
       socketService.removeAllListeners('server:paired');
-      socketService.removeAllListeners('proxy:status');
-      socketService.removeAllListeners('proxy:node:changed');
       socketService.off('team:message', handleChatMessage);
       socketService.disconnect();
     };
@@ -114,21 +110,6 @@ function App() {
       console.error('Failed to fetch servers:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchProxyStatus = async () => {
-    try {
-      const res = await proxyApi.getProxyStatus();
-      if (res.data.success) {
-        setProxyStatus({
-          isRunning: res.data.data.isRunning,
-          node: res.data.data.node,
-          hasConfig: res.data.data.hasConfig
-        });
-      }
-    } catch (error) {
-      console.error('Failed to fetch proxy status:', error);
     }
   };
 
@@ -168,11 +149,6 @@ function App() {
   const handleServerPaired = (serverInfo) => {
     fetchServers();
     setShowPairingPanel(false);
-  };
-
-  const handleAddServer = async (serverData) => {
-    await apiAddServer(serverData);
-    fetchServers();
   };
 
   const handleDeleteServer = async (serverId) => {
@@ -228,6 +204,13 @@ function App() {
     }
   };
 
+  // 退出登录
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    navigate('/login');
+  };
+
   // --- Render Helpers ---
   const renderContent = () => {
     if (!activeServer) return <EmptyState type="server" />;
@@ -243,7 +226,9 @@ function App() {
 
   return (
     <div className="flex h-screen bg-dark-900 text-gray-200 font-sans overflow-hidden">
-      
+      {/* 订阅到期提醒 */}
+      <SubscriptionExpiryReminder />
+
       {/* --- Sidebar --- */}
       <aside className="w-72 flex flex-col border-r border-white/5 bg-dark-900/50 backdrop-blur-sm">
         {/* Sidebar Header */}
@@ -294,6 +279,11 @@ function App() {
           )}
         </div>
 
+        {/* Subscription Status */}
+        <div className="p-3 border-t border-white/5">
+          <SubscriptionStatus />
+        </div>
+
         {/* Sidebar Footer */}
         <div className="p-3 border-t border-white/5 bg-dark-800/30 space-y-2">
             <button
@@ -303,59 +293,42 @@ function App() {
                 <FaQrcode className="text-gray-400" /> 配对新服务器
             </button>
             <button
-                onClick={() => setShowAddModal(true)}
-                className="w-full btn btn-secondary text-sm justify-start"
-            >
-                <FaPlus className="text-gray-400" /> 手动添加
-            </button>
-            <button
                 onClick={() => setShowSettingsPanel(true)}
                 className="w-full btn btn-secondary text-sm justify-start"
             >
                 <FaCog className="text-gray-400" /> 设置
             </button>
+            <button
+                onClick={() => navigate('/account')}
+                className="w-full btn btn-secondary text-sm justify-start"
+            >
+                <FaUser className="text-gray-400" /> 账户管理
+            </button>
 
-            {/* 状态指示器区域 */}
-            <div className="pt-2 space-y-1.5 border-t border-white/5">
-              {/* Socket 连接状态 */}
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs ${
-                socketConnected
-                  ? 'bg-green-500/10 text-green-400'
-                  : 'bg-red-500/10 text-red-400'
-              }`}>
-                <FaWifi className={socketConnected ? 'text-green-400' : 'text-red-400'} />
-                <span>{socketConnected ? '后端已连接' : '后端断开'}</span>
-                <span className={`ml-auto w-1.5 h-1.5 rounded-full ${
-                  socketConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'
-                }`} />
-              </div>
-
-              {/* 代理状态指示器 */}
+            {/* 管理后台按钮 - 仅管理员可见 */}
+            {currentUser?.isAdmin && (
               <button
-                onClick={() => setShowSettingsPanel(true)}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors ${
-                  proxyStatus.isRunning
-                    ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20'
-                    : proxyStatus.hasConfig
-                      ? 'bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20'
-                      : 'bg-dark-700/50 text-gray-500 hover:bg-dark-700'
-                }`}
+                onClick={() => navigate('/admin')}
+                className="w-full btn btn-primary text-sm justify-start bg-blue-600/10 hover:bg-blue-600/20 border-blue-500/30"
               >
-                <FaGlobe className={
-                  proxyStatus.isRunning ? 'text-blue-400' :
-                  proxyStatus.hasConfig ? 'text-yellow-400' : 'text-gray-500'
-                } />
-                <span className="truncate">
-                  {proxyStatus.isRunning && proxyStatus.node
-                    ? proxyStatus.node.name
-                    : proxyStatus.hasConfig
-                      ? '代理已停止'
-                      : '代理未配置'
-                  }
-                </span>
-                {proxyStatus.isRunning && (
-                  <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                )}
+                <FaUserShield className="text-blue-400" /> 管理后台
+              </button>
+            )}
+
+            {/* 用户信息和退出登录 */}
+            <div className="pt-2 border-t border-white/5">
+              {currentUser && (
+                <div className="px-3 py-2 rounded-lg bg-dark-700/50 mb-2">
+                  <div className="text-xs text-gray-500 mb-0.5">当前用户</div>
+                  <div className="text-sm font-medium text-gray-200 truncate">{currentUser.username}</div>
+                  <div className="text-xs text-gray-400 truncate">{currentUser.email}</div>
+                </div>
+              )}
+              <button
+                onClick={handleLogout}
+                className="w-full btn btn-ghost text-sm justify-start text-red-400 hover:bg-red-500/10"
+              >
+                <FaSignOutAlt /> 退出登录
               </button>
             </div>
         </div>
@@ -428,12 +401,6 @@ function App() {
       </main>
 
       {/* Modals */}
-      <AddServerModal
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        onAdd={handleAddServer}
-      />
-
       {showPairingPanel && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-dark-800 rounded-2xl w-full max-w-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
