@@ -142,59 +142,118 @@ npm run preview
 
 ## 关键架构模式
 
-### 0. 服务层概览（新增）
+### 0. 服务层概览（多租户架构）
 
-项目采用多服务协作架构，主要服务包括：
+项目采用**多租户服务架构**，分为全局层和用户层两级服务：
 
+#### 全局层服务（单例）
 | 服务 | 文件 | 职责 |
 |------|------|------|
-| **RustPlusService** | `rustplus.service.js` | 游戏服务器连接池管理 |
-| **EventMonitorService** | `event-monitor.service.js` | 事件监控（轮询地图标记） |
-| **CommandsService** | `commands.service.js` | 游戏内命令处理 |
-| **AutomationService** | `automation.service.js` | 设备自动化控制 |
-| **FCMService** | `fcm.service.js` | FCM 推送监听 |
-| **ProxyService** | `proxy.service.js` | xray 代理管理 |
-| **WebSocketService** | `websocket.service.js` | 前端实时通信 |
+| **GlobalServiceManager** | `global-manager.service.js` | 全局服务管理器，管理所有用户服务实例 |
+| **WebSocketService** | `websocket.service.js` | 前端实时通信（房间隔离） |
+| **ProxyService** | `proxy.service.js` | xray 代理管理（全局共享） |
+| **BattlemetricsService** | `battlemetrics.service.js` | Battlemetrics API 集成 |
+| **SubscriptionService** | `subscription.service.js` | 代理订阅管理 |
+
+#### 用户层服务（每用户一实例）
+| 服务 | 文件 | 职责 |
+|------|------|------|
+| **UserServiceManager** | `user-service-manager.js` | 用户服务管理器，管理单个用户的所有服务 |
+| **UserRustPlusManager** | `user-rustplus.js` | 用户专属的游戏服务器连接池 |
+| **UserFCMManager** | `user-fcm.js` | 用户专属的 FCM 推送监听 |
+| **UserEventMonitor** | `user-event-monitor.js` | 用户专属的事件监控 |
+| **UserAutomation** | `user-automation.js` | 用户专属的设备自动化 |
+| **UserCommands** | `user-commands.js` | 用户专属的游戏内命令处理 |
+
+**关键特性**：
+- ✅ 每个用户拥有完全隔离的服务实例
+- ✅ 用户订阅过期时自动停止并清理服务
+- ✅ 用户续费后自动重新创建服务实例
+- ✅ WebSocket 使用房间隔离（`user:${userId}`）
+- ✅ 所有数据库操作自动过滤 userId
 
 ### 1. 服务层通信 (EventEmitter 发布/订阅)
 
 所有服务都继承自 Node.js `EventEmitter`，通过事件进行解耦通信：
 
-**示例流程：FCM 配对 → 自动连接服务器**
+**示例流程：FCM 配对 → 自动连接服务器（多租户版本）**
 
 ```javascript
-// 1. FCM 服务接收配对推送
-FCMService.handleFCMMessage()
+// 1. 用户的 FCM 服务接收配对推送
+userFCMManager.handleFCMMessage()
     ↓ emit
-'server:paired' 事件 (含 IP、端口、Token)
+'server:paired' 事件 (含 userId, IP、端口、Token)
     ↓
-// 2. app.js 监听该事件
-fcmService.on('server:paired', (serverInfo) => {
-    // 保存到数据库
-    storage.addServer(serverInfo);
+// 2. UserServiceManager 监听该事件
+userServiceManager.on('server:paired', async (serverInfo) => {
+    // 保存到数据库（Prisma，自动关联 userId）
+    await prisma.server.create({
+        data: { ...serverInfo, userId: user.id }
+    });
     // 自动连接
-    rustPlusService.connect(serverInfo);
+    await userServiceManager.rustPlusService.connect(serverInfo.id);
 });
     ↓
-// 3. RustPlusService 连接成功
-rustPlusService.emit('server:connected', serverId)
+// 3. UserRustPlusManager 连接成功
+userRustPlusManager.emit('server:connected', { userId, serverId })
     ↓
-// 4. WebSocketService 广播给所有客户端
-io.emit('server:connected', { serverId, ... })
+// 4. GlobalServiceManager 转发给 WebSocket
+globalServiceManager.on('server:connected', (data) => {
+    // 只广播给该用户（房间隔离）
+    websocketService.emitToUser(data.userId, 'server:connected', data);
+});
 ```
 
-### 2. 单例模式
+**关键变化**：
+- ✅ 事件携带 `userId` 字段
+- ✅ 数据库操作使用 Prisma（自动关联用户）
+- ✅ WebSocket 使用房间隔离而非全局广播
 
-所有服务导出为单例实例：
+### 2. 服务实例化模式
+
+#### 全局单例（仅管理器和共享服务）
 
 ```javascript
-// services/fcm.service.js
-class FCMService extends EventEmitter { }
-export default new FCMService();  // ← 单例
+// services/global-manager.service.js
+class GlobalServiceManager extends EventEmitter { }
+export default new GlobalServiceManager();  // ← 全局单例
 
-// 使用时直接导入
-import fcmService from './services/fcm.service.js';
+// services/websocket.service.js
+class WebSocketService { }
+export default new WebSocketService();  // ← 全局单例
+
+// services/proxy.service.js
+class ProxyService { }
+export default new ProxyService();  // ← 全局单例（代理是全局共享资源）
 ```
+
+#### 用户级实例（每用户独立）
+
+```javascript
+// services/user-service-manager.js
+class UserServiceManager extends EventEmitter {
+  constructor(userId) {
+    super();
+    this.userId = userId;
+
+    // 每个用户拥有独立的服务实例
+    this.rustPlusService = new UserRustPlusManager(userId);
+    this.fcmService = new UserFCMManager(userId);
+    this.eventMonitorService = new UserEventMonitor(userId, this.rustPlusService);
+    this.automationService = new UserAutomation(userId, this.rustPlusService);
+    this.commandsService = new UserCommands(userId, this.rustPlusService);
+  }
+}
+
+// 使用时通过 GlobalServiceManager 获取
+const userService = globalServiceManager.getUserService(userId);
+const rustPlusService = userService.rustPlusService;  // 用户专属实例
+```
+
+**设计原则**：
+- ✅ 管理器和共享资源使用单例
+- ✅ 用户业务服务使用用户级实例
+- ✅ 通过 `globalServiceManager.userServices` Map 管理所有用户实例
 
 ### 3. 前后端双通道通信
 
@@ -260,7 +319,7 @@ client.on('ON_DATA_RECEIVED', (data) => { ... });
 await client.connect();
 ```
 
-**完整实现参考**: `backend/src/services/fcm.service.js`
+**完整实现参考**: `backend/src/services/user-fcm.js`
 
 ### 2. 数据库迁移管理 (Prisma)
 
@@ -809,15 +868,22 @@ FRONTEND_URL=http://localhost:5173
 **入口点**
 - `backend/src/app.js` - 服务器初始化、服务装配、优雅关闭
 
-**服务层（单例模式）**
-- `backend/src/services/rustplus.service.js` - 游戏服务器连接池
-- `backend/src/services/event-monitor.service.js` - 事件监控（货船、直升机、油井、玩家状态）
-- `backend/src/services/commands.service.js` - 游戏内命令处理、AFK检测、人数追踪
-- `backend/src/services/automation.service.js` - 设备自动化（日夜开关、在线触发）
-- `backend/src/services/fcm.service.js` - FCM 推送监听器
-- `backend/src/services/proxy.service.js` - xray 代理管理
-- `backend/src/services/websocket.service.js` - WebSocket 实时通信桥
+**服务层（多租户架构）**
+
+*全局服务（单例）*：
+- `backend/src/services/global-manager.service.js` - 全局服务管理器
+- `backend/src/services/websocket.service.js` - WebSocket 实时通信桥（房间隔离）
+- `backend/src/services/proxy.service.js` - xray 代理管理（全局共享）
 - `backend/src/services/battlemetrics.service.js` - Battlemetrics API 集成
+- `backend/src/services/subscription.service.js` - 代理订阅管理
+
+*用户级服务（每用户一实例）*：
+- `backend/src/services/user-service-manager.js` - 用户服务管理器
+- `backend/src/services/user-rustplus.js` - 用户专属游戏服务器连接池
+- `backend/src/services/user-fcm.js` - 用户专属 FCM 推送监听
+- `backend/src/services/user-event-monitor.js` - 用户专属事件监控
+- `backend/src/services/user-automation.js` - 用户专属设备自动化
+- `backend/src/services/user-commands.js` - 用户专属游戏内命令处理
 
 **工具层**
 - `backend/src/utils/messages.js` - 消息模板系统
@@ -830,9 +896,10 @@ FRONTEND_URL=http://localhost:5173
 - `backend/src/utils/monument-info.js` - 古迹信息
 - `backend/src/utils/languages.js` - 语言代码映射
 
-**数据层**
-- `backend/src/models/storage.model.js` - 服务器、设备、事件日志、通知设置
-- `backend/src/models/config.model.js` - FCM 凭证、代理配置
+**数据层（Prisma + MySQL）**
+- `backend/prisma/schema.prisma` - 数据库 Schema 定义
+- `backend/prisma/seed-admin.js` - 创建默认管理员脚本
+- `backend/scripts/migrate-sqlite-to-mysql.js` - SQLite 迁移脚本（已废弃）
 
 **路由层**
 - `backend/src/routes/auth.routes.js` - 用户注册/登录
@@ -1187,23 +1254,31 @@ curl http://localhost:3000/api/pairing/status
 ## 扩展性考虑
 
 **已实现**：
-- 自动重连到已保存的服务器
-- 代理支持（xray 集成）
-- 游戏内命令系统
-- 设备自动化控制
-- 事件监控和通知
+- ✅ 多租户 SaaS 架构
+- ✅ MySQL 数据库（支持高并发）
+- ✅ 用户级服务隔离
+- ✅ 订阅管理和自动续费提醒
+- ✅ 支付集成（支付宝）
+- ✅ 管理后台（用户/订单/统计）
+- ✅ 自动重连到已保存的服务器
+- ✅ 代理支持（xray 集成）
+- ✅ 游戏内命令系统
+- ✅ 设备自动化控制
+- ✅ 事件监控和通知
+- ✅ Docker 容器化部署
 
 **当前限制**：
-- SQLite（单线程） - 适合小规模部署
-- 内存事件状态 - 服务器重启丢失活跃事件
-- 单实例部署 - 无集群支持
+- ⚠️ 内存事件状态 - 服务器重启丢失活跃事件
+- ⚠️ 单实例部署 - 无集群支持
+- ⚠️ 微信支付未实现
 
 **扩展路径**：
-- 切换到 PostgreSQL（支持多后端实例）
-- 使用 Redis 存储事件状态
+- 使用 Redis 存储事件状态和会话
 - 添加速率限制和请求验证
-- Docker 容器化部署
+- 实现负载均衡和多实例部署
 - Web 推送通知（浏览器通知）
+- 实现微信支付集成
+- 添加监控和日志系统（Sentry, Winston）
 
 ---
 没有要求不能私自创建文档-必须遵守
