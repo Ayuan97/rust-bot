@@ -25,9 +25,17 @@ router.get('/subscription', authenticate, async (req, res) => {
       });
     }
 
+    // 动态计算订阅状态
+    const now = new Date();
+    const endDate = new Date(subscription.endDate);
+    const status = endDate >= now ? 'ACTIVE' : 'EXPIRED';
+
     return res.json({
       success: true,
-      subscription,
+      subscription: {
+        ...subscription,
+        status, // 添加动态计算的 status 字段
+      },
     });
   } catch (error) {
     console.error('获取订阅信息失败:', error);
