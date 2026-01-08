@@ -11,9 +11,9 @@ import globalServiceManager from './services/global-manager.service.js';
 import websocketService from './services/websocket.service.js';
 
 // 路由
-// import serverRoutes from './routes/server.routes.js';  // TODO: 适配多租户（TODO-006）
-// import pairingRoutes from './routes/pairing.routes.js'; // TODO: 适配多租户（TODO-006）
-// import proxyRoutes from './routes/proxy.routes.js';     // TODO: 适配多租户（TODO-006）
+import serverRoutes from './routes/server.routes.js';
+import pairingRoutes from './routes/pairing.routes.js';
+import proxyRoutes from './routes/proxy.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import paymentRoutes from './routes/payment.routes.js';
@@ -51,9 +51,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);
-// app.use('/api/servers', serverRoutes);  // TODO: 适配多租户（TODO-006）
-// app.use('/api/pairing', pairingRoutes); // TODO: 适配多租户（TODO-006）
-// app.use('/api/proxy', proxyRoutes);     // TODO: 适配多租户（TODO-006）
+app.use('/api/servers', serverRoutes);
+app.use('/api/pairing', pairingRoutes);
+app.use('/api/proxy', proxyRoutes);
 app.use('/api/settings', settingsRoutes);
 
 // 健康检查

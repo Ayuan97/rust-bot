@@ -1,31 +1,47 @@
+/**
+ * 代理路由（多租户版本）
+ *
+ * 注意：代理服务是全局配置，所有用户共享同一个代理
+ * - 查看状态：所有登录用户可访问
+ * - 配置管理：仅管理员可访问
+ */
+
 import express from 'express';
+import { PrismaClient } from '@prisma/client';
+import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
 import proxyService from '../services/proxy.service.js';
 import subscriptionService from '../services/subscription.service.js';
-import configStorage from '../models/config.model.js';
 import websocketService from '../services/websocket.service.js';
 import battlemetricsService from '../services/battlemetrics.service.js';
-import rustPlusService from '../services/rustplus.service.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const prisma = new PrismaClient();
+
+// 所有路由都需要认证
+router.use(authenticate);
 
 /**
  * GET /api/proxy/status
- * 获取代理状态
+ * 获取代理状态（所有用户可访问）
  */
-router.get('/status', (req, res) => {
+router.get('/status', async (req, res) => {
   try {
     const status = proxyService.getStatus();
-    const config = configStorage.getProxyConfig();
+
+    // 从数据库获取代理配置（全局配置）
+    const proxyConfig = await prisma.proxyConfig.findUnique({
+      where: { id: 1 }
+    });
 
     res.json({
       success: true,
       data: {
         ...status,
-        subscriptionUrl: config?.subscriptionUrl ? '******' : null, // 隐藏敏感信息
-        hasConfig: !!config?.subscriptionUrl,
-        autoStart: config?.autoStart ?? true,
-        proxyPort: config?.proxyPort || 10808
+        subscriptionUrl: proxyConfig?.subscriptionUrl ? '******' : null, // 隐藏敏感信息
+        hasConfig: !!proxyConfig?.subscriptionUrl,
+        autoStart: proxyConfig?.autoStart ?? true,
+        proxyPort: proxyConfig?.proxyPort || 10808
       }
     });
   } catch (error) {
@@ -36,17 +52,16 @@ router.get('/status', (req, res) => {
 
 /**
  * GET /api/proxy/nodes
- * 获取节点列表
+ * 获取节点列表（所有用户可访问）
  */
 router.get('/nodes', (req, res) => {
   try {
-    // 优先从内存获取（最新）
+    // 从内存获取节点列表
     let nodes = subscriptionService.getNodes();
 
-    // 如果内存中没有，从数据库加载
-    if (!nodes || nodes.length === 0) {
-      const config = configStorage.getProxyConfig();
-      nodes = config?.nodes || [];
+    // 如果内存中没有，返回空数组
+    if (!nodes) {
+      nodes = [];
     }
 
     // 获取当前选中的节点
@@ -73,9 +88,9 @@ router.get('/nodes', (req, res) => {
 
 /**
  * POST /api/proxy/config
- * 保存代理配置
+ * 保存代理配置（仅管理员）
  */
-router.post('/config', async (req, res) => {
+router.post('/config', requireAdmin, async (req, res) => {
   try {
     const { subscriptionUrl, selectedNode, proxyPort, autoStart } = req.body;
 
@@ -91,7 +106,7 @@ router.post('/config', async (req, res) => {
     }
 
     // 尝试获取节点列表（验证订阅链接有效性）
-    logger.info('🔗 验证订阅链接...');
+    logger.info(`🔗 管理员 ${req.user.username} 正在验证订阅链接...`);
     let nodes;
     try {
       nodes = await subscriptionService.fetchSubscription(subscriptionUrl);
@@ -108,33 +123,32 @@ router.post('/config', async (req, res) => {
     // 记录代理是否正在运行（用于自动重启）
     const wasRunning = proxyService.isRunning;
 
-    // 获取 FCM 服务
-    const fcmService = (await import('../services/fcm.service.js')).default;
-    const fcmWasListening = fcmService.isListening;
-
-    // 如果代理正在运行，先停止 FCM 和代理
+    // 如果代理正在运行，先停止
     if (wasRunning) {
       logger.info('🔄 代理正在运行，先停止旧连接...');
-
-      // 先停止 FCM 监听（避免连接循环）
-      if (fcmWasListening) {
-        logger.info('🔄 暂停 FCM 监听...');
-        fcmService.stopListening();
-      }
-
       proxyService.stopXray();
     }
 
-    // 保存配置
-    configStorage.saveProxyConfig({
-      subscriptionUrl,
-      selectedNode: selectedNode || null,
-      proxyPort: proxyPort || 10808,
-      autoStart: autoStart !== false,
-      nodes
+    // 保存配置到数据库（全局配置）
+    await prisma.proxyConfig.upsert({
+      where: { id: 1 },
+      update: {
+        subscriptionUrl,
+        selectedNode: selectedNode || null,
+        proxyPort: proxyPort || 10808,
+        autoStart: autoStart !== false,
+        updatedAt: new Date()
+      },
+      create: {
+        id: 1,
+        subscriptionUrl,
+        selectedNode: selectedNode || null,
+        proxyPort: proxyPort || 10808,
+        autoStart: autoStart !== false
+      }
     });
 
-    logger.info('✅ 代理配置已保存');
+    logger.info(`✅ 管理员 ${req.user.username} 已保存代理配置`);
 
     // 如果之前在运行，自动用新配置重启
     let restartResult = null;
@@ -146,23 +160,7 @@ router.post('/config', async (req, res) => {
         // 更新各服务的代理配置
         const proxyAgent = proxyService.getProxyAgent();
         const portNum = proxyPort || 10808;
-        fcmService.setProxyAgent(proxyAgent);
-        fcmService.setProxyConfig({ host: '127.0.0.1', port: portNum });
         battlemetricsService.setProxyAgent(proxyAgent);
-        rustPlusService.setProxyConfig({ host: '127.0.0.1', port: portNum });
-
-        // 如果 FCM 之前在监听，延迟重新启动
-        if (fcmWasListening && fcmService.credentials) {
-          logger.info('🔄 代理重启完成，重新启动 FCM 监听...');
-          setTimeout(async () => {
-            try {
-              await fcmService.startListening();
-              logger.info('✅ FCM 监听已恢复');
-            } catch (error) {
-              logger.error('❌ FCM 监听恢复失败:', error.message);
-            }
-          }, 1000);
-        }
 
         restartResult = {
           restarted: true,
@@ -181,7 +179,7 @@ router.post('/config', async (req, res) => {
       }
     }
 
-    // 广播配置更新事件
+    // 广播配置更新事件（发送给所有用户）
     websocketService.broadcast('proxy:config:updated', {
       hasConfig: true,
       nodeCount: nodes.length
@@ -215,14 +213,18 @@ router.post('/config', async (req, res) => {
 
 /**
  * POST /api/proxy/start
- * 启动代理服务
+ * 启动代理服务（仅管理员）
  */
-router.post('/start', async (req, res) => {
+router.post('/start', requireAdmin, async (req, res) => {
   try {
     const { nodeName } = req.body;
-    const config = configStorage.getProxyConfig();
 
-    if (!config?.subscriptionUrl) {
+    // 从数据库获取配置
+    const proxyConfig = await prisma.proxyConfig.findUnique({
+      where: { id: 1 }
+    });
+
+    if (!proxyConfig?.subscriptionUrl) {
       return res.status(400).json({ success: false, error: '请先配置订阅链接' });
     }
 
@@ -231,33 +233,30 @@ router.post('/start', async (req, res) => {
       proxyService.stopXray();
     }
 
+    logger.info(`🚀 管理员 ${req.user.username} 正在启动代理...`);
+
     // 启动代理
     await proxyService.initialize(
-      config.subscriptionUrl,
-      nodeName || config.selectedNode
+      proxyConfig.subscriptionUrl,
+      nodeName || proxyConfig.selectedNode
     );
 
     // 更新各服务的代理 Agent
     const proxyAgent = proxyService.getProxyAgent();
-    const portNum = config.proxyPort || 10808;
-    const fcmService = (await import('../services/fcm.service.js')).default;
-    fcmService.setProxyAgent(proxyAgent);
-    fcmService.setProxyConfig({ host: '127.0.0.1', port: portNum });
+    const portNum = proxyConfig.proxyPort || 10808;
     battlemetricsService.setProxyAgent(proxyAgent);
-    rustPlusService.setProxyConfig({ host: '127.0.0.1', port: portNum });
 
     // 更新选中的节点
     if (proxyService.currentNode) {
-      configStorage.updateSelectedNode(proxyService.currentNode.name);
+      await prisma.proxyConfig.update({
+        where: { id: 1 },
+        data: { selectedNode: proxyService.currentNode.name }
+      });
     }
 
-    // 更新节点缓存
-    const nodes = subscriptionService.getNodes();
-    if (nodes && nodes.length > 0) {
-      configStorage.updateProxyNodes(nodes);
-    }
+    logger.info(`✅ 代理已启动，节点: ${proxyService.currentNode?.name}`);
 
-    // 广播状态更新
+    // 广播状态更新（发送给所有用户）
     websocketService.broadcast('proxy:status', {
       isRunning: true,
       node: proxyService.currentNode ? {
@@ -285,13 +284,15 @@ router.post('/start', async (req, res) => {
 
 /**
  * POST /api/proxy/stop
- * 停止代理服务
+ * 停止代理服务（仅管理员）
  */
-router.post('/stop', (req, res) => {
+router.post('/stop', requireAdmin, (req, res) => {
   try {
+    logger.info(`🛑 管理员 ${req.user.username} 停止代理服务`);
+
     proxyService.stopXray();
 
-    // 广播状态更新
+    // 广播状态更新（发送给所有用户）
     websocketService.broadcast('proxy:status', {
       isRunning: false,
       node: null
@@ -306,9 +307,9 @@ router.post('/stop', (req, res) => {
 
 /**
  * POST /api/proxy/switch
- * 切换节点
+ * 切换节点（仅管理员）
  */
-router.post('/switch', async (req, res) => {
+router.post('/switch', requireAdmin, async (req, res) => {
   try {
     const { nodeName } = req.body;
 
@@ -320,43 +321,24 @@ router.post('/switch', async (req, res) => {
       return res.status(400).json({ success: false, error: '代理未运行，请先启动' });
     }
 
-    // 切换节点前，先停止 FCM 监听（避免连接循环）
-    const fcmService = (await import('../services/fcm.service.js')).default;
-    const wasListening = fcmService.isListening;
-    if (wasListening) {
-      logger.info('🔄 切换节点前暂停 FCM 监听...');
-      fcmService.stopListening();
-    }
+    logger.info(`🔄 管理员 ${req.user.username} 切换代理节点到: ${nodeName}`);
 
     // 切换代理节点
     await proxyService.switchNode(nodeName);
 
     // 更新各服务的代理 Agent
     const proxyAgent = proxyService.getProxyAgent();
-    const config = configStorage.getProxyConfig();
-    const portNum = config?.proxyPort || 10808;
-    fcmService.setProxyAgent(proxyAgent);
     battlemetricsService.setProxyAgent(proxyAgent);
-    rustPlusService.setProxyConfig({ host: '127.0.0.1', port: portNum });
-
-    // 如果之前在监听，重新启动 FCM
-    if (wasListening && fcmService.credentials) {
-      logger.info('🔄 代理切换完成，重新启动 FCM 监听...');
-      // 延迟一点启动，确保代理完全就绪
-      setTimeout(async () => {
-        try {
-          await fcmService.startListening();
-          logger.info('✅ FCM 监听已恢复');
-        } catch (error) {
-          logger.error('❌ FCM 监听恢复失败:', error.message);
-        }
-      }, 1000);
-    }
 
     // 更新数据库中的选中节点
-    configStorage.updateSelectedNode(nodeName);
+    await prisma.proxyConfig.update({
+      where: { id: 1 },
+      data: { selectedNode: nodeName }
+    });
 
-    // 广播节点切换事件
+    logger.info(`✅ 节点已切换到: ${nodeName}`);
+
+    // 广播节点切换事件（发送给所有用户）
     websocketService.broadcast('proxy:node:changed', {
       nodeName: proxyService.currentNode?.name,
       nodeType: proxyService.currentNode?.type
@@ -377,27 +359,29 @@ router.post('/switch', async (req, res) => {
 
 /**
  * POST /api/proxy/refresh
- * 刷新订阅（重新拉取节点列表）
+ * 刷新订阅（重新拉取节点列表）（仅管理员）
  */
-router.post('/refresh', async (req, res) => {
+router.post('/refresh', requireAdmin, async (req, res) => {
   try {
-    const config = configStorage.getProxyConfig();
+    // 从数据库获取配置
+    const proxyConfig = await prisma.proxyConfig.findUnique({
+      where: { id: 1 }
+    });
 
-    if (!config?.subscriptionUrl) {
+    if (!proxyConfig?.subscriptionUrl) {
       return res.status(400).json({ success: false, error: '请先配置订阅链接' });
     }
 
-    logger.info('🔄 刷新订阅节点...');
-    const nodes = await subscriptionService.fetchSubscription(config.subscriptionUrl);
+    logger.info(`🔄 管理员 ${req.user.username} 刷新订阅节点...`);
+    const nodes = await subscriptionService.fetchSubscription(proxyConfig.subscriptionUrl);
 
     if (!nodes || nodes.length === 0) {
       return res.status(400).json({ success: false, error: '订阅链接中没有可用节点' });
     }
 
-    // 更新数据库中的节点缓存
-    configStorage.updateProxyNodes(nodes);
+    logger.info(`✅ 已刷新，获取到 ${nodes.length} 个节点`);
 
-    // 广播节点更新事件
+    // 广播节点更新事件（发送给所有用户）
     websocketService.broadcast('proxy:nodes:updated', {
       nodeCount: nodes.length
     });
@@ -417,19 +401,23 @@ router.post('/refresh', async (req, res) => {
 
 /**
  * DELETE /api/proxy/config
- * 清除代理配置
+ * 清除代理配置（仅管理员）
  */
-router.delete('/config', (req, res) => {
+router.delete('/config', requireAdmin, async (req, res) => {
   try {
+    logger.info(`🗑️  管理员 ${req.user.username} 清除代理配置`);
+
     // 先停止代理
     if (proxyService.isRunning) {
       proxyService.stopXray();
     }
 
     // 删除配置
-    configStorage.deleteProxyConfig();
+    await prisma.proxyConfig.deleteMany({
+      where: { id: 1 }
+    });
 
-    // 广播配置清除事件
+    // 广播配置清除事件（发送给所有用户）
     websocketService.broadcast('proxy:config:deleted', {});
 
     res.json({ success: true, message: '代理配置已清除' });

@@ -6,7 +6,7 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/auth.middleware.js';
-import rustPlusService from '../services/rustplus.service.js';
+import globalServiceManager from '../services/global-manager.service.js';
 import battlemetricsService from '../services/battlemetrics.service.js';
 
 const router = express.Router();
@@ -14,6 +14,19 @@ const prisma = new PrismaClient();
 
 // 所有路由都需要认证
 router.use(authenticate);
+
+/**
+ * 获取用户的 RustPlus 服务实例
+ * @param {string} userId - 用户 ID
+ * @returns {Object|null} UserRustPlusManager 实例
+ */
+function getUserRustPlusService(userId) {
+  const userService = globalServiceManager.getUserService(userId);
+  if (!userService) {
+    return null;
+  }
+  return userService.rustPlusService;
+}
 
 // ============================================================
 // 服务器管理
@@ -35,6 +48,7 @@ router.get('/', async (req, res) => {
     });
 
     // 添加连接状态
+    const rustPlusService = getUserRustPlusService(req.user.id);
     const serversWithStatus = servers.map(server => ({
       id: server.id,
       name: server.name,
@@ -49,7 +63,7 @@ router.get('/', async (req, res) => {
       description: server.description,
       isActive: server.isActive,
       createdAt: server.createdAt,
-      connected: rustPlusService.isConnected(server.id)
+      connected: rustPlusService ? rustPlusService.isConnected(server.id) : false
     }));
 
     res.json({ success: true, servers: serversWithStatus });
@@ -76,6 +90,8 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ success: false, error: '服务器不存在' });
     }
 
+    const rustPlusService = getUserRustPlusService(req.user.id);
+
     res.json({
       success: true,
       server: {
@@ -92,7 +108,7 @@ router.get('/:id', async (req, res) => {
         description: server.description,
         isActive: server.isActive,
         createdAt: server.createdAt,
-        connected: rustPlusService.isConnected(server.id)
+        connected: rustPlusService ? rustPlusService.isConnected(server.id) : false
       }
     });
   } catch (error) {
@@ -262,18 +278,21 @@ router.delete('/:id', async (req, res) => {
     }
 
     // 先断开连接（如果已连接）
-    if (rustPlusService.isConnected(serverId)) {
-      console.log(`   - 服务器已连接，正在断开...`);
-      try {
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (rustPlusService) {
+      if (rustPlusService.isConnected(serverId)) {
+        console.log(`   - 服务器已连接，正在断开...`);
+        try {
+          await rustPlusService.disconnect(serverId);
+          console.log(`   - 断开成功`);
+        } catch (disconnectError) {
+          console.error(`❌ 断开连接失败:`, disconnectError);
+          // 继续删除，即使断开失败
+        }
+      } else {
+        console.log(`   - 服务器未连接，清理配置...`);
         await rustPlusService.disconnect(serverId);
-        console.log(`   - 断开成功`);
-      } catch (disconnectError) {
-        console.error(`❌ 断开连接失败:`, disconnectError);
-        // 继续删除，即使断开失败
       }
-    } else {
-      console.log(`   - 服务器未连接，清理配置...`);
-      await rustPlusService.disconnect(serverId);
     }
 
     // 从数据库删除（会级联删除关联的设备和事件日志）
@@ -602,6 +621,11 @@ router.get('/:id/devices/:entityId/status', async (req, res) => {
     }
 
     // 检查服务器是否连接
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (!rustPlusService) {
+      return res.status(400).json({ success: false, error: '用户服务未初始化' });
+    }
+
     if (!rustPlusService.isConnected(id)) {
       return res.status(400).json({ success: false, error: '服务器未连接' });
     }
@@ -790,6 +814,11 @@ router.get('/:id/battlemetrics/top-players', async (req, res) => {
  */
 router.get('/settings/connection', (req, res) => {
   try {
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (!rustPlusService) {
+      return res.status(400).json({ success: false, error: '用户服务未初始化' });
+    }
+
     res.json({
       success: true,
       settings: {
@@ -814,6 +843,11 @@ router.post('/settings/connection', (req, res) => {
 
     if (typeof useFacepunchProxy !== 'boolean') {
       return res.status(400).json({ success: false, error: 'useFacepunchProxy 必须是布尔值' });
+    }
+
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (!rustPlusService) {
+      return res.status(400).json({ success: false, error: '用户服务未初始化' });
     }
 
     rustPlusService.setUseFacepunchProxy(useFacepunchProxy);

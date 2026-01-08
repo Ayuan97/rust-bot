@@ -1,59 +1,118 @@
-import express from 'express';
-import fcmService from '../services/fcm.service.js';
-import configStorage from '../models/config.model.js';
-import storage from '../models/storage.model.js';
-import rustPlusService from '../services/rustplus.service.js';
-
-const router = express.Router();
-
 /**
- * 获取配对状态
+ * FCM 配对路由（多租户版本）
+ * 所有操作都需要认证并与用户 ID 关联
  */
 
-router.get('/status', (req, res) => {
+import express from 'express';
+import { PrismaClient } from '@prisma/client';
+import { authenticate } from '../middleware/auth.middleware.js';
+import globalServiceManager from '../services/global-manager.service.js';
+
+const router = express.Router();
+const prisma = new PrismaClient();
+
+// 所有路由都需要认证
+router.use(authenticate);
+
+/**
+ * 获取用户的 FCM 服务实例
+ * @param {string} userId - 用户 ID
+ * @returns {Object|null} UserFCMManager 实例
+ */
+function getUserFCMService(userId) {
+  const userService = globalServiceManager.getUserService(userId);
+  if (!userService) {
+    return null;
+  }
+  return userService.fcmService;
+}
+
+/**
+ * GET /api/pairing/status
+ * 获取 FCM 配对状态
+ */
+router.get('/status', async (req, res) => {
   try {
-    const status = fcmService.getStatus();
-    const hasStoredCredentials = configStorage.hasFCMCredentials();
+    const fcmService = getUserFCMService(req.user.id);
+
+    if (!fcmService) {
+      return res.json({
+        success: true,
+        status: {
+          isListening: false,
+          hasCredentials: false,
+          message: '用户服务未初始化'
+        }
+      });
+    }
+
+    // 检查是否有保存的凭证（从数据库）
+    const servers = await prisma.server.findMany({
+      where: {
+        userId: req.user.id,
+        fcmCredentials: { not: null }
+      },
+      take: 1
+    });
+
+    const hasStoredCredentials = servers.length > 0 && servers[0].fcmCredentials;
 
     res.json({
       success: true,
       status: {
-        ...status,
-        hasStoredCredentials
+        isListening: fcmService.isListening || false,
+        hasCredentials: hasStoredCredentials,
+        credentialType: hasStoredCredentials ? 'GCM' : null
       }
     });
   } catch (error) {
+    console.error('获取配对状态失败:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
- * 开始 FCM 监听（初始化配对）
+ * POST /api/pairing/start
+ * 开始 FCM 监听
  */
 router.post('/start', async (req, res) => {
   try {
-    // 检查是否已有凭证
-    let credentials = configStorage.getFCMCredentials();
+    const fcmService = getUserFCMService(req.user.id);
 
-    if (credentials) {
-      console.log('✅ 使用已保存的 FCM 凭证');
-      fcmService.loadCredentials(credentials);
-      await fcmService.startListening();
-    } else {
-      console.log('🆕 注册新的 FCM 凭证');
-      credentials = await fcmService.registerAndListen();
-
-      // 保存凭证
-      configStorage.saveFCMCredentials(credentials);
+    if (!fcmService) {
+      return res.status(400).json({
+        success: false,
+        error: '用户服务未初始化，请联系管理员'
+      });
     }
+
+    // 检查是否已有保存的凭证
+    const servers = await prisma.server.findMany({
+      where: {
+        userId: req.user.id,
+        fcmCredentials: { not: null }
+      },
+      take: 1
+    });
+
+    if (servers.length === 0 || !servers[0].fcmCredentials) {
+      return res.status(400).json({
+        success: false,
+        error: '未找到 FCM 凭证，请先配置凭证'
+      });
+    }
+
+    const credentials = servers[0].fcmCredentials;
+
+    // 启动 FCM 监听
+    await fcmService.start(credentials);
 
     res.json({
       success: true,
       message: 'FCM 监听已启动，请在游戏中配对服务器',
       credentials: {
         type: credentials.gcm ? 'GCM' : 'FCM',
-        androidId: credentials.gcm ? credentials.gcm.androidId : null,
-        token: credentials.fcm ? credentials.fcm.token.substring(0, 50) + '...' : null,
+        androidId: credentials.gcm?.androidId ? `${String(credentials.gcm.androidId).substring(0, 8)}****` : null,
         isListening: true
       }
     });
@@ -64,120 +123,146 @@ router.post('/start', async (req, res) => {
 });
 
 /**
+ * POST /api/pairing/stop
  * 停止 FCM 监听
  */
-router.post('/stop', (req, res) => {
+router.post('/stop', async (req, res) => {
   try {
-    fcmService.stopListening();
-    res.json({ success: true, message: 'FCM 监听已停止' });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+    const fcmService = getUserFCMService(req.user.id);
 
-/**
- * 重置 FCM 凭证（清空凭证并清除所有服务器）
- */
-router.post('/reset', async (req, res) => {
-  try {
-    console.log('🔄 开始重置 FCM 凭证和服务器信息...');
-
-    // 1. 获取所有服务器并断开连接
-    const servers = storage.getAllServers();
-    for (const server of servers) {
-      if (rustPlusService.isConnected(server.id)) {
-        console.log(`🔌 断开服务器连接: ${server.name}`);
-        await rustPlusService.disconnect(server.id);
-      }
-      
-      // 删除服务器及其相关数据
-      console.log(`🗑️  删除服务器: ${server.name}`);
-      storage.deleteServer(server.id);
-    }
-
-    // 2. 停止 FCM 监听
-    fcmService.stopListening();
-    console.log('⏹️  FCM 监听已停止');
-
-    // 3. 清除内存中的凭证
-    fcmService.clearCredentials();
-
-    // 4. 删除数据库中的 FCM 凭证
-    configStorage.deleteFCMCredentials();
-    console.log('🗑️  FCM 凭证已删除');
-
-    console.log('✅ 重置完成\n');
-
-    res.json({
-      success: true,
-      message: 'FCM 凭证和所有服务器信息已清空，请重新配置',
-      cleared: {
-        servers: servers.length,
-        credentials: true
-      }
-    });
-  } catch (error) {
-    console.error('❌ 重置失败:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * 获取 FCM 凭证信息（用于调试）
- */
-router.get('/credentials', (req, res) => {
-  try {
-    const credentials = fcmService.getCredentials();
-
-    if (!credentials) {
-      return res.json({
-        success: true,
-        hasCredentials: false,
-        message: '未找到 FCM 凭证'
+    if (!fcmService) {
+      return res.status(400).json({
+        success: false,
+        error: '用户服务未初始化'
       });
     }
 
+    await fcmService.stop();
+
     res.json({
       success: true,
-      hasCredentials: true,
-      credentials: {
-        type: credentials.gcm ? 'GCM' : 'FCM',
-        androidId: credentials.gcm ? credentials.gcm.androidId : null,
-        token: credentials.fcm ? credentials.fcm.token.substring(0, 50) + '...' : null,
-        pushSet: credentials.fcm ? credentials.fcm.pushSet : null
-      }
+      message: 'FCM 监听已停止'
     });
   } catch (error) {
+    console.error('停止 FCM 失败:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
- * 尝试从 rustplus CLI 加载凭证
+ * POST /api/pairing/register/simple
+ * 简化版配对：直接使用用户的 Companion 凭证
+ *
+ * 用户从 companion-rust.facepunch.com 复制凭证命令后提交
+ * 格式: /credentials add gcm_android_id:xxx gcm_security_token:xxx steam_id:xxx ...
  */
-router.post('/credentials/load-cli', async (req, res) => {
+router.post('/register/simple', async (req, res) => {
   try {
-    const loaded = await fcmService.loadFromRustPlusCLI();
+    const { credentials_command } = req.body;
 
-    if (loaded) {
-      // 保存凭证
-      configStorage.saveFCMCredentials(fcmService.getCredentials());
+    if (!credentials_command) {
+      return res.status(400).json({
+        success: false,
+        error: '缺少 credentials_command 参数'
+      });
+    }
 
-      // 开始监听
-      await fcmService.startListening();
+    // 解析凭证命令
+    const regex = /(\w+):(\S+)/g;
+    const params = {};
+    let match;
+    while ((match = regex.exec(credentials_command)) !== null) {
+      params[match[1]] = match[2];
+    }
 
-      res.json({
-        success: true,
-        message: '已从 rustplus CLI 加载凭证并开始监听'
+    // 验证必需字段
+    if (!params.gcm_android_id || !params.gcm_security_token) {
+      return res.status(400).json({
+        success: false,
+        error: '凭证格式错误：缺少 gcm_android_id 或 gcm_security_token'
+      });
+    }
+
+    console.log(`📝 用户 ${req.user.username} 配置 FCM 凭证:`);
+    console.log('   Android ID:', params.gcm_android_id);
+    console.log('   Steam ID:', params.steam_id || '未提供');
+
+    // 检查有效期
+    if (params.expire_date) {
+      const expireTime = new Date(parseInt(params.expire_date) * 1000);
+      const now = new Date();
+      console.log('   过期时间:', expireTime.toLocaleString());
+
+      if (now > expireTime) {
+        return res.status(400).json({
+          success: false,
+          error: '凭证已过期，请重新从 Companion 获取'
+        });
+      }
+    }
+
+    // 构建凭证对象
+    const credentials = {
+      gcm: {
+        androidId: params.gcm_android_id,
+        securityToken: params.gcm_security_token,
+      },
+      steam: {
+        steamId: params.steam_id || 'unknown',
+      },
+      companion: params, // 保存所有原始信息
+    };
+
+    // 保存凭证到数据库（存储在第一个服务器或创建临时占位符）
+    let server = await prisma.server.findFirst({
+      where: { userId: req.user.id }
+    });
+
+    if (!server) {
+      // 如果用户还没有服务器，创建一个占位符用于存储 FCM 凭证
+      server = await prisma.server.create({
+        data: {
+          id: `fcm-${req.user.id}`,
+          userId: req.user.id,
+          name: 'FCM 凭证占位符',
+          ip: '0.0.0.0',
+          port: '0',
+          playerId: '0',
+          playerToken: 'placeholder',
+          fcmCredentials: credentials,
+          isActive: false // 标记为非活跃，仅用于存储凭证
+        }
       });
     } else {
-      res.json({
-        success: false,
-        message: '未找到 rustplus CLI 凭证文件',
-        hint: '请先运行 "rustplus-pairing-server" 获取凭证'
+      // 更新现有服务器的凭证
+      await prisma.server.update({
+        where: { id: server.id },
+        data: { fcmCredentials: credentials }
       });
     }
+
+    // 启动 FCM 监听
+    const fcmService = getUserFCMService(req.user.id);
+    if (fcmService) {
+      await fcmService.start(credentials);
+    }
+
+    console.log(`✅ 用户 ${req.user.username} FCM 凭证已保存并开始监听\n`);
+
+    res.json({
+      success: true,
+      message: 'FCM 凭证已保存并开始监听',
+      isListening: true,
+      credentials: {
+        androidId: params.gcm_android_id,
+        steamId: params.steam_id,
+        expiresAt: params.expire_date
+          ? new Date(parseInt(params.expire_date) * 1000).toISOString()
+          : null,
+      }
+    });
   } catch (error) {
+    console.error('配置 FCM 凭证失败:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -186,19 +271,121 @@ router.post('/credentials/load-cli', async (req, res) => {
 });
 
 /**
- * FCM 凭证诊断 - 检查凭证问题
+ * GET /api/pairing/credentials
+ * 获取 FCM 凭证信息（用于调试）
  */
-router.get('/credentials/diagnose', (req, res) => {
+router.get('/credentials', async (req, res) => {
   try {
-    const credentials = fcmService.getCredentials();
-    const storedCredentials = configStorage.getFCMCredentials();
-    const status = fcmService.getStatus();
+    // 从数据库获取凭证
+    const servers = await prisma.server.findMany({
+      where: {
+        userId: req.user.id,
+        fcmCredentials: { not: null }
+      },
+      take: 1
+    });
+
+    if (servers.length === 0 || !servers[0].fcmCredentials) {
+      return res.json({
+        success: true,
+        hasCredentials: false,
+        message: '未找到 FCM 凭证'
+      });
+    }
+
+    const credentials = servers[0].fcmCredentials;
+
+    res.json({
+      success: true,
+      hasCredentials: true,
+      credentials: {
+        type: credentials.gcm ? 'GCM' : 'FCM',
+        androidId: credentials.gcm?.androidId ? `${String(credentials.gcm.androidId).substring(0, 8)}****` : null,
+        steamId: credentials.steam?.steamId || credentials.companion?.steam_id || 'unknown',
+        expiresAt: credentials.companion?.expire_date
+          ? new Date(parseInt(credentials.companion.expire_date) * 1000).toISOString()
+          : null
+      }
+    });
+  } catch (error) {
+    console.error('获取凭证信息失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/pairing/reset
+ * 重置 FCM 凭证和配对
+ */
+router.post('/reset', async (req, res) => {
+  try {
+    console.log(`🔄 用户 ${req.user.username} 重置 FCM 凭证...`);
+
+    // 1. 停止 FCM 监听
+    const fcmService = getUserFCMService(req.user.id);
+    if (fcmService) {
+      await fcmService.stop();
+      console.log('   ✅ FCM 监听已停止');
+    }
+
+    // 2. 获取用户的 RustPlus 服务并断开所有连接
+    const userService = globalServiceManager.getUserService(req.user.id);
+    if (userService && userService.rustPlusService) {
+      await userService.rustPlusService.disconnectAll();
+      console.log('   ✅ 所有服务器连接已断开');
+    }
+
+    // 3. 从数据库删除 FCM 凭证（但保留服务器信息）
+    const servers = await prisma.server.findMany({
+      where: {
+        userId: req.user.id,
+        fcmCredentials: { not: null }
+      }
+    });
+
+    for (const server of servers) {
+      await prisma.server.update({
+        where: { id: server.id },
+        data: { fcmCredentials: null }
+      });
+    }
+
+    console.log(`   ✅ 已清除 ${servers.length} 个服务器的 FCM 凭证`);
+
+    res.json({
+      success: true,
+      message: 'FCM 凭证已清除，服务器信息已保留',
+      cleared: {
+        credentials: servers.length,
+        connections: true
+      }
+    });
+  } catch (error) {
+    console.error('重置 FCM 凭证失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/pairing/credentials/diagnose
+ * FCM 凭证诊断
+ */
+router.get('/credentials/diagnose', async (req, res) => {
+  try {
+    // 从数据库获取凭证
+    const servers = await prisma.server.findMany({
+      where: {
+        userId: req.user.id,
+        fcmCredentials: { not: null }
+      },
+      take: 1
+    });
 
     const issues = [];
     const info = {};
 
     // 1. 检查是否有凭证
-    if (!credentials && !storedCredentials) {
+    if (servers.length === 0 || !servers[0].fcmCredentials) {
       issues.push({
         level: 'error',
         message: '没有找到任何 FCM 凭证',
@@ -213,7 +400,7 @@ router.get('/credentials/diagnose', (req, res) => {
       });
     }
 
-    const creds = credentials || storedCredentials;
+    const creds = servers[0].fcmCredentials;
 
     // 2. 检查凭证类型
     if (!creds.gcm) {
@@ -224,7 +411,9 @@ router.get('/credentials/diagnose', (req, res) => {
       });
     } else {
       info.type = 'GCM';
-      info.androidId = creds.gcm.androidId ? `${String(creds.gcm.androidId).substring(0, 8)}****` : null;
+      info.androidId = creds.gcm.androidId
+        ? `${String(creds.gcm.androidId).substring(0, 8)}****`
+        : null;
       info.hasSecurityToken = !!creds.gcm.securityToken;
 
       if (!creds.gcm.androidId) {
@@ -245,8 +434,8 @@ router.get('/credentials/diagnose', (req, res) => {
     }
 
     // 3. 检查有效期
-    if (creds.expireDate || creds.companion?.expire_date) {
-      const expireTimestamp = creds.expireDate || creds.companion?.expire_date;
+    if (creds.companion?.expire_date) {
+      const expireTimestamp = creds.companion.expire_date;
       const expireTime = new Date(parseInt(expireTimestamp) * 1000);
       const now = new Date();
 
@@ -293,12 +482,14 @@ router.get('/credentials/diagnose', (req, res) => {
     }
 
     // 5. 检查监听状态
-    info.isListening = status.isListening;
-    if (!status.isListening && credentials) {
+    const fcmService = getUserFCMService(req.user.id);
+    info.isListening = fcmService ? (fcmService.isListening || false) : false;
+
+    if (!info.isListening && creds) {
       issues.push({
         level: 'warning',
         message: 'FCM 当前未在监听状态',
-        solution: '可能是连接断开，系统会自动重连'
+        solution: '请点击"开始监听"按钮启动 FCM'
       });
     }
 
@@ -308,7 +499,7 @@ router.get('/credentials/diagnose', (req, res) => {
     const warningCount = issues.filter(i => i.level === 'warning').length;
 
     if (errorCount > 0) {
-      recommendation = '存在严重问题，需要重新配置凭证。建议：1) 在设置中清除凭证 2) 重新从 companion-rust.facepunch.com 获取 3) 重新配置';
+      recommendation = '存在严重问题，需要重新配置凭证';
     } else if (warningCount > 0) {
       recommendation = '凭证基本正常，但有一些注意事项';
     } else {
@@ -323,102 +514,7 @@ router.get('/credentials/diagnose', (req, res) => {
       recommendation
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-/**
- * 简化版自动注册：直接使用用户的 Companion 凭证
- * 用户从 companion 页面复制凭证命令后提交
- *
- * 关键理解：
- * - 用户的 gcm_android_id + gcm_security_token 已经在 Companion 后端注册过
- * - 我们直接用这些凭证连接 MCS (mtalk.google.com:5228) 接收推送
- * - 不需要 auth_token（那是注册新设备时才需要的）
- */
-router.post('/register/simple', async (req, res) => {
-  try {
-    const { credentials_command } = req.body;
-
-    if (!credentials_command) {
-      return res.status(400).json({
-        success: false,
-        error: '缺少 credentials_command 参数'
-      });
-    }
-
-    // 解析凭证命令
-    // 格式: /credentials add gcm_android_id:xxx gcm_security_token:xxx steam_id:xxx issued_date:xxx expire_date:xxx
-    const regex = /(\w+):(\S+)/g;
-    const params = {};
-    let match;
-    while ((match = regex.exec(credentials_command)) !== null) {
-      params[match[1]] = match[2];
-    }
-
-    // 验证必需字段
-    if (!params.gcm_android_id || !params.gcm_security_token) {
-      return res.status(400).json({
-        success: false,
-        error: '凭证格式错误：缺少 gcm_android_id 或 gcm_security_token'
-      });
-    }
-
-    console.log('📝 解析 Companion 凭证:');
-    console.log('   Android ID:', params.gcm_android_id);
-    console.log('   Steam ID:', params.steam_id || '未提供');
-
-    // 检查有效期
-    if (params.expire_date) {
-      const expireTime = new Date(parseInt(params.expire_date) * 1000);
-      const now = new Date();
-      console.log('   过期时间:', expireTime.toLocaleString());
-
-      if (now > expireTime) {
-        return res.status(400).json({
-          success: false,
-          error: '凭证已过期，请重新从 Companion 获取'
-        });
-      }
-    }
-
-    // 构建凭证对象（使用用户的 GCM 凭证）
-    const credentials = {
-      gcm: {
-        androidId: params.gcm_android_id,
-        securityToken: params.gcm_security_token,
-      },
-      steam: {
-        steamId: params.steam_id || 'unknown',
-      },
-      companion: params, // 保存所有原始信息
-    };
-
-    console.log('');
-    console.log('✅ 使用 Companion 凭证（已在服务端注册的设备）');
-    console.log('   → 直接连接 MCS 接收推送，无需 auth_token');
-    console.log('');
-
-    // 加载凭证并开始监听
-    fcmService.loadCredentials(credentials);
-    configStorage.saveFCMCredentials(credentials);
-    await fcmService.startListening();
-
-    res.json({
-      success: true,
-      message: 'FCM 凭证已保存并开始监听',
-      isListening: true,
-      credentials: {
-        androidId: params.gcm_android_id,
-        steamId: params.steam_id,
-        expiresAt: params.expire_date ? new Date(parseInt(params.expire_date) * 1000).toISOString() : null,
-      }
-    });
-  } catch (error) {
-    console.error('注册失败:', error);
+    console.error('诊断凭证失败:', error);
     res.status(500).json({
       success: false,
       error: error.message
