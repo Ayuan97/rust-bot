@@ -1,203 +1,163 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authApi } from '../services/auth';
+import { FaTerminal, FaUserPlus, FaEnvelope, FaLock, FaArrowRight, FaClock } from 'react-icons/fa';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({
-    username: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-  });
+  const [formData, setFormData] = useState({ username: '', email: '', password: '', confirmPassword: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
   };
 
   const validateForm = () => {
-    if (formData.username.length < 3) {
-      setError('用户名至少需要 3 个字符');
-      return false;
-    }
-
-    if (formData.password.length < 6) {
-      setError('密码至少需要 6 个字符');
-      return false;
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      setError('两次输入的密码不一致');
-      return false;
-    }
-
+    if (formData.username.length < 3) { setError('VAL_ERR: USERNAME_TOO_SHORT'); return false; }
+    if (formData.password.length < 6) { setError('VAL_ERR: KEY_TOO_WEAK'); return false; }
+    if (formData.password !== formData.confirmPassword) { setError('VAL_ERR: KEYS_MISMATCH'); return false; }
     return true;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-
-    if (!validateForm()) {
-      return;
-    }
-
+    if (!validateForm()) return;
     setLoading(true);
-
     try {
-      const result = await authApi.register(
-        formData.username,
-        formData.email,
-        formData.password
-      );
-
+      const result = await authApi.register(formData.username, formData.email, formData.password);
       if (result.success) {
-        // 保存 Token 到 localStorage
         localStorage.setItem('token', result.data.token);
         localStorage.setItem('user', JSON.stringify(result.data.user));
-
-        // 跳转到仪表板
         navigate('/dashboard');
       } else {
-        setError(result.error || '注册失败');
+        setError(result.error || 'REG_FAILED: UNKNOWN_ERROR');
       }
     } catch (err) {
-      console.error('注册失败:', err);
-      setError(err.response?.data?.error || '注册失败，请检查网络连接');
+      setError('LINK_ERROR: FAILED_TO_REACH_AUTH_SERVER');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800 px-4 py-12">
-      <div className="max-w-md w-full space-y-8">
-        {/* Logo 和标题 */}
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-white mb-2">
-            Rust+ Dashboard
-          </h1>
-          <p className="text-gray-400">创建账号，开始使用</p>
+    <div className="min-h-screen bg-[#0d0e10] text-[#e0e0e0] font-mono flex items-center justify-center p-6 relative overflow-hidden">
+      <div className="fixed inset-0 pointer-events-none z-50 opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_4px,3px_100%]"></div>
+      
+      <div className="max-w-md w-full relative z-10 py-12">
+        <div className="text-center mb-10">
+          <div className="w-16 h-16 tactic-cut bg-[#cd5241] flex items-center justify-center mx-auto mb-6 shadow-lg shadow-[#cd5241]/20">
+            <FaTerminal className="text-white text-2xl" />
+          </div>
+          <h1 className="text-2xl font-black uppercase tracking-widest glow-text">Registration_Portal</h1>
+          <p className="text-[10px] text-gray-600 uppercase tracking-[0.4em] mt-2">Initialize New Commander Account</p>
         </div>
 
-        {/* 注册表单 */}
-        <div className="bg-gray-800 rounded-lg shadow-xl p-8 border border-gray-700">
-          <h2 className="text-2xl font-bold text-white mb-6 text-center">
-            注册账号
-          </h2>
+        <div className="tactic-border tactic-cut p-1 bg-black/40 backdrop-blur-xl">
+          <div className="bg-black/40 p-8">
+            {error && (
+              <div className="mb-6 p-3 bg-red-500/10 border border-red-500/30 text-red-500 text-[10px] font-bold uppercase tracking-widest tactic-cut animate-pulse">
+                {">"} {error}
+              </div>
+            )}
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-sm">
-              {error}
-            </div>
-          )}
-
-          {/* 试用期提示 */}
-          <div className="mb-6 p-3 bg-blue-500/10 border border-blue-500/50 rounded-lg">
-            <p className="text-blue-400 text-sm text-center">
-              🎉 注册即可获得 <strong>7 天免费试用</strong>
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                用户名
-              </label>
-              <input
-                type="text"
-                name="username"
-                value={formData.username}
-                onChange={handleChange}
-                required
-                minLength={3}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="至少 3 个字符"
-              />
+            {/* 试用期提示 */}
+            <div className="mb-8 p-4 bg-[#a3e635]/5 border border-[#a3e635]/20 tactic-cut relative overflow-hidden group">
+               <div className="absolute top-0 right-0 w-16 h-16 bg-[#a3e635]/10 rotate-45 translate-x-8 -translate-y-8"></div>
+               <div className="flex items-center gap-3 text-[#a3e635]">
+                  <FaClock className="text-xs" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Initial_Deployment_Bonus</span>
+               </div>
+               <p className="text-[9px] text-gray-500 mt-1 uppercase">7 Days Pro Access Granted Upon Activation</p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                邮箱
-              </label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="your@email.com"
-              />
-            </div>
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-[#cd5241] pl-2">Codename</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="username"
+                    value={formData.username}
+                    onChange={handleChange}
+                    required
+                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-800"
+                    placeholder="CHOOSE_UNIQUE_NAME"
+                  />
+                  <FaUserPlus className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
+                </div>
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                密码
-              </label>
-              <input
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-                minLength={6}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="至少 6 个字符"
-              />
-            </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-[#cd5241] pl-2">Comm_Channel (Email)</label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-800"
+                    placeholder="COMMANDER@SECURE.MAIL"
+                  />
+                  <FaEnvelope className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
+                </div>
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                确认密码
-              </label>
-              <input
-                type="password"
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="再次输入密码"
-              />
-            </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-[#cd5241] pl-2">Secret_Key</label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    name="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    required
+                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-800"
+                    placeholder="MIN_6_CHARACTERS"
+                  />
+                  <FaLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
+                </div>
+              </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className={`w-full py-3 px-4 rounded-lg font-medium text-white transition-colors ${
-                loading
-                  ? 'bg-gray-600 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700'
-              }`}
-            >
-              {loading ? '注册中...' : '注册'}
-            </button>
-          </form>
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-[#cd5241] pl-2">Verify_Key</label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    required
+                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-800"
+                    placeholder="RE_ENTER_SECRET_KEY"
+                  />
+                  <FaLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
+                </div>
+              </div>
 
-          {/* 登录链接 */}
-          <div className="mt-6 text-center">
-            <p className="text-gray-400 text-sm">
-              已有账号？{' '}
-              <Link
-                to="/login"
-                className="text-blue-400 hover:text-blue-300 font-medium"
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full tactic-cut bg-[#cd5241] hover:bg-[#b04537] py-4 text-[10px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-2 group mt-4"
               >
-                立即登录
-              </Link>
-            </p>
-          </div>
-        </div>
+                {loading ? 'Initializing_Identity...' : (
+                  <>Create_New_Terminal <FaArrowRight className="group-hover:translate-x-1 transition-transform" /></>
+                )}
+              </button>
+            </form>
 
-        {/* 底部信息 */}
-        <div className="text-center text-gray-500 text-sm">
-          <p>注册即表示您同意我们的服务条款和隐私政策</p>
+            <div className="mt-8 text-center border-t border-white/5 pt-6">
+              <p className="text-gray-600 text-[10px] uppercase tracking-widest">
+                Existing Commander?{' '}
+                <Link to="/login" className="text-[#cd5241] hover:text-white transition-colors font-black">
+                  [ Access_Portal ]
+                </Link>
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>

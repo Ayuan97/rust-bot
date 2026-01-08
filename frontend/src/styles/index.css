@@ -4,7 +4,10 @@
 
 @layer base {
   body {
-    @apply bg-dark-900 text-gray-200 antialiased overflow-hidden;
+    @apply bg-black text-gray-200 antialiased;
+    /* 允许首页滚动 */
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   /* Custom Scrollbar for Webkit */
@@ -154,4 +157,14 @@
 /* 模拟发光文本 */
 .glow-text {
   text-shadow: 0 0 10px rgba(205, 82, 65, 0.5);
+}
+
+/* 模拟终端文本滚动动画 */
+@keyframes scrollText {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-50%); }
+}
+
+.animate-scroll-text {
+  animation: scrollText 15s linear infinite;
 }

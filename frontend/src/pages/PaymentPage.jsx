@@ -1,258 +1,191 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { paymentApi } from '../services/auth';
+import { FaTerminal, FaShieldAlt, FaBoxOpen, FaQrcode, FaCheckCircle, FaArrowLeft, FaSatellite } from 'react-icons/fa';
 
 const PLANS = {
-  MONTHLY: { name: '月付', price: 29, duration: 30, description: '¥29/月' },
-  QUARTERLY: { name: '季付', price: 79, duration: 90, description: '¥79/季 (省¥8)' },
-  YEARLY: { name: '年付', price: 299, duration: 365, description: '¥299/年 (省¥49)' },
+  MONTHLY: { name: '月度特权', price: 29, duration: 30, description: '基础远程监控', level: '基础版' },
+  QUARTERLY: { name: '季度特权', price: 79, duration: 90, description: '进阶报警提醒 (省¥8)', level: '专业版' },
+  YEARLY: { name: '年度尊享', price: 299, duration: 365, description: '全能基地管家 (省¥49)', level: '至尊版' },
 };
 
 export default function PaymentPage() {
   const navigate = useNavigate();
   const [selectedPlan, setSelectedPlan] = useState('MONTHLY');
-  const [paymentMethod, setPaymentMethod] = useState('ALIPAY');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [order, setOrder] = useState(null);
   const [qrCode, setQrCode] = useState('');
   const [polling, setPolling] = useState(false);
 
-  // 订单状态轮询
   useEffect(() => {
     if (!order || !polling) return;
-
     const interval = setInterval(async () => {
       try {
         const result = await paymentApi.queryAlipayOrder(order.id);
-
         if (result.exists && result.tradeStatus === 'TRADE_SUCCESS') {
-          // 支付成功
           clearInterval(interval);
           setPolling(false);
-          alert('支付成功！订阅已延长');
           navigate('/dashboard');
         }
       } catch (err) {
-        console.error('查询订单状态失败:', err);
+        console.error(err);
       }
-    }, 2000); // 每2秒查询一次
-
+    }, 2000);
     return () => clearInterval(interval);
   }, [order, polling, navigate]);
 
   const handleCreateOrder = async () => {
     setError('');
     setLoading(true);
-
     try {
-      // 1. 创建订单
-      const orderResult = await paymentApi.createOrder(selectedPlan, paymentMethod);
-
-      if (!orderResult.success) {
-        setError(orderResult.error || '创建订单失败');
-        setLoading(false);
-        return;
-      }
-
+      const orderResult = await paymentApi.createOrder(selectedPlan, 'ALIPAY');
+      if (!orderResult.success) throw new Error(orderResult.error);
       setOrder(orderResult.order);
-
-      // 2. 根据支付方式创建支付
-      if (paymentMethod === 'ALIPAY') {
-        const payResult = await paymentApi.createAlipayQRCode(orderResult.order.id);
-
-        if (payResult.success) {
-          setQrCode(payResult.qrCode);
-          setPolling(true); // 开始轮询
-        } else {
-          setError(payResult.error || '生成支付二维码失败');
-        }
-      }
+      const payResult = await paymentApi.createAlipayQRCode(orderResult.order.id);
+      if (payResult.success) {
+        setQrCode(payResult.qrCode);
+        setPolling(true);
+      } else throw new Error(payResult.error);
     } catch (err) {
-      console.error('创建订单失败:', err);
-      setError(err.response?.data?.error || '创建订单失败');
+      setError(err.message || '初始化支付链路失败，请重试');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCancelOrder = async () => {
-    if (!order) return;
-
-    try {
-      await paymentApi.cancelOrder(order.id);
-      setOrder(null);
-      setQrCode('');
-      setPolling(false);
-    } catch (err) {
-      console.error('取消订单失败:', err);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 py-12 px-4">
-      <div className="max-w-4xl mx-auto">
-        {/* 标题 */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">选择订阅套餐</h1>
-          <p className="text-gray-400">选择适合您的套餐，立即开始使用</p>
+    <div className="min-h-screen bg-[#0d0e10] text-[#e0e0e0] font-sans p-6 relative overflow-hidden flex flex-col items-center">
+      <div className="scanline"></div>
+      
+      {/* 头部状态 */}
+      <header className="w-full max-w-5xl flex justify-between items-center mb-12 border-b border-white/5 pb-6">
+        <div className="flex items-center gap-4">
+          <button onClick={() => navigate('/dashboard')} className="w-10 h-10 tactic-cut border border-white/10 flex items-center justify-center hover:bg-[#cd5241] transition-all">
+            <FaArrowLeft className="text-xs" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-black uppercase tracking-widest glow-text italic">开通高级订阅</h1>
+            <p className="text-[10px] text-gray-600 uppercase tracking-[0.4em] font-bold">获取 24/7 基地报警与远程控制权限</p>
+          </div>
         </div>
+        <div className="hidden md:flex gap-6 text-[10px] font-bold text-gray-500 uppercase">
+          <span>安全连接: 已加密</span>
+          <span>节点: HK-PAY-01</span>
+        </div>
+      </header>
 
+      <main className="w-full max-w-5xl">
         {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400">
-            {error}
+          <div className="mb-8 p-4 bg-red-500/10 border border-red-500/30 text-red-500 text-xs font-black uppercase tracking-widest tactic-cut animate-pulse text-center">
+            {">"} {error}
           </div>
         )}
 
         {!order ? (
-          <>
-            {/* 套餐选择 */}
-            <div className="grid md:grid-cols-3 gap-6 mb-8">
+          <div className="space-y-12">
+            {/* 订阅方案选择 */}
+            <div className="grid md:grid-cols-3 gap-6">
               {Object.entries(PLANS).map(([key, plan]) => (
-                <div
+                <div 
                   key={key}
                   onClick={() => setSelectedPlan(key)}
-                  className={`bg-gray-800 rounded-lg p-6 cursor-pointer transition-all border-2 ${
-                    selectedPlan === key
-                      ? 'border-blue-500 shadow-lg shadow-blue-500/20'
-                      : 'border-gray-700 hover:border-gray-600'
-                  }`}
+                  className={`relative tactic-border tactic-cut p-1 group cursor-pointer transition-all ${selectedPlan === key ? 'bg-[#cd5241]/10 border-[#cd5241]/50 shadow-2xl shadow-[#cd5241]/10' : 'bg-black/20 border-white/5 hover:border-white/20'}`}
                 >
-                  <div className="text-center">
-                    <h3 className="text-xl font-bold text-white mb-2">{plan.name}</h3>
-                    <div className="text-3xl font-bold text-blue-400 mb-2">
-                      ¥{plan.price}
+                  <div className="bg-black/40 p-8 text-center h-full flex flex-col items-center">
+                    <div className={`w-14 h-14 tactic-cut flex items-center justify-center mb-6 transition-all ${selectedPlan === key ? 'bg-[#cd5241] text-white shadow-[0_0_20px_#cd5241]' : 'bg-gray-800 text-gray-600'}`}>
+                      <FaBoxOpen className="text-2xl" />
                     </div>
-                    <p className="text-gray-400 text-sm mb-4">{plan.description}</p>
-                    <p className="text-gray-500 text-sm">{plan.duration} 天有效期</p>
+                    <h3 className={`text-xl font-black uppercase tracking-tighter mb-2 ${selectedPlan === key ? 'text-white' : 'text-gray-400'}`}>{plan.name}</h3>
+                    <p className="text-xs text-gray-500 mb-8 font-bold">{plan.description}</p>
+                    
+                    <div className="mt-auto">
+                      <div className="text-4xl font-black italic mb-2">¥{plan.price}</div>
+                      <div className="text-[10px] text-gray-600 font-bold uppercase tracking-widest border-t border-white/5 pt-4 mt-4">
+                        订阅时长: {plan.duration} 天
+                      </div>
+                    </div>
+
+                    {selectedPlan === key && (
+                      <div className="absolute top-3 right-3 text-[#cd5241]">
+                        <FaCheckCircle className="text-sm" />
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* 支付方式选择 */}
-            <div className="bg-gray-800 rounded-lg p-6 mb-8 border border-gray-700">
-              <h3 className="text-lg font-semibold text-white mb-4">选择支付方式</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div
-                  onClick={() => setPaymentMethod('ALIPAY')}
-                  className={`p-4 rounded-lg cursor-pointer transition-all border-2 ${
-                    paymentMethod === 'ALIPAY'
-                      ? 'border-blue-500 bg-blue-500/10'
-                      : 'border-gray-700 hover:border-gray-600'
-                  }`}
-                >
-                  <div className="text-center">
-                    <div className="text-2xl mb-2">💳</div>
-                    <p className="text-white font-medium">支付宝</p>
+            {/* 确认操作 */}
+            <div className="tactic-border tactic-cut p-1 bg-black/40 max-w-2xl mx-auto shadow-2xl">
+               <div className="bg-black/40 p-8 flex flex-col md:flex-row items-center justify-between gap-8">
+                  <div>
+                    <div className="text-[10px] text-gray-500 font-bold mb-1 uppercase tracking-widest">当前选择的级别</div>
+                    <div className="text-2xl font-black text-[#cd5241] uppercase tracking-tighter">{PLANS[selectedPlan].level} 远程权限</div>
                   </div>
-                </div>
-
-                <div
-                  onClick={() => setPaymentMethod('WECHAT')}
-                  className={`p-4 rounded-lg cursor-pointer transition-all border-2 opacity-50 cursor-not-allowed ${
-                    paymentMethod === 'WECHAT'
-                      ? 'border-green-500 bg-green-500/10'
-                      : 'border-gray-700'
-                  }`}
-                >
-                  <div className="text-center">
-                    <div className="text-2xl mb-2">💚</div>
-                    <p className="text-white font-medium">微信支付</p>
-                    <p className="text-xs text-gray-500 mt-1">暂未开放</p>
-                  </div>
-                </div>
-              </div>
+                  <button 
+                    onClick={handleCreateOrder}
+                    disabled={loading}
+                    className="w-full md:w-auto px-16 py-5 tactic-cut bg-[#cd5241] hover:bg-[#b04537] text-white font-black uppercase tracking-widest text-sm transition-all flex items-center justify-center gap-4 shadow-xl shadow-[#cd5241]/20 group"
+                  >
+                    {loading ? '正在获取支付信息...' : (
+                      <>
+                        <FaQrcode className="group-hover:scale-110 transition-transform" />
+                        立即扫码开通
+                      </>
+                    )}
+                  </button>
+               </div>
             </div>
-
-            {/* 订单摘要和支付按钮 */}
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-              <h3 className="text-lg font-semibold text-white mb-4">订单摘要</h3>
-              <div className="space-y-2 mb-6">
-                <div className="flex justify-between text-gray-300">
-                  <span>套餐:</span>
-                  <span className="font-medium text-white">{PLANS[selectedPlan].name}</span>
-                </div>
-                <div className="flex justify-between text-gray-300">
-                  <span>有效期:</span>
-                  <span className="font-medium text-white">{PLANS[selectedPlan].duration} 天</span>
-                </div>
-                <div className="flex justify-between text-gray-300">
-                  <span>支付方式:</span>
-                  <span className="font-medium text-white">
-                    {paymentMethod === 'ALIPAY' ? '支付宝' : '微信支付'}
-                  </span>
-                </div>
-                <div className="border-t border-gray-700 pt-2 mt-2">
-                  <div className="flex justify-between text-xl font-bold">
-                    <span className="text-white">总计:</span>
-                    <span className="text-blue-400">¥{PLANS[selectedPlan].price}</span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={handleCreateOrder}
-                disabled={loading || paymentMethod === 'WECHAT'}
-                className={`w-full py-3 px-6 rounded-lg font-medium text-white transition-colors ${
-                  loading || paymentMethod === 'WECHAT'
-                    ? 'bg-gray-600 cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700'
-                }`}
-              >
-                {loading ? '生成中...' : '立即支付'}
-              </button>
-            </div>
-          </>
+          </div>
         ) : (
-          /* 支付二维码展示 */
-          <div className="bg-gray-800 rounded-lg p-8 border border-gray-700 text-center">
-            <h2 className="text-2xl font-bold text-white mb-4">扫码支付</h2>
+          /* 支付终端界面 */
+          <div className="max-w-2xl mx-auto animate-scale-in">
+            <div className="tactic-border tactic-cut p-1 bg-[#121417] shadow-3xl">
+              <div className="bg-[#121417] p-12 text-center relative overflow-hidden">
+                <div className="scanline"></div>
+                <h2 className="text-2xl font-black uppercase tracking-widest mb-2 glow-text italic">安全支付终端</h2>
+                <p className="text-[10px] text-gray-600 uppercase tracking-[0.4em] mb-12">正在通过支付宝加密链路建立交易...</p>
 
-            {qrCode ? (
-              <>
-                <div className="bg-white p-4 rounded-lg inline-block mb-4">
-                  <img src={qrCode} alt="支付二维码" className="w-64 h-64" />
+                <div className="relative inline-block mb-12 p-6 tactic-border tactic-cut bg-white/[0.03] shadow-inner">
+                  {qrCode ? (
+                    <div className="relative group">
+                      <div className="absolute inset-0 border-2 border-[#cd5241]/20 animate-pulse pointer-events-none"></div>
+                      <img src={qrCode} alt="支付宝支付二维码" className="w-64 h-64 mix-blend-screen opacity-90" style={{ filter: 'contrast(1.1) brightness(1.1)' }} />
+                    </div>
+                  ) : (
+                    <div className="w-64 h-64 flex flex-col items-center justify-center text-gray-700">
+                      <FaSatellite className="text-5xl animate-spin mb-6" />
+                      <div className="text-[10px] font-black uppercase tracking-widest">同步中...</div>
+                    </div>
+                  )}
                 </div>
 
-                <p className="text-gray-300 mb-2">
-                  请使用 <span className="text-blue-400 font-medium">支付宝</span> 扫描二维码完成支付
-                </p>
-                <p className="text-gray-400 text-sm mb-6">
-                  订单金额: <span className="text-white font-bold">¥{order.amount}</span>
-                </p>
-
-                <div className="flex items-center justify-center space-x-2 mb-6">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-                  <p className="text-gray-400 text-sm">等待支付中...</p>
+                <div className="space-y-4 mb-12">
+                  <div className="text-[#a3e635] text-xs font-black uppercase tracking-widest flex items-center justify-center gap-3 animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-[#a3e635]"></span>
+                    正在等待支付结果
+                  </div>
+                  <div className="text-gray-600 font-mono text-[10px]">
+                    订单编号: {order.id}
+                  </div>
                 </div>
 
-                <button
-                  onClick={handleCancelOrder}
-                  className="text-gray-400 hover:text-gray-300 underline"
+                <button 
+                  onClick={() => { setOrder(null); setQrCode(''); setPolling(false); }}
+                  className="text-xs text-gray-600 hover:text-[#cd5241] uppercase tracking-widest underline underline-offset-8 transition-colors font-bold"
                 >
-                  取消支付
+                  取消并返回选择
                 </button>
-              </>
-            ) : (
-              <div className="flex items-center justify-center space-x-2">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
-                <p className="text-gray-300">生成支付二维码中...</p>
               </div>
-            )}
+            </div>
           </div>
         )}
+      </main>
 
-        {/* 返回按钮 */}
-        <div className="mt-6 text-center">
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="text-gray-400 hover:text-gray-300"
-          >
-            ← 返回仪表板
-          </button>
-        </div>
-      </div>
+      <footer className="mt-auto py-12 opacity-30 text-[9px] uppercase tracking-[0.5em] text-gray-600 font-bold">
+        Secure_Link_v2.0 // 已建立 SSL 加密保护交易
+      </footer>
     </div>
   );
 }

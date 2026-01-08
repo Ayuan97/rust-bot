@@ -45,11 +45,23 @@ export const getServers = () => api.get('/servers');
 
 export const getServer = (id) => api.get(`/servers/${id}`);
 
+export const connectServer = (id) => api.post(`/servers/${id}/connect`);
+
 export const addServer = (server) => api.post('/servers', server);
 
 export const updateServer = (id, updates) => api.put(`/servers/${id}`, updates);
 
 export const deleteServer = (id) => api.delete(`/servers/${id}`);
+
+// ========== 实时 Rust+ 数据 ==========
+
+export const getTeamInfo = (serverId) => api.get(`/servers/${serverId}/team`);
+
+export const getTeamChat = (serverId) => api.get(`/servers/${serverId}/chat`);
+
+export const sendTeamMessage = (serverId, message) => api.post(`/servers/${serverId}/chat`, { message });
+
+export const getMapInfo = (serverId) => api.get(`/servers/${serverId}/map-info`);
 
 // ========== 设备管理 ==========
 

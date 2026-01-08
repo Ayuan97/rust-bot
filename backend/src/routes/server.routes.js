@@ -118,6 +118,44 @@ router.get('/:id', async (req, res) => {
 });
 
 /**
+ * POST /api/servers/:id/connect
+ * 手动连接到服务器
+ */
+router.post('/:id/connect', async (req, res) => {
+  try {
+    const serverId = req.params.id;
+    const server = await prisma.server.findFirst({
+      where: {
+        id: serverId,
+        userId: req.user.id
+      }
+    });
+
+    if (!server) {
+      return res.status(404).json({ success: false, error: '服务器不存在' });
+    }
+
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (!rustPlusService) {
+      return res.status(400).json({ success: false, error: '用户服务未初始化' });
+    }
+
+    await rustPlusService.connect({
+      serverId: server.id,
+      ip: server.ip,
+      port: server.port,
+      playerId: server.playerId,
+      playerToken: server.playerToken
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('连接服务器失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/servers
  * 添加新服务器
  */
@@ -305,6 +343,94 @@ router.delete('/:id', async (req, res) => {
     res.json({ success: true, message: '服务器删除成功' });
   } catch (error) {
     console.error(`❌ 删除服务器失败:`, error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================
+// 实时 Rust+ 数据接口
+// ============================================================
+
+/**
+ * GET /api/servers/:id/team
+ * 获取实时队伍信息
+ */
+router.get('/:id/team', async (req, res) => {
+  try {
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (!rustPlusService || !rustPlusService.isConnected(req.params.id)) {
+      return res.status(400).json({ success: false, error: '服务器未连接' });
+    }
+
+    const teamInfo = await rustPlusService.getTeamInfo(req.params.id);
+    res.json({ success: true, team: teamInfo });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/servers/:id/chat
+ * 获取队伍聊天历史
+ */
+router.get('/:id/chat', async (req, res) => {
+  try {
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (!rustPlusService || !rustPlusService.isConnected(req.params.id)) {
+      return res.status(400).json({ success: false, error: '服务器未连接' });
+    }
+
+    const messages = await rustPlusService.getTeamChat(req.params.id);
+    res.json({ success: true, messages });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/servers/:id/chat
+ * 发送队伍消息
+ */
+router.post('/:id/chat', async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ success: false, error: '消息内容不能为空' });
+
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (!rustPlusService || !rustPlusService.isConnected(req.params.id)) {
+      return res.status(400).json({ success: false, error: '服务器未连接' });
+    }
+
+    await rustPlusService.sendTeamMessage(req.params.id, message);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/servers/:id/map-info
+ * 获取地图标记和世界尺寸
+ */
+router.get('/:id/map-info', async (req, res) => {
+  try {
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (!rustPlusService || !rustPlusService.isConnected(req.params.id)) {
+      return res.status(400).json({ success: false, error: '服务器未连接' });
+    }
+
+    const [markers, info] = await Promise.all([
+      rustPlusService.getMapMarkers(req.params.id),
+      rustPlusService.getServerInfo(req.params.id)
+    ]);
+
+    res.json({ 
+      success: true, 
+      markers, 
+      mapSize: info?.mapSize || 4500,
+      monuments: info?.monuments || []
+    });
+  } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });

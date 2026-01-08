@@ -1,21 +1,16 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authApi } from '../services/auth';
+import { FaTerminal, FaShieldAlt, FaKey, FaArrowRight } from 'react-icons/fa';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  });
+  const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
   };
 
@@ -23,112 +18,105 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
       const result = await authApi.login(formData.email, formData.password);
-
       if (result.success) {
-        // 保存 Token 到 localStorage
         localStorage.setItem('token', result.data.token);
         localStorage.setItem('user', JSON.stringify(result.data.user));
-
-        // 跳转到仪表板
         navigate('/dashboard');
       } else {
-        setError(result.error || '登录失败');
+        setError(result.error || 'ACCESS_DENIED: INVALID_CREDENTIALS');
       }
     } catch (err) {
-      console.error('登录失败:', err);
-      setError(err.response?.data?.error || '登录失败，请检查网络连接');
+      setError('LINK_ERROR: FAILED_TO_REACH_AUTH_SERVER');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800 px-4">
-      <div className="max-w-md w-full space-y-8">
-        {/* Logo 和标题 */}
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-white mb-2">
-            Rust+ Dashboard
-          </h1>
-          <p className="text-gray-400">多租户 SaaS 平台</p>
+    <div className="min-h-screen bg-[#0d0e10] text-[#e0e0e0] font-mono flex items-center justify-center p-6 relative overflow-hidden">
+      {/* 扫描线背景 */}
+      <div className="fixed inset-0 pointer-events-none z-50 opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_4px,3px_100%]"></div>
+      
+      <div className="max-w-md w-full relative z-10">
+        <div className="text-center mb-10">
+          <div className="w-16 h-16 tactic-cut bg-[#cd5241] flex items-center justify-center mx-auto mb-6 shadow-lg shadow-[#cd5241]/20">
+            <FaTerminal className="text-white text-2xl" />
+          </div>
+          <h1 className="text-2xl font-black uppercase tracking-widest glow-text">Authentication_Gateway</h1>
+          <p className="text-[10px] text-gray-600 uppercase tracking-[0.4em] mt-2">Rust+ Command System v2.0</p>
         </div>
 
-        {/* 登录表单 */}
-        <div className="bg-gray-800 rounded-lg shadow-xl p-8 border border-gray-700">
-          <h2 className="text-2xl font-bold text-white mb-6 text-center">
-            登录账号
-          </h2>
+        <div className="tactic-border tactic-cut p-1 bg-black/40 backdrop-blur-xl">
+          <div className="bg-black/40 p-8">
+            {error && (
+              <div className="mb-6 p-3 bg-red-500/10 border border-red-500/30 text-red-500 text-[10px] font-bold uppercase tracking-widest tactic-cut animate-pulse">
+                {">"} {error}
+              </div>
+            )}
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-sm">
-              {error}
-            </div>
-          )}
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-[#cd5241] pl-2">
+                  User_Identity_ID
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                    className="w-full pl-10 pr-4 py-3 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-800"
+                    placeholder="ENTER_EMAIL_OR_USERNAME"
+                  />
+                  <FaShieldAlt className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
+                </div>
+              </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                用户名/邮箱
-              </label>
-              <input
-                type="text"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="用户名或邮箱"
-              />
-            </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-[#cd5241] pl-2">
+                  Authorization_Key
+                </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    name="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    required
+                    className="w-full pl-10 pr-4 py-3 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-800"
+                    placeholder="••••••••"
+                  />
+                  <FaKey className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
+                </div>
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                密码
-              </label>
-              <input
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="••••••••"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className={`w-full py-3 px-4 rounded-lg font-medium text-white transition-colors ${
-                loading
-                  ? 'bg-gray-600 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700'
-              }`}
-            >
-              {loading ? '登录中...' : '登录'}
-            </button>
-          </form>
-
-          {/* 注册链接 */}
-          <div className="mt-6 text-center">
-            <p className="text-gray-400 text-sm">
-              还没有账号？{' '}
-              <Link
-                to="/register"
-                className="text-blue-400 hover:text-blue-300 font-medium"
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full tactic-cut bg-[#cd5241] hover:bg-[#b04537] py-4 text-[10px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-2 group shadow-lg shadow-[#cd5241]/10"
               >
-                立即注册
-              </Link>
-            </p>
+                {loading ? 'Authorizing_Access...' : (
+                  <>Initial_Link_Establish <FaArrowRight className="group-hover:translate-x-1 transition-transform" /></>
+                )}
+              </button>
+            </form>
+
+            <div className="mt-8 text-center border-t border-white/5 pt-6">
+              <p className="text-gray-600 text-[10px] uppercase tracking-widest">
+                No active terminal?{' '}
+                <Link to="/register" className="text-[#cd5241] hover:text-white transition-colors font-black">
+                  [ Request_Registration ]
+                </Link>
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* 底部信息 */}
-        <div className="text-center text-gray-500 text-sm">
-          <p>登录即表示您同意我们的服务条款和隐私政策</p>
+        <div className="mt-8 text-center opacity-30">
+           <div className="text-[8px] text-gray-500 uppercase tracking-[0.5em]">Unauthorized_access_prohibited</div>
         </div>
       </div>
     </div>
