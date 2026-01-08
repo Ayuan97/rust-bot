@@ -7,7 +7,7 @@ import EmptyState from './EmptyState';
 
 const MAX_MESSAGE_LENGTH = 128; // Rust+ 消息长度限制
 
-function ChatPanel({ serverId }) {
+function ChatPanel({ serverId, isReadOnly = false }) {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -286,10 +286,20 @@ function ChatPanel({ serverId }) {
 
       {/* 输入框 */}
       <form onSubmit={handleSendMessage} className="pt-3 mt-1 border-t border-dark-700">
+        {/* 过期提示 */}
+        {isReadOnly && (
+          <div className="mb-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-center gap-2">
+            <FaExclamationTriangle className="text-yellow-400" />
+            <span className="text-sm text-yellow-400">
+              订阅已过期，无法发送消息。续费后即可恢复使用。
+            </span>
+          </div>
+        )}
+
         {/* 字符计数和警告 */}
         <div className="flex items-center justify-between mb-2 text-xs">
           <div className="flex items-center gap-2">
-            {willSplit && (
+            {willSplit && !isReadOnly && (
               <span className="flex items-center gap-1 text-yellow-400">
                 <FaExclamationTriangle />
                 消息将拆分为 {estimatedParts} 条发送
@@ -306,16 +316,18 @@ function ChatPanel({ serverId }) {
             type="text"
             className={`input flex-1 bg-dark-800/50 backdrop-blur border-white/10 focus:border-rust-accent/50 focus:ring-1 focus:ring-rust-accent/50 ${
               isMessageTooLong ? 'border-yellow-500/50' : ''
-            }`}
-            placeholder="发送消息到游戏内..."
+            } ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+            placeholder={isReadOnly ? "订阅已过期" : "发送消息到游戏内..."}
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
-            disabled={sending}
+            disabled={sending || isReadOnly}
           />
           <button
             type="submit"
-            className="btn btn-primary flex items-center gap-2"
-            disabled={!inputMessage.trim() || sending}
+            className={`btn btn-primary flex items-center gap-2 ${
+              isReadOnly ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+            disabled={!inputMessage.trim() || sending || isReadOnly}
           >
             <FaPaperPlane />
             {sending ? '发送中' : '发送'}

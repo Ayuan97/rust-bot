@@ -6,6 +6,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import socketService from './services/socket';
 import { getServers, deleteServer as apiDeleteServer } from './services/api';
+import { userApi } from './services/auth';
 import { useToast } from './components/Toast';
 import { useConfirm } from './components/ConfirmModal';
 
@@ -33,6 +34,8 @@ function App() {
   const [connectionLoading, setConnectionLoading] = useState(false);
   const [hasAutoSelected, setHasAutoSelected] = useState(false); // 记录是否已自动选择
   const [currentUser, setCurrentUser] = useState(null); // 当前登录用户信息
+  const [subscription, setSubscription] = useState(null); // 订阅信息
+  const [isSubscriptionExpired, setIsSubscriptionExpired] = useState(false); // 订阅是否过期
 
   // 未读计数
   const [unreadChat, setUnreadChat] = useState(0);
@@ -58,6 +61,9 @@ function App() {
         console.error('Failed to parse user info:', err);
       }
     }
+
+    // 加载订阅信息
+    loadSubscription();
 
     socketService.connect();
     fetchServers();
@@ -92,6 +98,21 @@ function App() {
       socketService.disconnect();
     };
   }, []);
+
+  // 加载订阅信息
+  const loadSubscription = async () => {
+    try {
+      const result = await userApi.getSubscription();
+      if (result.success && result.subscription) {
+        setSubscription(result.subscription);
+        // 检查是否过期
+        const isExpired = result.subscription.status !== 'ACTIVE';
+        setIsSubscriptionExpired(isExpired);
+      }
+    } catch (err) {
+      console.error('Failed to load subscription:', err);
+    }
+  };
 
   // --- Data Fetching ---
   const fetchServers = async () => {
@@ -172,6 +193,12 @@ function App() {
   };
 
   const handleConnect = async (server) => {
+    // 检查订阅状态
+    if (isSubscriptionExpired) {
+      toast.error('订阅已过期，请续费后使用完整功能');
+      return;
+    }
+
     setConnectionLoading(true);
     try {
       await socketService.connectToServer({
@@ -214,12 +241,18 @@ function App() {
   // --- Render Helpers ---
   const renderContent = () => {
     if (!activeServer) return <EmptyState type="server" />;
-    if (!activeServer.connected) return <DisconnectedState server={activeServer} onConnect={() => handleConnect(activeServer)} loading={connectionLoading} onDelete={() => handleDeleteServer(activeServer.id)} />;
+    if (!activeServer.connected) return <DisconnectedState
+      server={activeServer}
+      onConnect={() => handleConnect(activeServer)}
+      loading={connectionLoading}
+      onDelete={() => handleDeleteServer(activeServer.id)}
+      isExpired={isSubscriptionExpired}
+    />;
 
     switch (activeTab) {
       case 'info': return <ServerInfo serverId={activeServer.id} />;
-      case 'chat': return <ChatPanel serverId={activeServer.id} />;
-      case 'devices': return <DeviceControl serverId={activeServer.id} />;
+      case 'chat': return <ChatPanel serverId={activeServer.id} isReadOnly={isSubscriptionExpired} />;
+      case 'devices': return <DeviceControl serverId={activeServer.id} isReadOnly={isSubscriptionExpired} />;
       default: return <ServerInfo serverId={activeServer.id} />;
     }
   };
@@ -287,8 +320,18 @@ function App() {
         {/* Sidebar Footer */}
         <div className="p-3 border-t border-white/5 bg-dark-800/30 space-y-2">
             <button
-                onClick={() => setShowPairingPanel(true)}
-                className="w-full btn btn-secondary text-sm justify-start"
+                onClick={() => {
+                  if (isSubscriptionExpired) {
+                    toast.error('订阅已过期，请续费后使用完整功能');
+                    return;
+                  }
+                  setShowPairingPanel(true);
+                }}
+                disabled={isSubscriptionExpired}
+                className={`w-full btn btn-secondary text-sm justify-start ${
+                  isSubscriptionExpired ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                title={isSubscriptionExpired ? '订阅已过期' : ''}
             >
                 <FaQrcode className="text-gray-400" /> 配对新服务器
             </button>
@@ -447,7 +490,7 @@ const TabButton = ({ id, label, icon, active, onClick, badge = 0, badgeType = 'd
   </button>
 );
 
-const DisconnectedState = ({ server, onConnect, loading, onDelete }) => (
+const DisconnectedState = ({ server, onConnect, loading, onDelete, isExpired }) => (
   <div className="flex-1 flex flex-col items-center justify-center">
     <div className="max-w-md w-full bg-dark-800/50 backdrop-blur border border-white/5 rounded-2xl p-8 text-center shadow-2xl">
         <div className="w-16 h-16 mx-auto rounded-full bg-dark-700 flex items-center justify-center mb-6">
@@ -455,17 +498,31 @@ const DisconnectedState = ({ server, onConnect, loading, onDelete }) => (
         </div>
         <h2 className="text-2xl font-bold text-white mb-2">{server.name}</h2>
         <p className="text-gray-400 mb-8 font-mono text-sm">{server.ip}:{server.port}</p>
-        
+
+        {/* 过期提示 */}
+        {isExpired && (
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+            <p className="text-red-400 text-sm">
+              ⚠️ 订阅已过期，无法连接到服务器
+            </p>
+            <p className="text-gray-400 text-xs mt-1">
+              续费后即可恢复使用
+            </p>
+          </div>
+        )}
+
         <div className="space-y-3">
-            <button 
+            <button
                 onClick={onConnect}
-                disabled={loading}
-                className="w-full btn btn-primary py-3 text-lg"
+                disabled={loading || isExpired}
+                className={`w-full btn btn-primary py-3 text-lg ${
+                  isExpired ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
             >
-                {loading ? '连接中...' : '连接服务器'}
+                {loading ? '连接中...' : isExpired ? '订阅已过期' : '连接服务器'}
             </button>
-            
-            <button 
+
+            <button
                 onClick={onDelete}
                 className="w-full btn btn-ghost text-red-400 hover:bg-red-500/10"
             >

@@ -19,7 +19,7 @@ const AUTO_MODE_NAMES = {
   8: '在线关'
 };
 
-function DeviceControl({ serverId }) {
+function DeviceControl({ serverId, isReadOnly = false }) {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editingDevice, setEditingDevice] = useState(null);
@@ -157,6 +157,15 @@ function DeviceControl({ serverId }) {
         </button>
       </div>
 
+      {/* 过期提示 */}
+      {isReadOnly && (
+        <div className="mb-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-center gap-2">
+          <span className="text-sm text-yellow-400">
+            ⚠️ 订阅已过期，无法控制设备。续费后即可恢复使用。
+          </span>
+        </div>
+      )}
+
       {/* 设备列表 */}
       <div className="flex-1 overflow-y-auto space-y-2">
         {loading ? (
@@ -195,17 +204,23 @@ function DeviceControl({ serverId }) {
 
               <div className="flex items-center gap-2">
                 <button
-                  className="btn btn-secondary px-3 py-2"
-                  onClick={() => setEditingDevice(device)}
-                  title="编辑设备"
+                  className={`btn btn-secondary px-3 py-2 ${
+                    isReadOnly ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  onClick={() => !isReadOnly && setEditingDevice(device)}
+                  disabled={isReadOnly}
+                  title={isReadOnly ? '订阅已过期' : '编辑设备'}
                   aria-label={`编辑 ${device.name}`}
                 >
                   <FaEdit aria-hidden="true" />
                 </button>
                 <button
-                  className="btn btn-secondary px-3 py-2"
-                  onClick={() => handleRefreshDevice(device)}
-                  title="刷新状态"
+                  className={`btn btn-secondary px-3 py-2 ${
+                    isReadOnly ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  onClick={() => !isReadOnly && handleRefreshDevice(device)}
+                  disabled={isReadOnly}
+                  title={isReadOnly ? '订阅已过期' : '刷新状态'}
                   aria-label={`刷新 ${device.name} 状态`}
                 >
                   <FaSync aria-hidden="true" />
@@ -213,9 +228,10 @@ function DeviceControl({ serverId }) {
                 <button
                   className={`btn px-4 py-2 min-w-[100px] ${
                     device.currentValue ? 'btn-primary' : 'btn-secondary'
-                  }`}
-                  onClick={() => handleToggleDevice(device)}
-                  title={device.currentValue ? '点击关闭设备' : '点击开启设备'}
+                  } ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  onClick={() => !isReadOnly && handleToggleDevice(device)}
+                  disabled={isReadOnly}
+                  title={isReadOnly ? '订阅已过期' : device.currentValue ? '点击关闭设备' : '点击开启设备'}
                   aria-label={`${device.name} ${device.currentValue ? '已开启，点击关闭' : '已关闭，点击开启'}`}
                   aria-pressed={device.currentValue}
                 >
@@ -223,9 +239,12 @@ function DeviceControl({ serverId }) {
                   {device.currentValue ? '已开启' : '已关闭'}
                 </button>
                 <button
-                  className="btn btn-danger px-3 py-2"
-                  onClick={() => handleDeleteDevice(device.entity_id)}
-                  title="删除设备"
+                  className={`btn btn-danger px-3 py-2 ${
+                    isReadOnly ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  onClick={() => !isReadOnly && handleDeleteDevice(device.entity_id)}
+                  disabled={isReadOnly}
+                  title={isReadOnly ? '订阅已过期' : '删除设备'}
                   aria-label={`删除 ${device.name}`}
                 >
                   <FaTrash aria-hidden="true" />
