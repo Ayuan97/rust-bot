@@ -178,7 +178,7 @@ router.get('/users/:id', async (req, res) => {
       .reduce((sum, order) => sum + parseFloat(order.amount), 0);
 
     // 手动计算事件日志数量（通过 servers 关联）
-    const eventCount = await prisma.event_logs.count({
+    const eventCount = await prisma.eventLog.count({
       where: {
         servers: {
           userId: id
