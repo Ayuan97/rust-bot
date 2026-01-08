@@ -188,6 +188,14 @@ export const userApi = {
     const response = await apiClient.post('/user/delete-account', { password });
     return response.data;
   },
+
+  /**
+   * 更新自动续费设置
+   */
+  updateAutoRenew: async (autoRenew) => {
+    const response = await apiClient.put('/user/auto-renew', { autoRenew });
+    return response.data;
+  },
 };
 
 export default apiClient;

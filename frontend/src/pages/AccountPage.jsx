@@ -27,6 +27,10 @@ export default function AccountPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // 自动续费设置
+  const [autoRenewLoading, setAutoRenewLoading] = useState(false);
+  const [autoRenewMessage, setAutoRenewMessage] = useState('');
+
   useEffect(() => {
     fetchUserData();
   }, []);
@@ -120,6 +124,31 @@ export default function AccountPage() {
       setDeleteError(err.response?.data?.error || '删除账号失败');
     } finally {
       setDeleteLoading(false);
+    }
+  };
+
+  const handleAutoRenewToggle = async (enabled) => {
+    setAutoRenewLoading(true);
+    setAutoRenewMessage('');
+
+    try {
+      const result = await userApi.updateAutoRenew(enabled);
+
+      if (result.success) {
+        setAutoRenewMessage(result.message);
+        // 更新本地订阅状态
+        setSubscription(prev => ({ ...prev, autoRenew: enabled }));
+
+        // 3秒后清除消息
+        setTimeout(() => setAutoRenewMessage(''), 3000);
+      } else {
+        setAutoRenewMessage(result.error || '更新失败');
+      }
+    } catch (err) {
+      console.error('更新自动续费设置失败:', err);
+      setAutoRenewMessage(err.response?.data?.error || '更新失败');
+    } finally {
+      setAutoRenewLoading(false);
     }
   };
 
@@ -287,6 +316,40 @@ export default function AccountPage() {
                         {formatDate(subscription.endDate)}
                       </div>
                     </div>
+                  </div>
+
+                  {/* 自动续费开关 */}
+                  <div className="mt-4 p-4 bg-gray-700 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <h4 className="text-white font-medium mb-1">自动续费</h4>
+                        <p className="text-sm text-gray-400">
+                          开启后，订阅到期时将自动续费（暂未实现自动扣款，需手动支付）
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer ml-4">
+                        <input
+                          type="checkbox"
+                          checked={subscription.autoRenew}
+                          onChange={(e) => handleAutoRenewToggle(e.target.checked)}
+                          disabled={autoRenewLoading}
+                          className="sr-only peer"
+                        />
+                        <div className={`w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 ${
+                          autoRenewLoading ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}></div>
+                      </label>
+                    </div>
+
+                    {autoRenewMessage && (
+                      <div className={`mt-3 p-2 rounded text-sm ${
+                        autoRenewMessage.includes('成功') || autoRenewMessage.includes('已开启') || autoRenewMessage.includes('已关闭')
+                          ? 'bg-green-500/10 text-green-400'
+                          : 'bg-red-500/10 text-red-400'
+                      }`}>
+                        {autoRenewMessage}
+                      </div>
+                    )}
                   </div>
 
                   <button

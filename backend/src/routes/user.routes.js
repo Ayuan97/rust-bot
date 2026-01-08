@@ -231,4 +231,43 @@ router.post('/delete-account', authenticate, async (req, res) => {
   }
 });
 
+/**
+ * 更新自动续费设置
+ * PUT /api/user/auto-renew
+ */
+router.put('/auto-renew', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { autoRenew } = req.body;
+
+    // 验证输入
+    if (typeof autoRenew !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        error: 'autoRenew 必须是布尔值',
+      });
+    }
+
+    // 更新订阅的自动续费设置
+    const subscription = await prisma.subscription.update({
+      where: { userId },
+      data: { autoRenew },
+    });
+
+    return res.json({
+      success: true,
+      message: autoRenew ? '已开启自动续费' : '已关闭自动续费',
+      data: {
+        autoRenew: subscription.autoRenew,
+      },
+    });
+  } catch (error) {
+    console.error('更新自动续费设置失败:', error);
+    return res.status(500).json({
+      success: false,
+      error: '更新自动续费设置失败',
+    });
+  }
+});
+
 export default router;
