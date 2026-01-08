@@ -177,11 +177,16 @@ router.get('/users/:id', async (req, res) => {
       .filter(order => order.status === 'PAID')
       .reduce((sum, order) => sum + parseFloat(order.amount), 0);
 
-    // 手动计算事件日志数量（通过 servers 关联）
+    // 手动计算事件日志数量（通过用户的所有服务器）
+    const userServerIds = await prisma.server.findMany({
+      where: { userId: id },
+      select: { id: true }
+    });
+
     const eventCount = await prisma.eventLog.count({
       where: {
-        servers: {
-          userId: id
+        serverId: {
+          in: userServerIds.map(s => s.id)
         }
       }
     });
