@@ -200,8 +200,16 @@ router.get('/users/:id', async (req, res) => {
 
     if (serviceStatus.isServiceRunning) {
       const userService = globalServiceManager.userServices.get(user.id);
-      serviceStatus.connectedServers = Array.from(userService.rustPlusService.servers.keys());
-      serviceStatus.fcmListening = userService.fcmService.isListening;
+
+      // 获取已连接的服务器列表
+      if (userService.rustPlusService && userService.rustPlusService.connections) {
+        serviceStatus.connectedServers = Array.from(userService.rustPlusService.connections.keys());
+      }
+
+      // 获取 FCM 监听状态
+      if (userService.fcmService) {
+        serviceStatus.fcmListening = userService.fcmService.isListening || false;
+      }
     }
 
     res.json({
