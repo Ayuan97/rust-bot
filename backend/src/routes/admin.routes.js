@@ -159,8 +159,7 @@ router.get('/users/:id', async (req, res) => {
         _count: {
           select: {
             servers: true,
-            orders: true,
-            eventLogs: true
+            orders: true
           }
         }
       }
@@ -177,6 +176,15 @@ router.get('/users/:id', async (req, res) => {
     const totalSpent = user.orders
       .filter(order => order.status === 'PAID')
       .reduce((sum, order) => sum + parseFloat(order.amount), 0);
+
+    // 手动计算事件日志数量（通过 servers 关联）
+    const eventCount = await prisma.event_logs.count({
+      where: {
+        servers: {
+          userId: id
+        }
+      }
+    });
 
     // 获取服务状态
     const serviceStatus = {
@@ -197,7 +205,7 @@ router.get('/users/:id', async (req, res) => {
         user,
         stats: {
           serverCount: user._count.servers,
-          eventCount: user._count.eventLogs,
+          eventCount: eventCount,
           orderCount: user._count.orders,
           totalSpent
         },
