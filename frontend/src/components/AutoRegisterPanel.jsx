@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FaRocket, FaCheckCircle, FaSpinner, FaSteam, FaShieldAlt, FaKey, FaArrowRight, FaTimes, FaInfoCircle, FaSatellite } from 'react-icons/fa';
+import { FaRocket, FaCheckCircle, FaSpinner, FaSteam, FaShieldAlt, FaKey, FaArrowRight, FaTimes, FaInfoCircle } from 'react-icons/fa';
 import { registerSimple } from '../services/pairing';
 import { useToast } from './Toast';
 
@@ -59,7 +59,7 @@ function AutoRegisterPanel({ onComplete, onClose }) {
     } catch (err) {
       clearTimeout(safetyTimeout);
       console.error('提交凭证失败:', err);
-
+      
       // 处理 401 之外的错误
       if (err.response?.status !== 401) {
         const errorMsg = err.response?.data?.error || err.message || '系统繁忙，请稍后重试';
@@ -74,7 +74,7 @@ function AutoRegisterPanel({ onComplete, onClose }) {
   return (
     <div className="tactic-border tactic-cut p-1 bg-black/60 shadow-2xl relative overflow-hidden animate-scale-in">
       <div className="scanline"></div>
-
+      
       <div className="bg-black/80 p-8 relative z-10">
         <header className="flex items-center justify-between mb-10 pb-4 border-b border-white/5">
           <div className="flex items-center gap-4">
@@ -208,11 +208,11 @@ function StepIndicator({ num, label, active, completed }) {
     <div className="flex flex-col items-center gap-3 group">
       <div className={`
         w-10 h-10 tactic-cut flex items-center justify-center font-black transition-all duration-500 border
-        ${completed
-          ? 'bg-[#cd5241] border-[#cd5241] text-white shadow-lg shadow-[#cd5241]/30'
-          : active
-            ? 'bg-[#cd5241]/10 border-[#cd5241] text-[#cd5241] shadow-[0_0_15px_rgba(205,82,65,0.2)]'
-            : 'bg-black/40 border-white/5 text-gray-700'}
+        ${completed 
+            ? 'bg-[#cd5241] border-[#cd5241] text-white shadow-lg shadow-[#cd5241]/30' 
+            : active 
+                ? 'bg-[#cd5241]/10 border-[#cd5241] text-[#cd5241] shadow-[0_0_15px_rgba(205,82,65,0.2)]' 
+                : 'bg-black/40 border-white/5 text-gray-700'}
       `}>
         {completed ? <FaCheckCircle /> : <span className="text-xs font-mono">{num}</span>}
       </div>

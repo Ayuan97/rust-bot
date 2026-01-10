@@ -10,7 +10,8 @@ import AutoRegisterPanel from './AutoRegisterPanel';
 function PairingPanel({ onServerPaired }) {
   const [status, setStatus] = useState({
     isListening: false,
-    hasCredentials: false
+    hasCredentials: false,
+    hasStoredCredentials: false
   });
   const [loading, setLoading] = useState(false);
   const [waitingForPairing, setWaitingForPairing] = useState(false);
@@ -122,43 +123,43 @@ function PairingPanel({ onServerPaired }) {
 
       {/* 状态矩阵 */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="p-4 bg-black/40 border border-white/5 tactic-cut flex items-center justify-between group">
-          <div className="flex items-center gap-3">
-            <FaSatellite className={`text-xs ${status.isListening ? 'text-[#a3e635] animate-pulse' : 'text-gray-600'}`} />
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">链路监听器</span>
+          <div className="p-4 bg-black/40 border border-white/5 tactic-cut flex items-center justify-between group">
+              <div className="flex items-center gap-3">
+                <FaSatellite className={`text-xs ${status.isListening ? 'text-[#a3e635] animate-pulse' : 'text-gray-600'}`} />
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">链路监听器</span>
+              </div>
+              {status.isListening ? (
+                  <span className="text-[9px] px-2 py-0.5 bg-[#a3e635]/10 text-[#a3e635] border border-[#a3e635]/30 tactic-cut font-black italic">ACTIVE</span>
+              ) : (
+                  <span className="text-[9px] px-2 py-0.5 bg-gray-800 text-gray-500 border border-white/5 tactic-cut font-black italic">STANDBY</span>
+              )}
           </div>
-          {status.isListening ? (
-            <span className="text-[9px] px-2 py-0.5 bg-[#a3e635]/10 text-[#a3e635] border border-[#a3e635]/30 tactic-cut font-black italic">ACTIVE</span>
-          ) : (
-            <span className="text-[9px] px-2 py-0.5 bg-gray-800 text-gray-500 border border-white/5 tactic-cut font-black italic">STANDBY</span>
-          )}
-        </div>
-        <div className="p-4 bg-black/40 border border-white/5 tactic-cut flex items-center justify-between group">
-          <div className="flex items-center gap-3">
-            <FaKey className={`text-xs ${status.hasCredentials ? 'text-[#cd5241]' : 'text-gray-600'}`} />
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">授权密钥</span>
+          <div className="p-4 bg-black/40 border border-white/5 tactic-cut flex items-center justify-between group">
+              <div className="flex items-center gap-3">
+                <FaKey className={`text-xs ${status.hasStoredCredentials ? 'text-[#cd5241]' : 'text-gray-600'}`} />
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">授权密钥</span>
+              </div>
+              {status.hasStoredCredentials ? (
+                  <span className="text-[9px] px-2 py-0.5 bg-[#cd5241]/10 text-[#cd5241] border border-[#cd5241]/30 tactic-cut font-black italic">LOADED</span>
+              ) : (
+                  <span className="text-[9px] px-2 py-0.5 bg-red-500/10 text-red-500 border border-red-500/30 tactic-cut font-black italic">MISSING</span>
+              )}
           </div>
-          {status.hasCredentials ? (
-            <span className="text-[9px] px-2 py-0.5 bg-[#cd5241]/10 text-[#cd5241] border border-[#cd5241]/30 tactic-cut font-black italic">LOADED</span>
-          ) : (
-            <span className="text-[9px] px-2 py-0.5 bg-red-500/10 text-red-500 border border-red-500/30 tactic-cut font-black italic">MISSING</span>
-          )}
-        </div>
       </div>
 
       {/* 动态工作区 */}
       <div className="tactic-border tactic-cut p-1 bg-[#cd5241]/5">
         <div className="bg-black/60 p-6 relative overflow-hidden">
           <div className="scanline"></div>
-
-          {!status.hasCredentials ? (
+          
+          {!status.hasStoredCredentials ? (
             <div className="text-center py-6">
               <div className="w-16 h-16 bg-[#cd5241]/10 rounded-full flex items-center justify-center mx-auto mb-6">
                 <FaShieldAlt className="text-[#cd5241] text-2xl animate-bounce" />
               </div>
               <h4 className="text-sm font-black text-white uppercase mb-2 italic">系统未授权</h4>
               <p className="text-[10px] text-gray-500 mb-8 leading-relaxed max-w-xs mx-auto">需要建立 Steam 凭证链路以接收游戏内的配对信号。此过程仅需执行一次。</p>
-              <button
+              <button 
                 onClick={() => setShowAutoRegister(true)}
                 className="px-10 py-3 bg-[#cd5241] text-white text-[10px] font-black uppercase italic tactic-cut hover:bg-[#b04537] transition-all shadow-lg shadow-[#cd5241]/20 flex items-center gap-3 mx-auto"
               >
@@ -176,7 +177,7 @@ function PairingPanel({ onServerPaired }) {
                   <p className="text-[9px] text-gray-500 uppercase tracking-widest">等待 Rust 游戏内发起配对请求</p>
                 </div>
               </div>
-
+              
               <div className="space-y-3">
                 <StepItem num="01" text="在 Rust 游戏中按下 [ESC] 键" />
                 <StepItem num="02" text="点击右下角的 Rust+ 图标" />
@@ -184,7 +185,7 @@ function PairingPanel({ onServerPaired }) {
                 <StepItem num="04" text="保持此窗口开启，直至配对完成" />
               </div>
 
-              <button
+              <button 
                 onClick={handleStop}
                 disabled={loading}
                 className="w-full py-3 border border-red-500/30 text-red-500 text-[10px] font-black uppercase tactic-cut hover:bg-red-500/10 transition-all flex items-center justify-center gap-2"
@@ -200,14 +201,14 @@ function PairingPanel({ onServerPaired }) {
               <h4 className="text-sm font-black text-white uppercase mb-2 italic">链路已就绪</h4>
               <p className="text-[10px] text-gray-500 mb-8 leading-relaxed">授权凭证已通过验证。点击下方按钮开始捕捉游戏内的配对信号。</p>
               <div className="flex gap-3 justify-center">
-                <button
+                <button 
                   onClick={handleStart}
                   disabled={loading}
                   className="px-10 py-3 bg-[#cd5241] text-white text-[10px] font-black uppercase italic tactic-cut hover:bg-[#b04537] transition-all flex items-center gap-3"
                 >
                   <FaPlay /> 开启信号捕获
                 </button>
-                <button
+                <button 
                   onClick={handleReset}
                   disabled={loading}
                   className="px-4 py-3 bg-white/5 border border-white/10 text-gray-500 hover:text-white tactic-cut transition-all"

@@ -424,43 +424,14 @@ router.get('/:id/map-info', async (req, res) => {
       rustPlusService.getServerInfo(req.params.id)
     ]);
 
-    res.json({
-      success: true,
-      markers: markers?.markers || [],
+    res.json({ 
+      success: true, 
+      markers, 
       mapSize: info?.mapSize || 4500,
-      monuments: info?.monuments || [],
-      oceanMargin: rustPlusService.getMapOceanMargin(req.params.id)
+      monuments: info?.monuments || []
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-
-/**
- * GET /api/servers/:id/map-image
- * 获取服务器地图图片 (JPG)
- */
-router.get('/:id/map-image', async (req, res) => {
-  try {
-    const rustPlusService = getUserRustPlusService(req.user.id);
-    if (!rustPlusService || !rustPlusService.isConnected(req.params.id)) {
-      return res.status(400).send('服务器未连接');
-    }
-
-    const mapData = await rustPlusService.getMap(req.params.id);
-    if (!mapData || !mapData.jpgImage) {
-      console.error(`[MapImage] Map data missing or no jpgImage for ${req.params.id}`);
-      return res.status(404).send('未找到地图数据');
-    }
-
-    console.log(`[MapImage] Serving map image for ${req.params.id}, size: ${mapData.jpgImage.length}`);
-    res.contentType('image/jpeg');
-    res.set('Cache-Control', 'public, max-age=3600'); // 缓存1小时
-    res.send(mapData.jpgImage);
-  } catch (error) {
-    console.error('获取地图图片失败:', error);
-    res.status(500).send(error.message);
   }
 });
 
@@ -617,51 +588,6 @@ router.post('/:id/devices', async (req, res) => {
     });
   } catch (error) {
     console.error('添加设备失败:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * POST /api/servers/:id/lockdown
- * 紧急全屋封锁 - 关闭所有开关和警报
- */
-router.post('/:id/lockdown', async (req, res) => {
-  try {
-    const serverId = req.params.id;
-
-    // 1. 验证服务器
-    const server = await prisma.servers.findFirst({
-      where: { id: serverId, userId: req.user.id }
-    });
-    if (!server) return res.status(404).json({ success: false, error: '服务器不存在' });
-
-    // 2. 获取所有开关类设备
-    const devices = await prisma.devices.findMany({
-      where: { serverId, type: 'SWITCH', isActive: true }
-    });
-
-    if (devices.length === 0) {
-      return res.json({ success: true, message: '未发现可控开关' });
-    }
-
-    // 3. 获取服务实例并执行关闭
-    const rustPlusService = getUserRustPlusService(req.user.id);
-    if (!rustPlusService || !rustPlusService.isConnected(serverId)) {
-      return res.status(400).json({ success: false, error: '服务器未连接' });
-    }
-
-    const results = await Promise.allSettled(
-      devices.map(device => rustPlusService.turnEntityOff(serverId, device.entityId))
-    );
-
-    const successCount = results.filter(r => r.status === 'fulfilled').length;
-
-    res.json({
-      success: true,
-      message: `紧急封锁指令已发出，成功处理 ${successCount}/${devices.length} 个设备`
-    });
-  } catch (error) {
-    console.error('紧急封锁失败:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

@@ -271,11 +271,13 @@ class UserServiceManager extends EventEmitter {
 
       // 3. 绑定 FCM 事件到 UserServiceManager
       this.fcmService.on('server:paired', (data) => {
-        this._handleAutomaticPairing(data);
+        console.log(`  🎮 收到服务器配对推送: ${data.name}`);
+        this.emit('server:paired', data);
       });
 
       this.fcmService.on('entity:paired', (data) => {
-        this._handleAutomaticEntityPairing(data);
+        console.log(`  🔌 收到设备配对推送`);
+        this.emit('entity:paired', data);
       });
 
       this.fcmService.on('listening', (data) => {
@@ -367,32 +369,30 @@ class UserServiceManager extends EventEmitter {
 
       console.log(`  🔌 连接到 ${this.user.servers.length} 个服务器...`);
 
-      // 连接到所有活跃服务器（并发连接）
-      const connectionPromises = this.user.servers
-        .filter(server => server.isActive !== false) // 仅连接活跃服务器，过滤掉 FCM 占位符
-        .map(async (server) => {
-          try {
-            await this.rustPlusService.connect({
-              serverId: server.id,
-              ip: server.ip,
-              port: server.port,
-              playerId: server.playerId,
-              playerToken: server.playerToken
-            });
-            console.log(`  ✅ 已连接到服务器: ${server.name || server.id}`);
+      // 连接到所有服务器（并发连接）
+      const connectionPromises = this.user.servers.map(async (server) => {
+        try {
+          await this.rustPlusService.connect({
+            serverId: server.id,
+            ip: server.ip,
+            port: server.port,
+            playerId: server.playerId,
+            playerToken: server.playerToken
+          });
+          console.log(`  ✅ 已连接到服务器: ${server.name || server.id}`);
 
-            // 连接成功后启动事件监控和自动化
-            if (this.eventMonitorService) {
-              await this.eventMonitorService.start(server.id);
-            }
-            if (this.automationService) {
-              this.automationService.start(server.id);
-            }
-          } catch (error) {
-            console.error(`  ❌ 连接服务器 ${server.name || server.id} 失败:`, error.message);
-            // 不抛出错误，允许部分失败
+          // 连接成功后启动事件监控和自动化
+          if (this.eventMonitorService) {
+            await this.eventMonitorService.start(server.id);
           }
-        });
+          if (this.automationService) {
+            this.automationService.start(server.id);
+          }
+        } catch (error) {
+          console.error(`  ❌ 连接服务器 ${server.name || server.id} 失败:`, error.message);
+          // 不抛出错误，允许部分失败
+        }
+      });
 
       // 等待所有连接尝试完成
       await Promise.allSettled(connectionPromises);
@@ -515,183 +515,6 @@ class UserServiceManager extends EventEmitter {
       eventMonitorStatus,
       automationStatus
     };
-  }
-
-  /**
-   * 处理自动配对逻辑
-   * 当收到 FCM 服务器配对推送时，自动创建服务器并搬迁凭证
-   * @private
-   */
-  async _handleAutomaticPairing(data) {
-    try {
-      this.log('FCM', `正在处理服务器自动配对: ${data.name}`);
-
-      // 1. 获取占位符服务器中的凭证
-      const placeholderId = `fcm-${this.userId}`;
-      const placeholder = await prisma.servers.findUnique({
-        where: { id: placeholderId }
-      });
-
-      let credentials = null;
-      if (placeholder && placeholder.fcmCredentials) {
-        credentials = placeholder.fcmCredentials;
-        this.log('FCM', '已从占位符中提取 FCM 凭证');
-      }
-
-      // 2. 创建或更新真实服务器
-      const server = await prisma.servers.upsert({
-        where: { id: data.id },
-        update: {
-          userId: this.userId,
-          name: data.name,
-          ip: data.ip,
-          port: String(data.port),
-          playerId: String(data.playerId),
-          playerToken: String(data.playerToken),
-          fcmCredentials: credentials,
-          img: data.img || null,
-          logo: data.logo || null,
-          url: data.url || null,
-          description: data.desc || null,
-          isActive: true,
-          updatedAt: new Date()
-        },
-        create: {
-          id: data.id,
-          userId: this.userId,
-          name: data.name,
-          ip: data.ip,
-          port: String(data.port),
-          playerId: String(data.playerId),
-          playerToken: String(data.playerToken),
-          fcmCredentials: credentials,
-          img: data.img || null,
-          logo: data.logo || null,
-          url: data.url || null,
-          description: data.desc || null,
-          isActive: true,
-          updatedAt: new Date()
-        }
-      });
-
-      this.log('FCM', `服务器 ${server.name} 已保存到数据库`);
-
-      // 3. 删除占位符服务器（如果由于配对而新产生的）
-      if (placeholder) {
-        await prisma.servers.delete({
-          where: { id: placeholderId }
-        });
-        this.log('FCM', '占位符服务器已清理');
-      }
-
-      // 4. 通知前端并重新加载本地用户数据
-      this.emit('server:paired', data);
-      await this._loadUserData();
-
-      // 5. 自动建立实时连接
-      this.log('SYSTEM', `正在自动建立与 ${server.name} 的远程链路...`);
-      try {
-        await this.rustPlusService.connect({
-          serverId: server.id,
-          ip: server.ip,
-          port: server.port,
-          playerId: server.playerId,
-          playerToken: server.playerToken
-        });
-
-        // 6. 成功连接后启动事件监控和自动化
-        if (this.eventMonitorService) {
-          await this.eventMonitorService.start(server.id);
-        }
-        if (this.automationService) {
-          this.automationService.start(server.id);
-        }
-      } catch (connErr) {
-        this.log('SYSTEM', `自动连接失败: ${connErr.message}`, 'WARN');
-      }
-
-    } catch (error) {
-      this.log('FCM', `自动配对处理失败: ${error.message}`, 'ERROR');
-    }
-  }
-
-  /**
-   * 处理设备自动配对逻辑
-   * @private
-   */
-  async _handleAutomaticEntityPairing(data) {
-    try {
-      this.log('FCM', `收到设备配对请求: ${data.entityName} (${data.entityId})`);
-
-      const { entityId, entityType, entityName, serverId } = data;
-
-      if (!entityId || !serverId) {
-        this.log('FCM', '设备配对信息不完整，跳过', 'WARN');
-        return;
-      }
-
-      // 验证服务器属于当前用户
-      const server = await prisma.servers.findFirst({
-        where: { id: serverId, userId: this.userId }
-      });
-
-      if (!server) {
-        this.log('FCM', `所属服务器 ${serverId} 不存在或不属于当前用户，无法自动添加设备`, 'WARN');
-        return;
-      }
-
-      // 映射设备类型
-      let type = 'SWITCH'; // 默认类型
-      if (entityType) {
-        const typeMap = {
-          '1': 'SWITCH',      // Smart Switch
-          '2': 'ALARM',       // Smart Alarm
-          '3': 'STORAGE',     // Storage Monitor
-        };
-        type = typeMap[String(entityType)] || 'SWITCH';
-      }
-
-      // 检查设备是否已存在
-      const existing = await prisma.devices.findUnique({
-        where: {
-          serverId_entityId: {
-            serverId,
-            entityId: parseInt(entityId)
-          }
-        }
-      });
-
-      if (existing) {
-        this.log('FCM', `设备已存在: ${existing.name} (entityId=${entityId})`);
-        // 更新设备名称（如果有变化）
-        if (entityName && entityName !== existing.name) {
-          await prisma.devices.update({
-            where: { id: existing.id },
-            data: { name: entityName, updatedAt: new Date() }
-          });
-          this.log('FCM', `设备名称已同步更新: ${existing.name} -> ${entityName}`);
-        }
-      } else {
-        // 创建新设备
-        const device = await prisma.devices.create({
-          data: {
-            id: `dev-${serverId}-${entityId}-${Date.now()}`,
-            serverId,
-            entityId: parseInt(entityId),
-            name: entityName || `设备 ${entityId}`,
-            type: type,
-            updatedAt: new Date()
-          }
-        });
-        this.log('FCM', `新设备已自动添加: ${device.name} (类型=${type})`);
-      }
-
-      // 转发事件到前端
-      this.emit('entity:paired', data);
-
-    } catch (error) {
-      this.log('FCM', `处理设备配对失败: ${error.message}`, 'ERROR');
-    }
   }
 }
 

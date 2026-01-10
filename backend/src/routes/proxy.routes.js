@@ -31,7 +31,7 @@ router.get('/status', async (req, res) => {
     const status = proxyService.getStatus();
 
     // 从数据库获取代理配置（全局配置）
-    const proxyConfig = await prisma.proxy_config.findUnique({
+    const proxyConfig = await prisma.proxyConfig.findUnique({
       where: { id: 1 }
     });
 
@@ -131,7 +131,7 @@ router.post('/config', requireAdmin, async (req, res) => {
     }
 
     // 保存配置到数据库（全局配置）
-    await prisma.proxy_config.upsert({
+    await prisma.proxyConfig.upsert({
       where: { id: 1 },
       update: {
         subscriptionUrl,
@@ -224,7 +224,7 @@ router.post('/start', requireAdmin, async (req, res) => {
     const { nodeName } = req.body;
 
     // 从数据库获取配置
-    const proxyConfig = await prisma.proxy_config.findUnique({
+    const proxyConfig = await prisma.proxyConfig.findUnique({
       where: { id: 1 }
     });
 
@@ -255,7 +255,7 @@ router.post('/start', requireAdmin, async (req, res) => {
 
     // 更新选中的节点
     if (proxyService.currentNode) {
-      await prisma.proxy_config.update({
+      await prisma.proxyConfig.update({
         where: { id: 1 },
         data: { selectedNode: proxyService.currentNode.name }
       });
@@ -341,7 +341,7 @@ router.post('/switch', requireAdmin, async (req, res) => {
     globalServiceManager.refreshAllUserProxySettings();
 
     // 更新数据库中的选中节点
-    await prisma.proxy_config.update({
+    await prisma.proxyConfig.update({
       where: { id: 1 },
       data: { selectedNode: nodeName }
     });
@@ -374,7 +374,7 @@ router.post('/switch', requireAdmin, async (req, res) => {
 router.post('/refresh', requireAdmin, async (req, res) => {
   try {
     // 从数据库获取配置
-    const proxyConfig = await prisma.proxy_config.findUnique({
+    const proxyConfig = await prisma.proxyConfig.findUnique({
       where: { id: 1 }
     });
 
@@ -423,7 +423,7 @@ router.delete('/config', requireAdmin, async (req, res) => {
     }
 
     // 删除配置
-    await prisma.proxy_config.deleteMany({
+    await prisma.proxyConfig.deleteMany({
       where: { id: 1 }
     });
 

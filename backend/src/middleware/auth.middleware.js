@@ -16,21 +16,24 @@ export const authenticate = async (req, res, next) => {
   try {
     // 获取 Authorization 头
     const authHeader = req.headers.authorization;
-    let token = null;
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.split(' ')[1];
-    } else if (req.query && req.query.token) {
-      // 支持通过 URL 参数传递 token (用于图片加载等无法设置 Header 的场景)
-      token = req.query.token;
-    }
-
-    if (!token) {
+    if (!authHeader) {
       return res.status(401).json({
         success: false,
         error: '未提供认证令牌'
       });
     }
+
+    // 格式: "Bearer <token>"
+    const parts = authHeader.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      return res.status(401).json({
+        success: false,
+        error: '认证令牌格式错误'
+      });
+    }
+
+    const token = parts[1];
 
     // 验证 token
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
