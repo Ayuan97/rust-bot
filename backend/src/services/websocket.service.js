@@ -50,10 +50,10 @@ class WebSocketService {
       }
 
       // 3. 从数据库获取用户信息
-      const user = await prisma.user.findUnique({
+      const user = await prisma.users.findUnique({
         where: { id: decoded.userId },
         include: {
-          subscription: true
+          subscriptions: true
         }
       });
 
@@ -67,7 +67,7 @@ class WebSocketService {
       }
 
       // 5. 检查订阅是否过期
-      if (user.subscription && new Date() > user.subscription.endDate) {
+      if (user.subscriptions && new Date() > user.subscriptions.endDate) {
         return next(new Error('订阅已过期，请续费'));
       }
 
@@ -465,6 +465,58 @@ class WebSocketService {
 
     globalServiceManager.on('server:reconnecting', (data) => {
       this.io.to(`user:${data.userId}`).emit('server:reconnecting', data);
+    });
+
+    // === 游戏事件 (Cargo, Heli, etc.) ===
+
+    globalServiceManager.on('cargo:spawn', (data) => {
+      this.io.to(`user:${data.userId}`).emit('cargo:spawn', data);
+    });
+
+    globalServiceManager.on('cargo:egress', (data) => {
+      this.io.to(`user:${data.userId}`).emit('cargo:egress', data);
+    });
+
+    globalServiceManager.on('cargo:dock', (data) => {
+      this.io.to(`user:${data.userId}`).emit('cargo:dock', data);
+    });
+
+    globalServiceManager.on('cargo:leave', (data) => {
+      this.io.to(`user:${data.userId}`).emit('cargo:leave', data);
+    });
+
+    globalServiceManager.on('heli:spawn', (data) => {
+      this.io.to(`user:${data.userId}`).emit('heli:spawn', data);
+    });
+
+    globalServiceManager.on('heli:downed', (data) => {
+      this.io.to(`user:${data.userId}`).emit('heli:downed', data);
+    });
+
+    globalServiceManager.on('heli:leave', (data) => {
+      this.io.to(`user:${data.userId}`).emit('heli:leave', data);
+    });
+
+    globalServiceManager.on('player:died', (data) => {
+      this.io.to(`user:${data.userId}`).emit('player:died', data);
+    });
+
+    globalServiceManager.on('player:online', (data) => {
+      this.io.to(`user:${data.userId}`).emit('player:online', data);
+    });
+
+    globalServiceManager.on('player:offline', (data) => {
+      this.io.to(`user:${data.userId}`).emit('player:offline', data);
+    });
+
+    globalServiceManager.on('player:afk', (data) => {
+      this.io.to(`user:${data.userId}`).emit('player:afk', data);
+    });
+
+    // === 自动化事件 ===
+
+    globalServiceManager.on('automation:executed', (data) => {
+      this.io.to(`user:${data.userId}`).emit('automation:executed', data);
     });
 
     // === 队伍和氏族事件 ===

@@ -235,10 +235,10 @@ class UserCommands extends EventEmitter {
    */
   async getDeviceCommands(serverId) {
     try {
-      const devices = await prisma.device.findMany({
+      const devices = await prisma.devices.findMany({
         where: {
           serverId,
-          server: {
+          servers: {
             userId: this.userId
           },
           command: {

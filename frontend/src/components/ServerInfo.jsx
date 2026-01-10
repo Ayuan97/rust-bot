@@ -18,6 +18,7 @@ function ServerInfo({ serverId }) {
   const toast = useToast();
 
   useEffect(() => {
+    if (!serverId) return;
     fetchAllInfo();
 
     // 每30秒刷新实时数据（Rust+ API）
@@ -227,14 +228,14 @@ function ServerInfo({ serverId }) {
                     {formatGameTime(timeInfo.time)}
                   </p>
                 </div>
-                
-                 <div className="p-3 bg-dark-900/30 rounded-lg border border-white/5">
+
+                <div className="p-3 bg-dark-900/30 rounded-lg border border-white/5">
                   <div className="flex items-center gap-2 mb-2">
-                     {isDaytime(timeInfo.time, timeInfo.sunrise, timeInfo.sunset) ? (
-                    <FaSun className="text-yellow-500" />
-                  ) : (
-                    <FaMoon className="text-purple-400" />
-                  )}
+                    {isDaytime(timeInfo.time, timeInfo.sunrise, timeInfo.sunset) ? (
+                      <FaSun className="text-yellow-500" />
+                    ) : (
+                      <FaMoon className="text-purple-400" />
+                    )}
                     <span className="text-xs text-gray-500">Cycle</span>
                   </div>
                   <p className="text-lg font-bold text-white">
@@ -356,18 +357,16 @@ function ServerInfo({ serverId }) {
                 </div>
                 <div className="flex items-center gap-3">
                   {member.isAlive !== undefined && (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                        member.isAlive 
-                        ? 'bg-green-500/10 text-green-400 border-green-500/20' 
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${member.isAlive
+                        ? 'bg-green-500/10 text-green-400 border-green-500/20'
                         : 'bg-red-500/10 text-red-400 border-red-500/20'
-                    }`}>
+                      }`}>
                       {member.isAlive ? 'Alive' : 'Dead'}
                     </span>
                   )}
                   <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${
-                        member.isOnline ? 'bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)]' : 'bg-dark-600'
-                      }`} 
+                    <div className={`w-2 h-2 rounded-full ${member.isOnline ? 'bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)]' : 'bg-dark-600'
+                      }`}
                     />
                     <span className="text-xs text-gray-500">
                       {member.isOnline ? 'Online' : 'Offline'}

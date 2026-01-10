@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { FaQrcode, FaPlay, FaStop, FaSync, FaCheckCircle, FaTimesCircle, FaRocket } from 'react-icons/fa';
+import { FaQrcode, FaPlay, FaStop, FaSync, FaCheckCircle, FaTimesCircle, FaRocket, FaSatellite, FaInfoCircle, FaKey, FaShieldAlt } from 'react-icons/fa';
 import { getPairingStatus, startPairing, stopPairing, resetPairing } from '../services/pairing';
 import socketService from '../services/socket';
 import { useToast } from './Toast';
@@ -10,8 +10,7 @@ import AutoRegisterPanel from './AutoRegisterPanel';
 function PairingPanel({ onServerPaired }) {
   const [status, setStatus] = useState({
     isListening: false,
-    hasCredentials: false,
-    hasStoredCredentials: false
+    hasCredentials: false
   });
   const [loading, setLoading] = useState(false);
   const [waitingForPairing, setWaitingForPairing] = useState(false);
@@ -21,71 +20,36 @@ function PairingPanel({ onServerPaired }) {
   const confirm = useConfirm();
 
   useEffect(() => {
-    const loadStatus = async () => {
-      try {
-        const response = await getPairingStatus();
-        const currentStatus = response.data.status;
-        setStatus(currentStatus);
-
-        // 如果正在监听，自动设置为等待配对状态
-        if (currentStatus.isListening) {
-          setWaitingForPairing(true);
-        }
-      } catch (error) {
-        console.error('获取配对状态失败:', error);
-      }
-    };
-
-    loadStatus();
+    fetchStatus();
 
     // 监听服务器配对事件
     const handleServerPaired = (serverInfo) => {
-      console.log('✅ 服务器配对成功:', serverInfo);
       setWaitingForPairing(false);
       fetchStatus();
-
-      if (onServerPaired) {
-        onServerPaired(serverInfo);
-      }
-
-      // 显示成功通知
-      toast.success(`服务器配对成功: ${serverInfo.name}`, {
-        title: '配对成功'
-      });
+      if (onServerPaired) onServerPaired(serverInfo);
+      toast.success(`节点建立成功: ${serverInfo.name}`);
     };
 
     // 监听设备配对事件
     const handleEntityPaired = (entityInfo) => {
-      console.log('✅ 设备配对成功:', entityInfo);
-      toast.success(`设备 ID: ${entityInfo.entityId}`, {
-        title: '设备配对成功'
-      });
-    };
-
-    // 监听警报
-    const handleAlarm = (alarmInfo) => {
-      console.log('🚨 警报:', alarmInfo);
-      toast.warning(`${alarmInfo.title}: ${alarmInfo.message}`, {
-        title: '警报',
-        duration: 5000
-      });
+      toast.success(`新智能设备已上线 (ID: ${entityInfo.entityId})`);
     };
 
     socketService.on('server:paired', handleServerPaired);
     socketService.on('entity:paired', handleEntityPaired);
-    socketService.on('alarm', handleAlarm);
 
     return () => {
       socketService.off('server:paired', handleServerPaired);
       socketService.off('entity:paired', handleEntityPaired);
-      socketService.off('alarm', handleAlarm);
     };
   }, [onServerPaired]);
 
   const fetchStatus = async () => {
     try {
       const response = await getPairingStatus();
-      setStatus(response.data.status);
+      const currentStatus = response.data.status;
+      setStatus(currentStatus);
+      if (currentStatus.isListening) setWaitingForPairing(true);
     } catch (error) {
       console.error('获取配对状态失败:', error);
     }
@@ -98,8 +62,7 @@ function PairingPanel({ onServerPaired }) {
       setWaitingForPairing(true);
       await fetchStatus();
     } catch (error) {
-      console.error('启动配对失败:', error);
-      toast.error('启动失败: ' + error.message);
+      toast.error('启动监听失败');
     } finally {
       setLoading(false);
     }
@@ -112,8 +75,7 @@ function PairingPanel({ onServerPaired }) {
       setWaitingForPairing(false);
       await fetchStatus();
     } catch (error) {
-      console.error('停止配对失败:', error);
-      toast.error('停止失败: ' + error.message);
+      toast.error('停止监听失败');
     } finally {
       setLoading(false);
     }
@@ -122,50 +84,31 @@ function PairingPanel({ onServerPaired }) {
   const handleReset = async () => {
     const confirmed = await confirm({
       type: 'warning',
-      title: '重置 FCM 凭证',
-      message: '确定要重置 FCM 凭证吗？这将清空现有凭证，需要重新输入。',
-      confirmText: '重置',
+      title: '重置授权凭证',
+      message: '确定要重置 FCM 授权吗？这将导致现有监听失效，需要重新进行安全验证。',
+      confirmText: '确定重置',
       cancelText: '取消'
     });
     if (!confirmed) return;
 
     setLoading(true);
-    setWaitingForPairing(false);
-
     try {
-      const response = await resetPairing();
-      console.log('重置响应:', response.data);
-
-      // 更新状态
+      await resetPairing();
       await fetchStatus();
-
-      // 显示自动注册界面
       setShowAutoRegister(true);
     } catch (error) {
-      console.error('重置失败:', error);
-      const errorMsg = error.response?.data?.error || error.message || '未知错误';
-      toast.error('重置失败: ' + errorMsg);
+      toast.error('重置操作失败');
     } finally {
       setLoading(false);
     }
   };
 
-  // Portal Helper
-  const ModalPortal = ({ children }) => {
-    return createPortal(
-      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
-        {children}
-      </div>,
-      document.body
-    );
-  };
-
   return (
-    <>
-      {/* 自动注册模态框 - 使用 Portal */}
+    <div className="space-y-6 font-sans animate-fade-in">
+      {/* 自动注册层级 */}
       {showAutoRegister && (
-        <ModalPortal>
-          <div className="w-full max-w-2xl animate-fade-in">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[110] flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl">
             <AutoRegisterPanel
               onComplete={async () => {
                 setShowAutoRegister(false);
@@ -174,127 +117,128 @@ function PairingPanel({ onServerPaired }) {
               onClose={() => setShowAutoRegister(false)}
             />
           </div>
-        </ModalPortal>
-      )}
-
-      <div className="p-4 space-y-4">
-        {/* 状态显示 */}
-        <div className="grid grid-cols-2 gap-4">
-            <div className="p-3 bg-dark-700/50 rounded-lg border border-white/5 flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-300">FCM 监听</span>
-                {status.isListening ? (
-                    <span className="badge bg-green-500/10 text-green-400 border border-green-500/20">运行中</span>
-                ) : (
-                    <span className="badge bg-dark-600/50 text-gray-500 border border-dark-600">未启动</span>
-                )}
-            </div>
-            <div className="p-3 bg-dark-700/50 rounded-lg border border-white/5 flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-300">FCM 凭证</span>
-                {status.hasStoredCredentials ? (
-                    <span className="badge bg-green-500/10 text-green-400 border border-green-500/20">已保存</span>
-                ) : (
-                    <span className="badge bg-dark-600/50 text-gray-500 border border-dark-600">未配置</span>
-                )}
-            </div>
-        </div>
-
-      {/* 等待配对提示 */}
-      {waitingForPairing && (
-        <div className="mb-6 p-4 bg-rust-accent/10 border border-rust-accent/30 rounded-lg">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="animate-spin">
-              <FaSync className="text-rust-accent" />
-            </div>
-            <span className="font-semibold text-rust-accent">等待游戏内配对...</span>
-          </div>
-          <div className="text-sm text-gray-300 space-y-2">
-            <p>1. 在 Rust 游戏中按 <kbd className="px-1.5 py-0.5 bg-black/40 rounded border border-white/10 text-xs">ESC</kbd></p>
-            <p>2. 点击右下角的 Rust+ 图标</p>
-            <p>3. 点击 "Pair with Server" 配对服务器</p>
-            <p>4. 或对着智能设备点击 "Pair" 配对设备</p>
-          </div>
         </div>
       )}
 
-      {/* 配对说明 */}
-      <div className="mb-6 p-4 bg-dark-700/30 border border-white/5 rounded-lg">
-        <h3 className="font-semibold mb-3 text-gray-200">配对流程说明</h3>
-        <ol className="text-sm text-gray-400 space-y-2 list-decimal list-inside">
-          <li>点击下方"启动配对监听"按钮</li>
-          <li>在 Rust 游戏中进入任意服务器</li>
-          <li>按 ESC 打开菜单，点击 Rust+ 图标</li>
-          <li>点击 "Pair with Server" 进行配对</li>
-          <li>配对成功后服务器信息会自动保存</li>
-          <li>系统会自动连接到配对的服务器</li>
-        </ol>
-      </div>
-
-      {/* 控制按钮 */}
-      <div className="space-y-3">
-        {!status.hasStoredCredentials && (
-          <div className="mb-4 p-4 bg-rust-accent/10 border border-rust-accent/30 rounded-lg">
-            <p className="text-sm text-gray-300 mb-3">
-              ⚠️ 未找到 FCM 凭证，请点击下方按钮进行注册：
-            </p>
-            <button
-              className="btn btn-primary w-full flex items-center justify-center gap-2"
-              onClick={() => setShowAutoRegister(true)}
-            >
-              <FaRocket />
-              自动注册
-            </button>
-            <p className="text-xs text-gray-400 mt-3">
-              点击按钮后按照提示完成 Steam 登录即可
-            </p>
+      {/* 状态矩阵 */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="p-4 bg-black/40 border border-white/5 tactic-cut flex items-center justify-between group">
+          <div className="flex items-center gap-3">
+            <FaSatellite className={`text-xs ${status.isListening ? 'text-[#a3e635] animate-pulse' : 'text-gray-600'}`} />
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">链路监听器</span>
           </div>
-        )}
-
-        {status.hasStoredCredentials && !status.isListening && (
-          <button
-            className="btn btn-primary w-full flex items-center justify-center gap-2"
-            onClick={handleStart}
-            disabled={loading}
-          >
-            <FaPlay />
-            {loading ? '启动中...' : '启动配对监听'}
-          </button>
-        )}
-
-        {status.isListening && (
-          <button
-            className="btn btn-secondary w-full flex items-center justify-center gap-2"
-            onClick={handleStop}
-            disabled={loading}
-          >
-            <FaStop />
-            {loading ? '停止中...' : '停止配对监听'}
-          </button>
-        )}
-
-        {status.hasStoredCredentials && (
-          <button
-            className="btn btn-danger w-full flex items-center justify-center gap-2"
-            onClick={handleReset}
-            disabled={loading}
-          >
-            <FaSync />
-            {loading ? '重置中...' : '重置 FCM 凭证'}
-          </button>
-        )}
+          {status.isListening ? (
+            <span className="text-[9px] px-2 py-0.5 bg-[#a3e635]/10 text-[#a3e635] border border-[#a3e635]/30 tactic-cut font-black italic">ACTIVE</span>
+          ) : (
+            <span className="text-[9px] px-2 py-0.5 bg-gray-800 text-gray-500 border border-white/5 tactic-cut font-black italic">STANDBY</span>
+          )}
+        </div>
+        <div className="p-4 bg-black/40 border border-white/5 tactic-cut flex items-center justify-between group">
+          <div className="flex items-center gap-3">
+            <FaKey className={`text-xs ${status.hasCredentials ? 'text-[#cd5241]' : 'text-gray-600'}`} />
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">授权密钥</span>
+          </div>
+          {status.hasCredentials ? (
+            <span className="text-[9px] px-2 py-0.5 bg-[#cd5241]/10 text-[#cd5241] border border-[#cd5241]/30 tactic-cut font-black italic">LOADED</span>
+          ) : (
+            <span className="text-[9px] px-2 py-0.5 bg-red-500/10 text-red-500 border border-red-500/30 tactic-cut font-black italic">MISSING</span>
+          )}
+        </div>
       </div>
 
-      {/* 提示信息 */}
-      <div className="mt-6 p-4 bg-dark-800/50 rounded-lg border border-white/5 text-xs text-gray-400">
-        <p className="mb-2">💡 提示：</p>
-        <ul className="space-y-1 list-disc list-inside">
-          <li>首次使用需要启动配对监听</li>
-          <li>FCM 凭证会自动保存，下次启动会自动加载</li>
-          <li>每次配对都会自动保存服务器信息并连接</li>
-          <li>也可以配对智能设备，在游戏中对着设备点击 Pair</li>
-        </ul>
+      {/* 动态工作区 */}
+      <div className="tactic-border tactic-cut p-1 bg-[#cd5241]/5">
+        <div className="bg-black/60 p-6 relative overflow-hidden">
+          <div className="scanline"></div>
+
+          {!status.hasCredentials ? (
+            <div className="text-center py-6">
+              <div className="w-16 h-16 bg-[#cd5241]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <FaShieldAlt className="text-[#cd5241] text-2xl animate-bounce" />
+              </div>
+              <h4 className="text-sm font-black text-white uppercase mb-2 italic">系统未授权</h4>
+              <p className="text-[10px] text-gray-500 mb-8 leading-relaxed max-w-xs mx-auto">需要建立 Steam 凭证链路以接收游戏内的配对信号。此过程仅需执行一次。</p>
+              <button
+                onClick={() => setShowAutoRegister(true)}
+                className="px-10 py-3 bg-[#cd5241] text-white text-[10px] font-black uppercase italic tactic-cut hover:bg-[#b04537] transition-all shadow-lg shadow-[#cd5241]/20 flex items-center gap-3 mx-auto"
+              >
+                <FaRocket /> 启动自动授权协议
+              </button>
+            </div>
+          ) : waitingForPairing ? (
+            <div className="space-y-6">
+              <div className="flex items-center gap-4 border-b border-white/5 pb-4">
+                <div className="w-10 h-10 bg-[#a3e635]/10 tactic-cut flex items-center justify-center">
+                  <FaSync className="text-[#a3e635] animate-spin" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-[#a3e635] uppercase italic">正在监听信号...</h4>
+                  <p className="text-[9px] text-gray-500 uppercase tracking-widest">等待 Rust 游戏内发起配对请求</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <StepItem num="01" text="在 Rust 游戏中按下 [ESC] 键" />
+                <StepItem num="02" text="点击右下角的 Rust+ 图标" />
+                <StepItem num="03" text="点击 'Pair with Server' 发送链路信号" />
+                <StepItem num="04" text="保持此窗口开启，直至配对完成" />
+              </div>
+
+              <button
+                onClick={handleStop}
+                disabled={loading}
+                className="w-full py-3 border border-red-500/30 text-red-500 text-[10px] font-black uppercase tactic-cut hover:bg-red-500/10 transition-all flex items-center justify-center gap-2"
+              >
+                <FaStop /> 终止信号监听
+              </button>
+            </div>
+          ) : (
+            <div className="text-center py-6">
+              <div className="w-16 h-16 bg-[#a3e635]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <FaCheckCircle className="text-[#a3e635] text-2xl" />
+              </div>
+              <h4 className="text-sm font-black text-white uppercase mb-2 italic">链路已就绪</h4>
+              <p className="text-[10px] text-gray-500 mb-8 leading-relaxed">授权凭证已通过验证。点击下方按钮开始捕捉游戏内的配对信号。</p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={handleStart}
+                  disabled={loading}
+                  className="px-10 py-3 bg-[#cd5241] text-white text-[10px] font-black uppercase italic tactic-cut hover:bg-[#b04537] transition-all flex items-center gap-3"
+                >
+                  <FaPlay /> 开启信号捕获
+                </button>
+                <button
+                  onClick={handleReset}
+                  disabled={loading}
+                  className="px-4 py-3 bg-white/5 border border-white/10 text-gray-500 hover:text-white tactic-cut transition-all"
+                  title="重置凭据"
+                >
+                  <FaSync className={loading ? 'animate-spin' : ''} />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* 底部备注 */}
+      <div className="p-4 bg-white/[0.02] border border-white/5 tactic-cut flex items-start gap-3">
+        <FaInfoCircle className="text-gray-700 text-xs mt-0.5" />
+        <p className="text-[9px] text-gray-600 leading-relaxed uppercase font-medium">
+          提示：配对成功后，系统会自动保存服务器 IP、端口及玩家 Token。
+          <br />如果你是在游戏中配对智能开关或警报器，请直接点击“配对”即可同步到本终端。
+        </p>
       </div>
-    </>
+    </div>
+  );
+}
+
+function StepItem({ num, text }) {
+  return (
+    <div className="flex items-center gap-4 group">
+      <span className="text-[10px] font-mono font-black text-[#cd5241] opacity-50 group-hover:opacity-100 transition-opacity">[{num}]</span>
+      <span className="text-[11px] font-bold text-gray-400 group-hover:text-gray-200 transition-colors">{text}</span>
+    </div>
   );
 }
 

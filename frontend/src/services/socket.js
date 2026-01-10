@@ -15,11 +15,21 @@ class SocketService {
       return this.socket;
     }
 
+    // 从 localStorage 获取 JWT Token
+    const token = localStorage.getItem('token');
+    if (!token) {
+      console.error('❌ 无法连接 Socket: 未找到认证令牌');
+      return null;
+    }
+
     this.socket = io(SOCKET_URL, {
       transports: ['websocket'],
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionAttempts: Infinity  // 无限重连
+      reconnectionAttempts: Infinity,  // 无限重连
+      auth: {
+        token  // 在握手时传递 Token
+      }
     });
 
     this.socket.on('connect', () => {
@@ -30,6 +40,18 @@ class SocketService {
     this.socket.on('disconnect', () => {
       console.log('❌ WebSocket 已断开');
       this.notifyConnectionChange(false);
+    });
+
+    this.socket.on('connect_error', (error) => {
+      console.error('❌ WebSocket 连接错误:', error.message);
+
+      // 如果是认证错误，清除 Token 并跳转到登录页
+      if (error.message.includes('认证') || error.message.includes('令牌') || error.message.includes('授权')) {
+        console.error('❌ 认证失败，请重新登录');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
     });
 
     this.socket.on('error', (error) => {

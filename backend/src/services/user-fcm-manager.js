@@ -233,13 +233,17 @@ class UserFCMManager extends EventEmitter {
     try {
       logger.info(`🔌 用户 ${this.userId} 正在连接到 FCM 服务器...`);
 
-      // 如果配置了 SOCKS5 代理，使用代理连接
-      if (this.proxyConfig) {
-        logger.info(`🌐 用户 ${this.userId} 通过代理连接: ${this.proxyConfig.host}:${this.proxyConfig.port}`);
-        await this._connectWithProxy();
-      } else {
-        await this.fcmListener.connect();
-      }
+      const CONNECT_TIMEOUT = 15000; // 15秒连接超时
+
+      const connectPromise = this.proxyConfig 
+        ? this._connectWithProxy() 
+        : this.fcmListener.connect();
+
+      // 使用 Promise.race 防止连接挂起
+      await Promise.race([
+        connectPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('FCM 连接超时 (可能由于网络受限，请配置代理)')), CONNECT_TIMEOUT))
+      ]);
 
       this.isListening = true;
       logger.info(`✅ 用户 ${this.userId} FCM 连接流程已启动`);
@@ -249,6 +253,13 @@ class UserFCMManager extends EventEmitter {
     } catch (error) {
       logger.error(`❌ 用户 ${this.userId} FCM 连接失败:`, error.message);
       this.handleFCMError(error);
+      
+      // 如果连接失败，清理监听器防止后台无限重试导致的黑屏挂起
+      if (this.fcmListener) {
+        this.fcmListener.destroy();
+        this.fcmListener = null;
+      }
+      
       throw error;
     }
   }

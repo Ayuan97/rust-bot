@@ -98,10 +98,10 @@ class UserAutomation extends EventEmitter {
    */
   async getDevicesWithAutoMode(serverId) {
     try {
-      const devices = await prisma.device.findMany({
+      const devices = await prisma.devices.findMany({
         where: {
           serverId,
-          server: {
+          servers: {
             userId: this.userId
           },
           autoMode: {
@@ -123,11 +123,11 @@ class UserAutomation extends EventEmitter {
    */
   async updateDeviceReachable(serverId, entityId, reachable) {
     try {
-      await prisma.device.updateMany({
+      await prisma.devices.updateMany({
         where: {
           serverId,
           entityId,
-          server: {
+          servers: {
             userId: this.userId
           }
         },

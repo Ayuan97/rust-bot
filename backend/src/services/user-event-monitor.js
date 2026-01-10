@@ -10,6 +10,7 @@ import { formatPosition, getDistance } from '../utils/coordinates.js';
 import { notify, formatDuration } from '../utils/messages.js';
 import EventTimerManager from '../utils/event-timer.js';
 import { getItemName, isImportantItem } from '../utils/item-info.js';
+import { v4 as uuidv4 } from 'uuid';
 import logger from '../utils/logger.js';
 
 const prisma = new PrismaClient();
@@ -67,13 +68,13 @@ class UserEventMonitor extends EventEmitter {
    */
   async loadNotificationSettings() {
     try {
-      let settings = await prisma.notificationSettings.findUnique({
+      let settings = await prisma.notification_settings.findUnique({
         where: { userId: this.userId }
       });
 
       if (!settings) {
         // 创建默认设置
-        settings = await prisma.notificationSettings.create({
+        settings = await prisma.notification_settings.create({
           data: {
             userId: this.userId,
             settings: DEFAULT_NOTIFICATION_SETTINGS
@@ -110,11 +111,12 @@ class UserEventMonitor extends EventEmitter {
    */
   async saveEventLog(serverId, eventType, eventData) {
     try {
-      await prisma.eventLog.create({
+      await prisma.event_logs.create({
         data: {
+          id: uuidv4(),
           serverId,
           eventType,
-          eventData: JSON.stringify(eventData),
+          eventData: typeof eventData === 'string' ? eventData : JSON.stringify(eventData),
           createdAt: new Date()
         }
       });
@@ -128,6 +130,12 @@ class UserEventMonitor extends EventEmitter {
    */
   async start(serverId) {
     if (this.pollIntervals.has(serverId)) {
+      return;
+    }
+
+    // 过滤掉 FCM 占位符
+    if (serverId && String(serverId).startsWith('fcm-')) {
+      logger.debug(`⏩ 用户 ${this.userId} 事件监控跳过占位符服务器: ${serverId}`);
       return;
     }
 
@@ -180,7 +188,7 @@ class UserEventMonitor extends EventEmitter {
 
         const errorMessage = error?.message || errorStr;
         if (errorMessage.includes('Timeout reached') ||
-            errorMessage.includes('服务器未连接')) {
+          errorMessage.includes('服务器未连接')) {
           return;
         }
 
@@ -351,7 +359,7 @@ class UserEventMonitor extends EventEmitter {
           if (msg) {
             await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
           }
-        } catch (e) {}
+        } catch (e) { }
       }
 
       // 启动 Egress 计时器
@@ -383,7 +391,7 @@ class UserEventMonitor extends EventEmitter {
               if (msg) {
                 await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
               }
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       );
@@ -414,7 +422,7 @@ class UserEventMonitor extends EventEmitter {
             if (msg) {
               await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
             }
-          } catch (e) {}
+          } catch (e) { }
         }
       });
 
@@ -454,7 +462,7 @@ class UserEventMonitor extends EventEmitter {
           if (msg) {
             await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
           }
-        } catch (e) {}
+        } catch (e) { }
       }
 
       EventTimerManager.stopTimer(`cargo_egress_${ship.id}`, serverId);
@@ -513,7 +521,7 @@ class UserEventMonitor extends EventEmitter {
               if (msg) {
                 await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
               }
-            } catch (e) {}
+            } catch (e) { }
           }
 
           eventData.cargoShipDockedStatus.set(ship.id, true);
@@ -582,7 +590,7 @@ class UserEventMonitor extends EventEmitter {
           if (message) {
             await this.rustPlusService.sendTeamMessage(serverId, message);
           }
-        } catch (e) {}
+        } catch (e) { }
       }
 
       if (!eventData.patrolHeliTracers.has(heli.id)) {
@@ -765,7 +773,7 @@ class UserEventMonitor extends EventEmitter {
               if (msg) {
                 await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
               }
-            } catch (e) {}
+            } catch (e) { }
           }
         }
 

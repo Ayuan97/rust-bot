@@ -8,6 +8,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/auth.middleware.js';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -24,10 +25,10 @@ const SALT_ROUNDS = 10;
  */
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password, confirmPassword } = req.body;
+    const { username, password, confirmPassword } = req.body;
 
     // 验证必填字段
-    if (!username || !email || !password || !confirmPassword) {
+    if (!username || !password || !confirmPassword) {
       return res.status(400).json({
         success: false,
         error: '请填写所有必填字段'
@@ -50,15 +51,6 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // 验证邮箱格式
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        success: false,
-        error: '邮箱格式不正确'
-      });
-    }
-
     // 验证密码长度
     if (password.length < 6) {
       return res.status(400).json({
@@ -76,7 +68,7 @@ router.post('/register', async (req, res) => {
     }
 
     // 检查用户名是否已存在
-    const existingUserByUsername = await prisma.user.findUnique({
+    const existingUserByUsername = await prisma.users.findUnique({
       where: { username }
     });
 
@@ -87,18 +79,6 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // 检查邮箱是否已存在
-    const existingUserByEmail = await prisma.user.findUnique({
-      where: { email }
-    });
-
-    if (existingUserByEmail) {
-      return res.status(409).json({
-        success: false,
-        error: '邮箱已被注册'
-      });
-    }
-
     // 加密密码
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
@@ -106,19 +86,22 @@ router.post('/register', async (req, res) => {
     const trialEndDate = new Date();
     trialEndDate.setDate(trialEndDate.getDate() + 7);
 
-    const user = await prisma.user.create({
+    const user = await prisma.users.create({
       data: {
+        id: uuidv4(),
         username,
-        email,
         password: hashedPassword,
-        subscription: {
+        subscriptions: {
           create: {
+            id: uuidv4(),
             planType: 'TRIAL',
-            endDate: trialEndDate
+            endDate: trialEndDate,
+            updatedAt: new Date()
           }
         },
-        notificationSettings: {
+        notification_settings: {
           create: {
+            id: uuidv4(),
             settings: {
               player_death: true,
               player_online: true,
@@ -127,19 +110,21 @@ router.post('/register', async (req, res) => {
               cargo_spawn: true,
               heli_spawn: true,
               oil_rig_triggered: true
-            }
+            },
+            updatedAt: new Date()
           }
-        }
+        },
+        updatedAt: new Date()
       },
       include: {
-        subscription: true
+        subscriptions: true
       }
     });
 
     // 生成 JWT token
     const token = jwt.sign(
       { userId: user.id },
-      process.env.JWT_SECRET,
+      process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: JWT_EXPIRES_IN }
     );
 
@@ -151,11 +136,10 @@ router.post('/register', async (req, res) => {
         user: {
           id: user.id,
           username: user.username,
-          email: user.email,
           isAdmin: user.isAdmin,
-          subscription: {
-            planType: user.subscription.planType,
-            endDate: user.subscription.endDate
+          subscriptions: {
+            planType: user.subscriptions.planType,
+            endDate: user.subscriptions.endDate
           },
           createdAt: user.createdAt
         }
@@ -187,7 +171,7 @@ router.post('/login', async (req, res) => {
     }
 
     // 查找用户（支持用户名或邮箱登录）
-    const user = await prisma.user.findFirst({
+    const user = await prisma.users.findFirst({
       where: {
         OR: [
           { username },
@@ -195,7 +179,7 @@ router.post('/login', async (req, res) => {
         ]
       },
       include: {
-        subscription: true
+        subscriptions: true
       }
     });
 
@@ -225,7 +209,7 @@ router.post('/login', async (req, res) => {
     }
 
     // 更新最后登录时间
-    await prisma.user.update({
+    await prisma.users.update({
       where: { id: user.id },
       data: { lastLogin: new Date() }
     });
@@ -233,7 +217,7 @@ router.post('/login', async (req, res) => {
     // 生成 JWT token
     const token = jwt.sign(
       { userId: user.id },
-      process.env.JWT_SECRET,
+      process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: JWT_EXPIRES_IN }
     );
 
@@ -247,10 +231,10 @@ router.post('/login', async (req, res) => {
           username: user.username,
           email: user.email,
           isAdmin: user.isAdmin,
-          subscription: user.subscription ? {
-            planType: user.subscription.planType,
-            endDate: user.subscription.endDate,
-            isExpired: new Date() > user.subscription.endDate
+          subscriptions: user.subscriptions ? {
+            planType: user.subscriptions.planType,
+            endDate: user.subscriptions.endDate,
+            isExpired: new Date() > user.subscriptions.endDate
           } : null,
           lastLogin: new Date()
         }
@@ -271,10 +255,10 @@ router.post('/login', async (req, res) => {
  */
 router.get('/me', authenticate, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: req.user.id },
       include: {
-        subscription: true,
+        subscriptions: true,
         servers: {
           select: {
             id: true,
@@ -300,12 +284,12 @@ router.get('/me', authenticate, async (req, res) => {
         email: user.email,
         isAdmin: user.isAdmin,
         isActive: user.isActive,
-        subscription: user.subscription ? {
-          planType: user.subscription.planType,
-          startDate: user.subscription.startDate,
-          endDate: user.subscription.endDate,
-          isExpired: new Date() > user.subscription.endDate,
-          autoRenew: user.subscription.autoRenew
+        subscriptions: user.subscriptions ? {
+          planType: user.subscriptions.planType,
+          startDate: user.subscriptions.startDate,
+          endDate: user.subscriptions.endDate,
+          isExpired: new Date() > user.subscriptions.endDate,
+          autoRenew: user.subscriptions.autoRenew
         } : null,
         servers: user.servers,
         createdAt: user.createdAt,

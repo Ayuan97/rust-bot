@@ -80,7 +80,9 @@ class RustPlusClient extends EventEmitter {
       : `ws://${this.server}:${this.port}`;
 
     // 配置 WebSocket 选项
-    const wsOptions = {};
+    const wsOptions = {
+      handshakeTimeout: 10000, // 10秒握手超时
+    };
 
     if (this.proxyConfig) {
       const proxyUrl = `socks5://${this.proxyConfig.host}:${this.proxyConfig.port}`;
@@ -93,41 +95,55 @@ class RustPlusClient extends EventEmitter {
     // 触发 connecting 事件
     this.emit('connecting');
 
-    // 创建 WebSocket 连接
-    this.websocket = new WebSocket(address, wsOptions);
-
-    // 绑定事件
-    this.websocket.on('open', () => {
-      this.emit('connected');
-    });
-
-    this.websocket.on('error', (e) => {
-      this.emit('error', e);
-    });
-
-    this.websocket.on('message', (data) => {
+    // 创建 WebSocket 连接并等待 open
+    return new Promise((resolve, reject) => {
       try {
-        const message = this.AppMessage.decode(Buffer.isBuffer(data) ? data : Buffer.from(data));
+        this.websocket = new WebSocket(address, wsOptions);
 
-        // 检查是否是响应消息
-        if (message.response && message.response.seq && this.seqCallbacks.has(message.response.seq)) {
-          const callback = this.seqCallbacks.get(message.response.seq);
-          this.seqCallbacks.delete(message.response.seq);
+        const onOpen = () => {
+          this.websocket.removeListener('error', onError);
+          this.emit('connected');
+          resolve();
+        };
 
-          const result = callback(message);
-          // 如果回调返回 true，不触发 message 事件
-          if (result) return;
-        }
+        const onError = (e) => {
+          this.websocket.removeListener('open', onOpen);
+          this.emit('error', e);
+          reject(e);
+        };
 
-        // 触发 message 事件
-        this.emit('message', message);
-      } catch (e) {
-        this.emit('error', e);
+        this.websocket.once('open', onOpen);
+        this.websocket.once('error', onError);
+
+        // 绑定其他持续监听的事件
+        this.websocket.on('message', (data) => {
+          try {
+            const message = this.AppMessage.decode(Buffer.isBuffer(data) ? data : Buffer.from(data));
+
+            // 检查是否是响应消息
+            if (message.response && message.response.seq && this.seqCallbacks.has(message.response.seq)) {
+              const callback = this.seqCallbacks.get(message.response.seq);
+              this.seqCallbacks.delete(message.response.seq);
+
+              const result = callback(message);
+              // 如果回调返回 true，不触发 message 事件
+              if (result) return;
+            }
+
+            // 触发 message 事件
+            this.emit('message', message);
+          } catch (e) {
+            this.emit('error', e);
+          }
+        });
+
+        this.websocket.on('close', () => {
+          this.emit('disconnected');
+        });
+
+      } catch (err) {
+        reject(err);
       }
-    });
-
-    this.websocket.on('close', () => {
-      this.emit('disconnected');
     });
   }
 

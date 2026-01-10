@@ -53,14 +53,18 @@ model notification_settings {
 model orders {
   id            String               @id
   userId        String
-  planType      orders_planType
+  type          orders_type          @default(AUTH_BUY)
+  planType      orders_planType?
   amount        Decimal              @db.Decimal(10, 2)
-  paymentMethod orders_paymentMethod
+  balanceBefore Decimal?             @db.Decimal(10, 2)
+  balanceAfter  Decimal?             @db.Decimal(10, 2)
+  paymentMethod orders_paymentMethod?
   status        orders_status        @default(PENDING)
   tradeNo       String?              @db.VarChar(100)
   qrCode        String?              @db.Text
   expireAt      DateTime?
   paidAt        DateTime?
+  notes         String?              @db.Text
   createdAt     DateTime             @default(now())
   updatedAt     DateTime
   users         users                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -69,6 +73,19 @@ model orders {
   @@index([status])
   @@index([tradeNo])
   @@index([userId])
+}
+
+model admin_logs {
+  id           String   @id
+  adminId      String
+  targetUserId String
+  action       String   @db.VarChar(50)
+  details      Json
+  createdAt    DateTime @default(now())
+
+  @@index([adminId])
+  @@index([targetUserId])
+  @@index([createdAt])
 }
 
 model proxy_config {
@@ -128,8 +145,9 @@ model subscriptions {
 model users {
   id                    String                 @id
   username              String                 @unique @db.VarChar(50)
-  email                 String                 @unique @db.VarChar(100)
+  email                 String?                @unique @db.VarChar(100)
   password              String                 @db.VarChar(255)
+  balance               Decimal                @default(0.00) @db.Decimal(10, 2)
   isActive              Boolean                @default(true)
   isAdmin               Boolean                @default(false)
   createdAt             DateTime               @default(now())
@@ -142,6 +160,13 @@ model users {
 
   @@index([email])
   @@index([username])
+}
+
+enum orders_type {
+  TOPUP
+  AUTH_BUY
+  SERVICE_FEE
+  ADMIN_ADJUST
 }
 
 enum orders_planType {

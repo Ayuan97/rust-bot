@@ -81,6 +81,12 @@ class UserRustPlusManager extends EventEmitter {
   async connect(config) {
     const { serverId, ip, port, playerId, playerToken } = config;
 
+    // 过滤掉 FCM 占位符或无效 IP (0.0.0.0)
+    if (ip === '0.0.0.0' || (serverId && String(serverId).startsWith('fcm-'))) {
+      logger.debug(`⏩ 用户 ${this.userId} 跳过连接无效服务器: ${serverId} (${ip})`);
+      return null;
+    }
+
     // 已连接，直接返回
     if (this.connections.has(serverId)) {
       logger.debug(`用户 ${this.userId} 的服务器 ${serverId} 已连接`);
@@ -232,7 +238,7 @@ class UserRustPlusManager extends EventEmitter {
     for (const key of Array.from(this.cameras.keys())) {
       if (key.startsWith(`${serverId}:`)) {
         const camera = this.cameras.get(key);
-        try { await camera?.unsubscribe?.(); } catch (e) {}
+        try { await camera?.unsubscribe?.(); } catch (e) { }
         this.cameras.delete(key);
       }
     }
@@ -596,7 +602,8 @@ class UserRustPlusManager extends EventEmitter {
         this.recordBotMessage(serverId, message);
       }
     } catch (error) {
-      logger.error(`❌ 用户 ${this.userId} 发送消息失败 (${serverId}):`, error.message);
+      const errorMsg = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
+      logger.error(`❌ 用户 ${this.userId} 发送消息失败 (${serverId}):`, errorMsg);
     }
 
     chatQueue.processing = false;

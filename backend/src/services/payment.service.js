@@ -53,9 +53,9 @@ class PaymentService {
     }
 
     // 验证用户是否存在
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: userId },
-      include: { subscription: true },
+      include: { subscriptions: true },
     });
 
     if (!user) {
@@ -70,7 +70,7 @@ class PaymentService {
     expireAt.setMinutes(expireAt.getMinutes() + ORDER_EXPIRE_MINUTES);
 
     // 创建订单
-    const order = await prisma.order.create({
+    const order = await prisma.orders.create({
       data: {
         userId,
         planType,
@@ -103,7 +103,7 @@ class PaymentService {
       where.status = status;
     }
 
-    const orders = await prisma.order.findMany({
+    const orders = await prisma.orders.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -121,10 +121,10 @@ class PaymentService {
    * @returns {Promise<Object|null>} 订单信息
    */
   async getOrderById(orderId) {
-    const order = await prisma.order.findUnique({
+    const order = await prisma.orders.findUnique({
       where: { id: orderId },
       include: {
-        user: {
+        users: {
           select: {
             id: true,
             username: true,
@@ -150,10 +150,10 @@ class PaymentService {
    * @returns {Promise<Object|null>} 订单信息
    */
   async getOrderByTradeNo(tradeNo) {
-    const order = await prisma.order.findFirst({
+    const order = await prisma.orders.findFirst({
       where: { tradeNo },
       include: {
-        user: {
+        users: {
           select: {
             id: true,
             username: true,
@@ -180,7 +180,7 @@ class PaymentService {
    * @returns {Promise<Object>} 更新后的订单
    */
   async updateOrder(orderId, updates) {
-    const order = await prisma.order.update({
+    const order = await prisma.orders.update({
       where: { id: orderId },
       data: updates,
     });
@@ -196,12 +196,12 @@ class PaymentService {
    */
   async markOrderAsPaid(orderId, tradeNo) {
     // 获取订单
-    const order = await prisma.order.findUnique({
+    const order = await prisma.orders.findUnique({
       where: { id: orderId },
       include: {
-        user: {
+        users: {
           include: {
-            subscription: true,
+            subscriptions: true,
           },
         },
       },
@@ -221,7 +221,7 @@ class PaymentService {
 
     // 检查订单是否过期
     if (order.expireAt && new Date() > order.expireAt) {
-      await prisma.order.update({
+      await prisma.orders.update({
         where: { id: orderId },
         data: { status: 'EXPIRED' },
       });
@@ -230,7 +230,7 @@ class PaymentService {
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. 更新订单状态
-      const updatedOrder = await tx.order.update({
+      const updatedOrder = await tx.orders.update({
         where: { id: orderId },
         data: {
           status: 'PAID',
@@ -245,9 +245,9 @@ class PaymentService {
 
       // 计算新的到期时间
       let newEndDate;
-      if (order.user.subscription && order.user.subscription.endDate > now) {
+      if (order.users.subscriptions && order.users.subscriptions.endDate > now) {
         // 如果当前订阅未过期,在现有基础上延长
-        newEndDate = new Date(order.user.subscription.endDate);
+        newEndDate = new Date(order.users.subscriptions.endDate);
         newEndDate.setDate(newEndDate.getDate() + duration);
       } else {
         // 如果当前订阅已过期或不存在,从现在开始计算
@@ -256,7 +256,7 @@ class PaymentService {
       }
 
       // 更新或创建订阅
-      const subscription = await tx.subscription.upsert({
+      const subscription = await tx.subscriptions.upsert({
         where: { userId: order.userId },
         create: {
           userId: order.userId,
@@ -292,7 +292,7 @@ class PaymentService {
    * @returns {Promise<Object>} 更新后的订单
    */
   async markOrderAsFailed(orderId, reason) {
-    const order = await prisma.order.update({
+    const order = await prisma.orders.update({
       where: { id: orderId },
       data: { status: 'FAILED' },
     });
@@ -308,7 +308,7 @@ class PaymentService {
    * @returns {Promise<Object>} 更新后的订单
    */
   async cancelOrder(orderId, userId) {
-    const order = await prisma.order.findUnique({
+    const order = await prisma.orders.findUnique({
       where: { id: orderId },
     });
 
@@ -324,7 +324,7 @@ class PaymentService {
       throw new Error(`订单状态为 ${order.status},无法取消`);
     }
 
-    const updatedOrder = await prisma.order.update({
+    const updatedOrder = await prisma.orders.update({
       where: { id: orderId },
       data: { status: 'CANCELLED' },
     });
@@ -339,7 +339,7 @@ class PaymentService {
   async cleanExpiredOrders() {
     const now = new Date();
 
-    const result = await prisma.order.updateMany({
+    const result = await prisma.orders.updateMany({
       where: {
         status: 'PENDING',
         expireAt: {

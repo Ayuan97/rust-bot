@@ -14,7 +14,7 @@ router.get('/subscription', authenticate, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const subscription = await prisma.subscription.findUnique({
+    const subscription = await prisma.subscriptions.findUnique({
       where: { userId },
     });
 
@@ -32,7 +32,7 @@ router.get('/subscription', authenticate, async (req, res) => {
 
     return res.json({
       success: true,
-      subscription: {
+      subscriptions: {
         ...subscription,
         status, // 添加动态计算的 status 字段
       },
@@ -65,7 +65,7 @@ router.put('/profile', authenticate, async (req, res) => {
 
     // 检查邮箱是否已被使用
     if (email) {
-      const existingUser = await prisma.user.findFirst({
+      const existingUser = await prisma.users.findFirst({
         where: {
           email,
           NOT: { id: userId },
@@ -81,7 +81,7 @@ router.put('/profile', authenticate, async (req, res) => {
     }
 
     // 更新用户信息
-    const updatedUser = await prisma.user.update({
+    const updatedUser = await prisma.users.update({
       where: { id: userId },
       data: {
         ...(username && { username }),
@@ -133,7 +133,7 @@ router.post('/change-password', authenticate, async (req, res) => {
     }
 
     // 获取用户
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: userId },
     });
 
@@ -157,7 +157,7 @@ router.post('/change-password', authenticate, async (req, res) => {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     // 更新密码
-    await prisma.user.update({
+    await prisma.users.update({
       where: { id: userId },
       data: { password: hashedPassword },
     });
@@ -193,7 +193,7 @@ router.post('/delete-account', authenticate, async (req, res) => {
     }
 
     // 获取用户
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: userId },
     });
 
@@ -214,7 +214,7 @@ router.post('/delete-account', authenticate, async (req, res) => {
     }
 
     // 删除用户（级联删除相关数据）
-    await prisma.user.delete({
+    await prisma.users.delete({
       where: { id: userId },
     });
 
@@ -249,7 +249,7 @@ router.put('/auto-renew', authenticate, async (req, res) => {
     }
 
     // 更新订阅的自动续费设置
-    const subscription = await prisma.subscription.update({
+    const subscription = await prisma.subscriptions.update({
       where: { userId },
       data: { autoRenew },
     });

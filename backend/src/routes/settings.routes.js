@@ -56,13 +56,13 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
 router.get('/notifications', async (req, res) => {
   try {
     // 查找或创建用户的通知设置
-    let notificationSettings = await prisma.notificationSettings.findUnique({
+    let notificationSettings = await prisma.notification_settings.findUnique({
       where: { userId: req.user.id }
     });
 
     // 如果不存在，创建默认设置
     if (!notificationSettings) {
-      notificationSettings = await prisma.notificationSettings.create({
+      notificationSettings = await prisma.notification_settings.create({
         data: {
           userId: req.user.id,
           settings: DEFAULT_NOTIFICATION_SETTINGS
@@ -92,13 +92,13 @@ router.post('/notifications', async (req, res) => {
     const partialSettings = req.body;
 
     // 查找或创建用户的通知设置
-    let notificationSettings = await prisma.notificationSettings.findUnique({
+    let notificationSettings = await prisma.notification_settings.findUnique({
       where: { userId: req.user.id }
     });
 
     if (!notificationSettings) {
       // 创建新设置
-      notificationSettings = await prisma.notificationSettings.create({
+      notificationSettings = await prisma.notification_settings.create({
         data: {
           userId: req.user.id,
           settings: { ...DEFAULT_NOTIFICATION_SETTINGS, ...partialSettings }
@@ -110,7 +110,7 @@ router.post('/notifications', async (req, res) => {
         ? notificationSettings.settings
         : {};
 
-      notificationSettings = await prisma.notificationSettings.update({
+      notificationSettings = await prisma.notification_settings.update({
         where: { userId: req.user.id },
         data: {
           settings: { ...currentSettings, ...partialSettings }
@@ -138,7 +138,7 @@ router.post('/notifications', async (req, res) => {
 router.post('/notifications/reset', async (req, res) => {
   try {
     // 更新或创建默认设置
-    await prisma.notificationSettings.upsert({
+    await prisma.notification_settings.upsert({
       where: { userId: req.user.id },
       update: {
         settings: DEFAULT_NOTIFICATION_SETTINGS
@@ -163,7 +163,7 @@ router.post('/notifications/reset', async (req, res) => {
  */
 export async function getNotificationSettings(userId) {
   try {
-    const notificationSettings = await prisma.notificationSettings.findUnique({
+    const notificationSettings = await prisma.notification_settings.findUnique({
       where: { userId }
     });
 

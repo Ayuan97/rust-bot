@@ -1,160 +1,146 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { useToast } from '../components/Toast';
+import { 
+  FaUsers, FaChartLine, FaSatellite, FaTerminal, FaHistory, 
+  FaExclamationTriangle, FaSearch, FaFilter, FaSync, FaCog,
+  FaArrowUp, FaArrowDown, FaWallet, FaHourglassHalf, FaCircle,
+  FaShieldAlt, FaTools, FaDatabase
+} from 'react-icons/fa';
+import { useAuth } from '../context/AuthContext';
+import api from '../services/api';
 
-// 子组件（暂时占位，后续实现）
-import StatsDashboard from '../components/admin/StatsDashboard';
-import UserList from '../components/admin/UserList';
-import OrderList from '../components/admin/OrderList';
-import SystemStatus from '../components/admin/SystemStatus';
+// 子组件导入 (稍后创建)
+import SurvivorRoster from '../components/admin/SurvivorRoster';
+import TradeCenter from '../components/admin/TradeCenter';
+import ProxyStation from '../components/admin/ProxyStation';
+import SystemLogs from '../components/admin/SystemLogs';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-
-function AdminPage() {
-  const navigate = useNavigate();
-  const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState('stats');
+const AdminPage = () => {
+  const [activeTab, setActiveTab] = useState('survivors');
+  const [systemStats, setSystemStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    // 检查管理员权限
-    const checkAdmin = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          navigate('/login');
-          return;
-        }
+    fetchSystemStats();
+    const interval = setInterval(fetchSystemStats, 10000); // 10秒刷新一次系统状态
+    return () => clearInterval(interval);
+  }, []);
 
-        // 从 localStorage 获取用户信息
-        const userStr = localStorage.getItem('user');
-        if (!userStr) {
-          navigate('/login');
-          return;
-        }
-
-        const userData = JSON.parse(userStr);
-        if (!userData.isAdmin) {
-          showToast('需要管理员权限', 'error');
-          navigate('/dashboard');
-          return;
-        }
-
-        setUser(userData);
-        setLoading(false);
-      } catch (error) {
-        console.error('权限检查失败:', error);
-        navigate('/login');
+  const fetchSystemStats = async () => {
+    try {
+      const res = await api.get('/admin/system');
+      if (res.data.success) {
+        setSystemStats(res.data.data);
       }
-    };
-
-    checkAdmin();
-  }, [navigate, showToast]);
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/login');
+    } catch (err) {
+      console.error('获取系统状态失败', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white text-lg">加载中...</div>
-      </div>
-    );
-  }
+  const tabs = [
+    { id: 'survivors', label: '幸存者大盘', icon: <FaUsers /> },
+    { id: 'trade', label: '贸易清单', icon: <FaChartLine /> },
+    { id: 'proxy', label: '信号转发站', icon: <FaSatellite /> },
+    { id: 'logs', label: '系统诊断', icon: <FaTerminal /> },
+  ];
+
+  const formatBytes = (bytes) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
 
   return (
-    <div className="min-h-screen bg-gray-900">
-      {/* 顶部导航栏 */}
-      <nav className="bg-gray-800 border-b border-gray-700">
-        <div className="max-w-full px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold text-white">管理后台</h1>
-              <span className="ml-3 px-2 py-1 text-xs bg-blue-500 text-white rounded">
-                管理员
-              </span>
+    <div className="flex flex-col h-full bg-[#0D0E10] text-gray-300 font-mono">
+      {/* 顶部硬核监控头 */}
+      <div className="h-14 border-b border-gray-800 bg-[#121417] flex items-center px-6 justify-between shrink-0">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <FaTools className="text-orange-500" />
+            <span className="font-bold text-gray-100 uppercase tracking-wider">领地柜总控 TC Hub</span>
+          </div>
+          
+          {systemStats && (
+            <div className="flex items-center gap-8 text-xs border-l border-gray-700 pl-8">
+              <div className="flex flex-col">
+                <span className="text-gray-500 text-[10px]">系统负载</span>
+                <span className="text-green-400">{(systemStats.memoryUsage.heapUsed / systemStats.memoryUsage.heapTotal * 100).toFixed(1)}%</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-gray-500 text-[10px]">总内存占用</span>
+                <span className="text-blue-400">{formatBytes(systemStats.memoryUsage.rss)}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-gray-500 text-[10px]">活跃链路</span>
+                <span className="text-orange-400">{systemStats.activeUserServices} 组</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-gray-500 text-[10px]">运行环境</span>
+                <span className="text-purple-400">{systemStats.platform} | {systemStats.nodeVersion}</span>
+              </div>
             </div>
-            <div className="flex items-center gap-4">
-              <span className="text-gray-300 text-sm">{user?.username}</span>
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors text-sm"
-              >
-                返回仪表板
-              </button>
-              <button
-                onClick={handleLogout}
-                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm"
-              >
-                退出登录
-              </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={fetchSystemStats}
+            className="p-2 hover:bg-gray-800 rounded transition-colors"
+          >
+            <FaSync className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* 内部分页导航 */}
+        <div className="w-48 border-r border-gray-800 bg-[#0F1114] flex flex-col py-4">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-3 px-6 py-4 transition-all relative ${
+                activeTab === tab.id 
+                ? 'text-orange-500 bg-orange-500/5' 
+                : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+              }`}
+            >
+              {tab.icon}
+              <span className="text-sm font-bold uppercase tracking-widest">{tab.label}</span>
+              {activeTab === tab.id && (
+                <div className="absolute right-0 top-0 bottom-0 w-[2px] bg-orange-500" />
+              )}
+            </button>
+          ))}
+          
+          <div className="mt-auto p-4">
+            <div className="p-3 bg-red-900/10 border border-red-900/30 rounded-lg">
+              <div className="flex items-center gap-2 text-red-500 text-xs font-bold mb-1">
+                <FaExclamationTriangle />
+                <span>核心状态</span>
+              </div>
+              <p className="text-[10px] text-red-500/70">所有操作将被记录在 [Admin_Log] 协议中。</p>
             </div>
           </div>
         </div>
-      </nav>
-
-      <div className="flex h-[calc(100vh-4rem)]">
-        {/* 侧边栏 */}
-        <aside className="w-64 bg-gray-800 border-r border-gray-700">
-          <nav className="p-4 space-y-2">
-            <button
-              onClick={() => setActiveTab('stats')}
-              className={`w-full text-left px-4 py-2.5 rounded-lg transition-colors ${
-                activeTab === 'stats'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-              }`}
-            >
-              📊 统计概览
-            </button>
-            <button
-              onClick={() => setActiveTab('users')}
-              className={`w-full text-left px-4 py-2.5 rounded-lg transition-colors ${
-                activeTab === 'users'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-              }`}
-            >
-              👥 用户管理
-            </button>
-            <button
-              onClick={() => setActiveTab('orders')}
-              className={`w-full text-left px-4 py-2.5 rounded-lg transition-colors ${
-                activeTab === 'orders'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-              }`}
-            >
-              💰 订单管理
-            </button>
-            <button
-              onClick={() => setActiveTab('system')}
-              className={`w-full text-left px-4 py-2.5 rounded-lg transition-colors ${
-                activeTab === 'system'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-              }`}
-            >
-              ⚙️ 系统状态
-            </button>
-          </nav>
-        </aside>
 
         {/* 主内容区 */}
-        <main className="flex-1 overflow-y-auto bg-gray-900 p-6">
-          {activeTab === 'stats' && <StatsDashboard />}
-          {activeTab === 'users' && <UserList />}
-          {activeTab === 'orders' && <OrderList />}
-          {activeTab === 'system' && <SystemStatus />}
-        </main>
+        <div className="flex-1 overflow-auto bg-[#0D0E10] relative">
+          <div className="absolute inset-0 scanline pointer-events-none opacity-5" />
+          
+          <div className="p-6">
+            {activeTab === 'survivors' && <SurvivorRoster />}
+            {activeTab === 'trade' && <TradeCenter />}
+            {activeTab === 'proxy' && <ProxyStation />}
+            {activeTab === 'logs' && <SystemLogs />}
+          </div>
+        </div>
       </div>
     </div>
   );
-}
+};
 
 export default AdminPage;

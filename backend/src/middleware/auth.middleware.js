@@ -16,33 +16,30 @@ export const authenticate = async (req, res, next) => {
   try {
     // 获取 Authorization 头
     const authHeader = req.headers.authorization;
+    let token = null;
 
-    if (!authHeader) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    } else if (req.query && req.query.token) {
+      // 支持通过 URL 参数传递 token (用于图片加载等无法设置 Header 的场景)
+      token = req.query.token;
+    }
+
+    if (!token) {
       return res.status(401).json({
         success: false,
         error: '未提供认证令牌'
       });
     }
 
-    // 格式: "Bearer <token>"
-    const parts = authHeader.split(' ');
-    if (parts.length !== 2 || parts[0] !== 'Bearer') {
-      return res.status(401).json({
-        success: false,
-        error: '认证令牌格式错误'
-      });
-    }
-
-    const token = parts[1];
-
     // 验证 token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
 
     // 从数据库获取用户信息
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: decoded.userId },
       include: {
-        subscription: true
+        subscriptions: true
       }
     });
 
@@ -62,7 +59,7 @@ export const authenticate = async (req, res, next) => {
     }
 
     // 检查订阅是否过期
-    if (user.subscription && new Date() > user.subscription.endDate) {
+    if (user.subscriptions && new Date() > user.subscriptions.endDate) {
       return res.status(403).json({
         success: false,
         error: '订阅已过期，请续费'
@@ -75,7 +72,7 @@ export const authenticate = async (req, res, next) => {
       username: user.username,
       email: user.email,
       isAdmin: user.isAdmin,
-      subscription: user.subscription
+      subscriptions: user.subscriptions
     };
 
     next();
@@ -152,14 +149,14 @@ export const requireActiveSubscription = (req, res, next) => {
     });
   }
 
-  if (!req.user.subscription) {
+  if (!req.user.subscriptions) {
     return res.status(403).json({
       success: false,
       error: '未找到订阅信息'
     });
   }
 
-  if (new Date() > req.user.subscription.endDate) {
+  if (new Date() > req.user.subscriptions.endDate) {
     return res.status(403).json({
       success: false,
       error: '订阅已过期，请续费'

@@ -135,18 +135,18 @@ function ChatPanel({ serverId, isReadOnly = false }) {
     <div className="h-full flex flex-col font-mono">
       {/* 战术标题栏 */}
       <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-2">
-        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
           <FaTerminal className="text-[#cd5241] text-xs" />
           <h2 className="text-xs font-black uppercase tracking-widest text-gray-500">Team_Comm_Terminal</h2>
-        </div>
-        <button
-          onClick={loadChatHistory}
-          disabled={loadingHistory}
+          </div>
+          <button
+            onClick={loadChatHistory}
+            disabled={loadingHistory}
           className="text-[10px] text-gray-600 hover:text-white flex items-center gap-1 transition-colors uppercase font-bold"
-        >
-          <FaHistory className={loadingHistory ? 'animate-spin' : ''} />
+          >
+            <FaHistory className={loadingHistory ? 'animate-spin' : ''} />
           {loadingHistory ? 'Syncing...' : 'Sync_History'}
-        </button>
+          </button>
       </div>
 
       {/* 终端消息流 */}
@@ -222,13 +222,13 @@ function ChatPanel({ serverId, isReadOnly = false }) {
             <span className={`text-[10px] font-mono ${isMessageTooLong ? 'text-red-500' : 'text-gray-600'}`}>
               {inputMessage.length}
             </span>
-            <button
-              type="submit"
-              disabled={!inputMessage.trim() || sending || isReadOnly}
+          <button
+            type="submit"
+            disabled={!inputMessage.trim() || sending || isReadOnly}
               className={`text-[#cd5241] hover:text-white transition-colors p-1 ${(!inputMessage.trim() || sending || isReadOnly) ? 'opacity-20 grayscale' : ''}`}
-            >
+          >
               <FaPaperPlane className="text-xs" />
-            </button>
+          </button>
           </div>
         </div>
       </form>

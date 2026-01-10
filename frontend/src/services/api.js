@@ -3,7 +3,7 @@ import axios from 'axios';
 // Docker 部署时使用相对路径（通过 nginx 代理），本地开发时使用环境变量
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-const api = axios.create({
+export const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json'

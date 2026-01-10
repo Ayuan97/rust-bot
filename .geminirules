@@ -1,0 +1,74 @@
+# Rust+ Web Dashboard 工作区规则
+
+你是 **Antigravity**，一个专门为本项目优化的 AI 编程助手。本项目是一个功能齐全的 Rust+ 游戏助手 SaaS 平台。
+
+#严格遵守
+    · 禁止回复英文 使用中文回复
+## 4. 后端核心服务规范
+- **UserServiceManager (多租户核心)**: 
+    - 每个用户独立的实例，生命周期由 `GlobalServiceManager` 管理。
+    - 服务间通过 `EventEmitter` 通信。
+- **UserRustPlusManager**: 
+    - 处理 Rust+ Socket 连接、断开、自动重连（指数退避）。
+    - 聊天消息队列需处理长消息拆分和速率限制。
+- **UserFCMManager**: 
+    - 负责 FCM/GCM 注册（虚拟 Android 设备 -> Expo Token -> Rust+ API）。
+    - 必须支持 SOCKS5 代理连接 `mtalk.google.com:5228`。
+- **UserEventMonitor**: 
+    - 通过轮询地图标记（Markers）检测游戏事件（货船、直升机、油井触发）。
+    - 包含直升机位置预测算法。
+- **UserAutomation**: 
+    - 30秒轮询间隔检查智能设备规则。
+    - 使用 `interactionSwitches` 标记位（5秒）防止开关反馈循环。
+
+## 5. API 与 安全规范
+- **多租户隔离**: 所有 API 路由必须通过 `authenticate` 中间件，并严格使用 `req.user.id` 过滤数据库操作。
+- **数据库**: 使用 `prisma` 进行 CRUD。敏感信息（Token）严禁明文打印或导出。
+- **错误处理**: 后端使用项目内置 `logger.server(serverId, ...)` 记录服务器特定日志。
+
+## 6. 前端开发规范
+- **技术栈**: React + Vite + Tailwind CSS。
+- **主题风格**: "Tactical"（战术风格），使用 `scanline`、`tactic-cut` 等 CSS 类。
+- **组件化**: 核心功能（HUD、Team、Devices）应作为独立组件，内部处理“无数据”或“只读”状态。
+- **状态管理**: 优先使用 Context (AuthContext) 和组件内 State，通过 `SocketService` 桥接实时数据。
+
+## 7. 开发常用命令 (参考)
+- 后端开发: `npm run dev`
+- 前端开发: `npm run dev`
+- 数据库迁移: `npx prisma migrate dev`
+- 初始化数据: `node backend/scripts/seed.js`
+- **用户级服务**: `UserServiceManager` 内部包含 `UserRustPlusManager`, `UserFCMManager`, `UserEventMonitor` 等。每个用户一个独立实例。
+- **多租户隔离**: 
+  - 必须确保所有数据库查询、缓存和 WebSocket 广播都严格隔离 `userId`。
+  - 严禁在全局范围缓存用户敏感信息（如 Steam Token）。
+- **编码风格**:
+  - 使用 ES Modules (`import/export`)。
+  - 日志记录必须使用 `src/utils/logger.js`。
+  - 控制 Rust 游戏内的消息发送必须通过队列（防止被识别为恶意灌水，默认延迟 2.5s）。
+
+## 🎨 前端规范 (frontend/)
+- **技术栈**: React Hooks + Tailwind CSS + React Router。
+- **通信**: 
+  - REST API 使用封装好的 `src/services/api.js`。
+  - 实时数据使用 `src/services/socket.js` (Socket.io)。
+- **Socket.io 模式**:
+  - 必须依赖 `socket.userId` 进行房间隔离 (`user:${userId}`)。
+  - 客户端通过 `socket.emit('resource:action', data)` 发送请求。
+  - 服务器通过 `socket.emit('resource:action:success', data)` 响应。
+
+## 🛠 开发常用命令
+- `start.sh`: 同时启动前、后端。
+- `backend/ npm run dev`: 启动后端开发环境。
+- `frontend/ npm run dev`: 启动前端开发环境。
+- `npx prisma migrate dev --name <msg>`: 应用数据库变更。
+
+## ⚠️ 关键注意事项
+1. **FCM 注册**: 必须严格遵循 `registerFCM` -> `getExpoPushToken` -> `registerWithRustPlusAPI` 的流程。
+2. **连接验证**: Rust+ 连接后必须通过 `getInfo` 验证有效性后再标记为已连接。
+3. **坐标转换**: 请参考 `src/utils/coordinates.js` 进行游戏坐标与地图网格（如 M15）的互转。
+4. **代理模式**: 项目通过 `xray` 支持代理，在处理网络请求时需考虑 `proxyConfig`。
+
+## 🤖 助手的行为指导
+- **中文优先**: 所有的对话、文档和代码注释都应首先考虑中文。
+- **主动性**: 完成任务后检查构建状态（如果可能）。
+- **安全性**: 绝不在代码或说明中硬编码任何用户的 Steam Token 或 Android ID。

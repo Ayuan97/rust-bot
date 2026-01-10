@@ -15,6 +15,183 @@ const prisma = new PrismaClient();
 router.use(authenticate, requireAdmin);
 
 /**
+ * PUT /api/admin/users/:id/adjust
+ * 资产调整：加减余额、加减服务时间
+ */
+router.put('/users/:id/adjust', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { balanceDelta, daysDelta, reason } = req.body;
+    const adminId = req.user.id;
+
+    // 1. 获取当前状态
+    const user = await prisma.users.findUnique({
+      where: { id },
+      include: { subscriptions: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: '用户不存在' });
+    }
+
+    const updates = {};
+    const logDetails = { reason, before: {}, after: {} };
+
+    // 2. 调整余额
+    if (balanceDelta !== undefined && balanceDelta !== 0) {
+      const oldBalance = parseFloat(user.balance);
+      const newBalance = Math.max(0, oldBalance + parseFloat(balanceDelta));
+      
+      await prisma.users.update({
+        where: { id },
+        data: { balance: newBalance }
+      });
+
+      // 记录贸易流水
+      await prisma.orders.create({
+        data: {
+          id: `ADJ_${Date.now()}`,
+          userId: id,
+          type: 'ADMIN_ADJUST',
+          amount: parseFloat(balanceDelta),
+          balanceBefore: oldBalance,
+          balanceAfter: newBalance,
+          status: 'PAID',
+          notes: `管理员手动调整: ${reason || '无备注'}`,
+          updatedAt: new Date()
+        }
+      });
+
+      logDetails.before.balance = oldBalance;
+      logDetails.after.balance = newBalance;
+    }
+
+    // 3. 调整服务时间
+    if (daysDelta !== undefined && daysDelta !== 0) {
+      const sub = user.subscriptions;
+      let currentEndDate = sub && sub.endDate > new Date() ? new sub.endDate : new Date();
+      const newEndDate = new Date(currentEndDate.getTime() + parseInt(daysDelta) * 24 * 60 * 60 * 1000);
+
+      await prisma.subscriptions.update({
+        where: { userId: id },
+        data: { endDate: newEndDate }
+      });
+
+      logDetails.before.endDate = sub ? sub.endDate : null;
+      logDetails.after.endDate = newEndDate;
+
+      // 如果加了时间且服务没跑，启动它
+      if (daysDelta > 0 && user.isActive && !globalServiceManager.userServices.has(id)) {
+        await globalServiceManager.createUserService(id);
+      }
+    }
+
+    // 4. 记录管理员日志
+    await prisma.admin_logs.create({
+      data: {
+        id: `AL_${Date.now()}`,
+        adminId,
+        targetUserId: id,
+        action: 'ADJUST_ASSETS',
+        details: logDetails
+      }
+    });
+
+    res.json({ success: true, message: '资产调整成功' });
+  } catch (error) {
+    console.error('资产调整失败:', error);
+    res.status(500).json({ success: false, error: '资产调整失败' });
+  }
+});
+
+/**
+ * GET /api/admin/users/:id/logs
+ * 获取幸存者实时诊断日志 (黑匣子)
+ */
+router.get('/users/:id/logs', async (req, res) => {
+  const { id } = req.params;
+  const userService = globalServiceManager.userServices.get(id);
+
+  if (!userService) {
+    return res.json({ success: true, data: [] });
+  }
+
+  res.json({
+    success: true,
+    data: userService.logs
+  });
+});
+
+/**
+ * GET /api/admin/orders/analytics
+ * 财务全维度统计
+ */
+router.get('/orders/analytics', async (req, res) => {
+  try {
+    const now = new Date();
+    const todayStart = new Date(now.setHours(0, 0, 0, 0));
+
+    // 1. 基础汇总
+    const stats = await prisma.orders.aggregate({
+      where: { status: 'PAID' },
+      _sum: { amount: true },
+      _count: { id: true }
+    });
+
+    const todayStats = await prisma.orders.aggregate({
+      where: { 
+        status: 'PAID',
+        createdAt: { gte: todayStart }
+      },
+      _sum: { amount: true }
+    });
+
+    // 2. 幸存者总余额 (系统负债)
+    const totalBalance = await prisma.users.aggregate({
+      _sum: { balance: true }
+    });
+
+    // 3. 按类型统计 (授权包分布)
+    const planDistribution = await prisma.orders.groupBy({
+      by: ['planType'],
+      where: { 
+        status: 'PAID',
+        type: 'AUTH_BUY'
+      },
+      _count: { id: true }
+    });
+
+    // 4. 最近30天趋势
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const dailyTrend = await prisma.orders.groupBy({
+      by: ['createdAt'],
+      where: {
+        status: 'PAID',
+        createdAt: { gte: thirtyDaysAgo }
+      },
+      _sum: { amount: true }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalRevenue: stats._sum.amount || 0,
+        totalOrders: stats._count.id,
+        todayRevenue: todayStats._sum.amount || 0,
+        systemDebt: totalBalance._sum.balance || 0,
+        planDistribution,
+        dailyTrend
+      }
+    });
+  } catch (error) {
+    console.error('获取财务分析失败:', error);
+    res.status(500).json({ success: false, error: '获取财务分析失败' });
+  }
+});
+
+/**
  * GET /api/admin/users
  * 获取所有用户列表（分页）
  */
@@ -51,14 +228,14 @@ router.get('/users', async (req, res) => {
 
     // 订阅类型筛选
     if (planType) {
-      where.subscription = {
+      where.subscriptions = {
         planType: planType
       };
     }
 
     // 过期用户筛选
     if (status === 'expired') {
-      where.subscription = {
+      where.subscriptions = {
         endDate: {
           lt: new Date()
         }
@@ -67,12 +244,12 @@ router.get('/users', async (req, res) => {
 
     // 查询用户
     const [users, total] = await Promise.all([
-      prisma.user.findMany({
+      prisma.users.findMany({
         where,
         skip,
         take,
         include: {
-          subscription: true,
+          subscriptions: true,
           _count: {
             select: {
               servers: true,
@@ -84,7 +261,7 @@ router.get('/users', async (req, res) => {
           createdAt: 'desc'
         }
       }),
-      prisma.user.count({ where })
+      prisma.users.count({ where })
     ]);
 
     // 获取服务运行状态
@@ -92,7 +269,8 @@ router.get('/users', async (req, res) => {
       const serviceStatus = {
         isServiceRunning: globalServiceManager.userServices.has(user.id),
         connectedServers: [],
-        fcmListening: false
+        fcmListening: false,
+        ramUsage: 0
       };
 
       if (serviceStatus.isServiceRunning) {
@@ -103,6 +281,9 @@ router.get('/users', async (req, res) => {
         if (userService.fcmService) {
           serviceStatus.fcmListening = userService.fcmService.isListening;
         }
+        
+        // 预估内存占用: 基础5MB + (服务器*2) + (FCM*1)
+        serviceStatus.ramUsage = 5 + (serviceStatus.connectedServers.length * 2) + (serviceStatus.fcmListening ? 1 : 0);
       }
 
       return {
@@ -141,10 +322,10 @@ router.get('/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id },
       include: {
-        subscription: true,
+        subscriptions: true,
         servers: {
           include: {
             _count: {
@@ -178,12 +359,12 @@ router.get('/users/:id', async (req, res) => {
       .reduce((sum, order) => sum + parseFloat(order.amount), 0);
 
     // 手动计算事件日志数量（通过用户的所有服务器）
-    const userServerIds = await prisma.server.findMany({
+    const userServerIds = await prisma.servers.findMany({
       where: { userId: id },
       select: { id: true }
     });
 
-    const eventCount = await prisma.eventLog.count({
+    const eventCount = await prisma.event_logs.count({
       where: {
         serverId: {
           in: userServerIds.map(s => s.id)
@@ -251,7 +432,7 @@ router.put('/users/:id/status', async (req, res) => {
     }
 
     // 更新用户状态
-    const user = await prisma.user.update({
+    const user = await prisma.users.update({
       where: { id },
       data: { isActive }
     });
@@ -264,12 +445,12 @@ router.put('/users/:id/status', async (req, res) => {
 
     // 如果启用用户且订阅有效，创建服务
     if (isActive && !globalServiceManager.userServices.has(id)) {
-      const userWithSub = await prisma.user.findUnique({
+      const userWithSub = await prisma.users.findUnique({
         where: { id },
-        include: { subscription: true }
+        include: { subscriptions: true }
       });
 
-      if (userWithSub.subscription && new Date() < userWithSub.subscription.endDate) {
+      if (userWithSub.subscriptions && new Date() < userWithSub.subscriptions.endDate) {
         await globalServiceManager.createUserService(id);
         console.log(`管理员启用用户 ${user.username}，已创建服务`);
       }
@@ -314,13 +495,13 @@ router.put('/users/:id/subscription', async (req, res) => {
     }
 
     // 更新订阅
-    const subscription = await prisma.subscription.update({
+    const subscription = await prisma.subscriptions.update({
       where: { userId: id },
       data: { endDate: newEndDate }
     });
 
     // 如果订阅有效且服务未运行，创建服务
-    const user = await prisma.user.findUnique({ where: { id } });
+    const user = await prisma.users.findUnique({ where: { id } });
     if (user.isActive && new Date() < newEndDate && !globalServiceManager.userServices.has(id)) {
       await globalServiceManager.createUserService(id);
       console.log(`管理员延长用户 ${user.username} 订阅，已创建服务`);
@@ -386,7 +567,7 @@ router.get('/users/:id/servers', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const servers = await prisma.server.findMany({
+    const servers = await prisma.servers.findMany({
       where: { userId: id },
       include: {
         _count: {
@@ -440,13 +621,13 @@ router.get('/users/:id/events', async (req, res) => {
     const take = parseInt(limit);
 
     const [events, total] = await Promise.all([
-      prisma.eventLog.findMany({
+      prisma.event_logs.findMany({
         where: { userId: id },
         skip,
         take,
         orderBy: { createdAt: 'desc' }
       }),
-      prisma.eventLog.count({ where: { userId: id } })
+      prisma.event_logs.count({ where: { userId: id } })
     ]);
 
     res.json({
@@ -488,12 +669,12 @@ router.get('/orders', async (req, res) => {
     if (userId) where.userId = userId;
 
     const [orders, total] = await Promise.all([
-      prisma.order.findMany({
+      prisma.orders.findMany({
         where,
         skip,
         take,
         include: {
-          user: {
+          users: {
             select: {
               username: true,
               email: true
@@ -502,7 +683,7 @@ router.get('/orders', async (req, res) => {
         },
         orderBy: { createdAt: 'desc' }
       }),
-      prisma.order.count({ where })
+      prisma.orders.count({ where })
     ]);
 
     res.json({
@@ -542,17 +723,17 @@ router.get('/stats', async (req, res) => {
       expiringSoonUsers,
       expiredUsers
     ] = await Promise.all([
-      prisma.user.count(),
-      prisma.user.count({ where: { isActive: true } }),
-      prisma.user.count({
+      prisma.users.count(),
+      prisma.users.count({ where: { isActive: true } }),
+      prisma.users.count({
         where: {
-          subscription: { planType: 'TRIAL' }
+          subscriptions: { planType: 'TRIAL' }
         }
       }),
-      prisma.user.count({ where: { isActive: false } }),
-      prisma.user.count({
+      prisma.users.count({ where: { isActive: false } }),
+      prisma.users.count({
         where: {
-          subscription: {
+          subscriptions: {
             endDate: {
               gte: now,
               lte: sevenDaysLater
@@ -560,9 +741,9 @@ router.get('/stats', async (req, res) => {
           }
         }
       }),
-      prisma.user.count({
+      prisma.users.count({
         where: {
-          subscription: {
+          subscriptions: {
             endDate: { lt: now }
           }
         }
@@ -578,10 +759,10 @@ router.get('/stats', async (req, res) => {
       successOrders,
       todayOrders
     ] = await Promise.all([
-      prisma.order.count(),
-      prisma.order.count({ where: { status: 'PENDING' } }),
-      prisma.order.count({ where: { status: 'PAID' } }),
-      prisma.order.count({
+      prisma.orders.count(),
+      prisma.orders.count({ where: { status: 'PENDING' } }),
+      prisma.orders.count({ where: { status: 'PAID' } }),
+      prisma.orders.count({
         where: {
           createdAt: { gte: todayStart }
         }
@@ -589,7 +770,7 @@ router.get('/stats', async (req, res) => {
     ]);
 
     // 收入统计
-    const successOrdersData = await prisma.order.findMany({
+    const successOrdersData = await prisma.orders.findMany({
       where: { status: 'PAID' },
       select: { amount: true, createdAt: true }
     });
@@ -601,10 +782,10 @@ router.get('/stats', async (req, res) => {
 
     // Rust+ 业务统计
     const [totalServers, totalDevices, todayEvents, totalEventLogs] = await Promise.all([
-      prisma.server.count(),
-      prisma.device.count(),
-      prisma.eventLog.count({ where: { createdAt: { gte: todayStart } } }),
-      prisma.eventLog.count()
+      prisma.servers.count(),
+      prisma.devices.count(),
+      prisma.event_logs.count({ where: { createdAt: { gte: todayStart } } }),
+      prisma.event_logs.count()
     ]);
 
     // 连接状态统计

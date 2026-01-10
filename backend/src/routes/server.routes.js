@@ -38,7 +38,7 @@ function getUserRustPlusService(userId) {
  */
 router.get('/', async (req, res) => {
   try {
-    const servers = await prisma.server.findMany({
+    const servers = await prisma.servers.findMany({
       where: {
         userId: req.user.id
       },
@@ -79,7 +79,7 @@ router.get('/', async (req, res) => {
  */
 router.get('/:id', async (req, res) => {
   try {
-    const server = await prisma.server.findFirst({
+    const server = await prisma.servers.findFirst({
       where: {
         id: req.params.id,
         userId: req.user.id // 确保服务器属于当前用户
@@ -124,7 +124,7 @@ router.get('/:id', async (req, res) => {
 router.post('/:id/connect', async (req, res) => {
   try {
     const serverId = req.params.id;
-    const server = await prisma.server.findFirst({
+    const server = await prisma.servers.findFirst({
       where: {
         id: serverId,
         userId: req.user.id
@@ -202,7 +202,7 @@ router.post('/', async (req, res) => {
     }
 
     // 检查是否已存在相同的服务器（同一用户、同一 IP 和端口）
-    const existing = await prisma.server.findFirst({
+    const existing = await prisma.servers.findFirst({
       where: {
         userId: req.user.id,
         ip,
@@ -218,7 +218,7 @@ router.post('/', async (req, res) => {
     }
 
     // 创建服务器
-    const server = await prisma.server.create({
+    const server = await prisma.servers.create({
       data: {
         id,
         userId: req.user.id, // 关联到当前用户
@@ -253,7 +253,7 @@ router.put('/:id', async (req, res) => {
     const { name, ip, port, playerId, playerToken, battlemetricsId, img, logo, url, description } = req.body;
 
     // 先检查服务器是否存在且属于当前用户
-    const server = await prisma.server.findFirst({
+    const server = await prisma.servers.findFirst({
       where: {
         id: req.params.id,
         userId: req.user.id
@@ -278,7 +278,7 @@ router.put('/:id', async (req, res) => {
     if (description !== undefined) updates.description = description;
 
     // 更新服务器
-    await prisma.server.update({
+    await prisma.servers.update({
       where: { id: req.params.id },
       data: updates
     });
@@ -300,7 +300,7 @@ router.delete('/:id', async (req, res) => {
     console.log(`🗑️ 删除服务器请求: ${serverId}`);
 
     // 检查服务器是否存在且属于当前用户
-    const server = await prisma.server.findFirst({
+    const server = await prisma.servers.findFirst({
       where: {
         id: serverId,
         userId: req.user.id
@@ -335,7 +335,7 @@ router.delete('/:id', async (req, res) => {
 
     // 从数据库删除（会级联删除关联的设备和事件日志）
     console.log(`   - 正在从数据库删除...`);
-    await prisma.server.delete({
+    await prisma.servers.delete({
       where: { id: serverId }
     });
 
@@ -424,14 +424,43 @@ router.get('/:id/map-info', async (req, res) => {
       rustPlusService.getServerInfo(req.params.id)
     ]);
 
-    res.json({ 
-      success: true, 
-      markers, 
+    res.json({
+      success: true,
+      markers: markers?.markers || [],
       mapSize: info?.mapSize || 4500,
-      monuments: info?.monuments || []
+      monuments: info?.monuments || [],
+      oceanMargin: rustPlusService.getMapOceanMargin(req.params.id)
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
+/**
+ * GET /api/servers/:id/map-image
+ * 获取服务器地图图片 (JPG)
+ */
+router.get('/:id/map-image', async (req, res) => {
+  try {
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (!rustPlusService || !rustPlusService.isConnected(req.params.id)) {
+      return res.status(400).send('服务器未连接');
+    }
+
+    const mapData = await rustPlusService.getMap(req.params.id);
+    if (!mapData || !mapData.jpgImage) {
+      console.error(`[MapImage] Map data missing or no jpgImage for ${req.params.id}`);
+      return res.status(404).send('未找到地图数据');
+    }
+
+    console.log(`[MapImage] Serving map image for ${req.params.id}, size: ${mapData.jpgImage.length}`);
+    res.contentType('image/jpeg');
+    res.set('Cache-Control', 'public, max-age=3600'); // 缓存1小时
+    res.send(mapData.jpgImage);
+  } catch (error) {
+    console.error('获取地图图片失败:', error);
+    res.status(500).send(error.message);
   }
 });
 
@@ -441,12 +470,12 @@ router.get('/:id/map-info', async (req, res) => {
 
 /**
  * GET /api/servers/:id/devices
- * 获取服务器的所有设备
+ * 获取服务器的所有设备（包含实时状态）
  */
 router.get('/:id/devices', async (req, res) => {
   try {
     // 先验证服务器属于当前用户
-    const server = await prisma.server.findFirst({
+    const server = await prisma.servers.findFirst({
       where: {
         id: req.params.id,
         userId: req.user.id
@@ -458,7 +487,7 @@ router.get('/:id/devices', async (req, res) => {
     }
 
     // 获取设备列表
-    const devices = await prisma.device.findMany({
+    const devices = await prisma.devices.findMany({
       where: {
         serverId: req.params.id
       },
@@ -467,19 +496,43 @@ router.get('/:id/devices', async (req, res) => {
       }
     });
 
-    // 转换为前端格式
-    const devicesFormatted = devices.map(device => ({
-      id: device.id,
-      entityId: device.entityId,
-      name: device.name,
-      type: device.type,
-      command: device.command,
-      autoMode: device.autoMode,
-      isActive: device.isActive,
-      reachable: device.reachable,
-      lastTrigger: device.lastTrigger,
-      createdAt: device.createdAt
-    }));
+    // 检查服务器是否已连接，如果已连接则查询实时状态
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    const isConnected = rustPlusService && rustPlusService.isConnected(req.params.id);
+
+    // 转换为前端格式，并添加实时状态
+    const devicesFormatted = await Promise.all(
+      devices.map(async (device) => {
+        let currentValue = false; // 默认为 false
+
+        // 如果服务器已连接，查询实时状态
+        if (isConnected) {
+          try {
+            const entityInfo = await rustPlusService.getEntityInfo(req.params.id, device.entityId);
+            if (entityInfo && entityInfo.payload) {
+              currentValue = entityInfo.payload.value || false;
+            }
+          } catch (error) {
+            // 查询失败时使用默认值，不影响整体返回
+            console.error(`获取设备 ${device.entityId} 状态失败:`, error.message);
+          }
+        }
+
+        return {
+          id: device.id,
+          entityId: device.entityId,
+          name: device.name,
+          type: device.type,
+          command: device.command,
+          autoMode: device.autoMode,
+          isActive: device.isActive,
+          reachable: device.reachable,
+          lastTrigger: device.lastTrigger,
+          createdAt: device.createdAt,
+          currentValue  // 添加实时状态
+        };
+      })
+    );
 
     res.json({ success: true, devices: devicesFormatted });
   } catch (error) {
@@ -502,7 +555,7 @@ router.post('/:id/devices', async (req, res) => {
     }
 
     // 验证服务器属于当前用户
-    const server = await prisma.server.findFirst({
+    const server = await prisma.servers.findFirst({
       where: {
         id: serverId,
         userId: req.user.id
@@ -525,7 +578,7 @@ router.post('/:id/devices', async (req, res) => {
     }
 
     // 检查设备是否已存在
-    const existing = await prisma.device.findFirst({
+    const existing = await prisma.devices.findFirst({
       where: {
         serverId,
         entityId: entityIdNum
@@ -544,7 +597,7 @@ router.post('/:id/devices', async (req, res) => {
     }
 
     // 创建设备
-    const device = await prisma.device.create({
+    const device = await prisma.devices.create({
       data: {
         serverId,
         entityId: entityIdNum,
@@ -569,6 +622,51 @@ router.post('/:id/devices', async (req, res) => {
 });
 
 /**
+ * POST /api/servers/:id/lockdown
+ * 紧急全屋封锁 - 关闭所有开关和警报
+ */
+router.post('/:id/lockdown', async (req, res) => {
+  try {
+    const serverId = req.params.id;
+
+    // 1. 验证服务器
+    const server = await prisma.servers.findFirst({
+      where: { id: serverId, userId: req.user.id }
+    });
+    if (!server) return res.status(404).json({ success: false, error: '服务器不存在' });
+
+    // 2. 获取所有开关类设备
+    const devices = await prisma.devices.findMany({
+      where: { serverId, type: 'SWITCH', isActive: true }
+    });
+
+    if (devices.length === 0) {
+      return res.json({ success: true, message: '未发现可控开关' });
+    }
+
+    // 3. 获取服务实例并执行关闭
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (!rustPlusService || !rustPlusService.isConnected(serverId)) {
+      return res.status(400).json({ success: false, error: '服务器未连接' });
+    }
+
+    const results = await Promise.allSettled(
+      devices.map(device => rustPlusService.turnEntityOff(serverId, device.entityId))
+    );
+
+    const successCount = results.filter(r => r.status === 'fulfilled').length;
+
+    res.json({
+      success: true,
+      message: `紧急封锁指令已发出，成功处理 ${successCount}/${devices.length} 个设备`
+    });
+  } catch (error) {
+    console.error('紧急封锁失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * PUT /api/servers/:id/devices/:entityId
  * 更新设备配置
  */
@@ -582,7 +680,7 @@ router.put('/:id/devices/:entityId', async (req, res) => {
     }
 
     // 验证服务器属于当前用户
-    const server = await prisma.server.findFirst({
+    const server = await prisma.servers.findFirst({
       where: {
         id,
         userId: req.user.id
@@ -594,7 +692,7 @@ router.put('/:id/devices/:entityId', async (req, res) => {
     }
 
     // 查找设备
-    const device = await prisma.device.findFirst({
+    const device = await prisma.devices.findFirst({
       where: {
         serverId: id,
         entityId: entityIdNum
@@ -661,7 +759,7 @@ router.put('/:id/devices/:entityId', async (req, res) => {
     }
 
     // 更新设备
-    await prisma.device.update({
+    await prisma.devices.update({
       where: { id: device.id },
       data: updates
     });
@@ -687,7 +785,7 @@ router.delete('/:id/devices/:entityId', async (req, res) => {
     }
 
     // 验证服务器属于当前用户
-    const server = await prisma.server.findFirst({
+    const server = await prisma.servers.findFirst({
       where: {
         id,
         userId: req.user.id
@@ -699,7 +797,7 @@ router.delete('/:id/devices/:entityId', async (req, res) => {
     }
 
     // 查找并删除设备
-    const device = await prisma.device.findFirst({
+    const device = await prisma.devices.findFirst({
       where: {
         serverId: id,
         entityId: entityIdNum
@@ -710,7 +808,7 @@ router.delete('/:id/devices/:entityId', async (req, res) => {
       return res.status(404).json({ success: false, error: '设备不存在' });
     }
 
-    await prisma.device.delete({
+    await prisma.devices.delete({
       where: { id: device.id }
     });
 
@@ -735,7 +833,7 @@ router.get('/:id/devices/:entityId/status', async (req, res) => {
     }
 
     // 验证服务器属于当前用户
-    const server = await prisma.server.findFirst({
+    const server = await prisma.servers.findFirst({
       where: {
         id,
         userId: req.user.id
@@ -786,7 +884,7 @@ router.get('/:id/devices/:entityId/status', async (req, res) => {
 router.get('/:id/events', async (req, res) => {
   try {
     // 验证服务器属于当前用户
-    const server = await prisma.server.findFirst({
+    const server = await prisma.servers.findFirst({
       where: {
         id: req.params.id,
         userId: req.user.id
@@ -805,7 +903,7 @@ router.get('/:id/events', async (req, res) => {
     }
 
     // 获取事件日志
-    const events = await prisma.eventLog.findMany({
+    const events = await prisma.event_logs.findMany({
       where: {
         serverId: req.params.id
       },
@@ -841,7 +939,7 @@ router.get('/:id/events', async (req, res) => {
 router.get('/:id/battlemetrics', async (req, res) => {
   try {
     // 验证服务器属于当前用户
-    const server = await prisma.server.findFirst({
+    const server = await prisma.servers.findFirst({
       where: {
         id: req.params.id,
         userId: req.user.id
@@ -864,7 +962,7 @@ router.get('/:id/battlemetrics', async (req, res) => {
 
       if (battlemetricsId) {
         // 保存找到的 ID
-        await prisma.server.update({
+        await prisma.servers.update({
           where: { id: req.params.id },
           data: { battlemetricsId }
         });
@@ -900,7 +998,7 @@ router.get('/:id/battlemetrics', async (req, res) => {
 router.get('/:id/battlemetrics/top-players', async (req, res) => {
   try {
     // 验证服务器属于当前用户
-    const server = await prisma.server.findFirst({
+    const server = await prisma.servers.findFirst({
       where: {
         id: req.params.id,
         userId: req.user.id

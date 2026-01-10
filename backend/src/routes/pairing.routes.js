@@ -47,7 +47,7 @@ router.get('/status', async (req, res) => {
     }
 
     // 检查是否有保存的凭证（从数据库）
-    const servers = await prisma.server.findMany({
+    const servers = await prisma.servers.findMany({
       where: {
         userId: req.user.id,
         fcmCredentials: { not: null }
@@ -87,7 +87,7 @@ router.post('/start', async (req, res) => {
     }
 
     // 检查是否已有保存的凭证
-    const servers = await prisma.server.findMany({
+    const servers = await prisma.servers.findMany({
       where: {
         userId: req.user.id,
         fcmCredentials: { not: null }
@@ -214,13 +214,13 @@ router.post('/register/simple', async (req, res) => {
     };
 
     // 保存凭证到数据库（存储在第一个服务器或创建临时占位符）
-    let server = await prisma.server.findFirst({
+    let server = await prisma.servers.findFirst({
       where: { userId: req.user.id }
     });
 
     if (!server) {
       // 如果用户还没有服务器，创建一个占位符用于存储 FCM 凭证
-      server = await prisma.server.create({
+      server = await prisma.servers.create({
         data: {
           id: `fcm-${req.user.id}`,
           userId: req.user.id,
@@ -230,14 +230,15 @@ router.post('/register/simple', async (req, res) => {
           playerId: '0',
           playerToken: 'placeholder',
           fcmCredentials: credentials,
-          isActive: false // 标记为非活跃，仅用于存储凭证
+          isActive: false, // 标记为非活跃，仅用于存储凭证
+          updatedAt: new Date()
         }
       });
     } else {
       // 更新现有服务器的凭证
-      await prisma.server.update({
+      await prisma.servers.update({
         where: { id: server.id },
-        data: { fcmCredentials: credentials }
+        data: { fcmCredentials: credentials, updatedAt: new Date() }
       });
     }
 
@@ -277,7 +278,7 @@ router.post('/register/simple', async (req, res) => {
 router.get('/credentials', async (req, res) => {
   try {
     // 从数据库获取凭证
-    const servers = await prisma.server.findMany({
+    const servers = await prisma.servers.findMany({
       where: {
         userId: req.user.id,
         fcmCredentials: { not: null }
@@ -336,7 +337,7 @@ router.post('/reset', async (req, res) => {
     }
 
     // 3. 从数据库删除 FCM 凭证（但保留服务器信息）
-    const servers = await prisma.server.findMany({
+    const servers = await prisma.servers.findMany({
       where: {
         userId: req.user.id,
         fcmCredentials: { not: null }
@@ -344,9 +345,9 @@ router.post('/reset', async (req, res) => {
     });
 
     for (const server of servers) {
-      await prisma.server.update({
+      await prisma.servers.update({
         where: { id: server.id },
-        data: { fcmCredentials: null }
+        data: { fcmCredentials: null, updatedAt: new Date() }
       });
     }
 
@@ -373,7 +374,7 @@ router.post('/reset', async (req, res) => {
 router.get('/credentials/diagnose', async (req, res) => {
   try {
     // 从数据库获取凭证
-    const servers = await prisma.server.findMany({
+    const servers = await prisma.servers.findMany({
       where: {
         userId: req.user.id,
         fcmCredentials: { not: null }

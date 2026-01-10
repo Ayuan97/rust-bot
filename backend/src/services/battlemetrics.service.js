@@ -181,7 +181,7 @@ class BattlemetricsService extends EventEmitter {
         location: attributes.location,
         country: attributes.country,
         status: attributes.status,
-        
+
         // 服务器详情
         official: details.official,
         modded: details.rust_modded,
@@ -190,24 +190,24 @@ class BattlemetricsService extends EventEmitter {
         mapSize: details.rust_world_size,
         worldSeed: details.rust_world_seed,
         gamemode: details.rust_gamemode,
-        
+
         // 性能信息
         fps: details.rust_fps,
         fpsAvg: details.rust_fps_avg,
         uptime: details.rust_uptime,
         entityCount: details.rust_ent_cnt_i,
-        
+
         // 时间信息
         lastWipe: details.rust_last_wipe,
         lastWipeEnt: details.rust_last_wipe_ent,
         lastSeedChange: details.rust_last_seed_change,
         born: details.rust_born,
-        
+
         // 其他
         description: details.rust_description,
         url: details.rust_url,
         headerImage: details.rust_headerimage,
-        
+
         // 地图信息
         rustMapsUrl: details.rust_maps?.url || null,
         rustMapsThumbnail: details.rust_maps?.thumbnailUrl || null,
@@ -233,6 +233,21 @@ class BattlemetricsService extends EventEmitter {
 
       serverInfo.onlinePlayers = players;
 
+      // 预估清档周期 (基于服务器名称和历史)
+      serverInfo.wipeCycle = this._estimateWipeCycle(attributes.name, details.rust_description);
+
+      // 计算下一次清档时间 (简单估算)
+      if (serverInfo.lastWipe) {
+        const lastWipeDate = new Date(serverInfo.lastWipe);
+        const nextWipeDate = new Date(lastWipeDate);
+        if (serverInfo.wipeCycle === 'WEEKLY') nextWipeDate.setDate(lastWipeDate.getDate() + 7);
+        else if (serverInfo.wipeCycle === 'BIWEEKLY') nextWipeDate.setDate(lastWipeDate.getDate() + 14);
+        else if (serverInfo.wipeCycle === 'MONTHLY') nextWipeDate.setMonth(lastWipeDate.getMonth() + 1);
+        else nextWipeDate.setDate(lastWipeDate.getDate() + 7); // 默认一周
+
+        serverInfo.nextWipe = nextWipeDate.toISOString();
+      }
+
       // 缓存数据
       this.servers.set(battlemetricsId, serverInfo);
 
@@ -241,6 +256,21 @@ class BattlemetricsService extends EventEmitter {
       console.error('❌ 获取 Battlemetrics 服务器信息错误:', error.message);
       return null;
     }
+  }
+
+  /**
+   * 预估服务器清档周期
+   */
+  _estimateWipeCycle(name, description) {
+    const text = (name + (description || '')).toUpperCase();
+    if (text.includes('MONTHLY') || text.includes('每个月')) return 'MONTHLY';
+    if (text.includes('BIWEEKLY') || text.includes('双周')) return 'BIWEEKLY';
+    if (text.includes('WEEKLY') || text.includes('周清')) return 'WEEKLY';
+    if (text.includes('DAILY') || text.includes('日清')) return 'DAILY';
+
+    // 如果没有任何关键词，官方服通常是月份或双周，普通服通常是周清
+    if (text.includes('OFFICIAL')) return 'MONTHLY';
+    return 'WEEKLY';
   }
 
   /**

@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { FaRocket, FaCheckCircle, FaSpinner, FaSteam } from 'react-icons/fa';
-import axios from 'axios';
+import { FaRocket, FaCheckCircle, FaSpinner, FaSteam, FaShieldAlt, FaKey, FaArrowRight, FaTimes, FaInfoCircle, FaSatellite } from 'react-icons/fa';
+import { registerSimple } from '../services/pairing';
 import { useToast } from './Toast';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 function AutoRegisterPanel({ onComplete, onClose }) {
   const [step, setStep] = useState(1); // 1: 初始, 2: 等待输入凭证, 3: 注册中, 4: 成功
@@ -13,15 +11,12 @@ function AutoRegisterPanel({ onComplete, onClose }) {
 
   const toast = useToast();
 
-  // 打开 Steam 登录页面（新标签页）
   const handleOpenSteamLogin = () => {
-    // 在新标签页打开 Steam 登录
     const steamWin = window.open(
       'https://companion-rust.facepunch.com/login',
       '_blank'
     );
 
-    // 检查弹窗是否被阻止
     if (!steamWin || steamWin.closed || typeof steamWin.closed === 'undefined') {
       toast.error('浏览器阻止了弹窗，请允许弹窗后重试');
       return;
@@ -31,7 +26,6 @@ function AutoRegisterPanel({ onComplete, onClose }) {
     setStep(2);
   };
 
-  // 处理凭证提交（简化版：直接使用 Companion 凭证）
   const handleSubmitCredentials = async () => {
     if (!credentialsInput.trim()) {
       toast.warning('请输入凭证命令');
@@ -41,213 +35,197 @@ function AutoRegisterPanel({ onComplete, onClose }) {
     setLoading(true);
     setStep(3);
 
-    try {
-      const response = await axios.post(`${API_URL}/pairing/register/simple`, {
-        credentials_command: credentialsInput,
-      });
+    // 设置一个前端安全超时，防止后端挂起导致黑屏
+    const safetyTimeout = setTimeout(() => {
+      setLoading(false);
+      setStep(2);
+      toast.error('请求响应超时，请检查后端网络连接或代理配置');
+    }, 20000); // 20秒前端超时
 
-      if (!response.data.success) {
-        throw new Error(response.data.error || '注册失败');
+    try {
+      const response = await registerSimple(credentialsInput);
+      clearTimeout(safetyTimeout);
+
+      if (!response?.data?.success) {
+        throw new Error(response?.data?.error || '授权失败');
       }
 
       setStep(4);
+      if (steamWindow && !steamWindow.closed) steamWindow.close();
 
-      // 关闭 Steam 窗口（检查是否仍然存在）
-      if (steamWindow && !steamWindow.closed) {
-        steamWindow.close();
-      }
-
-      // 2秒后完成
       setTimeout(() => {
-        if (onComplete) {
-          onComplete();
-        }
+        if (onComplete) onComplete();
       }, 2000);
     } catch (err) {
+      clearTimeout(safetyTimeout);
       console.error('提交凭证失败:', err);
-      toast.error(err.response?.data?.error || err.message || '提交失败');
-      setStep(2);
+
+      // 处理 401 之外的错误
+      if (err.response?.status !== 401) {
+        const errorMsg = err.response?.data?.error || err.message || '系统繁忙，请稍后重试';
+        toast.error(`授权请求失败: ${errorMsg}`);
+        setStep(2);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-
   return (
-    <div className="panel p-6 max-w-2xl mx-auto">
-      <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/5">
-        <div className="flex items-center gap-2">
-          <FaRocket className="text-rust-accent text-xl" />
-          <h2 className="text-xl font-bold text-white">自动注册 FCM 推送</h2>
-        </div>
-      </div>
+    <div className="tactic-border tactic-cut p-1 bg-black/60 shadow-2xl relative overflow-hidden animate-scale-in">
+      <div className="scanline"></div>
 
-
-      {/* 步骤指示器 */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <StepIndicator num={1} label="Steam 登录" active={step >= 1} completed={step > 1} />
-          <div className="flex-1 h-0.5 bg-dark-600 mx-2"></div>
-          <StepIndicator num={2} label="获取凭证" active={step >= 2} completed={step > 2} />
-          <div className="flex-1 h-0.5 bg-dark-600 mx-2"></div>
-          <StepIndicator num={3} label="完成" active={step >= 3} completed={step >= 4} />
-        </div>
-      </div>
-
-      {/* 步骤 1: 初始 */}
-      {step === 1 && (
-        <div className="space-y-4">
-          <div className="p-4 bg-dark-700/50 rounded-lg border border-white/5">
-            <h3 className="font-semibold mb-3 text-gray-200">简化注册流程说明</h3>
-            <ol className="text-sm text-gray-400 space-y-2 list-decimal list-inside">
-              <li>点击"开始注册"，自动打开 Steam 登录窗口</li>
-              <li>使用 Steam 账号登录 Companion</li>
-              <li>登录成功后，复制页面显示的凭证命令</li>
-              <li>粘贴凭证并完成注册</li>
-            </ol>
-          </div>
-
-          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg text-sm text-gray-300">
-            <p className="font-semibold mb-2 text-blue-400">✨ 原理说明</p>
-            <p>
-              Companion 登录时会给你的账号分配一个已注册的设备凭证。
-              我们直接使用这个凭证连接 FCM，无需重新注册。
-            </p>
-          </div>
-
-          <button
-            className="btn btn-primary w-full flex items-center justify-center gap-2 text-lg py-4"
-            onClick={handleOpenSteamLogin}
-            disabled={loading}
-          >
-            <FaRocket />
-            开始注册
-          </button>
-
-          <button
-            className="btn btn-secondary w-full"
-            onClick={onClose}
-          >
-            取消
-          </button>
-        </div>
-      )}
-
-      {/* 步骤 2: 输入凭证 */}
-      {step === 2 && (
-        <div className="space-y-4">
-
-          <div className="p-4 bg-rust-accent/10 border border-rust-accent/30 rounded-lg">
-            <div className="flex items-center gap-3 mb-3">
-              <FaSteam className="text-rust-accent text-2xl" />
-              <span className="font-semibold text-rust-accent">步骤：获取 Companion 凭证</span>
+      <div className="bg-black/80 p-8 relative z-10">
+        <header className="flex items-center justify-between mb-10 pb-4 border-b border-white/5">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-[#cd5241]/20 tactic-cut flex items-center justify-center text-[#cd5241]">
+              <FaShieldAlt className="text-xl animate-pulse" />
             </div>
-            <div className="text-sm text-gray-300 space-y-3">
-              <div>
-                <p className="font-semibold mb-2 text-gray-200">请按照以下步骤操作：</p>
-                <ol className="list-decimal list-inside space-y-2 ml-2 text-gray-400">
-                  <li>在弹出的窗口中完成 Steam 登录</li>
-                  <li>登录成功后，页面会显示一个输入框</li>
-                  <li>输入框中有一行类似这样的内容：
-                    <div className="mt-2 p-2 bg-black/40 rounded text-xs font-mono overflow-x-auto text-gray-300 border border-white/5">
-                      /credentials add gcm_android_id:xxx gcm_security_token:xxx steam_id:xxx ...
-                    </div>
-                  </li>
-                  <li>复制输入框中的<strong>完整命令</strong></li>
-                  <li>粘贴到下方的输入框中</li>
-                  <li>点击"完成注册"</li>
-                </ol>
-              </div>
-
-              <div className="pt-3 border-t border-white/10">
-                <p className="text-xs text-gray-500">
-                  提示：如果窗口未弹出，<a
-                    href="https://companion-rust.facepunch.com/login"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-rust-accent hover:underline"
-                  >点击这里手动打开</a>
-                </p>
-              </div>
+            <div>
+              <h2 className="text-xl font-black uppercase italic text-white tracking-tighter">FCM 自动授权协议</h2>
+              <p className="text-[10px] text-gray-500 uppercase tracking-[0.3em]">Secure Credential Handshake Protocol</p>
             </div>
           </div>
+          <button onClick={onClose} className="p-2 text-gray-600 hover:text-white transition-colors">
+            <FaTimes />
+          </button>
+        </header>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
-              粘贴凭证命令 <span className="text-rust-accent">*</span>
-            </label>
-            <textarea
-              className="input w-full font-mono text-xs h-24"
-              placeholder="/credentials add gcm_android_id:xxx gcm_security_token:xxx steam_id:xxx issued_date:xxx expire_date:xxx"
-              value={credentialsInput}
-              onChange={(e) => setCredentialsInput(e.target.value)}
-            />
-            <p className="text-[10px] text-gray-500 mt-2">
-              这些凭证是你的 Steam 账号在 Companion 中的已注册设备信息。
-              我们直接使用这些凭证连接 FCM，无需 auth_token。
-            </p>
+        {/* 战术步骤指示器 */}
+        <div className="flex items-center justify-between mb-12 px-4">
+          <StepIndicator num="01" label="STEAM 验证" active={step >= 1} completed={step > 1} />
+          <div className={`flex-1 h-px transition-all duration-1000 ${step > 1 ? 'bg-[#cd5241]' : 'bg-white/5'}`} />
+          <StepIndicator num="02" label="提取凭证" active={step >= 2} completed={step > 2} />
+          <div className={`flex-1 h-px transition-all duration-1000 ${step > 2 ? 'bg-[#cd5241]' : 'bg-white/5'}`} />
+          <StepIndicator num="03" label="建立握手" active={step >= 3} completed={step >= 4} />
+        </div>
+
+        {/* 步骤 1: 初始指引 */}
+        {step === 1 && (
+          <div className="space-y-8 animate-fade-in">
+            <div className="p-6 bg-white/[0.02] border border-white/5 tactic-cut">
+              <h3 className="text-xs font-black text-[#cd5241] uppercase tracking-widest mb-4 italic flex items-center gap-2">
+                <FaInfoCircle /> 授权引导说明
+              </h3>
+              <div className="space-y-4">
+                <GuideStep num="1" text="点击下方按钮，系统将弹出 Steam 官方授权窗口" />
+                <GuideStep num="2" text="在弹出窗口中完成 Steam 身份验证" />
+                <GuideStep num="3" text="复制 Companion 页面显示的 /credentials 原始指令" />
+                <GuideStep num="4" text="返回本终端粘贴指令完成链路授权" />
+              </div>
+            </div>
+
+            <button
+              className="w-full tactic-cut bg-[#cd5241] py-5 text-[11px] font-black uppercase tracking-[0.3em] hover:bg-[#b04537] transition-all shadow-xl shadow-[#cd5241]/20 flex items-center justify-center gap-4 group"
+              onClick={handleOpenSteamLogin}
+              disabled={loading}
+            >
+              <FaRocket className="group-hover:scale-110 transition-transform" />
+              启动授权向导
+            </button>
           </div>
+        )}
 
-          <button
-            className="btn btn-primary w-full flex items-center justify-center gap-2"
-            onClick={handleSubmitCredentials}
-            disabled={loading || !credentialsInput.trim()}
-          >
-            {loading ? <FaSpinner className="animate-spin" /> : <FaCheckCircle />}
-            {loading ? '注册中...' : '完成注册'}
-          </button>
+        {/* 步骤 2: 输入凭证 */}
+        {step === 2 && (
+          <div className="space-y-8 animate-fade-in">
+            <div className="p-6 bg-[#cd5241]/5 border border-[#cd5241]/20 tactic-cut relative overflow-hidden">
+              <div className="flex items-center gap-4 mb-4">
+                <FaSteam className="text-[#cd5241] text-2xl" />
+                <span className="text-xs font-black text-white uppercase tracking-widest italic">等待凭证输入...</span>
+              </div>
+              <p className="text-[10px] text-gray-400 leading-relaxed uppercase">
+                请在 Steam 窗口中复制以 <span className="text-[#cd5241] font-mono">/credentials add</span> 开头的完整命令，并粘贴到下方终端区域。
+              </p>
+            </div>
 
-          <button
-            className="btn btn-secondary w-full"
-            onClick={() => {
-              if (steamWindow && !steamWindow.closed) {
-                steamWindow.close();
-              }
-              setStep(1);
-              setCredentialsInput('');
-            }}
-          >
-            取消并重新开始
-          </button>
-        </div>
-      )}
+            <div className="relative">
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-[#cd5241] pl-2">
+                链路加密指令
+              </label>
+              <textarea
+                className="w-full bg-black/40 border border-white/10 tactic-cut p-4 text-[10px] font-mono text-[#cd5241] h-32 outline-none focus:border-[#cd5241]/50 transition-all custom-scrollbar"
+                placeholder="/credentials add gcm_android_id:xxx ..."
+                value={credentialsInput}
+                onChange={(e) => setCredentialsInput(e.target.value)}
+              />
+            </div>
 
-      {/* 步骤 3: 注册中 */}
-      {step === 3 && (
-        <div className="text-center py-8">
-          <FaSpinner className="animate-spin text-rust-accent text-4xl mx-auto mb-4" />
-          <p className="text-lg font-semibold text-white">正在连接 FCM...</p>
-          <p className="text-sm text-gray-400 mt-2">使用 Companion 凭证建立连接</p>
-        </div>
-      )}
+            <div className="flex gap-4">
+              <button
+                className="flex-[2] tactic-cut bg-[#cd5241] py-4 text-[11px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-lg shadow-[#cd5241]/10"
+                onClick={handleSubmitCredentials}
+                disabled={loading || !credentialsInput.trim()}
+              >
+                {loading ? <FaSpinner className="animate-spin" /> : <FaCheckCircle />}
+                确立凭证授权
+              </button>
+              <button
+                className="flex-1 tactic-cut border border-white/10 text-gray-500 text-[10px] font-black uppercase hover:text-white transition-all"
+                onClick={() => {
+                  if (steamWindow && !steamWindow.closed) steamWindow.close();
+                  setStep(1);
+                  setCredentialsInput('');
+                }}
+              >
+                返回
+              </button>
+            </div>
+          </div>
+        )}
 
-      {/* 步骤 4: 成功 */}
-      {step === 4 && (
-        <div className="text-center py-8">
-          <FaCheckCircle className="text-green-500 text-5xl mx-auto mb-4 shadow-[0_0_20px_rgba(34,197,94,0.4)] rounded-full" />
-          <p className="text-lg font-semibold text-green-500">注册成功！</p>
-          <p className="text-sm text-gray-400 mt-2">FCM 推送监听已启动，即将返回...</p>
-        </div>
-      )}
+        {/* 步骤 3: 注册中 */}
+        {step === 3 && (
+          <div className="text-center py-16 animate-fade-in">
+            <div className="relative w-20 h-20 mx-auto mb-8">
+              <div className="absolute inset-0 border-2 border-[#cd5241]/20 rounded-full"></div>
+              <div className="absolute inset-0 border-t-2 border-[#cd5241] rounded-full animate-spin"></div>
+              <FaSatellite className="absolute inset-0 m-auto text-[#cd5241] text-2xl animate-pulse" />
+            </div>
+            <h3 className="text-lg font-black text-white uppercase italic tracking-tighter mb-2">正在同步云端密钥...</h3>
+            <p className="text-[10px] text-gray-500 uppercase tracking-[0.2em]">Establishing Encrypted Handshake with FCM Nodes</p>
+          </div>
+        )}
+
+        {/* 步骤 4: 成功 */}
+        {step === 4 && (
+          <div className="text-center py-16 animate-fade-in">
+            <div className="w-20 h-20 bg-[#a3e635]/10 rounded-full flex items-center justify-center mx-auto mb-8 border border-[#a3e635]/30 shadow-[0_0_30px_rgba(163,230,53,0.1)]">
+              <FaCheckCircle className="text-[#a3e635] text-4xl" />
+            </div>
+            <h3 className="text-2xl font-black text-[#a3e635] uppercase italic tracking-tighter mb-2">授权建立成功</h3>
+            <p className="text-[10px] text-gray-500 uppercase tracking-[0.2em] mb-10">Credentials Successfully Deployed</p>
+            <div className="text-[9px] text-[#a3e635] font-mono animate-pulse">链路已激活，正在返回控制台...</div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-// 步骤指示器组件
 function StepIndicator({ num, label, active, completed }) {
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center gap-3 group">
       <div className={`
-        w-8 h-8 rounded-full flex items-center justify-center font-bold transition-all
-        ${completed 
-            ? 'bg-green-500 text-white shadow-[0_0_10px_rgba(34,197,94,0.4)]' 
-            : active 
-                ? 'bg-rust-accent text-white shadow-[0_0_10px_rgba(206,66,43,0.4)]' 
-                : 'bg-dark-700 text-gray-500 border border-dark-600'}
+        w-10 h-10 tactic-cut flex items-center justify-center font-black transition-all duration-500 border
+        ${completed
+          ? 'bg-[#cd5241] border-[#cd5241] text-white shadow-lg shadow-[#cd5241]/30'
+          : active
+            ? 'bg-[#cd5241]/10 border-[#cd5241] text-[#cd5241] shadow-[0_0_15px_rgba(205,82,65,0.2)]'
+            : 'bg-black/40 border-white/5 text-gray-700'}
       `}>
-        {completed ? <FaCheckCircle /> : num}
+        {completed ? <FaCheckCircle /> : <span className="text-xs font-mono">{num}</span>}
       </div>
-      <span className={`text-[10px] mt-1.5 font-medium ${active ? 'text-white' : 'text-gray-500'}`}>{label}</span>
+      <span className={`text-[9px] font-black uppercase tracking-widest ${active ? 'text-white' : 'text-gray-700'}`}>{label}</span>
+    </div>
+  );
+}
+
+function GuideStep({ num, text }) {
+  return (
+    <div className="flex items-start gap-4">
+      <span className="text-[10px] font-mono font-black text-[#cd5241] bg-[#cd5241]/10 px-1.5 py-0.5 tactic-cut">{num}</span>
+      <span className="text-[10px] font-bold text-gray-400 uppercase leading-relaxed">{text}</span>
     </div>
   );
 }

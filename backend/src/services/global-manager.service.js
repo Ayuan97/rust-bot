@@ -34,17 +34,17 @@ class GlobalServiceManager extends EventEmitter {
       console.log('\n🚀 开始初始化所有有效用户的服务...\n');
 
       // 查询所有活跃且订阅未过期的用户
-      const activeUsers = await prisma.user.findMany({
+      const activeUsers = await prisma.users.findMany({
         where: {
           isActive: true,
-          subscription: {
+          subscriptions: {
             endDate: {
               gt: new Date() // 订阅未过期
             }
           }
         },
         include: {
-          subscription: true
+          subscriptions: true
         }
       });
 
@@ -60,7 +60,7 @@ class GlobalServiceManager extends EventEmitter {
           successCount++;
 
           const daysLeft = Math.ceil(
-            (user.subscription.endDate - new Date()) / (1000 * 60 * 60 * 24)
+            (user.subscriptions.endDate - new Date()) / (1000 * 60 * 60 * 24)
           );
           console.log(`  ✅ ${user.username} (订阅剩余 ${daysLeft} 天)`);
         } catch (error) {
@@ -101,9 +101,9 @@ class GlobalServiceManager extends EventEmitter {
       }
 
       // 验证用户存在且订阅有效
-      const user = await prisma.user.findUnique({
+      const user = await prisma.users.findUnique({
         where: { id: userId },
-        include: { subscription: true }
+        include: { subscriptions: true }
       });
 
       if (!user) {
@@ -114,7 +114,7 @@ class GlobalServiceManager extends EventEmitter {
         throw new Error('用户已被禁用');
       }
 
-      if (!user.subscription || new Date() > user.subscription.endDate) {
+      if (!user.subscriptions || new Date() > user.subscriptions.endDate) {
         throw new Error('用户订阅已过期');
       }
 
@@ -244,20 +244,20 @@ class GlobalServiceManager extends EventEmitter {
       // 遍历所有活跃用户
       for (const userId of this.userServices.keys()) {
         try {
-          const user = await prisma.user.findUnique({
+          const user = await prisma.users.findUnique({
             where: { id: userId },
-            include: { subscription: true }
+            include: { subscriptions: true }
           });
 
           // 检查用户是否仍然有效
-          if (!user || !user.isActive || !user.subscription) {
+          if (!user || !user.isActive || !user.subscriptions) {
             await this.removeUserService(userId, '用户无效或无订阅');
             expiredCount++;
             continue;
           }
 
           // 检查订阅是否过期
-          if (now > user.subscription.endDate) {
+          if (now > user.subscriptions.endDate) {
             console.log(`  📅 用户 ${user.username} 的订阅已过期`);
             await this.removeUserService(userId, '订阅已过期');
             expiredCount++;
@@ -266,11 +266,11 @@ class GlobalServiceManager extends EventEmitter {
 
           // 如果订阅即将在 3 天内过期，发出警告
           const daysLeft = Math.ceil(
-            (user.subscription.endDate - now) / (1000 * 60 * 60 * 24)
+            (user.subscriptions.endDate - now) / (1000 * 60 * 60 * 24)
           );
           if (daysLeft <= 3) {
             console.log(`  ⚠️  用户 ${user.username} 的订阅将在 ${daysLeft} 天后过期`);
-            this.emit('subscription:expiring:soon', {
+            this.emit('subscriptions:expiring:soon', {
               userId,
               username: user.username,
               daysLeft
@@ -289,7 +289,7 @@ class GlobalServiceManager extends EventEmitter {
 
       console.log(`📊 当前活跃用户: ${this.userServices.size}\n`);
 
-      this.emit('subscription:checked', {
+      this.emit('subscriptions:checked', {
         total: this.userServices.size,
         expired: expiredCount
       });
@@ -494,6 +494,31 @@ class GlobalServiceManager extends EventEmitter {
       console.error('❌ 停止所有用户服务失败:', error);
       throw error;
     }
+  }
+
+  /**
+   * 为所有活跃用户刷新代理配置
+   * 当全局代理启动、停止或切换节点时调用
+   */
+  async refreshAllUserProxySettings() {
+    console.log('\n🌐 正在为所有活跃用户同步代理配置...');
+    const proxyService = (await import('./proxy.service.js')).default;
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+
+    const proxyConfig = await prisma.proxy_config.findUnique({ where: { id: 1 } });
+    const isRunning = proxyService.isRunning;
+    const proxyAgent = isRunning ? proxyService.getProxyAgent() : null;
+    const socksConfig = isRunning ? { host: '127.0.0.1', port: proxyConfig?.proxyPort || 10808 } : null;
+
+    let count = 0;
+    for (const userService of this.userServices.values()) {
+      userService.rustPlusService.setProxyConfig(socksConfig);
+      userService.fcmService.setProxyConfig(socksConfig);
+      userService.fcmService.setProxyAgent(proxyAgent);
+      count++;
+    }
+    console.log(`✅ 已同步代理配置到 ${count} 个用户实例\n`);
   }
 }
 
