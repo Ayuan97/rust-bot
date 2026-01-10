@@ -867,7 +867,10 @@ class UserRustPlusManager extends EventEmitter {
     // 队伍变化（包含玩家死亡/复活/上线/下线等状态变化）
     if (broadcast.teamChanged) {
       logger.debug(`📡 [广播] 用户 ${this.userId} 收到 teamChanged 广播 (serverId=${serverId})`);
-      this.handleTeamChanged(serverId, broadcast.teamChanged);
+      // 异步处理，不阻塞消息处理流程
+      this.handleTeamChanged(serverId, broadcast.teamChanged).catch(err => {
+        logger.error(`处理teamChanged失败:`, err.message);
+      });
     }
 
     // 实体变化（设备状态改变）
@@ -920,11 +923,25 @@ class UserRustPlusManager extends EventEmitter {
   /**
    * 处理队伍状态变化
    * 注意：玩家状态检测（死亡/上线/下线/AFK）将由 UserEventMonitorService 处理
-   * 这里只转发原始事件，供其他模块使用
+   * 这里获取完整的teamInfo并转发，供前端使用
    */
-  handleTeamChanged(serverId, teamChanged) {
-    // 发送原始的队伍变化事件（供 WebSocket 广播等使用）
-    this.emit('team:changed', { userId: this.userId, serverId, data: teamChanged });
+  async handleTeamChanged(serverId, teamChanged) {
+    try {
+      // 获取完整的团队信息
+      const teamInfo = await this.getTeamInfo(serverId);
+
+      // 发送包含完整teamInfo的事件（供 WebSocket 广播等使用）
+      this.emit('team:changed', {
+        userId: this.userId,
+        serverId,
+        teamInfo,  // 添加完整的teamInfo供前端使用
+        data: teamChanged  // 保留原始数据以供其他用途
+      });
+    } catch (error) {
+      // 如果获取失败，仍然发送原始数据
+      logger.warn(`用户 ${this.userId} 获取teamInfo失败 (${serverId}):`, error.message);
+      this.emit('team:changed', { userId: this.userId, serverId, data: teamChanged });
+    }
   }
 
   /**

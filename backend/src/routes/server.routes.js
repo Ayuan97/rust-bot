@@ -363,7 +363,7 @@ router.get('/:id/team', async (req, res) => {
     }
 
     const teamInfo = await rustPlusService.getTeamInfo(req.params.id);
-    res.json({ success: true, team: teamInfo });
+    res.json({ success: true, teamInfo });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -424,12 +424,47 @@ router.get('/:id/map-info', async (req, res) => {
       rustPlusService.getServerInfo(req.params.id)
     ]);
 
-    res.json({ 
-      success: true, 
-      markers, 
-      mapSize: info?.mapSize || 4500,
-      monuments: info?.monuments || []
+    // 获取服务器的img字段(Battlemetrics地图缩略图)
+    const server = await prisma.servers.findUnique({
+      where: { id: req.params.id },
+      select: { img: true }
     });
+
+    res.json({
+      success: true,
+      markers,
+      mapSize: info?.mapSize || 4500,
+      monuments: info?.monuments || [],
+      img: server?.img || null,
+      oceanMargin: info?.oceanMargin || 500
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/servers/:id/map-image
+ * 获取地图图片 (JPG格式,来自Rust+ API)
+ */
+router.get('/:id/map-image', async (req, res) => {
+  try {
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (!rustPlusService || !rustPlusService.isConnected(req.params.id)) {
+      return res.status(400).json({ success: false, error: '服务器未连接' });
+    }
+
+    const mapData = await rustPlusService.getMap(req.params.id);
+
+    if (!mapData || !mapData.jpgImage) {
+      return res.status(404).json({ success: false, error: '地图图片不可用' });
+    }
+
+    // 将Buffer转换为图片并返回
+    const imageBuffer = Buffer.from(mapData.jpgImage);
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=3600'); // 缓存1小时
+    res.send(imageBuffer);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

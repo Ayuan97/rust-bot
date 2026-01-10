@@ -186,6 +186,21 @@ class UserServiceManager extends EventEmitter {
         }
       }
 
+      // 1.5. 自动启动 FCM 监听 (如果有凭证)
+      if (this.user.servers && this.user.servers.length > 0) {
+        const serverWithCreds = this.user.servers.find(s => s.fcmCredentials);
+        if (serverWithCreds) {
+          try {
+            this.log('FCM', `发现已保存的 FCM 凭证 (来源: ${serverWithCreds.name})，正在自动启动监听...`);
+            await this.fcmService.start(serverWithCreds.fcmCredentials);
+          } catch (error) {
+            this.log('FCM', `自动启动失败: ${error.message}`, 'ERROR');
+          }
+        } else {
+          this.log('FCM', '未找到保存的凭证，跳过自动启动');
+        }
+      }
+
       // 2. 绑定 RustPlus 事件到 UserServiceManager（转发所有事件）
       this.rustPlusService.on('server:connected', (data) => {
         this.log('RUST+', `服务器 ${data.serverId} 已连接`);
@@ -230,11 +245,11 @@ class UserServiceManager extends EventEmitter {
       });
 
       this.rustPlusService.on('team:changed', (data) => {
-        this.emit('team:changed', data);
+        this.emit('team:changed', { ...data, userId: this.userId });
       });
 
       this.rustPlusService.on('entity:changed', (data) => {
-        this.emit('entity:changed', data);
+        this.emit('entity:changed', { ...data, userId: this.userId });
       });
 
       this.rustPlusService.on('alarm:triggered', (data) => {
@@ -270,9 +285,12 @@ class UserServiceManager extends EventEmitter {
       });
 
       // 3. 绑定 FCM 事件到 UserServiceManager
-      this.fcmService.on('server:paired', (data) => {
+      this.fcmService.on('server:paired', async (data) => {
         console.log(`  🎮 收到服务器配对推送: ${data.name}`);
         this.emit('server:paired', data);
+
+        // 自动处理配对：保存到数据库并连接
+        await this._handleServerPairing(data);
       });
 
       this.fcmService.on('entity:paired', (data) => {
@@ -326,19 +344,19 @@ class UserServiceManager extends EventEmitter {
       });
 
       this.eventMonitorService.on('player:died', (data) => {
-        this.emit('player:died', data);
+        this.emit('player:died', { ...data, userId: this.userId });
       });
 
       this.eventMonitorService.on('player:online', (data) => {
-        this.emit('player:online', data);
+        this.emit('player:online', { ...data, userId: this.userId });
       });
 
       this.eventMonitorService.on('player:offline', (data) => {
-        this.emit('player:offline', data);
+        this.emit('player:offline', { ...data, userId: this.userId });
       });
 
       this.eventMonitorService.on('player:afk', (data) => {
-        this.emit('player:afk', data);
+        this.emit('player:afk', { ...data, userId: this.userId });
       });
 
       // 5. 绑定 Automation 事件到 UserServiceManager
@@ -515,6 +533,83 @@ class UserServiceManager extends EventEmitter {
       eventMonitorStatus,
       automationStatus
     };
+  }
+  /**
+   * 处理服务器配对事件
+   * 保存服务器信息并建立连接
+   * @private
+   */
+  async _handleServerPairing(data) {
+    try {
+      this.log('PAIRING', `正在处理服务器配对: ${data.name} (${data.ip}:${data.port})`);
+
+      // 1. 保存/更新服务器信息到数据库
+      // 使用 upsert，如果 ID 冲突则更新
+      const serverData = {
+        name: data.name,
+        ip: data.ip,
+        port: String(data.port),
+        playerId: data.playerId,
+        playerToken: data.playerToken,
+        userId: this.userId,
+        // 如果是从 FCM 来的，通常带有 id，但要注意 Prisma 的 ID 生成策略
+        // 这里假设 data.id 是 Rust+ 返回的服务器 ID（通常是 GUID）
+        id: data.id
+      };
+
+      // 检查是否已存在（Prisma upsert 需要 unique key，通常是 id）
+      // 这里先尝试查找
+      const existing = await prisma.servers.findUnique({
+        where: { id: data.id }
+      });
+
+      if (existing) {
+        await prisma.servers.update({
+          where: { id: data.id },
+          data: serverData
+        });
+        this.log('PAIRING', `更新已存在的服务器信息: ${data.name}`);
+      } else {
+        await prisma.servers.create({
+          data: serverData
+        });
+        this.log('PAIRING', `保存新服务器信息: ${data.name}`);
+      }
+
+      // 2. 更新内存中的用户数据
+      // 重新加载用户数据以确保同步
+      await this._loadUserData();
+
+      // 3. 如果已有连接，先断开
+      if (this.rustPlusService.connections.has(data.id)) {
+        this.log('PAIRING', `断开旧连接...`);
+        await this.rustPlusService.disconnect(data.id);
+      }
+
+      // 4. 发起新连接
+      this.log('PAIRING', `正在连接到新服务器...`);
+      await this.rustPlusService.connect({
+        serverId: data.id,
+        ip: data.ip,
+        port: data.port, // rustplus-client 内部会处理 string/int
+        playerId: data.playerId,
+        playerToken: data.playerToken
+      });
+
+      // 5. 启动相关子服务 (由于是新配对，需要手动触发启动)
+      this.log('PAIRING', `正在启动实时监控与自动化服务...`);
+      try {
+        await this.eventMonitorService.start(data.id);
+        await this.automationService.start(data.id);
+        this.log('PAIRING', `所有实时服务已就绪`);
+      } catch (svcError) {
+        this.log('PAIRING', `实时服务启动失败: ${svcError.message}`, 'WARN');
+      }
+
+    } catch (error) {
+      this.log('PAIRING', `配对处理失败: ${error.message}`, 'ERROR');
+      console.error(error);
+    }
   }
 }
 

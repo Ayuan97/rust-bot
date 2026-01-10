@@ -482,16 +482,42 @@ router.get('/credentials/diagnose', async (req, res) => {
       });
     }
 
-    // 5. 检查监听状态
+    // 5. 检查监听状态和 live status
     const fcmService = getUserFCMService(req.user.id);
-    info.isListening = fcmService ? (fcmService.isListening || false) : false;
+    const serviceStatus = fcmService ? fcmService.getStatus() : null;
+    info.isListening = serviceStatus ? serviceStatus.isListening : false;
 
     if (!info.isListening && creds) {
-      issues.push({
-        level: 'warning',
-        message: 'FCM 当前未在监听状态',
-        solution: '请点击"开始监听"按钮启动 FCM'
-      });
+      // 检查是否有最近的连接错误
+      if (serviceStatus && serviceStatus.lastError) {
+        const lastError = serviceStatus.lastError;
+
+        // 只要有 unconnected error, 就报告 (connect 会清除 lastError)
+        issues.push({
+          level: 'error',
+          message: `连接失败: ${lastError.message}`,
+          solution: '凭证可能已失效或网络连接受阻，请尝试更新凭证'
+        });
+        info.lastError = lastError;
+      } else {
+        issues.push({
+          level: 'warning',
+          message: 'FCM 当前未在监听状态',
+          solution: '请点击"开始监听"按钮启动 FCM'
+        });
+      }
+    } else if (info.isListening && serviceStatus?.lastError) {
+      // 虽然显示监听中，但可能有后台错误 (仅显示最近的)
+      const lastError = serviceStatus.lastError;
+      if (Date.now() - lastError.timestamp < 300000) { // 5分钟内
+        issues.push({
+          level: 'warning',
+          message: `连接不稳定: ${lastError.message}`,
+          solution: '请检查网络或代理设置'
+        });
+        // 这种情况下也传回 lastError 以便前端展示小黄条
+        info.lastError = lastError;
+      }
     }
 
     // 6. 生成建议
@@ -519,6 +545,53 @@ router.get('/credentials/diagnose', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message
+    });
+  }
+});
+
+/**
+  /**
+   * POST /api/pairing/credentials/verify
+   * 主动验证当前凭证有效性
+   */
+router.post('/credentials/verify', async (req, res) => {
+  try {
+    const fcmService = getUserFCMService(req.user.id);
+    if (!fcmService) {
+      throw new Error('用户服务未初始化');
+    }
+
+    // 从数据库获取凭证
+    const servers = await prisma.servers.findMany({
+      where: {
+        userId: req.user.id,
+        fcmCredentials: { not: null }
+      },
+      take: 1
+    });
+
+    if (servers.length === 0 || !servers[0].fcmCredentials) {
+      return res.status(400).json({
+        success: false,
+        error: '未找到凭证'
+      });
+    }
+
+    const credentials = servers[0].fcmCredentials;
+
+    // 调用 active check
+    await fcmService.testConnection(credentials);
+
+    res.json({
+      success: true,
+      message: '凭证验证通过'
+    });
+  } catch (error) {
+    console.error('凭证验证失败:', error.message);
+    res.status(400).json({
+      success: false,
+      error: error.message, // 返回具体错误给前端展示
+      isConnectionError: true
     });
   }
 });

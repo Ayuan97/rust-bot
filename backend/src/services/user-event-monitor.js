@@ -110,12 +110,42 @@ class UserEventMonitor extends EventEmitter {
    * EventLog 通过 Server 关系关联用户，不直接包含 userId
    */
   async saveEventLog(serverId, eventType, eventData) {
+    // 映射内部事件类型到 Prisma Enum 类型 (event_logs_eventType)
+    const eventTypeMap = {
+      'player:died': 'PLAYER_DEATH',
+      'player:online': 'PLAYER_ONLINE',
+      'player:offline': 'PLAYER_OFFLINE',
+      'player:afk': 'PLAYER_AFK',
+      'player:afk_returned': 'PLAYER_RETURN',
+      'cargo:spawn': 'CARGO_SPAWN',
+      'cargo:leave': 'CARGO_LEAVE',
+      'patrol_heli:spawn': 'HELI_SPAWN',
+      'patrol_heli:downed': 'HELI_DOWN',
+      'small_oil_rig:triggered': 'OIL_RIG_TRIGGERED',
+      'large_oil_rig:triggered': 'OIL_RIG_TRIGGERED',
+      'small_oil_rig:crate_unlocked': 'OIL_RIG_UNLOCKED',
+      'large_oil_rig:crate_unlocked': 'OIL_RIG_UNLOCKED',
+      'ch47:spawn': 'CHINOOK_SPAWN',
+      'alarm:triggered': 'ALARM_TRIGGERED',
+      'server:connected': 'SERVER_CONNECTED',
+      'server:disconnected': 'SERVER_DISCONNECTED',
+      'fcm:connected': 'FCM_CONNECTED',
+      'fcm:disconnected': 'FCM_DISCONNECTED'
+    };
+
+    const prismaEventType = eventTypeMap[eventType];
+
+    // 如果不在映射表中，则不保存（防止 Prisma Enum 验证失败）
+    if (!prismaEventType) {
+      return;
+    }
+
     try {
       await prisma.event_logs.create({
         data: {
           id: uuidv4(),
           serverId,
-          eventType,
+          eventType: prismaEventType,
           eventData: typeof eventData === 'string' ? eventData : JSON.stringify(eventData),
           createdAt: new Date()
         }

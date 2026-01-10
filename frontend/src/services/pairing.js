@@ -23,3 +23,6 @@ export const diagnoseCredentials = () => api.get('/pairing/credentials/diagnose'
 
 // 简化版配对：直接使用用户的 Companion 凭证
 export const registerSimple = (credentialsCommand) => api.post('/pairing/register/simple', { credentials_command: credentialsCommand });
+
+// 主动验证凭证有效性
+export const verifyCredentials = () => api.post('/pairing/credentials/verify');

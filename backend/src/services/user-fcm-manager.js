@@ -37,6 +37,7 @@ class UserFCMManager extends EventEmitter {
     this.proxyAgent = null; // 代理 Agent (用于 HTTP 请求)
     this.proxyConfig = null; // SOCKS5 代理配置 (用于 FCM 连接)
     this._manualStop = false;
+    this.lastError = null; // 最近一次错误信息
 
     logger.debug(`👤 UserFCMManager 已创建 (userId: ${userId})`);
   }
@@ -181,6 +182,7 @@ class UserFCMManager extends EventEmitter {
     this.fcmListener.on('connect', () => {
       logger.info(`🔗 用户 ${this.userId} FCM 连接已建立`);
       logger.info(`📡 用户 ${this.userId} 开始接收推送通知...`);
+      this.lastError = null; // 连接成功，清除错误
     });
 
     // 添加断开连接事件监听
@@ -235,8 +237,8 @@ class UserFCMManager extends EventEmitter {
 
       const CONNECT_TIMEOUT = 15000; // 15秒连接超时
 
-      const connectPromise = this.proxyConfig 
-        ? this._connectWithProxy() 
+      const connectPromise = this.proxyConfig
+        ? this._connectWithProxy()
         : this.fcmListener.connect();
 
       // 使用 Promise.race 防止连接挂起
@@ -253,13 +255,50 @@ class UserFCMManager extends EventEmitter {
     } catch (error) {
       logger.error(`❌ 用户 ${this.userId} FCM 连接失败:`, error.message);
       this.handleFCMError(error);
-      
+
       // 如果连接失败，清理监听器防止后台无限重试导致的黑屏挂起
       if (this.fcmListener) {
         this.fcmListener.destroy();
         this.fcmListener = null;
       }
-      
+
+      throw error;
+    }
+  }
+
+  /**
+   * 测试凭证连接 (静态检查 + 尝试连接)
+   * 不会影响当前运行状态
+   */
+  async testConnection(credentials) {
+    logger.info(`🧪 用户 ${this.userId} 测试 FCM 凭证有效性...`);
+
+    if (!credentials || !credentials.gcm) {
+      throw new Error('无效的凭证格式');
+    }
+
+    // 动态导入避免循环依赖或加载问题
+    const { default: PushReceiverClient } = await import('@liamcottle/push-receiver/src/client.js');
+    const androidId = String(credentials.gcm.androidId);
+    const securityToken = String(credentials.gcm.securityToken);
+
+    // 使用临时 Client
+    const testClient = new PushReceiverClient(androidId, securityToken, []);
+
+    try {
+      // 尝试连接
+      await Promise.race([
+        testClient.connect(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('连接超时')), 10000))
+      ]);
+
+      logger.info(`✅ 用户 ${this.userId} 凭证测试通过`);
+      testClient.destroy();
+      return true;
+
+    } catch (error) {
+      logger.error(`❌ 用户 ${this.userId} 凭证测试失败:`, error.message);
+      testClient.destroy();
       throw error;
     }
   }
@@ -577,6 +616,10 @@ class UserFCMManager extends EventEmitter {
    */
   handleFCMError(error) {
     logger.error(`❌ 用户 ${this.userId} FCM 错误:`, error.message);
+    this.lastError = {
+      message: error.message,
+      timestamp: Date.now()
+    };
     this.emit('error', { userId: this.userId, error });
   }
 
@@ -762,7 +805,8 @@ class UserFCMManager extends EventEmitter {
       hasCredentials: !!this.credentials,
       credentialType: this.credentials?.gcm ? 'GCM' : (this.credentials?.fcm ? 'FCM' : null),
       steamId: this.credentials?.steam?.steamId || null,
-      token: token
+      token: token,
+      lastError: this.lastError
     };
   }
 }

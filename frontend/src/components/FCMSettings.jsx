@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import {
   FaBell, FaCheck, FaExclamationTriangle, FaTimes,
-  FaTrash, FaSync, FaSearch, FaInfoCircle
+  FaTrash, FaSync, FaSearch, FaInfoCircle, FaClipboard, FaTerminal, FaSave
 } from 'react-icons/fa';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmModal';
 import {
   getPairingStatus,
   resetPairing,
-  diagnoseCredentials
+  diagnoseCredentials,
+  registerSimple,
+  verifyCredentials
 } from '../services/pairing';
 
 /**
@@ -18,6 +20,7 @@ function FCMSettings() {
   const [loading, setLoading] = useState(true);
   const [diagnosing, setDiagnosing] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   const [status, setStatus] = useState({
     isListening: false,
@@ -28,12 +31,44 @@ function FCMSettings() {
 
   const [diagnosis, setDiagnosis] = useState(null);
 
+  // 更新凭证模态框状态
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [updateCommand, setUpdateCommand] = useState('');
+  const [verifying, setVerifying] = useState(false);
+
   const toast = useToast();
   const confirm = useConfirm();
+
+
+
+  const handleVerify = async () => {
+    setVerifying(true);
+    try {
+      const res = await verifyCredentials();
+      if (res.data.success) {
+        toast.success('凭证验证通过，连接正常');
+        // 成功后重新诊断，清除可能的错误
+        handleDiagnose(true);
+      }
+    } catch (error) {
+      toast.error('验证失败: ' + (error.response?.data?.error || error.message));
+      // 验证失败也会更新 backend 的 lastError，所以重新诊断以显示红条
+      handleDiagnose();
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   useEffect(() => {
     loadStatus();
   }, []);
+
+  // 自动诊断：当状态加载完成且有凭证时，自动运行诊断以检查过期状态
+  useEffect(() => {
+    if (!loading && (status.hasCredentials || status.hasStoredCredentials) && !diagnosis) {
+      handleDiagnose(true); // silent mode
+    }
+  }, [loading, status.hasCredentials, status.hasStoredCredentials]);
 
   const loadStatus = async () => {
     try {
@@ -48,20 +83,20 @@ function FCMSettings() {
     }
   };
 
-  const handleDiagnose = async () => {
-    setDiagnosing(true);
+  const handleDiagnose = async (silent = false) => {
+    if (!silent) setDiagnosing(true);
     try {
       const res = await diagnoseCredentials();
       if (res.data.success) {
         setDiagnosis(res.data);
-        if (!res.data.hasIssues) {
+        if (!silent && !res.data.hasIssues) {
           toast.success('FCM 凭证配置正常');
         }
       }
     } catch (error) {
-      toast.error('诊断失败: ' + (error.response?.data?.error || error.message));
+      if (!silent) toast.error('诊断失败: ' + (error.response?.data?.error || error.message));
     } finally {
-      setDiagnosing(false);
+      if (!silent) setDiagnosing(false);
     }
   };
 
@@ -96,6 +131,44 @@ function FCMSettings() {
     }
   };
 
+  const handleUpdateCredentials = async () => {
+    if (!updateCommand.trim()) {
+      toast.error('请输入凭证命令');
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      const res = await registerSimple(updateCommand);
+      if (res.data.success) {
+        toast.success('FCM 凭证已更新');
+        setShowUpdateModal(false);
+        setUpdateCommand('');
+        // 重新加载状态和诊断
+        await loadStatus();
+        await handleDiagnose();
+      }
+    } catch (error) {
+      toast.error('更新失败: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // 检查是否过期或即将过期
+  const isExpired = diagnosis?.info?.isExpired;
+  // 临时调整为 30 天以确保用户能看到提示 (调试用)
+  const isExpiringSoon = diagnosis?.info?.daysUntilExpire <= 30;
+  const hasConnectionError = diagnosis?.info?.lastError;
+
+  // 调试日志
+  useEffect(() => {
+    if (diagnosis) {
+      console.log('FCM Diagnosis:', diagnosis);
+      console.log('Flags:', { isExpired, isExpiringSoon, hasConnectionError });
+    }
+  }, [diagnosis, isExpired, isExpiringSoon, hasConnectionError]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-48">
@@ -106,19 +179,56 @@ function FCMSettings() {
 
   return (
     <div className="space-y-6">
+      {/* 过期/错误警告 Banner */}
+      {(isExpired || isExpiringSoon || hasConnectionError) && (
+        <div className={`p-4 rounded-xl border flex items-start gap-3 animate-fade-in ${(isExpired || hasConnectionError)
+          ? 'bg-red-500/10 border-red-500/20'
+          : 'bg-yellow-500/10 border-yellow-500/20'
+          }`}>
+          <div className={`p-2 rounded-lg ${(isExpired || hasConnectionError) ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'
+            }`}>
+            <FaExclamationTriangle />
+          </div>
+          <div className="flex-1">
+            <h3 className={`font-bold ${(isExpired || hasConnectionError) ? 'text-red-400' : 'text-yellow-400'}`}>
+              {hasConnectionError
+                ? 'FCM 连接失败'
+                : isExpired
+                  ? 'FCM 凭证已过期'
+                  : 'FCM 凭证即将过期'}
+            </h3>
+            <p className="text-gray-300 text-sm mt-1">
+              {hasConnectionError
+                ? `最近一次连接尝试失败: ${diagnosis.info.lastError.message}。如果持续失败，您的凭证可能已在其他设备重置。`
+                : isExpired
+                  ? '您的推送凭证已失效，无法接收配对请求。请立即更新凭证。'
+                  : `您的凭证将在 ${diagnosis.info.daysUntilExpire} 天后过期，建议及时更新。`
+              }
+            </p>
+            <button
+              onClick={() => setShowUpdateModal(true)}
+              className={`mt-3 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors ${(isExpired || hasConnectionError)
+                ? 'bg-red-500 hover:bg-red-600 text-white'
+                : 'bg-yellow-500 hover:bg-yellow-600 text-black'
+                }`}
+            >
+              <FaSync /> 立即更新凭证
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 状态卡片 */}
-      <div className={`p-4 rounded-xl border ${
-        status.isListening
-          ? 'bg-green-500/10 border-green-500/20'
-          : status.hasCredentials || status.hasStoredCredentials
-            ? 'bg-yellow-500/10 border-yellow-500/20'
-            : 'bg-dark-700/50 border-white/5'
-      }`}>
+      <div className={`p-4 rounded-xl border ${status.isListening
+        ? 'bg-green-500/10 border-green-500/20'
+        : status.hasCredentials || status.hasStoredCredentials
+          ? 'bg-yellow-500/10 border-yellow-500/20'
+          : 'bg-dark-700/50 border-white/5'
+        }`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-              status.isListening ? 'bg-green-500/20' : 'bg-dark-600'
-            }`}>
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${status.isListening ? 'bg-green-500/20' : 'bg-dark-600'
+              }`}>
               <FaBell className={status.isListening ? 'text-green-400' : 'text-gray-400'} />
             </div>
             <div>
@@ -136,20 +246,20 @@ function FCMSettings() {
             </div>
           </div>
 
-          <div className={`w-3 h-3 rounded-full ${
-            status.isListening
-              ? 'bg-green-400 animate-pulse'
-              : status.hasCredentials || status.hasStoredCredentials
-                ? 'bg-yellow-400'
-                : 'bg-gray-500'
-          }`} />
+          <div className={`w-3 h-3 rounded-full ${status.isListening
+            ? 'bg-green-400 animate-pulse'
+            : status.hasCredentials || status.hasStoredCredentials
+              ? 'bg-yellow-400'
+              : 'bg-gray-500'
+            }`} />
         </div>
       </div>
 
+
       {/* 操作按钮 */}
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap">
         <button
-          onClick={handleDiagnose}
+          onClick={() => handleDiagnose(false)}
           disabled={diagnosing}
           className="btn btn-primary"
         >
@@ -160,20 +270,42 @@ function FCMSettings() {
           )}
         </button>
 
+        <button
+          onClick={handleVerify}
+          disabled={verifying}
+          className="btn btn-secondary bg-purple-600 hover:bg-purple-500 text-white border-none"
+        >
+          {verifying ? (
+            <span className="animate-spin">...</span>
+          ) : (
+            <><FaCheck /> 验证有效性</>
+          )}
+        </button>
+
+
+
         {(status.hasCredentials || status.hasStoredCredentials) && (
-          <button
-            onClick={handleReset}
-            disabled={resetting}
-            className="btn btn-ghost text-red-400 hover:bg-red-500/10"
-          >
-            {resetting ? '重置中...' : <><FaTrash /> 重置凭证</>}
-          </button>
+          <>
+            <button
+              onClick={() => setShowUpdateModal(true)}
+              className="btn btn-ghost text-blue-400 hover:bg-blue-500/10"
+            >
+              <FaSync /> 更新凭证
+            </button>
+            <button
+              onClick={handleReset}
+              disabled={resetting}
+              className="btn btn-ghost text-red-400 hover:bg-red-500/10"
+            >
+              {resetting ? '重置中...' : <><FaTrash /> 重置凭证</>}
+            </button>
+          </>
         )}
       </div>
 
       {/* 诊断结果 */}
       {diagnosis && (
-        <div className="space-y-4">
+        <div className="space-y-4 animate-fade-in">
           <h4 className="font-medium text-white flex items-center gap-2">
             <FaInfoCircle className="text-gray-400" />
             诊断结果
@@ -201,14 +333,14 @@ function FCMSettings() {
               </div>
               <div>
                 <span className="text-gray-500">过期时间:</span>
-                <span className={`ml-2 ${diagnosis.info.isExpired ? 'text-red-400' : 'text-white'}`}>
+                <span className={`ml-2 ${diagnosis.info.isExpired ? 'text-red-400 font-bold' : 'text-white'}`}>
                   {diagnosis.info.expiresAt ? new Date(diagnosis.info.expiresAt).toLocaleString() : '未知'}
                 </span>
               </div>
               {diagnosis.info.daysUntilExpire !== undefined && (
                 <div>
                   <span className="text-gray-500">剩余天数:</span>
-                  <span className={`ml-2 ${diagnosis.info.daysUntilExpire <= 7 ? 'text-yellow-400' : 'text-green-400'}`}>
+                  <span className={`ml-2 font-bold ${diagnosis.info.daysUntilExpire <= 7 ? 'text-yellow-400' : 'text-green-400'}`}>
                     {diagnosis.info.daysUntilExpire} 天
                   </span>
                 </div>
@@ -228,11 +360,10 @@ function FCMSettings() {
               {diagnosis.issues.map((issue, index) => (
                 <div
                   key={index}
-                  className={`p-3 rounded-lg border ${
-                    issue.level === 'error'
-                      ? 'bg-red-500/10 border-red-500/20'
-                      : 'bg-yellow-500/10 border-yellow-500/20'
-                  }`}
+                  className={`p-3 rounded-lg border ${issue.level === 'error'
+                    ? 'bg-red-500/10 border-red-500/20'
+                    : 'bg-yellow-500/10 border-yellow-500/20'
+                    }`}
                 >
                   <div className="flex items-start gap-2">
                     {issue.level === 'error' ? (
@@ -241,9 +372,8 @@ function FCMSettings() {
                       <FaExclamationTriangle className="text-yellow-400 mt-0.5 flex-shrink-0" />
                     )}
                     <div>
-                      <div className={`font-medium ${
-                        issue.level === 'error' ? 'text-red-400' : 'text-yellow-400'
-                      }`}>
+                      <div className={`font-medium ${issue.level === 'error' ? 'text-red-400' : 'text-yellow-400'
+                        }`}>
                         {issue.message}
                       </div>
                       <div className="text-sm text-gray-400 mt-1">
@@ -281,22 +411,147 @@ function FCMSettings() {
         </div>
       )}
 
-      {/* 使用说明 */}
-      <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
-        <div className="flex items-start gap-3">
-          <FaExclamationTriangle className="text-blue-400 mt-0.5 flex-shrink-0" />
-          <div className="text-sm text-gray-300 space-y-1">
-            <p><strong>关于 FCM 凭证:</strong></p>
-            <ul className="list-disc list-inside text-gray-400 space-y-1">
-              <li>FCM 用于接收游戏中的配对推送（在游戏中点击 Pair）</li>
-              <li>凭证从 <a href="https://companion-rust.facepunch.com/login" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">companion-rust.facepunch.com</a> 获取</li>
-              <li>凭证有有效期，过期后需要重新获取</li>
-              <li>如果连接循环或无法接收推送，尝试重置凭证</li>
-            </ul>
+      {/* 使用说明 - 在没有过期的情况下显示，避免干扰警告 */}
+      {(!isExpired && !isExpiringSoon) && (
+        <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+          <div className="flex items-start gap-3">
+            <FaExclamationTriangle className="text-blue-400 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-gray-300 space-y-1">
+              <p><strong>关于 FCM 凭证:</strong></p>
+              <ul className="list-disc list-inside text-gray-400 space-y-1">
+                <li>FCM 用于接收游戏中的配对推送（在游戏中点击 Pair）</li>
+                <li>凭证从 <a href="https://companion-rust.facepunch.com/login" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">companion-rust.facepunch.com</a> 获取</li>
+                <li>凭证有有效期，过期后需要重新获取</li>
+                <li>如果连接循环或无法接收推送，尝试更新凭证或重置</li>
+              </ul>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* 更新凭证模态框 */}
+      {showUpdateModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-2xl bg-[#121417] border border-white/10 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-white/5 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400">
+                  <FaSync />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">更新 FCM 凭证</h3>
+                  <p className="text-sm text-gray-400">请获取新的凭证命令并粘贴到下方</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowUpdateModal(false)}
+                className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+              >
+                <FaTimes />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 flex-1 overflow-y-auto space-y-6">
+              {/* 步骤指引 */}
+              <div className="space-y-4">
+                <div className="flex gap-4">
+                  <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</div>
+                  <div>
+                    <p className="text-gray-300 text-sm">点击下方链接登录 Rust+ 官网</p>
+                    <a
+                      href="https://companion-rust.facepunch.com/login"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:underline text-sm inline-flex items-center gap-1 mt-1"
+                    >
+                      companion-rust.facepunch.com <FaExternalLinkIcon />
+                    </a>
+                  </div>
+                </div>
+                <div className="flex gap-4">
+                  <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</div>
+                  <div>
+                    <p className="text-gray-300 text-sm">登录成功后，打开浏览器控制台 (F12)</p>
+                  </div>
+                </div>
+                <div className="flex gap-4">
+                  <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</div>
+                  <div>
+                    <p className="text-gray-300 text-sm">
+                      复制以下代码在控制台运行，然后将生成的 <code className="bg-white/10 px-1 py-0.5 rounded text-xs">/credentials add ...</code> 命令粘贴到下方
+                    </p>
+                    <div className="mt-2 bg-black/50 p-3 rounded-lg border border-white/5 text-xs font-mono text-gray-400 overflow-x-auto relative group">
+                      <code>
+                        {`copy(\`/credentials add gcm_android_id:\${localStorage.gcm_android_id} gcm_security_token:\${localStorage.gcm_security_token} steam_id:\${localStorage.steam_id} fcm_token:\${localStorage.fcm_token} auth_token:\${localStorage.auth_token} expire_date:\${localStorage.expire_date}\`)`}
+                      </code>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(`copy(\`/credentials add gcm_android_id:\${localStorage.gcm_android_id} gcm_security_token:\${localStorage.gcm_security_token} steam_id:\${localStorage.steam_id} fcm_token:\${localStorage.fcm_token} auth_token:\${localStorage.auth_token} expire_date:\${localStorage.expire_date}\`)`);
+                          toast.success('代码已复制');
+                        }}
+                        className="absolute right-2 top-2 p-1.5 rounded bg-white/10 hover:bg-white/20 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="复制代码"
+                      >
+                        <FaClipboard />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 输入区域 */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                  <FaTerminal className="text-rust-accent" />
+                  粘贴凭证命令
+                </label>
+                <textarea
+                  value={updateCommand}
+                  onChange={(e) => setUpdateCommand(e.target.value)}
+                  placeholder="/credentials add gcm_android_id:..."
+                  className="w-full h-32 bg-black/30 border border-white/10 rounded-xl p-4 text-sm font-mono text-gray-200 focus:border-rust-accent focus:ring-1 focus:ring-rust-accent outline-none resize-none placeholder:text-gray-600"
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-white/5 flex justify-end gap-3 bg-dark-900/50 rounded-b-2xl">
+              <button
+                onClick={() => setShowUpdateModal(false)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleUpdateCredentials}
+                disabled={updating || !updateCommand.trim()}
+                className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${updating || !updateCommand.trim()
+                  ? 'bg-blue-600/50 cursor-not-allowed text-white/50'
+                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20'
+                  }`}
+              >
+                {updating ? (
+                  <span className="animate-spin mr-2">...</span>
+                ) : (
+                  <FaSave />
+                )}
+                {updating ? '正在更新...' : '保存并更新'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function FaExternalLinkIcon() {
+  return (
+    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+    </svg>
   );
 }
 

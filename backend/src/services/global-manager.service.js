@@ -505,8 +505,8 @@ class GlobalServiceManager extends EventEmitter {
     const proxyService = (await import('./proxy.service.js')).default;
     const { PrismaClient } = await import('@prisma/client');
     const prisma = new PrismaClient();
-    
-    const proxyConfig = await prisma.proxyConfig.findUnique({ where: { id: 1 } });
+
+    const proxyConfig = await prisma.proxy_config.findUnique({ where: { id: 1 } });
     const isRunning = proxyService.isRunning;
     const proxyAgent = isRunning ? proxyService.getProxyAgent() : null;
     const socksConfig = isRunning ? { host: '127.0.0.1', port: proxyConfig?.proxyPort || 10808 } : null;
