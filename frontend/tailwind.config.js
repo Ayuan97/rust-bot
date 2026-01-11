@@ -19,6 +19,8 @@ export default {
           accent: '#ce422b', // Original rust orange
           hover: '#e0523b',
           dim: 'rgba(206, 66, 43, 0.1)',
+          orange: '#cd5241', // Standard Rust UI red/orange
+          dark: '#8a2c21',   // Darker shade for gradients
         }
       },
       animation: {

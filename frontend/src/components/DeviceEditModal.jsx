@@ -1,17 +1,17 @@
 import { useState, useEffect } from 'react';
-import { FaTimes, FaSave, FaTerminal, FaRobot, FaClock } from 'react-icons/fa';
+import { FaTimes, FaSave, FaTerminal, FaRobot, FaClock, FaBell, FaEdit } from 'react-icons/fa';
 import { updateDevice } from '../services/api';
 import { useToast } from './Toast';
 
 // 自动化模式选项
 const AUTO_MODE_OPTIONS = [
-  { value: 0, label: '无自动化', desc: '手动控制' },
-  { value: 1, label: '白天开启', desc: '日出时开启，日落时关闭' },
-  { value: 2, label: '夜晚开启', desc: '日落时开启，日出时关闭' },
-  { value: 3, label: '始终开启', desc: '自动保持开启状态' },
-  { value: 4, label: '始终关闭', desc: '自动保持关闭状态' },
-  { value: 7, label: '在线开启', desc: '有队友在线时开启' },
-  { value: 8, label: '在线关闭', desc: '有队友在线时关闭' }
+  { value: 0, label: '手动控制', desc: '无自动化' },
+  { value: 1, label: '白天开启', desc: '日出自动开启' },
+  { value: 2, label: '夜晚开启', desc: '日落自动开启' },
+  { value: 3, label: '始终开启', desc: '强制保持开启' },
+  { value: 4, label: '始终关闭', desc: '强制保持关闭' },
+  { value: 7, label: '在线开启', desc: '队友在线时运行' },
+  { value: 8, label: '在线关闭', desc: '队友在线时关闭' }
 ];
 
 function DeviceEditModal({ device, serverId, onClose, onSaved }) {
@@ -25,7 +25,6 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
   const toast = useToast();
 
   useEffect(() => {
-    // 阻止背景滚动
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = 'auto';
@@ -37,29 +36,24 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
     setSaving(true);
 
     try {
-      // 构建更新数据 - 只发送需要的字段
-      const updateData = {
-        name: form.name
-      };
+      const updateData = { name: form.name };
 
-      // 只有 SWITCH 类型才发送 command 和 auto_mode
       if (device.type === 'SWITCH') {
         updateData.command = form.command || null;
         updateData.auto_mode = form.autoMode;
       }
 
-      // ALARM 类型发送 message
       if (device.type === 'ALARM') {
         updateData.message = form.message || null;
       }
 
       await updateDevice(serverId, device.entityId, updateData);
-      toast.success('设备配置已更新');
+      toast.success('设备配置已保存');
       onSaved?.();
       onClose();
     } catch (error) {
       console.error('更新设备失败:', error);
-      toast.error(error.response?.data?.error || '更新失败');
+      toast.error(error.response?.data?.error || '配置保存失败');
     } finally {
       setSaving(false);
     }
@@ -72,7 +66,7 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
   };
 
   const formatLastTrigger = (timestamp) => {
-    if (!timestamp) return '从未触发';
+    if (!timestamp) return '无记录';
     const date = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp);
     const now = Date.now();
     const diff = Math.floor((now - date.getTime()) / 1000);
@@ -85,132 +79,161 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in"
       onClick={handleBackdropClick}
     >
-      <div className="bg-rust-dark rounded-xl w-full max-w-md shadow-2xl border border-rust-gray">
+      <div className="relative bg-black/90 tactic-border tactic-cut w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.5)] transition-all">
+        {/* 顶部装饰光条 */}
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rust-orange via-orange-400 to-rust-orange opacity-80"></div>
+
         {/* 头部 */}
-        <div className="flex items-center justify-between p-4 border-b border-rust-gray">
-          <h3 className="text-lg font-bold">编辑设备</h3>
+        <div className="flex items-center justify-between p-6 border-b border-white/5 bg-white/[0.02]">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 tactic-cut bg-rust-orange/20 flex items-center justify-center text-rust-orange border border-rust-orange/30">
+              <FaEdit />
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-white uppercase tracking-wider">配置设备</h3>
+              <p className="text-xs text-gray-500 font-mono">ID: {device.entityId}</p>
+            </div>
+          </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-rust-gray rounded-lg transition-colors"
+            className="p-2 text-gray-400 hover:text-white hover:bg-white/10 tactic-cut transition-all"
           >
             <FaTimes />
           </button>
         </div>
 
         {/* 表单 */}
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          {/* 设备信息 */}
-          <div className="text-sm text-gray-400 bg-rust-gray/50 p-3 rounded-lg">
-            <p>Entity ID: <span className="text-white">{device.entityId}</span></p>
-            <p>类型: <span className="text-white">{device.type || '未知'}</span></p>
-            {device.type === 'ALARM' && (
-              <p className="flex items-center gap-1 mt-1">
-                <FaClock className="text-rust-orange" />
-                上次触发: <span className="text-white">{formatLastTrigger(device.lastTrigger)}</span>
-              </p>
-            )}
-          </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
 
-          {/* 设备名称 */}
-          <div>
-            <label className="block text-sm font-medium mb-1">设备名称</label>
+          {/* 设备名称输入 */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">设备名称</label>
             <input
               type="text"
-              className="input w-full"
+              className="w-full bg-black/40 tactic-cut border border-white/10 py-3 px-4 text-white placeholder:text-gray-600 focus:border-rust-orange focus:ring-1 focus:ring-rust-orange/50 outline-none transition-all"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="输入设备名称"
+              placeholder="输入易于识别的名称..."
               required
               maxLength={100}
             />
           </div>
 
-          {/* 游戏内命令 - 只对 SWITCH 类型显示 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* 左侧：类型信息 */}
+            <div className="p-4 tactic-cut bg-blue-500/5 border border-blue-500/10 space-y-2">
+              <div className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
+                <FaRobot /> 设备类型
+              </div>
+              <div className="text-lg font-mono text-white">{device.type}</div>
+            </div>
+
+            {/* 右侧：状态信息 */}
+            {device.type === 'ALARM' && (
+              <div className="p-4 tactic-cut bg-red-500/5 border border-red-500/10 space-y-2">
+                <div className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-2">
+                  <FaClock /> 上次触发
+                </div>
+                <div className="text-lg font-mono text-white">{formatLastTrigger(device.lastTrigger)}</div>
+              </div>
+            )}
+          </div>
+
+          {/* 游戏内命令 (仅 Switch) */}
           {device.type === 'SWITCH' && (
-            <div>
-              <label className="block text-sm font-medium mb-1 flex items-center gap-2">
-                <FaTerminal className="text-rust-orange" />
-                游戏内命令
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                <span>游戏内指令</span>
+                <span className="text-[10px] text-gray-500 normal-case px-2 py-0.5 bg-white/5 tactic-cut">聊天输入 !指令 即可控制</span>
               </label>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400">!</span>
+              <div className="relative group">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-rust-orange font-bold font-mono text-lg">!</span>
                 <input
                   type="text"
-                  className="input flex-1"
+                  className="w-full bg-black/40 tactic-cut border border-white/10 py-3 pl-8 pr-4 text-white font-mono placeholder:text-gray-600 focus:border-rust-orange focus:ring-1 focus:ring-rust-orange/50 outline-none transition-all"
                   value={form.command}
                   onChange={(e) => setForm({ ...form, command: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
-                  placeholder="命令名称（如 lights）"
+                  placeholder="command_name"
                   maxLength={50}
                 />
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                在游戏聊天中输入 !命令名 on/off/status [时间] 控制设备
-              </p>
             </div>
           )}
 
-          {/* 智能警报消息设置 */}
+          {/* 警报消息 (仅 Alarm) */}
           {device.type === 'ALARM' && (
-            <div>
-              <label className="block text-sm font-medium mb-1 flex items-center gap-2">
-                <span className="text-yellow-400">🔔</span>
-                警报触发消息
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                警报通知消息
               </label>
-              <input
-                type="text"
-                className="input w-full"
-                value={form.message}
-                onChange={(e) => setForm({ ...form, message: e.target.value })}
-                placeholder="输入警报触发时显示的消息"
-                maxLength={255}
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                警报触发时会显示此消息（留空则使用默认消息）
-              </p>
+              <div className="relative">
+                <FaBell className="absolute left-4 top-3.5 text-yellow-500" />
+                <input
+                  type="text"
+                  className="w-full bg-black/40 tactic-cut border border-white/10 py-3 pl-10 pr-4 text-white placeholder:text-gray-600 focus:border-yellow-500/50 focus:ring-1 focus:ring-yellow-500/30 outline-none transition-all"
+                  value={form.message}
+                  onChange={(e) => setForm({ ...form, message: e.target.value })}
+                  placeholder="自定义通知内容..."
+                  maxLength={255}
+                />
+              </div>
             </div>
           )}
 
-          {/* 自动化模式 */}
+          {/* 自动化设置 (非 Alarm) */}
           {device.type !== 'ALARM' && (
-            <div>
-              <label className="block text-sm font-medium mb-1 flex items-center gap-2">
-                <FaRobot className="text-rust-orange" />
-                自动化模式
-              </label>
-              <select
-                className="input w-full"
-                value={form.autoMode}
-                onChange={(e) => setForm({ ...form, autoMode: parseInt(e.target.value) })}
-              >
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">自动化逻辑</label>
+              <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
                 {AUTO_MODE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label} - {opt.desc}
-                  </option>
+                  <label
+                    key={opt.value}
+                    className={`flex items-center p-3 tactic-cut border cursor-pointer transition-all ${form.autoMode === opt.value
+                      ? 'bg-rust-orange/10 border-rust-orange/50 shadow-[0_0_10px_rgba(205,82,65,0.1)]'
+                      : 'bg-black/20 border-white/5 hover:bg-white/5'
+                      }`}
+                  >
+                    <input
+                      type="radio"
+                      name="autoMode"
+                      value={opt.value}
+                      checked={form.autoMode === opt.value}
+                      onChange={() => setForm({ ...form, autoMode: opt.value })}
+                      className="hidden"
+                    />
+                    <div className="flex-1">
+                      <div className={`text-sm font-bold ${form.autoMode === opt.value ? 'text-rust-orange' : 'text-gray-300'}`}>
+                        {opt.label}
+                      </div>
+                      <div className="text-xs text-gray-500">{opt.desc}</div>
+                    </div>
+                    {form.autoMode === opt.value && <div className="w-2 h-2 tactic-cut bg-rust-orange shadow-[0_0_5px_rgba(205,82,65,1)]"></div>}
+                  </label>
                 ))}
-              </select>
+              </div>
             </div>
           )}
 
-          {/* 按钮 */}
-          <div className="flex gap-3 pt-2">
+          {/* 底部按钮 */}
+          <div className="flex items-center gap-3 pt-4 mt-2 border-t border-white/5">
             <button
               type="button"
-              className="btn btn-secondary flex-1"
               onClick={onClose}
-              disabled={saving}
+              className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-gray-300 tactic-cut font-bold transition-all"
             >
               取消
             </button>
             <button
               type="submit"
-              className="btn btn-primary flex-1 flex items-center justify-center gap-2"
               disabled={saving}
+              className={`flex-1 py-3 bg-gradient-to-r from-rust-dark to-rust-orange text-white tactic-cut font-bold shadow-lg shadow-rust-orange/20 flex items-center justify-center gap-2 hover:brightness-110 transition-all ${saving ? 'opacity-70 cursor-wait' : ''
+                }`}
             >
-              <FaSave />
-              {saving ? '保存中...' : '保存'}
+              {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <FaSave />}
+              保存配置
             </button>
           </div>
         </form>
