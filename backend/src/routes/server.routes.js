@@ -524,13 +524,25 @@ router.get('/:id/devices', async (req, res) => {
           }
         }
 
+        // 将 autoMode 枚举转换为数字
+        const autoModeToNum = {
+          'NONE': 0,
+          'DAY_ON': 1,
+          'NIGHT_ON': 2,
+          'ALWAYS_ON': 3,
+          'ALWAYS_OFF': 4,
+          'ONLINE_ON': 7,
+          'ONLINE_OFF': 8
+        };
+
         return {
           id: device.id,
           entityId: device.entityId,
           name: device.name,
           type: device.type,
           command: device.command,
-          autoMode: device.autoMode,
+          message: device.message,
+          autoMode: autoModeToNum[device.autoMode] ?? 0,
           isActive: device.isActive,
           reachable: device.reachable,
           lastTrigger: device.lastTrigger,
@@ -664,7 +676,7 @@ router.put('/:id/devices/:entityId', async (req, res) => {
       return res.status(404).json({ success: false, error: '设备不存在' });
     }
 
-    const { name, type, command, auto_mode } = req.body;
+    const { name, type, command, message, auto_mode } = req.body;
     const updates = {};
 
     // 验证并添加更新字段
@@ -694,6 +706,14 @@ router.put('/:id/devices/:entityId', async (req, res) => {
         return res.status(400).json({ success: false, error: `命令名称 "${command}" 与内置命令冲突` });
       }
       updates.command = command || null;
+    }
+
+    // 处理警报消息
+    if (message !== undefined) {
+      if (message !== null && (typeof message !== 'string' || message.length > 255)) {
+        return res.status(400).json({ success: false, error: '警报消息过长（最多255字符）' });
+      }
+      updates.message = message || null;
     }
 
     if (auto_mode !== undefined) {
@@ -830,6 +850,104 @@ router.get('/:id/devices/:entityId/status', async (req, res) => {
     });
   } catch (error) {
     console.error('获取设备状态失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/servers/:id/devices/check-reachability
+ * 检测所有设备的可达性，并可选择删除不可达的设备
+ */
+router.post('/:id/devices/check-reachability', async (req, res) => {
+  try {
+    const serverId = req.params.id;
+    const { removeUnreachable = false } = req.body;
+
+    // 验证服务器属于当前用户
+    const server = await prisma.servers.findFirst({
+      where: {
+        id: serverId,
+        userId: req.user.id
+      }
+    });
+
+    if (!server) {
+      return res.status(404).json({ success: false, error: '服务器不存在' });
+    }
+
+    // 检查服务器是否连接
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (!rustPlusService || !rustPlusService.isConnected(serverId)) {
+      return res.status(400).json({ success: false, error: '服务器未连接，无法检测设备' });
+    }
+
+    // 获取所有设备
+    const devices = await prisma.devices.findMany({
+      where: { serverId }
+    });
+
+    if (devices.length === 0) {
+      return res.json({ success: true, message: '没有设备需要检测', devices: [], unreachable: [] });
+    }
+
+    const unreachableDevices = [];
+    const reachableDevices = [];
+
+    // 逐个检测设备可达性
+    for (const device of devices) {
+      try {
+        const info = await rustPlusService.getEntityInfo(serverId, device.entityId);
+        if (info && info.payload !== undefined) {
+          // 设备可达
+          reachableDevices.push(device);
+          if (!device.reachable) {
+            await prisma.devices.update({
+              where: { id: device.id },
+              data: { reachable: true, updatedAt: new Date() }
+            });
+          }
+        } else {
+          throw new Error('无法获取设备信息');
+        }
+      } catch (error) {
+        // 设备不可达
+        unreachableDevices.push({
+          id: device.id,
+          entityId: device.entityId,
+          name: device.name,
+          type: device.type,
+          error: error.message
+        });
+
+        // 更新可达状态
+        await prisma.devices.update({
+          where: { id: device.id },
+          data: { reachable: false, updatedAt: new Date() }
+        });
+      }
+    }
+
+    // 如果需要删除不可达设备
+    let removedCount = 0;
+    if (removeUnreachable && unreachableDevices.length > 0) {
+      const unreachableIds = unreachableDevices.map(d => d.id);
+      await prisma.devices.deleteMany({
+        where: { id: { in: unreachableIds } }
+      });
+      removedCount = unreachableDevices.length;
+    }
+
+    res.json({
+      success: true,
+      message: `检测完成: ${reachableDevices.length} 个可达, ${unreachableDevices.length} 个不可达${removedCount > 0 ? `, 已删除 ${removedCount} 个` : ''}`,
+      total: devices.length,
+      reachableCount: reachableDevices.length,
+      unreachableCount: unreachableDevices.length,
+      removedCount,
+      unreachable: unreachableDevices
+    });
+  } catch (error) {
+    console.error('检测设备可达性失败:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

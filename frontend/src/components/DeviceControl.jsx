@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import { 
-  FaLightbulb, FaTrash, FaSync, FaPowerOff, FaBolt, 
+import {
+  FaLightbulb, FaTrash, FaSync, FaPowerOff, FaBolt,
   FaEdit, FaTerminal, FaRobot, FaSearch, FaStar, FaRegStar,
-  FaDoorOpen, FaCrosshairs, FaFan
+  FaDoorOpen, FaCrosshairs, FaFan, FaBell, FaBox
 } from 'react-icons/fa';
 import socketService from '../services/socket';
-import { getDevices, deleteDevice as apiDeleteDevice } from '../services/api';
+import { getDevices, deleteDevice as apiDeleteDevice, checkDeviceReachability } from '../services/api';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmModal';
 import EmptyState from './EmptyState';
@@ -22,7 +22,8 @@ function DeviceControl({ serverId, isReadOnly = false }) {
   const [loading, setLoading] = useState(false);
   const [editingDevice, setEditingDevice] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all'); 
+  const [filterType, setFilterType] = useState('all');
+  const [checking, setChecking] = useState(false);
   const [pinnedIds, setPinnedIds] = useState(() => {
     const saved = localStorage.getItem(`pinned_devices_${serverId}`);
     return saved ? JSON.parse(saved) : [];
@@ -130,11 +131,42 @@ function DeviceControl({ serverId, isReadOnly = false }) {
     } catch (e) { toast.error('操作失败'); }
   };
 
+  // 检测设备可达性
+  const handleCheckReachability = async (removeUnreachable = false) => {
+    if (isDemo) {
+      toast.info('演示模式无法检测');
+      return;
+    }
+    setChecking(true);
+    try {
+      const response = await checkDeviceReachability(serverId, removeUnreachable);
+      const { reachableCount, unreachableCount, removedCount, message } = response.data;
+
+      if (unreachableCount === 0) {
+        toast.success(`所有 ${reachableCount} 个设备均可达`);
+      } else if (removedCount > 0) {
+        toast.warning(`已移除 ${removedCount} 个不可达设备`);
+      } else {
+        toast.warning(`检测到 ${unreachableCount} 个不可达设备`);
+      }
+
+      fetchDevices(); // 刷新设备列表
+    } catch (e) {
+      toast.error('检测失败: ' + (e.response?.data?.error || e.message));
+    } finally {
+      setChecking(false);
+    }
+  };
+
   const getDeviceIcon = (name, type) => {
+    // 先根据设备类型判断
+    if (type === 'ALARM') return <FaBell />;
+    if (type === 'STORAGE') return <FaBox />;
+
+    // 然后根据名称判断
     const n = name.toLowerCase();
-    const t = type ? type.toLowerCase() : '';
-    if (n.includes('门') || t.includes('door')) return <FaDoorOpen />;
-    if (n.includes('炮') || n.includes('枪') || t.includes('turret')) return <FaCrosshairs />;
+    if (n.includes('门')) return <FaDoorOpen />;
+    if (n.includes('炮') || n.includes('枪') || n.includes('turret')) return <FaCrosshairs />;
     if (n.includes('风扇') || n.includes('抽风')) return <FaFan />;
     return <FaLightbulb />;
   };
@@ -147,7 +179,7 @@ function DeviceControl({ serverId, isReadOnly = false }) {
       <div className="flex flex-wrap items-center justify-between gap-6 p-6 tactic-border tactic-cut bg-black/30 shadow-xl">
         <div className="relative flex-1 min-w-[280px]">
           <FaSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input 
+          <input
             type="text"
             placeholder="搜索设备名称（如：核心门、防御炮）..."
             className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/5 tactic-cut text-sm focus:border-[#cd5241]/50 outline-none transition-all placeholder:text-gray-700"
@@ -155,13 +187,21 @@ function DeviceControl({ serverId, isReadOnly = false }) {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
+
         <div className="flex items-center gap-2">
           <FilterBtn active={filterType === 'all'} onClick={() => setFilterType('all')} icon={<FaBolt />} label="全部" />
           <FilterBtn active={filterType === 'light'} onClick={() => setFilterType('light')} icon={<FaLightbulb />} label="灯光" />
           <FilterBtn active={filterType === 'turret'} onClick={() => setFilterType('turret')} icon={<FaCrosshairs />} label="防御" />
           <FilterBtn active={filterType === 'door'} onClick={() => setFilterType('door')} icon={<FaDoorOpen />} label="大门" />
           <div className="w-px h-6 bg-white/5 mx-2" />
+          <button
+            onClick={() => handleCheckReachability(false)}
+            disabled={checking}
+            className="px-3 py-2 text-[11px] font-black uppercase flex items-center gap-2 text-gray-500 hover:text-yellow-400 hover:bg-yellow-500/10 tactic-cut transition-all disabled:opacity-50"
+            title="检测设备连接状态"
+          >
+            {checking ? <FaSync className="animate-spin" /> : '📡'} 检测
+          </button>
           <button onClick={fetchDevices} className="p-2 text-gray-500 hover:text-[#cd5241] transition-all">
             <FaSync className={loading ? 'animate-spin' : ''} />
           </button>
@@ -185,9 +225,14 @@ function DeviceControl({ serverId, isReadOnly = false }) {
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
           {filteredDevices.map((device) => (
-            <div 
-              key={device.id} 
-              className={`relative tactic-border tactic-cut p-1 group transition-all duration-500 ${device.currentValue ? 'bg-[#cd5241]/10 border-[#cd5241]/40 shadow-[0_0_20px_rgba(205,82,65,0.1)]' : 'bg-black/30 border-white/5 hover:border-white/20'}`}
+            <div
+              key={device.id}
+              className={`relative tactic-border tactic-cut p-1 group transition-all duration-500 ${device.reachable === false
+                ? 'bg-yellow-500/5 border-yellow-500/40 opacity-60'
+                : device.currentValue
+                  ? 'bg-[#cd5241]/10 border-[#cd5241]/40 shadow-[0_0_20px_rgba(205,82,65,0.1)]'
+                  : 'bg-black/30 border-white/5 hover:border-white/20'
+                }`}
             >
               <div className="bg-black/40 p-5 h-full flex flex-col relative overflow-hidden">
                 <button
@@ -204,26 +249,66 @@ function DeviceControl({ serverId, isReadOnly = false }) {
                   <div className="min-w-0 flex-1">
                     <h3 className="text-base font-black truncate uppercase tracking-tight">{device.name}</h3>
                     <div className="text-[10px] text-gray-600 font-mono flex items-center gap-2 mt-1 uppercase font-bold">
-                       识别码: {device.entityId}
-                       {device.command && <span className="text-[#cd5241] italic">!{device.command}</span>}
+                      识别码: {device.entityId}
+                      {device.command && <span className="text-[#cd5241] italic">!{device.command}</span>}
                     </div>
                   </div>
                 </div>
 
                 <div className="flex-1 flex flex-col justify-end space-y-4 relative z-10">
-                  {AUTO_MODE_NAMES[device.autoMode] && (
-                    <div className="text-[9px] px-2 py-1 bg-[#a3e635]/10 text-[#a3e635] tactic-cut inline-flex items-center gap-2 w-fit font-black border border-[#a3e635]/20 uppercase">
-                      <FaRobot className="text-[8px]" /> {AUTO_MODE_NAMES[device.autoMode]}
-                    </div>
-                  )}
+                  {/* 设备类型标签 */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* 不可达警告 */}
+                    {device.reachable === false && (
+                      <div
+                        className="text-[9px] px-2 py-1 bg-red-500/20 text-red-400 tactic-cut inline-flex items-center gap-1 w-fit font-black border border-red-500/30 uppercase cursor-pointer hover:bg-red-500/30 transition-all"
+                        onClick={() => handleCheckReachability(true)}
+                        title="点击检测并移除不可达设备"
+                      >
+                        ⚠️ 不可达
+                      </div>
+                    )}
+                    {device.type === 'ALARM' && (
+                      <div className="text-[9px] px-2 py-1 bg-yellow-500/10 text-yellow-400 tactic-cut inline-flex items-center gap-1 w-fit font-black border border-yellow-500/20 uppercase">
+                        🔔 警报器
+                      </div>
+                    )}
+                    {device.type === 'STORAGE' && (
+                      <div className="text-[9px] px-2 py-1 bg-blue-500/10 text-blue-400 tactic-cut inline-flex items-center gap-1 w-fit font-black border border-blue-500/20 uppercase">
+                        📦 存储监控
+                      </div>
+                    )}
+                    {AUTO_MODE_NAMES[device.autoMode] && (
+                      <div className="text-[9px] px-2 py-1 bg-[#a3e635]/10 text-[#a3e635] tactic-cut inline-flex items-center gap-2 w-fit font-black border border-[#a3e635]/20 uppercase">
+                        <FaRobot className="text-[8px]" /> {AUTO_MODE_NAMES[device.autoMode]}
+                      </div>
+                    )}
+                  </div>
 
                   <div className="flex items-center justify-between pt-4 border-t border-white/5">
-                    <div
-                      onClick={() => !isReadOnly && handleToggleDevice(device)}
-                      className={`relative w-14 h-7 tactic-cut cursor-pointer transition-all ${isReadOnly ? 'opacity-30 cursor-not-allowed' : ''} ${device.currentValue ? 'bg-[#cd5241]' : 'bg-gray-800 shadow-inner'}`}
-                    >
-                      <div className={`absolute top-1 w-5 h-5 bg-white tactic-cut transition-all duration-300 ${device.currentValue ? 'right-1 shadow-[0_0_15px_white]' : 'left-1'}`} />
-                    </div>
+                    {/* SWITCH 类型显示开关按钮 */}
+                    {device.type === 'SWITCH' && (
+                      <div
+                        onClick={() => !isReadOnly && handleToggleDevice(device)}
+                        className={`relative w-14 h-7 tactic-cut cursor-pointer transition-all ${isReadOnly ? 'opacity-30 cursor-not-allowed' : ''} ${device.currentValue ? 'bg-[#cd5241]' : 'bg-gray-800 shadow-inner'}`}
+                      >
+                        <div className={`absolute top-1 w-5 h-5 bg-white tactic-cut transition-all duration-300 ${device.currentValue ? 'right-1 shadow-[0_0_15px_white]' : 'left-1'}`} />
+                      </div>
+                    )}
+
+                    {/* ALARM 类型显示状态信息 */}
+                    {device.type === 'ALARM' && (
+                      <div className="text-[10px] text-gray-500 font-mono">
+                        {device.lastTrigger ? `上次触发: ${new Date(device.lastTrigger).toLocaleString()}` : '从未触发'}
+                      </div>
+                    )}
+
+                    {/* STORAGE 类型显示容量 */}
+                    {device.type === 'STORAGE' && (
+                      <div className="text-[10px] text-gray-500 font-mono">
+                        实时监控中
+                      </div>
+                    )}
 
                     <div className="flex gap-2">
                       <ActionBtn onClick={() => setEditingDevice(device)} icon={<FaEdit />} title="设置" disabled={isReadOnly || isDemo} />
@@ -251,7 +336,7 @@ function DeviceControl({ serverId, isReadOnly = false }) {
 
 function FilterBtn({ active, onClick, icon, label }) {
   return (
-    <button 
+    <button
       onClick={onClick}
       className={`px-4 py-2 tactic-cut text-[11px] font-black uppercase flex items-center gap-2 transition-all ${active ? 'bg-[#cd5241] text-white shadow-lg shadow-[#cd5241]/20' : 'text-gray-600 hover:bg-white/5 hover:text-gray-300'}`}
     >
@@ -262,7 +347,7 @@ function FilterBtn({ active, onClick, icon, label }) {
 
 function ActionBtn({ onClick, icon, title, variant = 'default', disabled }) {
   return (
-    <button 
+    <button
       onClick={onClick}
       disabled={disabled}
       className={`w-8 h-8 flex items-center justify-center tactic-cut transition-all ${disabled ? 'opacity-20 cursor-not-allowed' : ''} ${variant === 'danger' ? 'hover:bg-red-500/20 text-gray-700 hover:text-red-400' : 'hover:bg-white/10 text-gray-700 hover:text-white'}`}

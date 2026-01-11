@@ -14,6 +14,7 @@ model devices {
   name        String           @db.VarChar(100)
   type        devices_type
   command     String?          @db.VarChar(50)
+  message     String?          @db.VarChar(255)
   autoMode    devices_autoMode @default(NONE)
   isActive    Boolean          @default(true)
   reachable   Boolean          @default(true)

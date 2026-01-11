@@ -252,8 +252,9 @@ class UserServiceManager extends EventEmitter {
         this.emit('entity:changed', { ...data, userId: this.userId });
       });
 
-      this.rustPlusService.on('alarm:triggered', (data) => {
-        this.emit('alarm:triggered', data);
+      this.rustPlusService.on('alarm:triggered', async (data) => {
+        // 处理警报触发
+        await this._handleAlarmTriggered(data);
       });
 
       this.rustPlusService.on('clan:changed', (data) => {
@@ -293,9 +294,12 @@ class UserServiceManager extends EventEmitter {
         await this._handleServerPairing(data);
       });
 
-      this.fcmService.on('entity:paired', (data) => {
+      this.fcmService.on('entity:paired', async (data) => {
         console.log(`  🔌 收到设备配对推送`);
         this.emit('entity:paired', data);
+
+        // 自动处理设备配对：保存到数据库
+        await this._handleEntityPairing(data);
       });
 
       this.fcmService.on('listening', (data) => {
@@ -554,7 +558,8 @@ class UserServiceManager extends EventEmitter {
         userId: this.userId,
         // 如果是从 FCM 来的，通常带有 id，但要注意 Prisma 的 ID 生成策略
         // 这里假设 data.id 是 Rust+ 返回的服务器 ID（通常是 GUID）
-        id: data.id
+        id: data.id,
+        updatedAt: new Date()
       };
 
       // 检查是否已存在（Prisma upsert 需要 unique key，通常是 id）
@@ -609,6 +614,175 @@ class UserServiceManager extends EventEmitter {
     } catch (error) {
       this.log('PAIRING', `配对处理失败: ${error.message}`, 'ERROR');
       console.error(error);
+    }
+  }
+
+  /**
+   * 处理设备配对事件
+   * 保存设备信息到数据库
+   * @private
+   */
+  async _handleEntityPairing(data) {
+    try {
+      this.log('ENTITY_PAIRING', `正在处理设备配对: entityId=${data.entityId}, type=${data.entityType}`);
+
+      // 验证必要字段
+      if (!data.entityId || !data.serverId) {
+        this.log('ENTITY_PAIRING', `设备配对数据不完整: entityId=${data.entityId}, serverId=${data.serverId}`, 'WARN');
+        return;
+      }
+
+      // 确定设备类型
+      let deviceType = 'SWITCH'; // 默认类型
+      if (data.entityType) {
+        const typeNum = parseInt(data.entityType);
+        switch (typeNum) {
+          case 1: // Smart Switch
+            deviceType = 'SWITCH';
+            break;
+          case 2: // Smart Alarm
+            deviceType = 'ALARM';
+            break;
+          case 3: // Storage Monitor
+            deviceType = 'STORAGE';
+            break;
+          default:
+            deviceType = 'SWITCH';
+        }
+      }
+
+      const entityId = parseInt(data.entityId);
+      const deviceId = `${data.serverId}_${entityId}`;
+
+      const deviceData = {
+        id: deviceId,
+        serverId: data.serverId,
+        entityId: entityId,
+        name: data.entityName || `设备 ${entityId}`,
+        type: deviceType,
+        isActive: true,
+        reachable: true,
+        updatedAt: new Date()
+      };
+
+      // 检查设备是否已存在
+      const existing = await prisma.devices.findFirst({
+        where: {
+          serverId: data.serverId,
+          entityId: entityId
+        }
+      });
+
+      if (existing) {
+        // 更新已存在的设备
+        await prisma.devices.update({
+          where: { id: existing.id },
+          data: {
+            name: deviceData.name,
+            type: deviceType,
+            isActive: true,
+            reachable: true,
+            updatedAt: new Date()
+          }
+        });
+        this.log('ENTITY_PAIRING', `更新已存在的设备: ${deviceData.name} (${deviceType})`);
+      } else {
+        // 创建新设备
+        await prisma.devices.create({
+          data: deviceData
+        });
+        this.log('ENTITY_PAIRING', `保存新设备: ${deviceData.name} (${deviceType})`);
+      }
+
+      // 重新加载用户数据以确保同步
+      await this._loadUserData();
+
+      // 发出设备配对成功事件
+      this.emit('entity:paired:success', {
+        userId: this.userId,
+        serverId: data.serverId,
+        device: deviceData
+      });
+
+      this.log('ENTITY_PAIRING', `设备配对处理完成: ${deviceData.name}`);
+
+    } catch (error) {
+      this.log('ENTITY_PAIRING', `设备配对处理失败: ${error.message}`, 'ERROR');
+      console.error(error);
+    }
+  }
+
+  /**
+   * 处理警报触发事件
+   * 查询设备信息，更新触发时间，发送游戏内消息
+   * @private
+   */
+  async _handleAlarmTriggered(data) {
+    try {
+      const { serverId, entityId, time } = data;
+
+      this.log('ALARM', `警报触发: serverId=${serverId}, entityId=${entityId}`);
+
+      // 1. 从数据库查询设备信息
+      const device = await prisma.devices.findFirst({
+        where: {
+          serverId: serverId,
+          entityId: parseInt(entityId)
+        }
+      });
+
+      if (!device) {
+        this.log('ALARM', `未找到设备记录: entityId=${entityId}`, 'WARN');
+        // 仍然发出事件
+        this.emit('alarm:triggered', {
+          ...data,
+          deviceName: `警报 ${entityId}`,
+          message: null
+        });
+        return;
+      }
+
+      // 2. 更新 lastTrigger 时间
+      await prisma.devices.update({
+        where: { id: device.id },
+        data: { lastTrigger: new Date(time), updatedAt: new Date() }
+      });
+
+      // 3. 构建警报消息
+      const deviceName = device.name || `警报 ${entityId}`;
+      const customMessage = device.message;
+
+      // 游戏内消息格式
+      let chatMessage = `🚨 [警报] ${deviceName}`;
+      if (customMessage) {
+        chatMessage += `: ${customMessage}`;
+      }
+
+      // 4. 发送游戏内聊天消息
+      try {
+        await this.rustPlusService.sendTeamMessage(serverId, chatMessage, { isBot: true });
+        this.log('ALARM', `已发送警报消息到游戏: ${chatMessage}`);
+      } catch (chatError) {
+        this.log('ALARM', `发送警报消息失败: ${chatError.message}`, 'ERROR');
+      }
+
+      // 5. 发出事件（用于前端 WebSocket 通知）
+      this.emit('alarm:triggered', {
+        userId: this.userId,
+        serverId,
+        entityId,
+        deviceName,
+        message: customMessage,
+        time
+      });
+
+      this.log('ALARM', `警报处理完成: ${deviceName}`);
+
+    } catch (error) {
+      this.log('ALARM', `警报处理失败: ${error.message}`, 'ERROR');
+      console.error(error);
+      // 仍然发出基本事件
+      this.emit('alarm:triggered', data);
     }
   }
 }

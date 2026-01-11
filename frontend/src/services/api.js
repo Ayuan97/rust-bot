@@ -75,6 +75,9 @@ export const deleteDevice = (serverId, entityId) => api.delete(`/servers/${serve
 
 export const getDeviceStatus = (serverId, entityId) => api.get(`/servers/${serverId}/devices/${entityId}/status`);
 
+export const checkDeviceReachability = (serverId, removeUnreachable = false) =>
+  api.post(`/servers/${serverId}/devices/check-reachability`, { removeUnreachable });
+
 // ========== 事件日志 ==========
 
 export const getEvents = (serverId, limit = 100) => api.get(`/servers/${serverId}/events`, { params: { limit } });

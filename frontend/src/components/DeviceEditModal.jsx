@@ -18,7 +18,8 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
   const [form, setForm] = useState({
     name: device.name || '',
     command: device.command || '',
-    auto_mode: device.auto_mode || 0
+    message: device.message || '',
+    autoMode: device.autoMode || 0
   });
   const [saving, setSaving] = useState(false);
   const toast = useToast();
@@ -36,11 +37,23 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
     setSaving(true);
 
     try {
-      await updateDevice(serverId, device.entity_id, {
-        name: form.name,
-        command: form.command || null,
-        auto_mode: form.auto_mode
-      });
+      // 构建更新数据 - 只发送需要的字段
+      const updateData = {
+        name: form.name
+      };
+
+      // 只有 SWITCH 类型才发送 command 和 auto_mode
+      if (device.type === 'SWITCH') {
+        updateData.command = form.command || null;
+        updateData.auto_mode = form.autoMode;
+      }
+
+      // ALARM 类型发送 message
+      if (device.type === 'ALARM') {
+        updateData.message = form.message || null;
+      }
+
+      await updateDevice(serverId, device.entityId, updateData);
       toast.success('设备配置已更新');
       onSaved?.();
       onClose();
@@ -91,12 +104,12 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {/* 设备信息 */}
           <div className="text-sm text-gray-400 bg-rust-gray/50 p-3 rounded-lg">
-            <p>Entity ID: <span className="text-white">{device.entity_id}</span></p>
+            <p>Entity ID: <span className="text-white">{device.entityId}</span></p>
             <p>类型: <span className="text-white">{device.type || '未知'}</span></p>
-            {device.type === 'alarm' && (
+            {device.type === 'ALARM' && (
               <p className="flex items-center gap-1 mt-1">
                 <FaClock className="text-rust-orange" />
-                上次触发: <span className="text-white">{formatLastTrigger(device.last_trigger)}</span>
+                上次触发: <span className="text-white">{formatLastTrigger(device.lastTrigger)}</span>
               </p>
             )}
           </div>
@@ -115,32 +128,53 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
             />
           </div>
 
-          {/* 游戏内命令 */}
-          <div>
-            <label className="block text-sm font-medium mb-1 flex items-center gap-2">
-              <FaTerminal className="text-rust-orange" />
-              游戏内命令
-            </label>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-400">!</span>
+          {/* 游戏内命令 - 只对 SWITCH 类型显示 */}
+          {device.type === 'SWITCH' && (
+            <div>
+              <label className="block text-sm font-medium mb-1 flex items-center gap-2">
+                <FaTerminal className="text-rust-orange" />
+                游戏内命令
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400">!</span>
+                <input
+                  type="text"
+                  className="input flex-1"
+                  value={form.command}
+                  onChange={(e) => setForm({ ...form, command: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
+                  placeholder="命令名称（如 lights）"
+                  maxLength={50}
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                在游戏聊天中输入 !命令名 on/off/status [时间] 控制设备
+              </p>
+            </div>
+          )}
+
+          {/* 智能警报消息设置 */}
+          {device.type === 'ALARM' && (
+            <div>
+              <label className="block text-sm font-medium mb-1 flex items-center gap-2">
+                <span className="text-yellow-400">🔔</span>
+                警报触发消息
+              </label>
               <input
                 type="text"
-                className="input flex-1"
-                value={form.command}
-                onChange={(e) => setForm({ ...form, command: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
-                placeholder="命令名称（如 lights）"
-                maxLength={50}
+                className="input w-full"
+                value={form.message}
+                onChange={(e) => setForm({ ...form, message: e.target.value })}
+                placeholder="输入警报触发时显示的消息"
+                maxLength={255}
               />
+              <p className="text-xs text-gray-500 mt-1">
+                警报触发时会显示此消息（留空则使用默认消息）
+              </p>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              {device.type === 'alarm'
-                ? '在游戏聊天中输入 !命令名 查看上次触发时间'
-                : '在游戏聊天中输入 !命令名 on/off/status [时间] 控制设备'}
-            </p>
-          </div>
+          )}
 
           {/* 自动化模式 */}
-          {device.type !== 'alarm' && (
+          {device.type !== 'ALARM' && (
             <div>
               <label className="block text-sm font-medium mb-1 flex items-center gap-2">
                 <FaRobot className="text-rust-orange" />
@@ -148,8 +182,8 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
               </label>
               <select
                 className="input w-full"
-                value={form.auto_mode}
-                onChange={(e) => setForm({ ...form, auto_mode: parseInt(e.target.value) })}
+                value={form.autoMode}
+                onChange={(e) => setForm({ ...form, autoMode: parseInt(e.target.value) })}
               >
                 {AUTO_MODE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>

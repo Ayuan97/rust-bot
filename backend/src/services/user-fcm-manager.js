@@ -516,36 +516,60 @@ class UserFCMManager extends EventEmitter {
         }
       }
 
-      // 配对推送 - 包含服务器连接信息
+      // 配对推送 - channelId 都是 'pairing'，需要根据 body.type 或 entityId 区分
       if (data.channelId === 'pairing') {
-        const serverInfo = {
-          userId: this.userId,
-          id: body.id || `server_${Date.now()}`,
-          name: body.name || data.title || '未命名服务器',
-          ip: body.ip,
-          port: body.port,
-          playerId: body.playerId,
-          playerToken: body.playerToken,
-          img: body.img,
-          logo: body.logo,
-          url: body.url,
-          desc: body.desc,
-          mapUrl: body.rust_world_levelurl || body.levelurl,
-          type: 'pairing'
-        };
+        logger.info(`📋 配对推送 body 数据:`, JSON.stringify(body, null, 2));
 
-        logger.info(`🎮 用户 ${this.userId} 收到服务器配对信息: ${serverInfo.name}`);
-        this.emit('server:paired', serverInfo);
+        // 检查是设备配对还是服务器配对
+        // 设备配对会有 entityId 字段，或者 type 不是 'server'
+        if (body.entityId) {
+          // 这是设备/实体配对
+          const entityInfo = {
+            userId: this.userId,
+            entityId: body.entityId,
+            entityType: body.entityType,
+            entityName: body.entityName || body.name || data.title,
+            // serverId 是服务器的 ID
+            serverId: body.id || body.serverId || body.server_id,
+            type: 'entity'
+          };
+
+          logger.info(`🔌 用户 ${this.userId} 收到设备配对信息:`, entityInfo);
+          this.emit('entity:paired', entityInfo);
+        } else {
+          // 这是服务器配对
+          const serverInfo = {
+            userId: this.userId,
+            id: body.id || `server_${Date.now()}`,
+            name: body.name || data.title || '未命名服务器',
+            ip: body.ip,
+            port: body.port,
+            playerId: body.playerId,
+            playerToken: body.playerToken,
+            img: body.img,
+            logo: body.logo,
+            url: body.url,
+            desc: body.desc,
+            mapUrl: body.rust_world_levelurl || body.levelurl,
+            type: 'pairing'
+          };
+
+          logger.info(`🎮 用户 ${this.userId} 收到服务器配对信息: ${serverInfo.name}`);
+          this.emit('server:paired', serverInfo);
+        }
       }
 
-      // 实体配对 - 智能设备配对
+      // 备用：如果 channelId 是 'entity_pairing'（某些版本可能使用）
       else if (data.channelId === 'entity_pairing') {
+        logger.info(`📋 设备配对 body 数据 (entity_pairing):`, JSON.stringify(body, null, 2));
+
         const entityInfo = {
           userId: this.userId,
           entityId: body.entityId,
           entityType: body.entityType,
-          entityName: body.entityName,
-          serverId: body.id,
+          entityName: body.entityName || body.name,
+          // serverId 可能在不同字段中
+          serverId: body.id || body.serverId || body.server_id,
           type: 'entity'
         };
 
