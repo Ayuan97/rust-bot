@@ -188,7 +188,7 @@ model player_stats_snapshots {
   steamId      String
   statKey      String
   statValue    Float
-  snapshotDate DateTime @default(dbgenerated("(CURRENT_DATE)"))
+  snapshotDate DateTime @default(now())
 
   @@unique([steamId, statKey, snapshotDate])
 }

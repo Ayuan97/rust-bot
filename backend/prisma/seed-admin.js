@@ -19,7 +19,7 @@ async function main() {
   console.log('');
 
   // 检查是否已存在（通过用户名或邮箱）
-  const existing = await prisma.user.findFirst({
+  const existing = await prisma.users.findFirst({
     where: {
       OR: [
         { username: 'admin' },
@@ -31,7 +31,7 @@ async function main() {
   if (existing) {
     console.log('⚠️  管理员账户已存在，更新密码和权限...');
 
-    await prisma.user.update({
+    await prisma.users.update({
       where: { id: existing.id },
       data: {
         username: 'admin',
@@ -45,14 +45,14 @@ async function main() {
     console.log('✅ 管理员账户已更新');
     console.log(`   ID: ${existing.id}`);
   } else {
-    const admin = await prisma.user.create({
+    const admin = await prisma.users.create({
       data: {
         username: 'admin',
         email: 'admin@localhost',
         password: hashedPassword,
         isAdmin: true,
         isActive: true,
-        subscription: {
+        subscriptions: {
           create: {
             planType: 'YEARLY',
             startDate: new Date(),
@@ -60,7 +60,7 @@ async function main() {
             amount: 0
           }
         },
-        notificationSettings: {
+        notification_settings: {
           create: {
             settings: {
               player_death: true,
@@ -75,13 +75,13 @@ async function main() {
         }
       },
       include: {
-        subscription: true
+        subscriptions: true
       }
     });
 
     console.log('✅ 超级管理员账户创建成功');
     console.log(`   ID: ${admin.id}`);
-    console.log(`   订阅到期: ${admin.subscription.endDate.toISOString()}`);
+    console.log(`   订阅到期: ${admin.subscriptions.endDate.toISOString()}`);
   }
 
   console.log('');

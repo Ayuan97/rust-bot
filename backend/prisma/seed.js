@@ -14,19 +14,20 @@ async function main() {
   // 清理现有数据（仅在开发环境）
   if (process.env.NODE_ENV === 'development') {
     console.log('清理现有数据...');
-    await prisma.eventLog.deleteMany();
-    await prisma.device.deleteMany();
-    await prisma.server.deleteMany();
-    await prisma.notificationSettings.deleteMany();
-    await prisma.subscription.deleteMany();
-    await prisma.user.deleteMany();
-    await prisma.proxyConfig.deleteMany();
+    await prisma.event_logs.deleteMany();
+    await prisma.devices.deleteMany();
+    await prisma.servers.deleteMany();
+    await prisma.notification_settings.deleteMany();
+    await prisma.orders.deleteMany();
+    await prisma.subscriptions.deleteMany();
+    await prisma.users.deleteMany();
+    await prisma.proxy_config.deleteMany();
   }
 
   // 创建测试管理员用户
   console.log('创建管理员用户...');
   const adminPassword = await bcrypt.hash('admin123', 10);
-  const admin = await prisma.user.create({
+  const admin = await prisma.users.create({
     data: {
       username: 'admin',
       email: 'admin@example.com',
@@ -40,7 +41,7 @@ async function main() {
   const oneYearFromNow = new Date();
   oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
 
-  await prisma.subscription.create({
+  await prisma.subscriptions.create({
     data: {
       userId: admin.id,
       planType: 'YEARLY',
@@ -51,7 +52,7 @@ async function main() {
   });
 
   // 创建管理员通知设置
-  await prisma.notificationSettings.create({
+  await prisma.notification_settings.create({
     data: {
       userId: admin.id,
       settings: {
@@ -69,7 +70,7 @@ async function main() {
   // 创建测试普通用户
   console.log('创建测试用户...');
   const userPassword = await bcrypt.hash('user123', 10);
-  const user = await prisma.user.create({
+  const user = await prisma.users.create({
     data: {
       username: 'testuser',
       email: 'user@example.com',
@@ -83,7 +84,7 @@ async function main() {
   const sevenDaysFromNow = new Date();
   sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
 
-  await prisma.subscription.create({
+  await prisma.subscriptions.create({
     data: {
       userId: user.id,
       planType: 'TRIAL',
@@ -92,7 +93,7 @@ async function main() {
   });
 
   // 创建用户通知设置
-  await prisma.notificationSettings.create({
+  await prisma.notification_settings.create({
     data: {
       userId: user.id,
       settings: {
@@ -104,7 +105,7 @@ async function main() {
 
   // 创建全局代理配置
   console.log('创建代理配置...');
-  await prisma.proxyConfig.create({
+  await prisma.proxy_config.create({
     data: {
       id: 1,
       proxyPort: 10808,
