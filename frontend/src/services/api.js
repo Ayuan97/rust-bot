@@ -57,6 +57,8 @@ export const deleteServer = (id) => api.delete(`/servers/${id}`);
 
 export const getTeamInfo = (serverId) => api.get(`/servers/${serverId}/team`);
 
+export const getTeamDetailed = (serverId) => api.get(`/servers/${serverId}/team-detailed`);
+
 export const getTeamChat = (serverId) => api.get(`/servers/${serverId}/chat`);
 
 export const sendTeamMessage = (serverId, message) => api.post(`/servers/${serverId}/chat`, { message });

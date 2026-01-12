@@ -248,8 +248,52 @@ class UserServiceManager extends EventEmitter {
         this.emit('team:changed', { ...data, userId: this.userId });
       });
 
-      this.rustPlusService.on('entity:changed', (data) => {
-        this.emit('entity:changed', { ...data, userId: this.userId });
+      this.rustPlusService.on('entity:changed', async (data) => {
+        const eventData = { ...data, userId: this.userId };
+        this.emit('entity:changed', eventData);
+
+        // 如果状态变为开启 (true)，检查是否是警报器需要触发逻辑
+        if (data.value === true) {
+          try {
+            const device = await prisma.devices.findFirst({
+              where: {
+                serverId: data.serverId,
+                entityId: parseInt(data.entityId)
+              }
+            });
+
+            if (device && device.type === 'ALARM') {
+              await this._handleAlarmTriggered({
+                serverId: data.serverId,
+                entityId: data.entityId,
+                time: Date.now()
+              });
+            } else {
+              // 对于非警报设备（如开关），也记录状态变化到日志
+              await this.eventMonitorService.saveEventLog(data.serverId, 'entity:changed', {
+                entityId: data.entityId,
+                name: device?.name || `设备 ${data.entityId}`,
+                value: data.value,
+                time: Date.now()
+              });
+            }
+          } catch (error) {
+            console.error('检查设备类型并触发警报失败:', error.message);
+          }
+        } else {
+          // 状态变为关闭也记录日志
+          try {
+            const device = await prisma.devices.findFirst({
+              where: { serverId: data.serverId, entityId: parseInt(data.entityId) }
+            });
+            await this.eventMonitorService.saveEventLog(data.serverId, 'entity:changed', {
+              entityId: data.entityId,
+              name: device?.name || `设备 ${data.entityId}`,
+              value: data.value,
+              time: Date.now()
+            });
+          } catch (e) { }
+        }
       });
 
       this.rustPlusService.on('alarm:triggered', async (data) => {
@@ -361,6 +405,10 @@ class UserServiceManager extends EventEmitter {
 
       this.eventMonitorService.on('player:afk', (data) => {
         this.emit('player:afk', { ...data, userId: this.userId });
+      });
+
+      this.eventMonitorService.on('player:contribution', (data) => {
+        this.emit('player:contribution', { ...data, userId: this.userId });
       });
 
       // 5. 绑定 Automation 事件到 UserServiceManager
@@ -731,12 +779,17 @@ class UserServiceManager extends EventEmitter {
         }
       });
 
-      if (!device) {
-        this.log('ALARM', `未找到设备记录: entityId=${entityId}`, 'WARN');
-        // 仍然发出事件
+      if (!device || device.type !== 'ALARM') {
+        if (!device) {
+          this.log('ALARM', `未找到设备记录: entityId=${entityId}`, 'WARN');
+        } else {
+          this.log('ALARM', `设备类型不是警报器 (type=${device.type})，忽略触发逻辑`, 'DEBUG');
+          return;
+        }
+        // 对于未记录的设备，如果确实收到了警报请求（虽然现在流程上应该不会了），仍发出基础事件但不发消息
         this.emit('alarm:triggered', {
           ...data,
-          deviceName: `警报 ${entityId}`,
+          deviceName: `设备 ${entityId}`,
           message: null
         });
         return;
@@ -766,7 +819,15 @@ class UserServiceManager extends EventEmitter {
         this.log('ALARM', `发送警报消息失败: ${chatError.message}`, 'ERROR');
       }
 
-      // 5. 发出事件（用于前端 WebSocket 通知）
+      // 5. 保存到历史记录
+      await this.eventMonitorService.saveEventLog(serverId, 'alarm:triggered', {
+        entityId,
+        deviceName,
+        message: customMessage,
+        time
+      });
+
+      // 6. 发出事件（用于前端 WebSocket 通知）
       this.emit('alarm:triggered', {
         userId: this.userId,
         serverId,

@@ -64,11 +64,17 @@ export default function EventTracker({ serverId, isDemo = false }) {
                 break;
         }
 
+        // 提取坐标和方向信息
+        const positionInfo = data.position || '';
+        const directionInfo = data.direction || '';
+
         const newEvent = {
             id: Date.now() + Math.random(),
             type,
             time: Date.now(),
             description: description + extra,
+            position: positionInfo,
+            direction: directionInfo,
             config,
             data
         };
@@ -79,6 +85,59 @@ export default function EventTracker({ serverId, isDemo = false }) {
     // 监听所有游戏事件
     useEffect(() => {
         if (!serverId || isDemo) return;
+
+        // 加载历史记录
+        const fetchHistory = async () => {
+            try {
+                const response = await import('../services/api').then(m => m.getEvents(serverId, 50));
+                if (response.data && response.data.success) {
+                    const historyEvents = response.data.events.map(event => {
+                        // 将后端枚举映射回前端类型
+                        const typeMap = {
+                            'PLAYER_DEATH': 'player:died',
+                            'PLAYER_ONLINE': 'player:online',
+                            'PLAYER_OFFLINE': 'player:offline',
+                            'CARGO_SPAWN': 'cargo:spawn',
+                            'CARGO_DOCK': 'cargo:dock',
+                            'HELI_SPAWN': 'heli:spawn',
+                            'HELI_DOWN': 'heli:downed',
+                            'ALARM_TRIGGERED': 'alarm:triggered',
+                            'ENTITY_CHANGED': 'entity:changed'
+                        };
+
+                        const type = typeMap[event.eventType] || event.eventType.toLowerCase().replace('_', ':');
+                        const data = typeof event.eventData === 'string' ? JSON.parse(event.eventData) : event.eventData;
+                        const config = EVENT_CONFIG[type] || { icon: FaExclamationTriangle, label: '事件', color: 'text-white', desc: type };
+
+                        let description = config.desc;
+                        switch (type) {
+                            case 'player:died': description = `队友阵亡: ${data.name || '未知'}`; break;
+                            case 'player:online': description = `队友上线: ${data.name || '未知'}`; break;
+                            case 'player:offline': description = `队友离线: ${data.name || '未知'}`; break;
+                            case 'alarm:triggered': description = `警报触发: ${data.title || data.deviceName || data.name || '智能警报'}`; break;
+                            case 'entity:changed': description = `${data.name || '设备'}: ${data.value ? '开启' : '关闭'}`; break;
+                            default: break;
+                        }
+
+                        return {
+                            id: event.id,
+                            type,
+                            time: new Date(event.createdAt).getTime(),
+                            description: description,
+                            position: data.position || '',
+                            direction: data.direction || '',
+                            config,
+                            data
+                        };
+                    });
+                    setEvents(historyEvents.reverse()); // 历史记录是倒序的，反转以匹配后续追加逻辑
+                }
+            } catch (error) {
+                console.error('加载事件历史失败:', error);
+            }
+        };
+
+        fetchHistory();
 
         const eventTypes = [
             'cargo:spawn', 'cargo:dock', 'cargo:egress', 'cargo:leave',
@@ -162,18 +221,26 @@ export default function EventTracker({ serverId, isDemo = false }) {
                         return (
                             <div
                                 key={event.id}
-                                className="flex items-start gap-2 p-2 bg-white/[0.02] border border-white/5 tactic-cut hover:bg-white/[0.05] transition-all group"
+                                className="flex items-center gap-2 p-1.5 bg-white/[0.02] border border-white/5 tactic-cut hover:bg-white/[0.05] transition-all group min-h-[36px]"
                             >
                                 <div className={`w-6 h-6 flex-shrink-0 flex items-center justify-center tactic-cut ${event.config.color} bg-black/40`}>
                                     <IconComponent className="text-xs" />
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className={`text-xs font-medium ${event.config.color}`}>
-                                        {event.description}
+                                <div className="flex-1 min-w-0 flex items-center justify-between gap-2 overflow-hidden">
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                        <span className={`text-[13px] font-black uppercase tracking-tight ${event.config.color} truncate`}>
+                                            {event.description}
+                                        </span>
+                                        {(event.position || event.direction) && (
+                                            <span className="flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
+                                                {event.position && <span className="text-[10px] font-mono text-[#cd5241] bg-[#cd5241]/10 px-1 tactic-cut border border-[#cd5241]/20">{event.position}</span>}
+                                                {event.direction && <span className="text-[10px] font-mono text-gray-400 bg-white/5 px-1 tactic-cut">{event.direction}</span>}
+                                            </span>
+                                        )}
                                     </div>
-                                    <div className="text-[9px] text-gray-600 font-mono mt-0.5">
+                                    <span className="text-[11px] font-black text-white/50 bg-white/5 px-1.5 tactic-cut shrink-0 font-mono">
                                         {formatTime(event.time)}
-                                    </div>
+                                    </span>
                                 </div>
                             </div>
                         );

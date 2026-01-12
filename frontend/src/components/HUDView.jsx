@@ -130,8 +130,47 @@ export default function HUDView({ server, teamData, isSubscriptionExpired, onPai
     }
   };
 
+  const [contributionAlerts, setContributionAlerts] = useState([]);
+
+  useEffect(() => {
+    if (!server || !server.connected) return;
+
+    const handleContribution = (data) => {
+      if (data.serverId === server.id) {
+        const id = Date.now();
+        setContributionAlerts(prev => [...prev, { ...data, id }]);
+        setTimeout(() => {
+          setContributionAlerts(prev => prev.filter(a => a.id !== id));
+        }, 5000);
+      }
+    };
+
+    socketService.on('player:contribution', handleContribution);
+    return () => socketService.off('player:contribution', handleContribution);
+  }, [server?.id]);
+
   return (
     <div className="grid lg:grid-cols-3 gap-6 h-full animate-fade-in font-sans relative">
+      {/* 贡献警报通知 */}
+      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-3 pointer-events-none">
+        {contributionAlerts.map(alert => (
+          <div key={alert.id} className="bg-black/80 tactic-border tactic-cut p-1 border-[#a3e635]/30 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="bg-[#a3e635]/10 px-6 py-3 flex items-center gap-4">
+              <div className="w-8 h-8 tactic-cut bg-[#a3e635] flex items-center justify-center text-black">
+                <FaStar className="animate-pulse" />
+              </div>
+              <div>
+                <div className="text-[10px] text-[#a3e635] font-black uppercase tracking-widest">战功卓越 / 今日贡献</div>
+                <div className="text-xs font-black uppercase text-white tracking-tight">
+                  <span className="text-[#a3e635] italic mr-2">{alert.playerName}</span>
+                  已累计采集 {alert.amount.toLocaleString()} {alert.statName}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* 演示模式全屏水印/引导 */}
       {isDemo && (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
@@ -153,7 +192,7 @@ export default function HUDView({ server, teamData, isSubscriptionExpired, onPai
         </div>
       )}
 
-      <div className={`lg:col-span-2 flex flex-col gap-4 ${isDemo ? 'opacity-30' : ''}`}>
+      <div className={`lg:col-span-2 flex flex-col gap-4 h-full min-h-0 ${isDemo ? 'opacity-30' : ''}`}>
         {/* 上半部分：游戏事件追踪 */}
         <div className="flex-[2] tactic-border tactic-cut p-1 bg-black/40 relative overflow-hidden min-h-0">
           <div className="scanline"></div>
@@ -171,7 +210,7 @@ export default function HUDView({ server, teamData, isSubscriptionExpired, onPai
         </div>
       </div>
 
-      <div className={`flex flex-col gap-4 ${isDemo ? 'opacity-30' : ''}`}>
+      <div className={`flex flex-col gap-4 h-full min-h-0 ${isDemo ? 'opacity-30' : ''}`}>
         <div className="tactic-border tactic-cut p-1 bg-black/40">
           <div className="bg-black/40 p-4">
             <div className="text-xs font-black text-gray-300 uppercase tracking-widest mb-4 flex justify-between items-center">

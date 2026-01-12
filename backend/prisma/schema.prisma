@@ -163,6 +163,36 @@ model users {
   @@index([username])
 }
 
+model player_profiles {
+  steamId     String   @id
+  name        String?
+  avatar      String?
+  playtime    Int      @default(0)
+  vacBanned   Boolean  @default(false)
+  gameBans    Int      @default(0)
+  lastUpdated DateTime @default(now())
+}
+
+model player_stats {
+  id        String   @id @default(uuid())
+  steamId   String
+  statKey   String
+  statValue Float
+  updatedAt DateTime @default(now())
+
+  @@unique([steamId, statKey])
+}
+
+model player_stats_snapshots {
+  id           String   @id @default(uuid())
+  steamId      String
+  statKey      String
+  statValue    Float
+  snapshotDate DateTime @default(dbgenerated("(CURRENT_DATE)"))
+
+  @@unique([steamId, statKey, snapshotDate])
+}
+
 enum orders_type {
   TOPUP
   AUTH_BUY
@@ -198,6 +228,7 @@ enum event_logs_eventType {
   OIL_RIG_UNLOCKED
   CHINOOK_SPAWN
   ALARM_TRIGGERED
+  ENTITY_CHANGED
   DEVICE_OFFLINE
   SERVER_CONNECTED
   SERVER_DISCONNECTED

@@ -352,19 +352,75 @@ router.delete('/:id', async (req, res) => {
 // ============================================================
 
 /**
- * GET /api/servers/:id/team
- * 获取实时队伍信息
+ * GET /api/servers/:id/team-detailed
+ * 获取增强型队伍信息（包含 Steam 头像、封禁状态和今日贡献）
  */
-router.get('/:id/team', async (req, res) => {
+router.get('/:id/team-detailed', async (req, res) => {
   try {
+    const serverId = req.params.id;
     const rustPlusService = getUserRustPlusService(req.user.id);
-    if (!rustPlusService || !rustPlusService.isConnected(req.params.id)) {
+
+    if (!rustPlusService || !rustPlusService.isConnected(serverId)) {
       return res.status(400).json({ success: false, error: '服务器未连接' });
     }
 
-    const teamInfo = await rustPlusService.getTeamInfo(req.params.id);
-    res.json({ success: true, teamInfo });
+    // 1. 获取基础队伍信息
+    const teamInfo = await rustPlusService.getTeamInfo(serverId);
+    if (!teamInfo || !teamInfo.members) {
+      return res.json({ success: true, members: [] });
+    }
+
+    const steamIds = teamInfo.members.map(m => m.steamId.toString());
+
+    // 2. 获取数据库中的玩家资料和实时统计
+    const [profiles, stats, snapshots] = await Promise.all([
+      prisma.player_profiles.findMany({
+        where: { steamId: { in: steamIds } }
+      }),
+      prisma.player_stats.findMany({
+        where: { steamId: { in: steamIds } }
+      }),
+      prisma.player_stats_snapshots.findMany({
+        where: {
+          steamId: { in: steamIds },
+          snapshotDate: new Date() // 获取今日 00:00 的快照
+        }
+      })
+    ]);
+
+    // 3. 合并数据
+    const detailedMembers = teamInfo.members.map(member => {
+      const steamId = member.steamId.toString();
+      const profile = profiles.find(p => p.steamId === steamId);
+      const memberStats = stats.filter(s => s.steamId === steamId);
+      const memberSnapshots = snapshots.filter(s => s.steamId === steamId);
+
+      // 计算今日贡献 (实时值 - 今日快照值)
+      const contribution = {};
+      memberStats.forEach(s => {
+        const snapshot = memberSnapshots.find(sn => sn.statKey === s.statKey);
+        const diff = snapshot ? (s.statValue - snapshot.statValue) : 0;
+        contribution[s.statKey] = Math.max(0, diff); // 防止负数
+      });
+
+      return {
+        ...member,
+        steamId, // 转换为字符串
+        avatar: profile?.avatar || null,
+        playtime: profile?.playtime || 0,
+        vacBanned: profile?.vacBanned || false,
+        gameBans: profile?.gameBans || 0,
+        contribution
+      };
+    });
+
+    res.json({
+      success: true,
+      members: detailedMembers,
+      leaderId: teamInfo.leaderSteamId?.toString()
+    });
   } catch (error) {
+    console.error('获取增强队伍信息失败:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

@@ -12,8 +12,13 @@ import EventTimerManager from '../utils/event-timer.js';
 import { getItemName, isImportantItem } from '../utils/item-info.js';
 import { v4 as uuidv4 } from 'uuid';
 import logger from '../utils/logger.js';
+import steamService from './steam.service.js';
 
 const prisma = new PrismaClient();
+
+// 刷新间隔
+const PLAYER_DATA_REFRESH_INTERVAL = 30 * 60 * 1000; // 30分钟刷新一次 Steam 数据
+const PLAYER_STATS_SNAPSHOT_INTERVAL = 24 * 60 * 60 * 1000; // 每天 00:00 快照（逻辑上在 checkPlayerStats 中处理）
 
 // 默认通知设置
 const DEFAULT_NOTIFICATION_SETTINGS = {
@@ -127,6 +132,7 @@ class UserEventMonitor extends EventEmitter {
       'large_oil_rig:crate_unlocked': 'OIL_RIG_UNLOCKED',
       'ch47:spawn': 'CHINOOK_SPAWN',
       'alarm:triggered': 'ALARM_TRIGGERED',
+      'entity:changed': 'ENTITY_CHANGED',
       'server:connected': 'SERVER_CONNECTED',
       'server:disconnected': 'SERVER_DISCONNECTED',
       'fcm:connected': 'FCM_CONNECTED',
@@ -227,6 +233,20 @@ class UserEventMonitor extends EventEmitter {
     }, EventTiming.MAP_MARKERS_POLL_INTERVAL);
 
     this.pollIntervals.set(serverId, interval);
+
+    // 启动玩家数据刷新轮询
+    const playerInterval = setInterval(async () => {
+      try {
+        await this.refreshPlayerData(serverId);
+      } catch (error) {
+        logger.error(`[Steam] 刷新玩家数据失败 ${serverId}:`, error.message);
+      }
+    }, PLAYER_DATA_REFRESH_INTERVAL);
+
+    this.pollIntervals.set(`${serverId}:players`, playerInterval);
+
+    // 初始刷新一次
+    this.refreshPlayerData(serverId).catch(e => { });
   }
 
   /**
@@ -240,6 +260,14 @@ class UserEventMonitor extends EventEmitter {
       this.previousMarkers.delete(serverId);
       this.eventData.delete(serverId);
       EventTimerManager.stopAllTimers(serverId);
+
+      // 清理玩家刷新定时器
+      const playerInterval = this.pollIntervals.get(`${serverId}:players`);
+      if (playerInterval) {
+        clearInterval(playerInterval);
+        this.pollIntervals.delete(`${serverId}:players`);
+      }
+
       logger.server(serverId, `⏹️ 事件监控已停止 (用户 ${this.userId})`);
     }
   }
@@ -866,6 +894,121 @@ class UserEventMonitor extends EventEmitter {
       return ew + ns;
     }
     return ew || ns || '中部';
+  }
+
+  /**
+   * 刷新所有队友的 Steam 数据（头像、封禁等）
+   */
+  async refreshPlayerData(serverId) {
+    const eventData = this.eventData.get(serverId);
+    if (!eventData || eventData.teamMembers.size === 0) return;
+
+    const steamIds = Array.from(eventData.teamMembers.keys());
+    logger.debug(`[Steam] 刷新 ${steamIds.length} 名成员的资料...`);
+
+    const playersData = await steamService.getBatchPlayerData(steamIds);
+
+    for (const data of playersData) {
+      if (!data.summary) continue;
+
+      await prisma.player_profiles.upsert({
+        where: { steamId: data.steamId },
+        update: {
+          name: data.summary.personaname,
+          avatar: data.summary.avatarfull,
+          playtime: data.playtime?.playtime_forever || 0,
+          vacBanned: data.ban?.VACBanned || false,
+          gameBans: data.ban?.NumberOfGameBans || 0,
+          lastUpdated: new Date()
+        },
+        create: {
+          steamId: data.steamId,
+          name: data.summary.personaname,
+          avatar: data.summary.avatarfull,
+          playtime: data.playtime?.playtime_forever || 0,
+          vacBanned: data.ban?.VACBanned || false,
+          gameBans: data.ban?.NumberOfGameBans || 0,
+        }
+      });
+
+      // 如果有统计数据，保存并检查快照
+      if (data.stats && !data.stats.private) {
+        await this.updatePlayerStats(serverId, data.steamId, data.summary.personaname, data.stats);
+      }
+    }
+  }
+
+  /**
+   * 更新并对比玩家实时统计数据
+   */
+  async updatePlayerStats(serverId, steamId, playerName, stats) {
+    const statKeys = ['players_killed', 'kill_npc', 'gather_wood', 'gather_stone', 'gather_metal'];
+    const thresholds = {
+      'players_killed': 1,
+      'kill_npc': 5,
+      'gather_wood': 2000,
+      'gather_stone': 2000,
+      'gather_metal': 1000
+    };
+    const statNames = {
+      'players_killed': '玩家击杀',
+      'kill_npc': 'NPC击杀',
+      'gather_wood': '木材',
+      'gather_stone': '石料',
+      'gather_metal': '金属'
+    };
+
+    for (const key of statKeys) {
+      const value = stats[key] || 0;
+
+      // 检查今日快照，如果不存在则创建（00:00 快照）
+      let snapshot = await prisma.player_stats_snapshots.findUnique({
+        where: { steamId_statKey_snapshotDate: { steamId, statKey: key, snapshotDate: new Date() } }
+      });
+
+      if (!snapshot) {
+        snapshot = await prisma.player_stats_snapshots.create({
+          data: {
+            steamId,
+            statKey: key,
+            statValue: value // 初始快照值应为当前值
+          }
+        });
+        logger.debug(`[Steam] 已为 ${steamId} 创建 ${key} 的今日初始快照`);
+      }
+
+      // 获取旧值以计算增量
+      const oldStat = await prisma.player_stats.findUnique({
+        where: { steamId_statKey: { steamId, statKey: key } }
+      });
+
+      // 更新实时统计
+      await prisma.player_stats.upsert({
+        where: { steamId_statKey: { steamId, statKey: key } },
+        update: { statValue: value, updatedAt: new Date() },
+        create: { steamId, statKey: key, statValue: value }
+      });
+
+      // 如果有旧值且增量达到阈值，触发事件
+      if (oldStat && value > oldStat.statValue) {
+        const delta = value - oldStat.statValue;
+        if (delta >= (thresholds[key] || 1)) {
+          // 计算今日累计贡献 (当前值 - 今日快照值)
+          const todayTotal = Math.max(0, value - snapshot.statValue);
+
+          this.emit('player:contribution', {
+            serverId,
+            steamId,
+            playerName,
+            statKey: key,
+            statName: statNames[key] || key,
+            amount: todayTotal,
+            delta
+          });
+          logger.debug(`[Steam] 玩家 ${playerName} (${steamId}) 贡献更新: ${key} 今日累计: ${todayTotal}`);
+        }
+      }
+    }
   }
 
   /**

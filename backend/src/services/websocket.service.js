@@ -513,6 +513,10 @@ class WebSocketService {
       this.io.to(`user:${data.userId}`).emit('player:afk', data);
     });
 
+    globalServiceManager.on('player:contribution', (data) => {
+      this.io.to(`user:${data.userId}`).emit('player:contribution', data);
+    });
+
     // === 自动化事件 ===
 
     globalServiceManager.on('automation:executed', (data) => {

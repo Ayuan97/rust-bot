@@ -884,7 +884,7 @@ class UserRustPlusManager extends EventEmitter {
         capacity: payload.capacity
       });
 
-      // 检测警报触发（value 变为 true 时）
+      /* 移除非受控的警报触发逻辑，改由 UserServiceManager 处理 
       if (payload.value === true) {
         this.emit('alarm:triggered', {
           userId: this.userId,
@@ -893,6 +893,7 @@ class UserRustPlusManager extends EventEmitter {
           time: Date.now()
         });
       }
+      */
     }
 
     // 氏族变化
