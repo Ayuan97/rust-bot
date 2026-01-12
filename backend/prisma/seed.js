@@ -5,6 +5,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import { v4 as uuidv4 } from 'uuid';
 
 const prisma = new PrismaClient();
 
@@ -29,11 +30,13 @@ async function main() {
   const adminPassword = await bcrypt.hash('admin123', 10);
   const admin = await prisma.users.create({
     data: {
+      id: uuidv4(),
       username: 'admin',
       email: 'admin@example.com',
       password: adminPassword,
       isAdmin: true,
       isActive: true,
+      updatedAt: new Date(),
     },
   });
 
@@ -43,17 +46,20 @@ async function main() {
 
   await prisma.subscriptions.create({
     data: {
+      id: uuidv4(),
       userId: admin.id,
       planType: 'YEARLY',
       endDate: oneYearFromNow,
       amount: 299,
       paymentMethod: 'ALIPAY',
+      updatedAt: new Date(),
     },
   });
 
   // 创建管理员通知设置
   await prisma.notification_settings.create({
     data: {
+      id: uuidv4(),
       userId: admin.id,
       settings: {
         player_death: true,
@@ -64,6 +70,7 @@ async function main() {
         heli_spawn: true,
         oil_rig_triggered: true,
       },
+      updatedAt: new Date(),
     },
   });
 
@@ -72,11 +79,13 @@ async function main() {
   const userPassword = await bcrypt.hash('user123', 10);
   const user = await prisma.users.create({
     data: {
+      id: uuidv4(),
       username: 'testuser',
       email: 'user@example.com',
       password: userPassword,
       isAdmin: false,
       isActive: true,
+      updatedAt: new Date(),
     },
   });
 
@@ -86,20 +95,24 @@ async function main() {
 
   await prisma.subscriptions.create({
     data: {
+      id: uuidv4(),
       userId: user.id,
       planType: 'TRIAL',
       endDate: sevenDaysFromNow,
+      updatedAt: new Date(),
     },
   });
 
   // 创建用户通知设置
   await prisma.notification_settings.create({
     data: {
+      id: uuidv4(),
       userId: user.id,
       settings: {
         player_death: true,
         cargo_spawn: true,
       },
+      updatedAt: new Date(),
     },
   });
 

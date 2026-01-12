@@ -6,6 +6,7 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import { execSync } from 'child_process';
+import { v4 as uuidv4 } from 'uuid';
 
 const prisma = new PrismaClient();
 
@@ -58,21 +59,26 @@ async function main() {
     } else {
         const admin = await prisma.users.create({
             data: {
+                id: uuidv4(),
                 username: 'admin',
                 email: 'admin@localhost',
                 password: hashedPassword,
                 isAdmin: true,
                 isActive: true,
+                updatedAt: new Date(),
                 subscriptions: {
                     create: {
+                        id: uuidv4(),
                         planType: 'YEARLY',
                         startDate: new Date(),
                         endDate: new Date('2099-12-31T23:59:59Z'),
-                        amount: 0
+                        amount: 0,
+                        updatedAt: new Date()
                     }
                 },
                 notification_settings: {
                     create: {
+                        id: uuidv4(),
                         settings: {
                             player_death: true,
                             player_online: true,
@@ -81,7 +87,8 @@ async function main() {
                             cargo_spawn: true,
                             heli_spawn: true,
                             oil_rig_triggered: true
-                        }
+                        },
+                        updatedAt: new Date()
                     }
                 }
             }
