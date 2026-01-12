@@ -3,7 +3,7 @@ import { FaUsers, FaChartLine, FaMapMarkerAlt, FaHeartbeat, FaClock, FaSkullCros
 import { coordsToGrid, formatActiveTime } from '../utils/mapUtils';
 import { getTeamDetailed } from '../services/api';
 
-export default function TeamView({ server }) {
+export default function TeamView({ server, teamData, onLocate }) {
   const [activeTab, setActiveTab] = useState('members');
   const [detailedMembers, setDetailedMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -183,8 +183,8 @@ function PlayerCard({ member }) {
         <div className="flex justify-between items-start mb-6 relative z-10">
           <div className="flex items-center gap-4">
             <div className={`w-14 h-14 tactic-cut relative overflow-hidden border-2 shadow-lg transition-all ${member.isOnline ? 'border-[#a3e635]/50 shadow-[#a3e635]/10' :
-                isDead ? 'border-[#ef4444]/50 animate-pulse shadow-[#ef4444]/20' :
-                  'border-white/5 grayscale saturate-50'
+              isDead ? 'border-[#ef4444]/50 animate-pulse shadow-[#ef4444]/20' :
+                'border-white/5 grayscale saturate-50'
               }`}>
               {member.avatar ? (
                 <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />

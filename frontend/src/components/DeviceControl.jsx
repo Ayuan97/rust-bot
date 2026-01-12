@@ -106,8 +106,8 @@ function FilterTab({ active, onClick, icon, label }) {
     <button
       onClick={onClick}
       className={`relative px-4 py-1.5 tactic-cut text-[10px] font-black uppercase tracking-wider flex items-center gap-2 transition-all ${active
-          ? 'bg-rust-dark text-white '
-          : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+        ? 'bg-rust-dark text-white '
+        : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
         }`}
     >
       {icon} {label}
@@ -148,8 +148,8 @@ function SmartSwitchCard({ device, isReadOnly, onToggle, onEdit, onDelete, onPin
       <div className="p-5 flex-1 flex flex-col relative z-10">
         <div className="flex justify-between items-start mb-4">
           <div className={`w-12 h-12 tactic-cut flex items-center justify-center text-2xl transition-all duration-500 ${isOn
-              ? 'bg-[#cd5241] text-white shadow-[0_0_20px_rgba(205,82,65,0.4)]'
-              : 'bg-white/5 text-gray-600'
+            ? 'bg-[#cd5241] text-white shadow-[0_0_20px_rgba(205,82,65,0.4)]'
+            : 'bg-white/5 text-gray-600'
             }`}>
             {getDeviceIcon(device.name, device.type)}
           </div>
@@ -178,8 +178,8 @@ function SmartSwitchCard({ device, isReadOnly, onToggle, onEdit, onDelete, onPin
             onClick={() => !isReadOnly && onToggle(device)}
             disabled={isReadOnly}
             className={`w-full py-3.5 tactic-cut flex items-center justify-center gap-3 transition-all duration-300 relative overflow-hidden group/btn ${isOn
-                ? 'bg-[#cd5241] text-white hover:bg-[#a03525]'
-                : 'bg-black/40 border border-white/10 text-gray-500 hover:bg-white/5 hover:text-gray-300'
+              ? 'bg-[#cd5241] text-white hover:bg-[#a03525]'
+              : 'bg-black/40 border border-white/10 text-gray-500 hover:bg-white/5 hover:text-gray-300'
               }`}
           >
             <FaPowerOff className={`text-sm ${isOn ? '' : 'group-hover/btn:scale-110 transition-transform'}`} />
@@ -315,8 +315,8 @@ function ActionIconBtn({ icon, onClick, variant = 'default' }) {
     <button
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       className={`w-7 h-7 flex items-center justify-center tactic-cut transition-all ${variant === 'danger'
-          ? 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'
-          : 'bg-white/5 text-gray-400 hover:bg-white/20 hover:text-white'
+        ? 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'
+        : 'bg-white/5 text-gray-400 hover:bg-white/20 hover:text-white'
         }`}
     >
       <span className="text-xs">{icon}</span>
@@ -396,6 +396,10 @@ function DeviceControl({ serverId, isReadOnly = false }) {
   }, [pinnedIds, serverId]);
 
   const fetchDevices = async () => {
+    if (!serverId) {
+      setDevices([]);
+      return;
+    }
     setLoading(true);
     try {
       const response = await getDevices(serverId);

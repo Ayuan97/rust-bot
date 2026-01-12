@@ -186,8 +186,9 @@ function App() {
 
   // --- Render Views ---
   const renderView = () => {
-    // 只有在完全没有任何服务器节点时，显示 EmptyState
-    if (servers.length === 0 && activeView !== 'admin') {
+    // 只有在 HUD 视图且完全没有任何服务器节点时，显示 EmptyState
+    // 其他视图允许以演示模式显示
+    if (servers.length === 0 && activeView === 'hud') {
       return <EmptyState onPair={() => setShowPairingPanel(true)} />;
     }
 

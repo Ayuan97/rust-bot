@@ -62,6 +62,7 @@ router.get('/status', async (req, res) => {
       status: {
         isListening: fcmService.isListening || false,
         hasCredentials: hasStoredCredentials,
+        hasStoredCredentials: hasStoredCredentials, // 兼容前端
         credentialType: hasStoredCredentials ? 'GCM' : null
       }
     });
