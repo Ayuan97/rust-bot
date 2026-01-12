@@ -7,6 +7,7 @@ import { EventEmitter } from 'events';
 import { PrismaClient } from '@prisma/client';
 import logger from '../utils/logger.js';
 import { parseTimeString } from '../utils/timer.js';
+import { cmd, cmdConfig, formatDuration } from '../utils/messages.js';
 
 const prisma = new PrismaClient();
 
@@ -175,7 +176,7 @@ class UserCommands extends EventEmitter {
           logger.error(`❌ 内置命令 "${commandName}" 执行失败:`, error.message);
           await this.rustPlusService.sendTeamMessage(
             serverId,
-            `❌ 命令执行失败: ${error.message}`
+            cmd('error', 'msg') || `❌ 命令执行失败`
           );
           return true;
         }
@@ -191,7 +192,7 @@ class UserCommands extends EventEmitter {
       // 3. 未知命令
       await this.rustPlusService.sendTeamMessage(
         serverId,
-        `❓ 未知命令: ${commandName}。输入 !help 查看可用命令。`
+        cmd('unknown', 'msg', { cmd: commandName }) || `❓ 未知命令: ${commandName}`
       );
       return true;
 
@@ -463,32 +464,32 @@ class UserCommands extends EventEmitter {
 
       const isDay = currentTime >= sunrise && currentTime < sunset;
       const hours = Math.floor(currentTime);
-      const minutes = Math.floor((currentTime - hours) * 60);
+      const mins = Math.floor((currentTime - hours) * 60);
+      const timeStr = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 
-      let nextEvent, timeUntil;
+      let timeUntil;
       if (isDay) {
-        // 白天，计算到日落的时间
         timeUntil = sunset - currentTime;
-        nextEvent = '日落';
       } else {
-        // 夜晚，计算到日出的时间
         if (currentTime < sunrise) {
           timeUntil = sunrise - currentTime;
         } else {
           timeUntil = (24 - currentTime) + sunrise;
         }
-        nextEvent = '日出';
       }
 
-      const hoursUntil = Math.floor(timeUntil);
-      const minutesUntil = Math.floor((timeUntil - hoursUntil) * 60);
+      const minutesUntil = Math.floor(timeUntil * 60);
 
-      return `🕐 游戏时间: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} (${isDay ? '白天' : '夜晚'})\n` +
-             `⏰ 距离${nextEvent}: ${hoursUntil}小时${minutesUntil}分钟`;
+      // 使用模板: msg_night = 距离天黑, msg_day = 距离天亮
+      if (isDay) {
+        return cmd('time', 'msg_night', { time: timeStr, minutes: minutesUntil });
+      } else {
+        return cmd('time', 'msg_day', { time: timeStr, minutes: minutesUntil });
+      }
 
     } catch (error) {
       logger.error('获取时间失败:', error);
-      return '❌ 无法获取游戏时间';
+      return cmd('time', 'error');
     }
   }
 
@@ -500,23 +501,21 @@ class UserCommands extends EventEmitter {
       const info = await this.rustPlusService.getServerInfo(serverId);
 
       if (!info) {
-        return '❌ 无法获取服务器信息';
+        return cmd('pop', 'error');
       }
 
       const current = info.players || 0;
       const max = info.maxPlayers || 0;
       const queued = info.queuedPlayers || 0;
 
-      let message = `👥 服务器人数: ${current}/${max}`;
       if (queued > 0) {
-        message += ` (排队: ${queued})`;
+        return cmd('pop', 'msg_queued', { current, max, queued });
       }
-
-      return message;
+      return cmd('pop', 'msg_no_change', { current, max });
 
     } catch (error) {
       logger.error('获取人数失败:', error);
-      return '❌ 无法获取服务器人数';
+      return cmd('pop', 'error');
     }
   }
 
@@ -528,23 +527,23 @@ class UserCommands extends EventEmitter {
       const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
 
       if (!teamInfo || !teamInfo.members) {
-        return '❌ 无法获取队伍信息';
+        return cmd('team', 'error');
       }
 
       const members = teamInfo.members;
-      const online = members.filter(m => m.isOnline).length;
-      const offline = members.filter(m => !m.isOnline && !m.isAlive).length;
-      const dead = members.filter(m => !m.isAlive && m.isOnline).length;
+      if (members.length === 0) {
+        return cmd('team', 'empty');
+      }
 
-      return `👥 队伍统计:\n` +
-             `  在线: ${online}\n` +
-             `  离线: ${offline}\n` +
-             `  死亡: ${dead}\n` +
-             `  总计: ${members.length}`;
+      const total = members.length;
+      const online = members.filter(m => m.isOnline).length;
+      const offline = total - online;
+
+      return cmd('team', 'msg', { total, online, offline });
 
     } catch (error) {
       logger.error('获取队伍信息失败:', error);
-      return '❌ 无法获取队伍信息';
+      return cmd('team', 'error');
     }
   }
 
@@ -556,25 +555,24 @@ class UserCommands extends EventEmitter {
       const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
 
       if (!teamInfo || !teamInfo.members) {
-        return '❌ 无法获取队伍信息';
+        return cmd('online', 'error');
       }
 
-      const onlineMembers = teamInfo.members.filter(m => m.isOnline && m.isAlive);
-
-      if (onlineMembers.length === 0) {
-        return '😴 当前无在线队友';
+      const members = teamInfo.members;
+      if (members.length === 0) {
+        return cmd('online', 'empty');
       }
 
-      const lines = ['✅ 在线队友:'];
-      onlineMembers.forEach(m => {
-        lines.push(`  • ${m.name}`);
-      });
+      const onlineMembers = members.filter(m => m.isOnline);
+      const total = members.length;
+      const online = onlineMembers.length;
+      const list = onlineMembers.map(m => `\`${m.name}\``).join(' ');
 
-      return lines.join('\n');
+      return cmd('online', 'msg', { online, total, list });
 
     } catch (error) {
       logger.error('获取在线队友失败:', error);
-      return '❌ 无法获取队伍信息';
+      return cmd('online', 'error');
     }
   }
 
@@ -586,26 +584,24 @@ class UserCommands extends EventEmitter {
       const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
 
       if (!teamInfo || !teamInfo.members) {
-        return '❌ 无法获取队伍信息';
+        return cmd('afk', 'error');
       }
 
       // 简化版：认为在线但死亡的为挂机
       const afkMembers = teamInfo.members.filter(m => m.isOnline && !m.isAlive);
 
       if (afkMembers.length === 0) {
-        return '✅ 当前无挂机队友';
+        return cmd('afk', 'empty');
       }
 
-      const lines = ['😴 挂机队友:'];
-      afkMembers.forEach(m => {
-        lines.push(`  • ${m.name}`);
-      });
+      const count = afkMembers.length;
+      const list = afkMembers.map(m => `\`${m.name}\``).join(' ');
 
-      return lines.join('\n');
+      return cmd('afk', 'msg', { count, list });
 
     } catch (error) {
       logger.error('获取挂机队友失败:', error);
-      return '❌ 无法获取队伍信息';
+      return cmd('afk', 'error');
     }
   }
 
@@ -614,23 +610,32 @@ class UserCommands extends EventEmitter {
    */
   async handleCargo(serverId, args, context) {
     if (!this.eventMonitorService) {
-      return '❌ 事件监控服务未启用';
+      return cmd('cargo', 'error');
     }
 
-    const eventData = this.eventMonitorService.eventData.get(serverId);
-    if (!eventData || !eventData.cargoShip) {
-      return '🚢 货船: 未刷新';
+    try {
+      const eventData = this.eventMonitorService.eventData.get(serverId);
+      if (!eventData || !eventData.cargoShipTracers || eventData.cargoShipTracers.size === 0) {
+        return cmd('cargo', 'empty');
+      }
+
+      // 获取第一艘货船的位置
+      const firstTracer = eventData.cargoShipTracers.values().next().value;
+      if (!firstTracer || firstTracer.length === 0) {
+        return cmd('cargo', 'empty');
+      }
+
+      const lastPos = firstTracer[firstTracer.length - 1];
+      const mapSize = this.rustPlusService.getMapSize(serverId);
+      const { formatPosition } = await import('../utils/coordinates.js');
+      const position = formatPosition(lastPos.x, lastPos.y, mapSize);
+
+      return cmd('cargo', 'msg_active', { position });
+
+    } catch (error) {
+      logger.error('获取货船状态失败:', error);
+      return cmd('cargo', 'error');
     }
-
-    const cargo = eventData.cargoShip;
-    if (!cargo.active) {
-      return '🚢 货船: 未刷新';
-    }
-
-    const now = Date.now();
-    const elapsed = Math.floor((now - cargo.spawnTime) / 1000 / 60);
-
-    return `🚢 货船: 已刷新 ${elapsed} 分钟`;
   }
 
   /**
@@ -638,23 +643,32 @@ class UserCommands extends EventEmitter {
    */
   async handleHeli(serverId, args, context) {
     if (!this.eventMonitorService) {
-      return '❌ 事件监控服务未启用';
+      return cmd('heli', 'error');
     }
 
-    const eventData = this.eventMonitorService.eventData.get(serverId);
-    if (!eventData || !eventData.patrolHelicopter) {
-      return '🚁 直升机: 未刷新';
+    try {
+      const eventData = this.eventMonitorService.eventData.get(serverId);
+      if (!eventData || !eventData.patrolHeliTracers || eventData.patrolHeliTracers.size === 0) {
+        return cmd('heli', 'empty');
+      }
+
+      // 获取第一架直升机的位置
+      const firstTracer = eventData.patrolHeliTracers.values().next().value;
+      if (!firstTracer || firstTracer.length === 0) {
+        return cmd('heli', 'empty');
+      }
+
+      const lastPos = firstTracer[firstTracer.length - 1];
+      const mapSize = this.rustPlusService.getMapSize(serverId);
+      const { formatPosition } = await import('../utils/coordinates.js');
+      const position = formatPosition(lastPos.x, lastPos.y, mapSize);
+
+      return cmd('heli', 'msg', { position });
+
+    } catch (error) {
+      logger.error('获取直升机状态失败:', error);
+      return cmd('heli', 'error');
     }
-
-    const heli = eventData.patrolHelicopter;
-    if (!heli.active) {
-      return '🚁 直升机: 未刷新';
-    }
-
-    const now = Date.now();
-    const elapsed = Math.floor((now - heli.spawnTime) / 1000 / 60);
-
-    return `🚁 直升机: 已刷新 ${elapsed} 分钟`;
   }
 
   /**
@@ -662,27 +676,35 @@ class UserCommands extends EventEmitter {
    */
   async handleSmallOilRig(serverId, args, context) {
     if (!this.eventMonitorService) {
-      return '❌ 事件监控服务未启用';
+      return cmd('small', 'error');
     }
 
-    const eventData = this.eventMonitorService.eventData.get(serverId);
-    if (!eventData || !eventData.smallOilRig) {
-      return '🛢️ 小型油井: 未触发';
-    }
+    try {
+      const eventData = this.eventMonitorService.eventData.get(serverId);
+      if (!eventData || !eventData.lastEvents) {
+        return cmd('small', 'empty');
+      }
 
-    const rig = eventData.smallOilRig;
-    if (!rig.triggered) {
-      return '🛢️ 小型油井: 未触发';
-    }
+      const { smallOilRigTriggered, smallOilRigCrateUnlocked } = eventData.lastEvents;
+      if (!smallOilRigTriggered) {
+        return cmd('small', 'empty');
+      }
 
-    const now = Date.now();
-    const elapsed = Math.floor((now - rig.triggerTime) / 1000 / 60);
-    const unlockIn = 15 - elapsed; // 15分钟解锁
+      const now = Date.now();
+      const minutesSince = Math.floor((now - smallOilRigTriggered) / 1000 / 60);
+      const minutesLeft = 15 - minutesSince; // 15分钟解锁
 
-    if (unlockIn > 0) {
-      return `🛢️ 小型油井: 已触发，${unlockIn} 分钟后解锁`;
-    } else {
-      return `🛢️ 小型油井: 已解锁`;
+      if (smallOilRigCrateUnlocked && smallOilRigCrateUnlocked > smallOilRigTriggered) {
+        return cmd('small', 'msg_unlocked', { minutesSince });
+      } else if (minutesLeft > 0) {
+        return cmd('small', 'msg_triggered', { minutesSince, minutesLeft });
+      } else {
+        return cmd('small', 'msg_unlocked', { minutesSince });
+      }
+
+    } catch (error) {
+      logger.error('获取小油井状态失败:', error);
+      return cmd('small', 'error');
     }
   }
 
@@ -691,27 +713,35 @@ class UserCommands extends EventEmitter {
    */
   async handleLargeOilRig(serverId, args, context) {
     if (!this.eventMonitorService) {
-      return '❌ 事件监控服务未启用';
+      return cmd('large', 'error');
     }
 
-    const eventData = this.eventMonitorService.eventData.get(serverId);
-    if (!eventData || !eventData.largeOilRig) {
-      return '🛢️ 大型油井: 未触发';
-    }
+    try {
+      const eventData = this.eventMonitorService.eventData.get(serverId);
+      if (!eventData || !eventData.lastEvents) {
+        return cmd('large', 'empty');
+      }
 
-    const rig = eventData.largeOilRig;
-    if (!rig.triggered) {
-      return '🛢️ 大型油井: 未触发';
-    }
+      const { largeOilRigTriggered, largeOilRigCrateUnlocked } = eventData.lastEvents;
+      if (!largeOilRigTriggered) {
+        return cmd('large', 'empty');
+      }
 
-    const now = Date.now();
-    const elapsed = Math.floor((now - rig.triggerTime) / 1000 / 60);
-    const unlockIn = 15 - elapsed; // 15分钟解锁
+      const now = Date.now();
+      const minutesSince = Math.floor((now - largeOilRigTriggered) / 1000 / 60);
+      const minutesLeft = 15 - minutesSince; // 15分钟解锁
 
-    if (unlockIn > 0) {
-      return `🛢️ 大型油井: 已触发，${unlockIn} 分钟后解锁`;
-    } else {
-      return `🛢️ 大型油井: 已解锁`;
+      if (largeOilRigCrateUnlocked && largeOilRigCrateUnlocked > largeOilRigTriggered) {
+        return cmd('large', 'msg_unlocked', { minutesSince });
+      } else if (minutesLeft > 0) {
+        return cmd('large', 'msg_triggered', { minutesSince, minutesLeft });
+      } else {
+        return cmd('large', 'msg_unlocked', { minutesSince });
+      }
+
+    } catch (error) {
+      logger.error('获取大油井状态失败:', error);
+      return cmd('large', 'error');
     }
   }
 }

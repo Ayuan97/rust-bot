@@ -1,0 +1,192 @@
+﻿{
+  "notifications": {
+    "death": "`{playerName}` 鍦?{position} 姝讳骸",
+    "player_died": "`{name}` 鍦?{position} 姝讳骸",
+    "player_online": "`{name}` 涓婄嚎浜?,
+    "player_online_with_duration": "`{name}` 涓婄嚎浜?涓婃娓哥帺鏄湪 {duration} 鍓?,
+    "player_offline": "`{name}` 涓嬬嚎浜?,
+    "player_offline_with_duration": "`{name}` 鍦ㄦ父鐜╀簡 {duration} 鍚庝笅绾夸簡",
+    "player_afk": "`{name}` 宸茬寮€ {minutes} 鍒嗛挓",
+    "player_afk_returned": "`{name}` 鍦ㄦ寕鏈?{duration} 鍚庡洖鏉ヤ簡",
+
+    "small_oil_triggered": " 灏忔补浜曞凡瑙﹀彂 {direction} 閲嶅瀷绉戝瀹舵鍦ㄨ刀鏉?,
+    "small_oil_warning": "灏忔补浜曠瀛愯繕鏈?{minutes} 鍒嗛挓瑙ｉ攣",
+    "small_oil_unlocked": "灏忔补浜曠瀛愬凡瑙ｉ攣锛?,
+
+    "large_oil_triggered": " 澶ф补浜曞凡瑙﹀彂 {direction} 閲嶅瀷绉戝瀹舵鍦ㄨ刀鏉?,
+    "large_oil_warning": "澶ф补浜曠瀛愯繕鏈?{minutes} 鍒嗛挓瑙ｉ攣",
+    "large_oil_unlocked": "澶ф补浜曠瀛愬凡瑙ｉ攣锛?,
+
+    "heli_spawn": "姝﹁鐩村崌鏈哄嚭鐜?{direction} 鍧愭爣 {position}",
+    "heli_spawn_predicted": "姝﹁鐩村崌鏈哄嚭鐜?{direction} 鍧愭爣 {position} 棰勬祴鍒拌揪 {predicted}",
+    "heli_downed": "姝﹁鐩村崌鏈鸿鍑昏惤 {direction} 鍧愭爣 {position}",
+    "heli_leave": "姝﹁鐩村崌鏈哄凡绂诲紑 {direction}",
+
+    "crate_spawn": "涓婇攣绠卞瓙鍑虹幇 鍧愭爣 {position}",
+
+    "raid_detected": "妫€娴嬪埌琚嚮 鍧愭爣 {position} ({count}娆＄垎鐐?",
+
+    "vending_new": "鏂板敭璐ф満鍑虹幇 鍧愭爣 {position} 鍏眥count}浠跺晢鍝?,
+    "vending_important": " 閲嶈鐗╁搧: {items}",
+
+    "cargo_spawn": "璐ц埞鍑虹幇 {direction} 鍧愭爣 {position}",
+    "cargo_spawn_direction_only": "璐ц埞鍑虹幇 {direction}",
+    "cargo_dock": "璐ц埞宸插仠闈犳腐鍙?鍧愭爣 {position}",
+    "cargo_egress_warning": "璐ц埞灏嗗湪 {minutes} 鍒嗛挓鍚嶦gress 鍧愭爣 {position}",
+    "cargo_egress": "璐ц埞Egress 杈愬皠蹇€熶笂鍗?鍧愭爣 {position} 璧剁揣鎾ょ锛?,
+    "cargo_leave": "璐ц埞宸茬寮€鍦板浘",
+
+    "ch47_spawn": "CH47鍑虹幇 鍧愭爣 {position}",
+    "ch47_leave": "CH47宸茬寮€"
+  },
+  "commands": {
+    "help": {
+      "desc": "鏄剧ず鎵€鏈夊懡浠?,
+      "msg": "鍙敤鍛戒护: {commands}"
+    },
+    "smalllast": {
+      "desc": "涓婃灏忔补浜曚簨浠舵椂闂?,
+      "msg": "灏忔补浜曚笂娆¤Е鍙? {time}",
+      "empty": "灏忔补浜曟殏鏃犺Е鍙戣褰?,
+      "error": "[閿欒] 鑾峰彇灏忔补浜曚俊鎭け璐?
+    },
+    "largelast": {
+      "desc": "涓婃澶ф补浜曚簨浠舵椂闂?,
+      "msg": "澶ф补浜曚笂娆¤Е鍙? {time}",
+      "empty": "澶ф补浜曟殏鏃犺Е鍙戣褰?,
+      "error": "[閿欒] 鑾峰彇澶ф补浜曚俊鎭け璐?
+    },
+    "helilast": {
+      "desc": "涓婃姝﹁鐩村崌鏈轰簨浠舵椂闂?,
+      "msg": "姝﹁鐩村崌鏈烘渶杩戜竴娆℃椿鍔? {time}",
+      "empty": "姝﹁鐩村崌鏈烘殏鏃犺褰?,
+      "error": "鑾峰彇鐩村崌鏈轰俊鎭け璐?
+    },
+    "time": {
+      "desc": "鏄剧ず娓告垙鏃堕棿",
+      "msg_night": "褰撳墠娓告垙鏃堕棿涓?{time} 璺濈澶╅粦鍦?{minutes} 鍒嗛挓鍚?,
+      "msg_day": "褰撳墠娓告垙鏃堕棿涓?{time} 璺濈澶╀寒鍦?{minutes} 鍒嗛挓鍚?,
+      "error": "鑾峰彇鏃堕棿澶辫触"
+    },
+    "pop": {
+      "desc": "鏄剧ず鏈嶅姟鍣ㄤ汉鏁?,
+      "msg": "褰撳墠鍦ㄧ嚎浜烘暟涓?{current}/{max} 鏈€杩戝崐灏忔椂{change}",
+      "msg_no_change": "褰撳墠鍦ㄧ嚎浜烘暟涓?{current}/{max}",
+      "msg_queued": "褰撳墠鍦ㄧ嚎浜烘暟涓?{current}/{max} 鎺掗槦浜烘暟 {queued}",
+      "error": "[閿欒] 鑾峰彇浜烘暟澶辫触"
+    },
+    "team": {
+      "desc": "鏄剧ず闃熶紞淇℃伅",
+      "msg": "鍥㈤槦鎬讳汉鏁?{total}) 鍦ㄧ嚎({online}) 绂荤嚎({offline})",
+      "afk_info": "鎸傛満浜哄憳({count}浜? {list}",
+      "afk_player": "`{name}`(鎸傛満{minutes}鍒嗛挓)",
+      "empty": "闃熶紞涓虹┖",
+      "error": "[閿欒] 鑾峰彇闃熶紞澶辫触"
+    },
+    "leader": {
+      "desc": "绉讳氦闃熼暱鏉冮檺",
+      "msg": "宸插皢闃熼暱绉讳氦缁?`{name}`",
+      "already": "`{name}` 宸茬粡鏄槦闀夸簡",
+      "not_found": "鎵句笉鍒扮帺瀹? `{name}`",
+      "not_leader": "绉讳氦澶辫触: 褰撳墠璐﹀彿涓嶆槸闃熼暱",
+      "error": "绉讳氦闃熼暱澶辫触"
+    },
+    "online": {
+      "desc": "鏄剧ず鍦ㄧ嚎闃熷弸",
+      "msg": "闃熶紞 {online}/{total} 鍦ㄧ嚎 {list}",
+      "empty": "闃熶紞涓虹┖",
+      "error": "[閿欒] 鑾峰彇闃熶紞澶辫触"
+    },
+    "afk": {
+      "desc": "鏄剧ず鎸傛満闃熷弸",
+      "msg": "鎸傛満({count}) {list}",
+      "item": "`{name}`({duration})",
+      "empty": "褰撳墠娌℃湁鎸傛満闃熷弸",
+      "error": "[閿欒] 鑾峰彇闃熶紞澶辫触"
+    },
+    "cargo": {
+      "desc": "鏌ヨ璐ц埞鐘舵€?,
+      "msg": "璐ц埞浣嶄簬 {position} 杩樻湁 {minutes} 鍒嗛挓鍗冲皢绂诲紑",
+      "msg_active": "璐ц埞浣嶄簬 {position}",
+      "empty": "褰撳墠鍦板浘涓婃病鏈夎揣鑸?,
+      "error": "[閿欒] 鑾峰彇璐ц埞淇℃伅澶辫触"
+    },
+    "small": {
+      "desc": "鏌ヨ灏忔补浜曠姸鎬?,
+      "msg_triggered": "灏忔补浜曞凡瑙﹀彂 ({minutesSince}鍒嗛挓鍓? 绠卞瓙杩樻湁 {minutesLeft} 鍒嗛挓瑙ｉ攣",
+      "msg_unlocked": "灏忔补浜?{minutesSince} 鍒嗛挓鍓嶈Е鍙?绠卞瓙宸茶В閿?,
+      "msg_old": "灏忔补浜曚笂娆¤Е鍙? {minutesSince} 鍒嗛挓鍓?,
+      "empty": "灏忔补浜曞皻鏈瑙﹀彂",
+      "error": "[閿欒] 鑾峰彇灏忔补浜曚俊鎭け璐?
+    },
+    "large": {
+      "desc": "鏌ヨ澶ф补浜曠姸鎬?,
+      "msg_triggered": "澶ф补浜曞凡瑙﹀彂 ({minutesSince}鍒嗛挓鍓? 绠卞瓙杩樻湁 {minutesLeft} 鍒嗛挓瑙ｉ攣",
+      "msg_unlocked": "澶ф补浜?{minutesSince} 鍒嗛挓鍓嶈Е鍙?绠卞瓙宸茶В閿?,
+      "msg_old": "澶ф补浜曚笂娆¤Е鍙? {minutesSince} 鍒嗛挓鍓?,
+      "empty": "澶ф补浜曞皻鏈瑙﹀彂",
+      "error": "[閿欒] 鑾峰彇澶ф补浜曚俊鎭け璐?
+    },
+    "heli": {
+      "desc": "鏌ヨ姝﹁鐩村崌鏈虹姸鎬?,
+      "msg": "姝﹁鐩村崌鏈轰綅浜?{position}",
+      "empty": "褰撳墠鍦板浘涓婃病鏈夋瑁呯洿鍗囨満",
+      "error": "鑾峰彇鐩村崌鏈轰俊鎭け璐?
+    },
+    "events": {
+      "desc": "鏌ョ湅鎵€鏈夋椿璺冧簨浠?,
+      "header": "褰撳墠娲昏穬浜嬩欢:",
+      "cargo": "璐ц埞 {position} ({minutes}鍒嗛挓鍚庣寮€)",
+      "cargo_active": "璐ц埞 {position}",
+      "heli": "姝﹁鐩村崌鏈?{position}",
+      "ch47": "CH47 {count}鏋?,
+      "crate": "涓婇攣绠卞瓙 {count}涓?,
+      "small_crate": "灏忔补浜曠瀛?{minutes}鍒嗛挓鍚庤В閿?,
+      "large_crate": "澶ф补浜曠瀛?{minutes}鍒嗛挓鍚庤В閿?,
+      "empty": "褰撳墠娌℃湁娲昏穬浜嬩欢",
+      "error": "[閿欒] 鑾峰彇浜嬩欢淇℃伅澶辫触"
+    },
+    "history": {
+      "desc": "鏌ョ湅鎵€鏈変簨浠跺巻鍙?,
+      "header": "浜嬩欢鍘嗗彶:",
+      "cargo_spawn": "璐ц埞鍒锋柊: {time}",
+      "cargo_leave": "璐ц埞绂诲紑: {time}",
+      "small_triggered": "灏忔补浜曡Е鍙? {time}",
+      "small_unlocked": "灏忔补浜曠瀛愯В閿? {time}",
+      "large_triggered": "澶ф补浜曡Е鍙? {time}",
+      "large_unlocked": "澶ф补浜曠瀛愯В閿? {time}",
+      "heli_spawn": "姝﹁鐩村崌鏈哄埛鏂? {time}",
+      "heli_downed": "姝﹁鐩村崌鏈哄嚮钀? {time}",
+      "heli_leave": "姝﹁鐩村崌鏈虹寮€: {time}",
+      "ch47_spawn": "CH47鍒锋柊: {time}",
+      "crate_spawn": "涓婇攣绠卞瓙鍑虹幇: {time}",
+      "raid": "琚嚮妫€娴? {time}",
+      "empty": "鏆傛棤浜嬩欢鍘嗗彶璁板綍",
+      "error": "[閿欒] 鑾峰彇浜嬩欢鍘嗗彶澶辫触"
+    },
+    "shop": {
+      "desc": "鎼滅储鍞揣鏈虹墿鍝?,
+      "summary": "鍦板浘涓婂叡鏈?{count} 涓敭璐ф満",
+      "found": "鎵惧埌 {count} 涓?{item}:",
+      "not_found": "娌℃湁鎵惧埌 {item}",
+      "empty": "鍦板浘涓婃病鏈夊敭璐ф満",
+      "error": "[閿欒] 鎼滅储鍞揣鏈哄け璐?
+    },
+    "tr": {
+      "desc": "缈昏瘧鏂囨湰",
+      "msg": "[{to}] {result}",
+      "no_text": "鐢ㄦ硶: !tr <璇█> <鏂囨湰>",
+      "lang_not_found": "涓嶆敮鎸佺殑璇█: {lang}",
+      "error": "[閿欒] 缈昏瘧澶辫触"
+    },
+    "trf": {
+      "desc": "鎸囧畾婧愯瑷€缈昏瘧",
+      "msg": "[{from}鈫抺to}] {result}",
+      "no_text": "鐢ㄦ硶: !trf <婧愯瑷€> <鐩爣璇█> <鏂囨湰>",
+      "lang_not_found": "涓嶆敮鎸佺殑璇█: {lang}",
+      "error": "[閿欒] 缈昏瘧澶辫触"
+    },
+    "unknown": "[閿欒] 鏈煡鍛戒护 !{cmd} | 杈撳叆 !help 鏌ョ湅鍛戒护",
+    "error": "[閿欒] 鍛戒护鎵ц澶辫触"
+  }
+}
