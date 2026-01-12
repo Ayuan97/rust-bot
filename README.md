@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-3.0.0-blue.svg" alt="Version" />
+  <img src="https://img.shields.io/badge/version-3.1.0-blue.svg" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D18-green.svg" alt="Node.js" />
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License" />
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Docker-lightgrey.svg" alt="Platform" />
@@ -101,11 +101,19 @@
 ### 🔧 扩展功能
 | 功能 | 说明 |
 |------|------|
-| **管理后台** | 完整的用户管理、订单管理、统计数据、系统监控 |
+| **管理后台** | 幸存者大盘(用户管理)、贸易清单(订单)、信号转发站(代理)、系统诊断(日志) |
 | **售货机搜索** | 搜索地图上所有售货机的物品 |
-| **翻译功能** | 游戏内消息翻译 |
 | **代理支持** | 内置 xray 代理，解决中国大陆连接问题 |
 | **Battlemetrics** | 查看服务器详细信息和玩家排名 |
+
+### 🖥️ 前端视图
+| 视图 | 说明 |
+|------|------|
+| **HUD 作战看板** | 服务器状态、置顶设备拨杆开关、内嵌队伍聊天 |
+| **Device 设备矩阵** | 三类设备卡片（开关/警报/存储）、搜索+置顶、7种自动化模式 |
+| **Team 团队情报** | 16人详情卡片（坐标、活跃度）、排行榜视图 |
+| **Map 战术地图** | 全屏弹窗、缩放平移、队友/标记定位 |
+| **Chat 终端聊天** | 实时消息收发、128字符限制 |
 
 ---
 
@@ -730,8 +738,7 @@ ALL_PROXY=socks5://127.0.0.1:7890
 | 文档 | 说明 |
 |------|------|
 | [Docker 部署指南](DOCKER.md) | Docker 部署详细说明 |
-| [命令使用指南](docs/COMMANDS_GUIDE.md) | 游戏内命令完整说明 |
-| [代理配置指南](docs/PROXY_SETUP.md) | 代理配置详细说明 |
+| [战术 OS 设计规范](docs/TACTICAL_OS_SPEC.md) | UI/UX 设计语言规范 |
 
 ---
 
@@ -775,7 +782,7 @@ SOFTWARE.
 ---
 
 <p align="center">
-  <b>版本:</b> 2.2.0 | <b>更新日期:</b> 2025-12-23
+  <b>版本:</b> 3.1.0 | <b>更新日期:</b> 2026-01-11
 </p>
 
 <p align="center">
