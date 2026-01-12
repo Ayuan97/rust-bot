@@ -4,18 +4,31 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 async function testConnection() {
-    const url = process.env.DATABASE_URL.split('?')[0];
-    console.log('Connecting to:', url);
-
+    console.log('Testing connection with specific config...');
     try {
-        const connection = await mysql.createConnection(process.env.DATABASE_URL);
-        console.log('✅ MySQL2 Connection Successful!');
-        const [rows] = await connection.execute('SELECT COUNT(*) as count FROM users');
-        console.log('Users count:', rows[0].count);
+        // Parse the URL manually or Use an object config
+        const dbUrl = new URL(process.env.DATABASE_URL);
+        const config = {
+            host: dbUrl.hostname,
+            port: parseInt(dbUrl.port),
+            user: dbUrl.username,
+            password: dbUrl.password,
+            database: dbUrl.pathname.slice(1), // remove leading /
+            ssl: false, // Explicitly disable SSL
+            connectTimeout: 10000,
+            debug: true
+        };
+
+        console.log('Config:', { ...config, password: '***' });
+
+        const connection = await mysql.createConnection(config);
+        console.log('✅ MySQL2 Connection Successful (SSL Disabled)!');
+        const [rows] = await connection.execute('SELECT 1 as res');
+        console.log('Query result:', rows);
         await connection.end();
     } catch (error) {
         console.error('❌ MySQL2 Connection Failed:');
-        console.error(error);
+        console.error(error.message);
     }
 }
 
