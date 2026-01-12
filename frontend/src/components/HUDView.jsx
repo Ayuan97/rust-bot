@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { FaSatellite, FaShieldAlt, FaPlus, FaClock, FaUsers, FaSkullCrossbones, FaLock, FaLightbulb, FaDoorOpen, FaCrosshairs, FaFan, FaStar } from 'react-icons/fa';
+import { FaShieldAlt, FaPlus, FaClock, FaUsers, FaSkullCrossbones, FaLock, FaLightbulb, FaDoorOpen, FaCrosshairs, FaFan, FaStar } from 'react-icons/fa';
 import ChatPanel from './ChatPanel';
+import EventTracker from './EventTracker';
 import SubscriptionStatus from './SubscriptionStatus';
 import { getDevices } from '../services/api';
 import socketService from '../services/socket';
@@ -10,7 +11,7 @@ function QuickToggle({ label, active, pro, disabled }) {
     <div className={`flex items-center justify-between p-3 tactic-cut border transition-all ${active ? 'bg-[#cd5241]/10 border-[#cd5241]/30' : 'bg-white/5 border-white/5 opacity-40'} ${disabled ? 'grayscale cursor-not-allowed' : 'hover:bg-white/10'}`}>
       <div className="flex items-center gap-3">
         <div className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-[#a3e635] shadow-[0_0_8px_#a3e635]' : 'bg-gray-800'}`} />
-        <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{label}</span>
+        <span className="text-[11px] font-black text-gray-300 uppercase tracking-widest">{label}</span>
       </div>
       <div className={`w-8 h-4 tactic-cut relative transition-all ${active ? 'bg-[#cd5241]' : 'bg-gray-900 shadow-inner'}`}>
         <div className={`absolute top-0.5 w-3 h-3 bg-white tactic-cut transition-all ${active ? 'right-0.5 shadow-[0_0_5px_white]' : 'left-0.5'}`} />
@@ -40,7 +41,7 @@ function PinnedDeviceToggle({ device, serverId, isReadOnly, onToggle }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-xs font-black uppercase truncate">{device.name}</div>
-          <div className="text-[9px] text-gray-600 font-mono">ID: {device.entityId}</div>
+          <div className="text-[9px] text-gray-500 font-mono">ID: {device.entityId}</div>
         </div>
       </div>
 
@@ -153,41 +154,19 @@ export default function HUDView({ server, teamData, isSubscriptionExpired, onPai
       )}
 
       <div className={`lg:col-span-2 flex flex-col gap-4 ${isDemo ? 'opacity-30' : ''}`}>
-        <div className="flex-1 tactic-border tactic-cut p-1 bg-black/40 relative overflow-hidden">
+        {/* 上半部分：游戏事件追踪 */}
+        <div className="flex-[2] tactic-border tactic-cut p-1 bg-black/40 relative overflow-hidden min-h-0">
           <div className="scanline"></div>
-          <div className="bg-black/40 h-full p-4 flex flex-col relative z-10">
-            <div className="text-xs font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center justify-between border-b border-white/5 pb-2">
-              <div className="flex items-center gap-2">
-                <FaSatellite className={!isDemo ? "text-[#cd5241]" : "text-gray-700"} />
-                实时事件追踪 {isDemo && <span className="text-[9px] text-[#cd5241]/50 ml-2 italic">[ 离线模拟 ]</span>}
-              </div>
-              <div className="text-gray-700 font-mono text-[10px]">链路状态: {server?.connected ? '已连接' : '断开'}</div>
-            </div>
-            <div className="flex-1 flex flex-col min-h-0">
-              <div className="flex-1 font-mono text-[10px] text-gray-600 space-y-1 overflow-y-auto mb-4 opacity-50 custom-scrollbar">
-                <div>{">"} [系统] 正在尝试建立数据链路...</div>
-                {!isDemo ? (
-                  <>
-                    <div>{">"} [信号] 节点 HK-04 活跃: 延迟 42ms</div>
-                    <div className="text-[#cd5241]">{">"} [警告] 智能报警器监控已启动</div>
-                    <div>{">"} [数据] 正在同步团队位置... 已发现 {members.length} 名成员</div>
-                    {members.filter(m => !m.isAlive).map(m => (
-                      <div key={m.steamId} className="text-[#ef4444] font-bold">{">"} [警报] 队友阵亡: {m.name}</div>
-                    ))}
-                  </>
-                ) : (
-                  <>
-                    <div className="text-gray-800 italic">{">"} [离线] 未连接到活跃服务器。</div>
-                    <div className="animate-pulse">{">"} [模拟] 正在广播虚拟信号...</div>
-                    <div>{">"} [模拟] 监测到周边 3 个活跃辐射区</div>
-                    <div className="text-[#a3e635]">{">"} [模拟] 领地柜维护状态: 正常 (72h)</div>
-                  </>
-                )}
-              </div>
-              <div className="flex-[4] min-h-0">
-                <ChatPanel serverId={server?.id} isReadOnly={isSubscriptionExpired || isDemo} />
-              </div>
-            </div>
+          <div className="bg-black/40 h-full p-4 relative z-10">
+            <EventTracker serverId={server?.id} isDemo={isDemo} />
+          </div>
+        </div>
+
+        {/* 下半部分：团队聊天 */}
+        <div className="flex-[3] tactic-border tactic-cut p-1 bg-black/40 relative overflow-hidden min-h-0">
+          <div className="scanline"></div>
+          <div className="bg-black/40 h-full p-4 relative z-10">
+            <ChatPanel serverId={server?.id} isReadOnly={isSubscriptionExpired || isDemo} />
           </div>
         </div>
       </div>
@@ -195,9 +174,9 @@ export default function HUDView({ server, teamData, isSubscriptionExpired, onPai
       <div className={`flex flex-col gap-4 ${isDemo ? 'opacity-30' : ''}`}>
         <div className="tactic-border tactic-cut p-1 bg-black/40">
           <div className="bg-black/40 p-4">
-            <div className="text-xs font-black text-gray-500 uppercase tracking-widest mb-4 flex justify-between items-center">
+            <div className="text-xs font-black text-gray-300 uppercase tracking-widest mb-4 flex justify-between items-center">
               <span>团队动态矩阵</span>
-              <span className={members.some(m => m.isOnline) ? 'text-[#a3e635]' : 'text-gray-500'}>
+              <span className={members.some(m => m.isOnline) ? 'text-[#a3e635] font-bold' : 'text-gray-400'}>
                 {members.filter(m => m.isOnline).length}/{members.length}
               </span>
             </div>
@@ -224,12 +203,12 @@ export default function HUDView({ server, teamData, isSubscriptionExpired, onPai
 
         <div className="tactic-border tactic-cut p-1 bg-black/40 flex-1">
           <div className="bg-black/40 p-6 h-full flex flex-col">
-            <div className="text-xs font-black text-gray-500 uppercase tracking-widest mb-6 italic flex items-center gap-2">
+            <div className="text-xs font-black text-gray-300 uppercase tracking-widest mb-6 italic flex items-center gap-2">
               <FaStar className="text-[#cd5241]" /> 快捷设备控制
             </div>
             <div className="space-y-3 flex-1 overflow-y-auto custom-scrollbar">
               {pinnedDevices.length === 0 ? (
-                <div className="p-4 text-center text-gray-600 text-xs space-y-2">
+                <div className="p-4 text-center text-gray-400 text-xs space-y-2">
                   <div className="text-[#cd5241] font-bold">⭐ 未设置快捷设备</div>
                   <div className="text-[10px] leading-relaxed">
                     在"智能中控"页面点击星标图标<br />

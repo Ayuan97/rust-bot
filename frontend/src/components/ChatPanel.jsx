@@ -16,10 +16,10 @@ function ChatPanel({ serverId, isReadOnly = false }) {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
-  const recentlySentRef = useRef([]); 
-  const isAtBottomRef = useRef(true); 
-  const historyLoadedRef = useRef(false); 
-  const MAX_MESSAGES = 500; 
+  const recentlySentRef = useRef([]);
+  const isAtBottomRef = useRef(true);
+  const historyLoadedRef = useRef(false);
+  const MAX_MESSAGES = 500;
 
   const toast = useToast();
 
@@ -135,18 +135,18 @@ function ChatPanel({ serverId, isReadOnly = false }) {
     <div className="h-full flex flex-col font-mono">
       {/* 战术标题栏 */}
       <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-2">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <FaTerminal className="text-[#cd5241] text-xs" />
-          <h2 className="text-xs font-black uppercase tracking-widest text-gray-500">Team_Comm_Terminal</h2>
-          </div>
-          <button
-            onClick={loadChatHistory}
-            disabled={loadingHistory}
-          className="text-[10px] text-gray-600 hover:text-white flex items-center gap-1 transition-colors uppercase font-bold"
-          >
-            <FaHistory className={loadingHistory ? 'animate-spin' : ''} />
+          <h2 className="text-xs font-black uppercase tracking-widest text-gray-300">Team_Comm_Terminal</h2>
+        </div>
+        <button
+          onClick={loadChatHistory}
+          disabled={loadingHistory}
+          className="text-[10px] text-gray-400 hover:text-white flex items-center gap-1 transition-colors uppercase font-bold"
+        >
+          <FaHistory className={loadingHistory ? 'animate-spin' : ''} />
           {loadingHistory ? 'Syncing...' : 'Sync_History'}
-          </button>
+        </button>
       </div>
 
       {/* 终端消息流 */}
@@ -159,8 +159,8 @@ function ChatPanel({ serverId, isReadOnly = false }) {
         >
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center opacity-20 grayscale">
-               <FaComments className="text-4xl mb-4" />
-               <div className="text-[10px] tracking-[0.5em] uppercase">No_Data_Packets</div>
+              <FaComments className="text-4xl mb-4" />
+              <div className="text-[10px] tracking-[0.5em] uppercase">No_Data_Packets</div>
             </div>
           ) : (
             messages.map((msg) => (
@@ -172,15 +172,14 @@ function ChatPanel({ serverId, isReadOnly = false }) {
                   <span className={`font-black uppercase tracking-tighter ${msg.isMe ? 'text-[#cd5241]' : 'text-gray-400'}`}>
                     {msg.isMe ? 'local_user' : msg.name}
                   </span>
-                  <span className="text-[9px] text-gray-700 font-mono">
+                  <span className="text-[9px] text-gray-500 font-mono">
                     [{formatTime(msg.time)}]
                   </span>
                 </div>
-                <div className={`px-3 py-2 tactic-cut max-w-[90%] border ${
-                  msg.isMe
-                    ? 'bg-[#cd5241]/10 border-[#cd5241]/30 text-white'
-                    : 'bg-white/[0.02] border-white/10 text-gray-300'
-                }`}>
+                <div className={`px-3 py-2 tactic-cut max-w-[90%] border ${msg.isMe
+                  ? 'bg-[#cd5241]/10 border-[#cd5241]/30 text-white'
+                  : 'bg-white/[0.02] border-white/10 text-gray-300'
+                  }`}>
                   <p className="text-xs break-words leading-relaxed whitespace-pre-wrap">{msg.message}</p>
                 </div>
               </div>
@@ -212,23 +211,23 @@ function ChatPanel({ serverId, isReadOnly = false }) {
           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#cd5241] text-xs font-bold">{">"}</div>
           <input
             type="text"
-            className={`w-full pl-8 pr-20 py-3 bg-black/40 border border-white/10 text-xs text-white placeholder-gray-700 outline-none focus:border-[#cd5241]/50 transition-all tactic-cut ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`w-full pl-8 pr-20 py-3 bg-black/40 border border-white/10 text-xs text-white placeholder-gray-500 outline-none focus:border-[#cd5241]/50 transition-all tactic-cut ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
             placeholder={isReadOnly ? "SYSTEM_LOCKED" : "Enter_Tactical_Comm..."}
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             disabled={sending || isReadOnly}
           />
           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-            <span className={`text-[10px] font-mono ${isMessageTooLong ? 'text-red-500' : 'text-gray-600'}`}>
+            <span className={`text-[10px] font-mono ${isMessageTooLong ? 'text-red-500' : 'text-gray-400'}`}>
               {inputMessage.length}
             </span>
-          <button
-            type="submit"
-            disabled={!inputMessage.trim() || sending || isReadOnly}
+            <button
+              type="submit"
+              disabled={!inputMessage.trim() || sending || isReadOnly}
               className={`text-[#cd5241] hover:text-white transition-colors p-1 ${(!inputMessage.trim() || sending || isReadOnly) ? 'opacity-20 grayscale' : ''}`}
-          >
+            >
               <FaPaperPlane className="text-xs" />
-          </button>
+            </button>
           </div>
         </div>
       </form>
