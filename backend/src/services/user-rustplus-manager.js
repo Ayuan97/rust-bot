@@ -238,7 +238,11 @@ class UserRustPlusManager extends EventEmitter {
     for (const key of Array.from(this.cameras.keys())) {
       if (key.startsWith(`${serverId}:`)) {
         const camera = this.cameras.get(key);
-        try { await camera?.unsubscribe?.(); } catch (e) { }
+        try {
+          await camera?.unsubscribe?.();
+        } catch (e) {
+          logger.debug(`相机取消订阅失败 (${key}): ${e.message}`);
+        }
         this.cameras.delete(key);
       }
     }
@@ -278,6 +282,13 @@ class UserRustPlusManager extends EventEmitter {
     if (!config) {
       logger.warn(`⚠️  用户 ${this.userId} 无法重连 ${serverId}：缺少配置信息`);
       return;
+    }
+
+    // 清除已有的重连定时器，防止重复调度
+    const existingTimer = this.reconnectTimers.get(serverId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      this.reconnectTimers.delete(serverId);
     }
 
     const attempts = (this.reconnectAttempts.get(serverId) || 0) + 1;
@@ -883,17 +894,6 @@ class UserRustPlusManager extends EventEmitter {
         value: payload.value,
         capacity: payload.capacity
       });
-
-      /* 移除非受控的警报触发逻辑，改由 UserServiceManager 处理 
-      if (payload.value === true) {
-        this.emit('alarm:triggered', {
-          userId: this.userId,
-          serverId,
-          entityId,
-          time: Date.now()
-        });
-      }
-      */
     }
 
     // 氏族变化

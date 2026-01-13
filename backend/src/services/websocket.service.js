@@ -8,6 +8,7 @@ class WebSocketService {
   constructor() {
     this.io = null;
     this.globalServiceListenersInitialized = false;
+    this.eventListeners = new Map(); // 存储监听器引用以便清理
   }
 
   /**
@@ -447,160 +448,187 @@ class WebSocketService {
     }
     this.globalServiceListenersInitialized = true;
 
+    // 辅助函数：注册监听器并存储引用
+    const addListener = (eventName, handler) => {
+      globalServiceManager.on(eventName, handler);
+      this.eventListeners.set(eventName, handler);
+    };
+
     // === 游戏服务器连接事件 ===
 
-    globalServiceManager.on('server:connected', (data) => {
+    addListener('server:connected', (data) => {
       this.io.to(`user:${data.userId}`).emit('server:connected', data);
     });
 
-    globalServiceManager.on('server:disconnected', (data) => {
+    addListener('server:disconnected', (data) => {
       this.io.to(`user:${data.userId}`).emit('server:disconnected', data);
     });
 
-    globalServiceManager.on('server:error', (data) => {
+    addListener('server:error', (data) => {
       this.io.to(`user:${data.userId}`).emit('server:error', data);
     });
 
-    globalServiceManager.on('server:reconnecting', (data) => {
+    addListener('server:reconnecting', (data) => {
       this.io.to(`user:${data.userId}`).emit('server:reconnecting', data);
     });
 
     // === 游戏事件 (Cargo, Heli, etc.) ===
 
-    globalServiceManager.on('cargo:spawn', (data) => {
+    addListener('cargo:spawn', (data) => {
       this.io.to(`user:${data.userId}`).emit('cargo:spawn', data);
     });
 
-    globalServiceManager.on('cargo:egress', (data) => {
+    addListener('cargo:egress', (data) => {
       this.io.to(`user:${data.userId}`).emit('cargo:egress', data);
     });
 
-    globalServiceManager.on('cargo:dock', (data) => {
+    addListener('cargo:dock', (data) => {
       this.io.to(`user:${data.userId}`).emit('cargo:dock', data);
     });
 
-    globalServiceManager.on('cargo:leave', (data) => {
+    addListener('cargo:leave', (data) => {
       this.io.to(`user:${data.userId}`).emit('cargo:leave', data);
     });
 
-    globalServiceManager.on('heli:spawn', (data) => {
+    addListener('heli:spawn', (data) => {
       this.io.to(`user:${data.userId}`).emit('heli:spawn', data);
     });
 
-    globalServiceManager.on('heli:downed', (data) => {
+    addListener('heli:downed', (data) => {
       this.io.to(`user:${data.userId}`).emit('heli:downed', data);
     });
 
-    globalServiceManager.on('heli:leave', (data) => {
+    addListener('heli:leave', (data) => {
       this.io.to(`user:${data.userId}`).emit('heli:leave', data);
     });
 
-    globalServiceManager.on('player:died', (data) => {
+    addListener('player:died', (data) => {
       this.io.to(`user:${data.userId}`).emit('player:died', data);
     });
 
-    globalServiceManager.on('player:online', (data) => {
+    addListener('player:online', (data) => {
       this.io.to(`user:${data.userId}`).emit('player:online', data);
     });
 
-    globalServiceManager.on('player:offline', (data) => {
+    addListener('player:offline', (data) => {
       this.io.to(`user:${data.userId}`).emit('player:offline', data);
     });
 
-    globalServiceManager.on('player:afk', (data) => {
+    addListener('player:afk', (data) => {
       this.io.to(`user:${data.userId}`).emit('player:afk', data);
     });
 
-    globalServiceManager.on('player:contribution', (data) => {
+    addListener('player:contribution', (data) => {
       this.io.to(`user:${data.userId}`).emit('player:contribution', data);
     });
 
     // === 自动化事件 ===
 
-    globalServiceManager.on('automation:executed', (data) => {
+    addListener('automation:executed', (data) => {
       this.io.to(`user:${data.userId}`).emit('automation:executed', data);
     });
 
     // === 队伍和氏族事件 ===
 
-    globalServiceManager.on('team:message', (data) => {
+    addListener('team:message', (data) => {
       this.io.to(`user:${data.userId}`).emit('team:message', data);
       logger.debug(`💬 [${data.name}]: ${data.message}`);
     });
 
-    globalServiceManager.on('team:changed', (data) => {
+    addListener('team:changed', (data) => {
       this.io.to(`user:${data.userId}`).emit('team:changed', data);
     });
 
-    globalServiceManager.on('clan:changed', (data) => {
+    addListener('clan:changed', (data) => {
       this.io.to(`user:${data.userId}`).emit('clan:changed', data);
     });
 
-    globalServiceManager.on('clan:message', (data) => {
+    addListener('clan:message', (data) => {
       this.io.to(`user:${data.userId}`).emit('clan:message', data);
     });
 
     // === 设备和警报事件 ===
 
-    globalServiceManager.on('entity:changed', (data) => {
+    addListener('entity:changed', (data) => {
       this.io.to(`user:${data.userId}`).emit('entity:changed', data);
     });
 
-    globalServiceManager.on('alarm:triggered', (data) => {
+    addListener('alarm:triggered', (data) => {
       this.io.to(`user:${data.userId}`).emit('alarm:triggered', data);
     });
 
     // === 摄像头事件 ===
 
-    globalServiceManager.on('camera:subscribing', (data) => {
+    addListener('camera:subscribing', (data) => {
       this.io.to(`user:${data.userId}`).emit('camera:subscribing', data);
     });
 
-    globalServiceManager.on('camera:subscribed', (data) => {
+    addListener('camera:subscribed', (data) => {
       this.io.to(`user:${data.userId}`).emit('camera:subscribed', data);
     });
 
-    globalServiceManager.on('camera:unsubscribed', (data) => {
+    addListener('camera:unsubscribed', (data) => {
       this.io.to(`user:${data.userId}`).emit('camera:unsubscribed', data);
     });
 
-    globalServiceManager.on('camera:render', (data) => {
+    addListener('camera:render', (data) => {
       this.io.to(`user:${data.userId}`).emit('camera:render', data);
     });
 
-    globalServiceManager.on('camera:rays', (data) => {
+    addListener('camera:rays', (data) => {
       this.io.to(`user:${data.userId}`).emit('camera:rays', data);
     });
 
     // === FCM 配对事件 ===
 
-    globalServiceManager.on('server:paired', (data) => {
+    addListener('server:paired', (data) => {
       this.io.to(`user:${data.userId}`).emit('server:paired', data);
     });
 
-    globalServiceManager.on('entity:paired', (data) => {
+    addListener('entity:paired', (data) => {
       this.io.to(`user:${data.userId}`).emit('entity:paired', data);
     });
 
-    globalServiceManager.on('fcm:listening', (data) => {
+    addListener('fcm:listening', (data) => {
       this.io.to(`user:${data.userId}`).emit('fcm:listening', data);
     });
 
-    globalServiceManager.on('fcm:stopped', (data) => {
+    addListener('fcm:stopped', (data) => {
       this.io.to(`user:${data.userId}`).emit('fcm:stopped', data);
     });
 
-    globalServiceManager.on('fcm:error', (data) => {
+    addListener('fcm:error', (data) => {
       this.io.to(`user:${data.userId}`).emit('fcm:error', data);
     });
 
     // === 原始消息（调试）===
 
-    globalServiceManager.on('rust:message', (data) => {
+    addListener('rust:message', (data) => {
       this.io.to(`user:${data.userId}`).emit('rust:message', data);
     });
 
     logger.info('✅ GlobalServiceManager 事件监听器已设置（房间隔离模式）');
+  }
+
+  /**
+   * 清理所有事件监听器
+   */
+  cleanup() {
+    // 移除 GlobalServiceManager 上的监听器
+    for (const [eventName, handler] of this.eventListeners) {
+      globalServiceManager.off(eventName, handler);
+    }
+    this.eventListeners.clear();
+    this.globalServiceListenersInitialized = false;
+
+    // 关闭 Socket.IO
+    if (this.io) {
+      this.io.disconnectSockets(true);
+      this.io.close();
+      this.io = null;
+    }
+
+    logger.info('✅ WebSocket 服务已清理');
   }
 
   /**

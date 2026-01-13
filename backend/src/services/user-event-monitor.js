@@ -244,7 +244,9 @@ class UserEventMonitor extends EventEmitter {
     this.pollIntervals.set(`${serverId}:players`, playerInterval);
 
     // 初始刷新一次
-    this.refreshPlayerData(serverId).catch(e => { });
+    this.refreshPlayerData(serverId).catch(e => {
+      logger.debug(`[Steam] 初始刷新玩家数据失败: ${e.message}`);
+    });
   }
 
   /**
@@ -415,7 +417,9 @@ class UserEventMonitor extends EventEmitter {
           if (msg) {
             await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
           }
-        } catch (e) { }
+        } catch (e) {
+          logger.debug(`发送货船刷新通知失败: ${e.message}`);
+        }
       }
 
       // 启动 Egress 计时器
@@ -447,7 +451,9 @@ class UserEventMonitor extends EventEmitter {
               if (msg) {
                 await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
               }
-            } catch (e) { }
+            } catch (e) {
+              logger.debug(`发送货船Egress通知失败: ${e.message}`);
+            }
           }
         }
       );
@@ -478,7 +484,9 @@ class UserEventMonitor extends EventEmitter {
             if (msg) {
               await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
             }
-          } catch (e) { }
+          } catch (e) {
+            logger.debug(`发送货船Egress警告失败: ${e.message}`);
+          }
         }
       });
 
@@ -518,7 +526,9 @@ class UserEventMonitor extends EventEmitter {
           if (msg) {
             await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
           }
-        } catch (e) { }
+        } catch (e) {
+          logger.debug(`发送货船离开通知失败: ${e.message}`);
+        }
       }
 
       EventTimerManager.stopTimer(`cargo_egress_${ship.id}`, serverId);
@@ -577,7 +587,9 @@ class UserEventMonitor extends EventEmitter {
               if (msg) {
                 await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
               }
-            } catch (e) { }
+            } catch (e) {
+              logger.debug(`发送货船停靠通知失败: ${e.message}`);
+            }
           }
 
           eventData.cargoShipDockedStatus.set(ship.id, true);
@@ -646,7 +658,9 @@ class UserEventMonitor extends EventEmitter {
           if (message) {
             await this.rustPlusService.sendTeamMessage(serverId, message);
           }
-        } catch (e) { }
+        } catch (e) {
+          logger.debug(`发送直升机刷新通知失败: ${e.message}`);
+        }
       }
 
       if (!eventData.patrolHeliTracers.has(heli.id)) {
@@ -829,7 +843,9 @@ class UserEventMonitor extends EventEmitter {
               if (msg) {
                 await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
               }
-            } catch (e) { }
+            } catch (e) {
+              logger.debug(`发送玩家死亡通知失败: ${e.message}`);
+            }
           }
         }
 

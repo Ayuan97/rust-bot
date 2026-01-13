@@ -96,6 +96,9 @@ class SocketService {
       });
       this.listeners.clear();
 
+      // 清理连接状态监听器
+      this.connectionListeners.clear();
+
       this.socket.disconnect();
       this.socket = null;
     }

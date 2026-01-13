@@ -414,10 +414,6 @@ class UserServiceManager extends EventEmitter {
         this.emit('automation:executed', data);
       });
 
-      // 6. TODO: 初始化其他服务
-      // this.commandsService = new UserCommandsService(this.userId, this.rustPlusService);
-      // this.dayNightNotifier = new UserDayNightNotifier(this.userId, this.rustPlusService);
-
       console.log(`  ✅ 子服务初始化完成`);
     } catch (error) {
       throw new Error(`初始化子服务失败: ${error.message}`);
