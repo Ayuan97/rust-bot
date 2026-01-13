@@ -9,10 +9,8 @@
  * - 延长用户订阅时间
  */
 
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { v4 as uuidv4 } from 'uuid';
-
-const prisma = new PrismaClient();
 
 // 套餐价格配置 (单位:元)
 const PLAN_PRICES = {

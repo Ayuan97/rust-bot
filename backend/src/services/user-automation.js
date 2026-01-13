@@ -4,10 +4,8 @@
  */
 
 import { EventEmitter } from 'events';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import logger from '../utils/logger.js';
-
-const prisma = new PrismaClient();
 
 // 自动化模式定义（与 Prisma AutoMode 枚举对应）
 export const AutoMode = {

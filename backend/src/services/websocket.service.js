@@ -1,10 +1,8 @@
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import globalServiceManager from './global-manager.service.js';
 import logger from '../utils/logger.js';
-
-const prisma = new PrismaClient();
 
 class WebSocketService {
   constructor() {

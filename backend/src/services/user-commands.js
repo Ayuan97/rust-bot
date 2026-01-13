@@ -4,12 +4,10 @@
  */
 
 import { EventEmitter } from 'events';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import logger from '../utils/logger.js';
 import { parseTimeString } from '../utils/timer.js';
 import { cmd, cmdConfig, formatDuration } from '../utils/messages.js';
-
-const prisma = new PrismaClient();
 
 class UserCommands extends EventEmitter {
   constructor(userId, rustPlusService, eventMonitorService = null) {

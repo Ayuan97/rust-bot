@@ -4,11 +4,10 @@
  */
 
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // 所有路由都需要认证
 router.use(authenticate);

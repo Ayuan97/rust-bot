@@ -4,14 +4,12 @@
  */
 
 import { EventEmitter } from 'events';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import UserRustPlusManager from './user-rustplus-manager.js';
 import UserFCMManager from './user-fcm-manager.js';
 import UserEventMonitor from './user-event-monitor.js';
 import UserAutomation from './user-automation.js';
 import UserCommands from './user-commands.js';
-
-const prisma = new PrismaClient();
 
 class UserServiceManager extends EventEmitter {
   constructor(userId) {

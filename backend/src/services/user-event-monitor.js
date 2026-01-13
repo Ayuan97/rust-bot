@@ -4,7 +4,7 @@
  */
 
 import EventEmitter from 'events';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { AppMarkerType, EventTiming, EventType } from '../utils/event-constants.js';
 import { formatPosition, getDistance } from '../utils/coordinates.js';
 import { notify, formatDuration } from '../utils/messages.js';
@@ -13,8 +13,6 @@ import { getItemName, isImportantItem } from '../utils/item-info.js';
 import { v4 as uuidv4 } from 'uuid';
 import logger from '../utils/logger.js';
 import steamService from './steam.service.js';
-
-const prisma = new PrismaClient();
 
 // 刷新间隔
 const PLAYER_DATA_REFRESH_INTERVAL = 30 * 60 * 1000; // 30分钟刷新一次 Steam 数据

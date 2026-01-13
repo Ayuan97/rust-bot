@@ -4,10 +4,8 @@
  */
 
 import { EventEmitter } from 'events';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import UserServiceManager from './user-service-manager.js';
-
-const prisma = new PrismaClient();
 
 class GlobalServiceManager extends EventEmitter {
   constructor() {
@@ -507,8 +505,6 @@ class GlobalServiceManager extends EventEmitter {
   async refreshAllUserProxySettings() {
     console.log('\n🌐 正在为所有活跃用户同步代理配置...');
     const proxyService = (await import('./proxy.service.js')).default;
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
 
     const proxyConfig = await prisma.proxy_config.findUnique({ where: { id: 1 } });
     const isRunning = proxyService.isRunning;

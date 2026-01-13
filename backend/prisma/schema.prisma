@@ -10,6 +10,7 @@ datasource db {
 model devices {
   id          String           @id
   serverId    String
+  userId      String           // 多租户：用户ID（冗余字段便于查询）
   entityId    Int
   name        String           @db.VarChar(100)
   type        devices_type
@@ -22,22 +23,27 @@ model devices {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime
   servers     servers          @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  users       users            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([serverId, entityId])
   @@index([serverId])
+  @@index([userId])
 }
 
 model event_logs {
   id        String               @id
   serverId  String
+  userId    String               // 多租户：用户ID（冗余字段便于查询）
   eventType event_logs_eventType
   eventData Json
   createdAt DateTime             @default(now())
   servers   servers              @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  users     users                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
   @@index([eventType])
   @@index([serverId])
+  @@index([userId])
 }
 
 model notification_settings {
@@ -129,6 +135,7 @@ model subscriptions {
   id            String                       @id
   userId        String                       @unique
   planType      subscriptions_planType       @default(TRIAL)
+  status        subscriptions_status         @default(ACTIVE)
   startDate     DateTime                     @default(now())
   endDate       DateTime
   amount        Decimal?                     @db.Decimal(10, 2)
@@ -141,6 +148,7 @@ model subscriptions {
 
   @@index([endDate])
   @@index([userId])
+  @@index([status])
 }
 
 model users {
@@ -158,6 +166,8 @@ model users {
   orders                orders[]
   servers               servers[]
   subscriptions         subscriptions?
+  devices               devices[]
+  event_logs            event_logs[]
 
   @@index([email])
   @@index([username])
@@ -268,4 +278,10 @@ enum devices_autoMode {
 enum subscriptions_paymentMethod {
   ALIPAY
   WECHAT
+}
+
+enum subscriptions_status {
+  ACTIVE
+  EXPIRED
+  CANCELLED
 }

@@ -4,13 +4,12 @@
  */
 
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import globalServiceManager from '../services/global-manager.service.js';
 import battlemetricsService from '../services/battlemetrics.service.js';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // 所有路由都需要认证
 router.use(authenticate);

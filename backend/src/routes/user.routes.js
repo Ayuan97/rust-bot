@@ -1,10 +1,9 @@
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import bcrypt from 'bcrypt';
 import { authenticate } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 /**
  * 获取用户订阅信息

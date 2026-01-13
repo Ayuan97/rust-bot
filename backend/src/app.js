@@ -6,6 +6,13 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 
+// 加载环境变量（必须在其他导入之前）
+dotenv.config();
+
+// 环境变量验证
+import { validateEnv } from './utils/env-validator.js';
+validateEnv();
+
 // 新的多租户服务管理器
 import globalServiceManager from './services/global-manager.service.js';
 import websocketService from './services/websocket.service.js';
@@ -20,8 +27,8 @@ import paymentRoutes from './routes/payment.routes.js';
 import userRoutes from './routes/user.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 
-// 加载环境变量
-dotenv.config();
+// 中间件
+import { apiLimiter, authLimiter } from './middleware/rate-limiter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -46,8 +53,11 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// 路由
-app.use('/api/auth', authRoutes);
+// 全局速率限制
+app.use('/api', apiLimiter);
+
+// 路由（认证路由使用更严格的限制）
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);

@@ -6,12 +6,11 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // JWT 过期时间：7天
 const JWT_EXPIRES_IN = '7d';
@@ -124,7 +123,7 @@ router.post('/register', async (req, res) => {
     // 生成 JWT token
     const token = jwt.sign(
       { userId: user.id },
-      process.env.JWT_SECRET || 'your-secret-key',
+      process.env.JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
 
@@ -217,7 +216,7 @@ router.post('/login', async (req, res) => {
     // 生成 JWT token
     const token = jwt.sign(
       { userId: user.id },
-      process.env.JWT_SECRET || 'your-secret-key',
+      process.env.JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
 

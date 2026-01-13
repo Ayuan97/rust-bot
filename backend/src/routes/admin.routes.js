@@ -5,11 +5,10 @@
 
 import express from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import globalServiceManager from '../services/global-manager.service.js';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // 所有管理接口都需要管理员权限
 router.use(authenticate, requireAdmin);

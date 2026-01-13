@@ -4,9 +4,7 @@
  */
 
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';
 
 /**
  * 验证 JWT Token
@@ -36,7 +34,7 @@ export const authenticate = async (req, res, next) => {
     const token = parts[1];
 
     // 验证 token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // 从数据库获取用户信息
     const user = await prisma.users.findUnique({
