@@ -7,10 +7,9 @@ import express from 'express';
 import AndroidFCM from '@liamcottle/push-receiver/src/android/fcm.js';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
-import { createLogger } from '../utils/logger.js';
+import logger from '../utils/logger.js';
 
 const router = express.Router();
-const logger = createLogger('fcm-api');
 
 // Rust+ App 配置 (来自 rustplus.js)
 const RUSTPLUS_CONFIG = {
