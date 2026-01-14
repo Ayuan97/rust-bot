@@ -239,8 +239,8 @@ function App() {
       {/* 左侧导航轨 (Navigation Rail) */}
       <nav className="w-20 flex flex-col items-center py-8 bg-[#090a0c] border-r border-white/5 z-50">
         <div className="mb-12">
-          <div className="w-12 h-12 bg-[#cd5241] tactic-cut flex items-center justify-center shadow-lg shadow-[#cd5241]/20">
-            <FaSatellite className="text-white text-xl animate-pulse" />
+          <div className="w-12 h-12 p-1 bg-[#cd5241] tactic-cut flex items-center justify-center shadow-lg shadow-[#cd5241]/20">
+            <img src="/logo.png" alt="Rust+ Logo" className="w-full h-full object-contain filter drop-shadow-md" />
           </div>
         </div>
 
