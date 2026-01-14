@@ -189,6 +189,89 @@
         .copy-feedback.show {
             opacity: 1;
         }
+
+        /* 过期时间样式 */
+        .expire-info {
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .expire-icon {
+            font-size: 18px;
+        }
+
+        .expire-info strong {
+            color: #ffc107;
+        }
+
+        .expire-days {
+            margin-left: auto;
+            background: rgba(255, 193, 7, 0.2);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #ffc107;
+        }
+
+        .expire-info.expired {
+            background: rgba(233, 69, 96, 0.1);
+            border-color: rgba(233, 69, 96, 0.3);
+        }
+
+        .expire-info.expired strong,
+        .expire-info.expired .expire-days {
+            color: #e94560;
+        }
+
+        /* 凭证项样式 */
+        .credential-item {
+            margin-bottom: 16px;
+            text-align: left;
+        }
+
+        .credential-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .credential-header .label {
+            margin-bottom: 0;
+        }
+
+        .copy-btn {
+            background: rgba(0, 217, 160, 0.2);
+            border: 1px solid rgba(0, 217, 160, 0.3);
+            color: #00d9a0;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: rgba(0, 217, 160, 0.3);
+        }
+
+        .copy-btn.copied {
+            background: #00d9a0;
+            color: #000;
+        }
+
+        .token-box.single-line {
+            max-height: none;
+            overflow: visible;
+            padding: 12px;
+        }
     </style>
 </head>
 
@@ -210,23 +293,51 @@
         <!-- 成功状态 -->
         <div class="card hidden" id="successState">
             <h1>✅ 凭证获取成功!</h1>
-            <p class="subtitle">你的 Rust+ 凭证已准备就绪</p>
+            <p class="subtitle">复制以下凭证到程序中使用</p>
 
-            <div class="label">Rust+ 配置 JSON</div>
-            <div class="token-box" id="fullCredentialsDisplay"></div>
+            <!-- 过期时间提示 -->
+            <div class="expire-info" id="expireInfo">
+                <span class="expire-icon">⏰</span>
+                <span>有效期至: <strong id="expireDate">-</strong></span>
+                <span class="expire-days" id="expireDays"></span>
+            </div>
+
+            <!-- 程序需要的凭证格式 -->
+            <div class="credential-item">
+                <div class="credential-header">
+                    <span class="label">GCM Android ID</span>
+                    <button class="copy-btn" data-target="gcmAndroidId">复制</button>
+                </div>
+                <div class="token-box" id="gcmAndroidId"></div>
+            </div>
+
+            <div class="credential-item">
+                <div class="credential-header">
+                    <span class="label">GCM Security Token</span>
+                    <button class="copy-btn" data-target="gcmSecurityToken">复制</button>
+                </div>
+                <div class="token-box" id="gcmSecurityToken"></div>
+            </div>
+
+            <div class="credential-item">
+                <div class="credential-header">
+                    <span class="label">Steam ID</span>
+                    <button class="copy-btn" data-target="steamId">复制</button>
+                </div>
+                <div class="token-box" id="steamId"></div>
+            </div>
 
             <div class="actions">
-                <button class="btn btn-primary" id="copyAllBtn">📋 复制全部配置</button>
+                <button class="btn btn-primary" id="copyProgramFormat">📋 复制程序格式</button>
                 <button class="btn btn-secondary" id="downloadBtn">💾 下载配置</button>
             </div>
 
             <div class="details-section">
                 <details>
-                    <summary>查看详细信息</summary>
-                    <div class="label">Steam Auth Token</div>
-                    <div class="token-box mini" id="tokenDisplay"></div>
-                    <div class="label">FCM Token</div>
-                    <div class="token-box mini" id="fcmTokenDisplay"></div>
+                    <summary>查看完整 JSON 配置</summary>
+                    <div class="label">完整配置 (调试用)</div>
+                    <div class="token-box mini" id="fullCredentialsDisplay"></div>
+                    <button class="btn btn-secondary" id="copyAllBtn" style="margin-top: 10px; width: 100%;">📋 复制完整 JSON</button>
                 </details>
             </div>
         </div>

@@ -5,6 +5,7 @@
 
 let credentials = null;
 let fullConfig = null;
+let programFormat = null; // 程序需要的格式
 
 // 初始化
 document.addEventListener('DOMContentLoaded', async () => {
@@ -37,7 +38,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 设置按钮事件
     document.getElementById('copyAllBtn').addEventListener('click', copyAll);
+    document.getElementById('copyProgramFormat').addEventListener('click', copyProgramFormatJson);
     document.getElementById('downloadBtn').addEventListener('click', downloadCredentials);
+
+    // 单项复制按钮
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const targetId = e.target.dataset.target;
+            const targetEl = document.getElementById(targetId);
+            if (targetEl) {
+                await navigator.clipboard.writeText(targetEl.textContent);
+                e.target.textContent = '已复制';
+                e.target.classList.add('copied');
+                setTimeout(() => {
+                    e.target.textContent = '复制';
+                    e.target.classList.remove('copied');
+                }, 1500);
+            }
+        });
+    });
 });
 
 async function startFCMRegistration() {
@@ -85,42 +104,48 @@ function showSuccess(fcmCreds, expoToken) {
     document.getElementById('registeringState').classList.add('hidden');
     document.getElementById('successState').classList.remove('hidden');
 
-    // 1. 显示完整配置 JSON
-    document.getElementById('fullCredentialsDisplay').textContent = JSON.stringify(fullConfig, null, 2);
+    // 计算过期时间 (FCM 凭证通常 7 天有效)
+    const issuedDate = new Date();
+    const expireDate = new Date(issuedDate.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-    // 2. 解析 Token 获取日期信息（用于生成 rustplusplus 命令格式）
-    try {
-        const tokenParts = credentials.authToken.split('.');
-        if (tokenParts.length >= 2) {
-            const payload = JSON.parse(atob(tokenParts[0])); // Rust+ token payload 实际上是在第一部分
-            // 注意：Rust+ token 格式有点特殊，可能是 header.payload.signature 或者 payload.signature
-            // 实际观察日志: eyJzdGVhbUlkIj... 是 standard JWT header/payload 结构
+    // 生成程序需要的格式
+    programFormat = {
+        gcm_android_id: String(fcmCreds.gcm.androidId),
+        gcm_security_token: String(fcmCreds.gcm.securityToken),
+        steam_id: credentials.steamId,
+        fcm_token: fcmCreds.fcm.token,
+        auth_token: credentials.authToken,
+        issued_date: issuedDate.toISOString(),
+        expire_date: expireDate.toISOString()
+    };
 
-            // 尝试生成命令格式
-            const commandFormat = `/credentials add gcm_android_id:${fcmCreds.gcm.androidId} gcm_security_token:${fcmCreds.gcm.securityToken} steam_id:${fullConfig.steam_id}`;
+    // 1. 显示主要凭证字段
+    document.getElementById('gcmAndroidId').textContent = programFormat.gcm_android_id;
+    document.getElementById('gcmSecurityToken').textContent = programFormat.gcm_security_token;
+    document.getElementById('steamId').textContent = programFormat.steam_id;
 
-            // 添加到页面显示（可选）
-            const cmdBox = document.createElement('div');
-            cmdBox.className = 'token-box mini';
-            cmdBox.style.marginTop = '10px';
-            cmdBox.textContent = commandFormat;
+    // 2. 显示过期时间
+    const expireDateStr = expireDate.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    document.getElementById('expireDate').textContent = expireDateStr;
 
-            const cmdLabel = document.createElement('div');
-            cmdLabel.className = 'label';
-            cmdLabel.style.marginTop = '15px';
-            cmdLabel.textContent = 'RustPlusPlus Bot 命令格式';
-
-            const detailsSection = document.querySelector('.details-section details');
-            detailsSection.appendChild(cmdLabel);
-            detailsSection.appendChild(cmdBox);
-        }
-    } catch (e) {
-        console.warn('解析 token 失败:', e);
+    // 计算剩余天数
+    const daysLeft = Math.ceil((expireDate - new Date()) / (24 * 60 * 60 * 1000));
+    const expireDaysEl = document.getElementById('expireDays');
+    if (daysLeft > 0) {
+        expireDaysEl.textContent = `剩余 ${daysLeft} 天`;
+    } else {
+        expireDaysEl.textContent = '已过期';
+        document.getElementById('expireInfo').classList.add('expired');
     }
 
-    // 显示详细信息
-    document.getElementById('tokenDisplay').textContent = credentials.authToken;
-    document.getElementById('fcmTokenDisplay').textContent = fcmCreds.fcm.token;
+    // 3. 完整配置放到详情里
+    document.getElementById('fullCredentialsDisplay').textContent = JSON.stringify(fullConfig, null, 2);
 }
 
 function showError(message) {
@@ -137,14 +162,21 @@ async function copyAll() {
     showCopyFeedback();
 }
 
+async function copyProgramFormatJson() {
+    if (!programFormat) return;
+    const json = JSON.stringify(programFormat, null, 2);
+    await navigator.clipboard.writeText(json);
+    showCopyFeedback('程序格式已复制!');
+}
+
 function downloadCredentials() {
-    if (!fullConfig) return;
-    const json = JSON.stringify(fullConfig, null, 2);
+    if (!programFormat) return;
+    const json = JSON.stringify(programFormat, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'rustplus_config.json';
+    a.download = `rustplus_credentials_${programFormat.steam_id}.json`;
     a.click();
     URL.revokeObjectURL(url);
     showCopyFeedback('已下载!');

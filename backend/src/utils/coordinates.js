@@ -53,17 +53,20 @@ function getGridPosLettersX(x, mapSize) {
 
 /**
  * 获取 Y 坐标对应的网格数字（0-29）
+ * 参考 rustplusplus 实现，使用循环遍历确保边界处理一致
  */
 function getGridPosNumberY(y, mapSize) {
   const numberOfGrids = Math.floor(mapSize / GRID_DIAMETER);
-  const index = Math.floor(y / GRID_DIAMETER);
 
-  if (index < 0 || index >= numberOfGrids) {
-    return null;
+  let counter = 1;
+  for (let startGrid = 0; startGrid < mapSize; startGrid += GRID_DIAMETER) {
+    if (y >= startGrid && y <= (startGrid + GRID_DIAMETER)) {
+      return numberOfGrids - counter;
+    }
+    counter++;
   }
 
-  // Y轴反转：0 (底部) -> numberOfGrids - 1
-  return numberOfGrids - 1 - index;
+  return null;
 }
 
 /**
