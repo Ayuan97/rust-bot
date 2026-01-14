@@ -170,7 +170,7 @@ function App() {
 
   // 计算倒计时
   const wipeCountdown = useMemo(() => {
-    if (!wipeInfo?.nextWipe) return '128:45:12'; // 默认值
+    if (!activeServer || !wipeInfo?.nextWipe) return '--:--:--'; // 无服务器或无数据时显示占位符
     const next = new Date(wipeInfo.nextWipe).getTime();
     const now = new Date().getTime();
     const diff = next - now;
@@ -180,7 +180,7 @@ function App() {
     const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     const s = Math.floor((diff % (1000 * 60)) / 1000);
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  }, [wipeInfo, Math.floor(Date.now() / 10000)]); // 每10秒更新一次
+  }, [activeServer, wipeInfo, Math.floor(Date.now() / 10000)]); // 每10秒更新一次
 
   // --- Render Views ---
   const renderView = () => {
@@ -237,27 +237,36 @@ function App() {
       {alertLevel === 'critical' && <div className="alert-pulse" />}
 
       {/* 左侧导航轨 (Navigation Rail) */}
-      <nav className="w-20 flex flex-col items-center py-8 bg-[#090a0c] border-r border-white/5 z-50">
-        <div className="mb-12">
+      <nav className="w-20 h-full flex flex-col items-center py-6 bg-[#090a0c] border-r border-white/5 z-50 shrink-0">
+        <div className="mb-8">
           <div className="w-12 h-12 p-1 bg-[#cd5241] tactic-cut flex items-center justify-center shadow-lg shadow-[#cd5241]/20">
             <img src="/logo.svg" alt="Rust+ Logo" className="w-full h-full object-contain filter drop-shadow-md" />
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col gap-6">
+        <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
           <NavIcon id="hud" icon={<FaTerminal />} active={activeView} onClick={setActiveView} label="基地概览" />
           <NavIcon id="team" icon={<FaUsers />} active={activeView} onClick={setActiveView} label="队友动态" />
           <NavIcon id="devices" icon={<FaCogs />} active={activeView} onClick={setActiveView} label="智能中控" />
-          <div className="h-px w-8 bg-white/5 mx-auto my-2" />
+          <div className="h-px w-8 bg-white/5 mx-auto my-1" />
           <NavIcon id="settings" icon={<FaCog />} active={activeView} onClick={setActiveView} label="预警配置" />
           {user?.isAdmin && (
             <NavIcon id="admin" icon={<FaTools />} active={activeView} onClick={setActiveView} label="领地柜总控" />
           )}
         </div>
 
-        <div className="mt-auto flex flex-col gap-6">
-          <button onClick={logout} className="p-3 text-gray-600 hover:text-[#ef4444] transition-colors" title="退出系统">
-            <FaSignOutAlt />
+        <div className="mt-auto pt-4 flex flex-col gap-3 items-center shrink-0">
+          {/* 用户名 */}
+          <div className="text-[9px] text-gray-600 font-bold uppercase tracking-wider truncate max-w-[60px]" title={user?.username}>
+            {user?.username}
+          </div>
+          {/* 退出按钮 */}
+          <button
+            onClick={logout}
+            className="group w-10 h-10 tactic-cut bg-white/5 hover:bg-[#ef4444]/20 flex items-center justify-center transition-all"
+            title="退出登录"
+          >
+            <FaSignOutAlt className="text-gray-600 group-hover:text-[#ef4444] transition-colors" />
           </button>
         </div>
       </nav>

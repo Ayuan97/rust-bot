@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi, userApi, paymentApi } from '../services/auth';
-import { FaTerminal, FaShieldAlt, FaUserSecret, FaHistory, FaLock, FaSkull, FaArrowLeft, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
+import { useAuth } from '../context/AuthContext';
+import { FaTerminal, FaShieldAlt, FaUserSecret, FaHistory, FaLock, FaSkull, FaArrowLeft, FaCheckCircle, FaExclamationTriangle, FaSignOutAlt } from 'react-icons/fa';
 
 export default function AccountPage() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [activeTab, setActiveTab] = useState('profile'); 
   const [user, setUser] = useState(null);
   const [subscription, setSubscription] = useState(null);
@@ -82,9 +84,18 @@ export default function AccountPage() {
               <p className="text-[10px] text-gray-600 uppercase tracking-[0.4em]">个人身份识别与授权记录</p>
             </div>
           </div>
-          <div className="text-right">
-             <div className="text-[10px] font-bold text-[#cd5241] uppercase">状态: 正在服役</div>
-             <div className="text-[8px] text-gray-700 font-mono mt-1 uppercase">识别号: {user?.id?.slice(0,8) || 'Unknown'}</div>
+          <div className="flex items-center gap-6">
+            <div className="text-right hidden sm:block">
+               <div className="text-[10px] font-bold text-[#cd5241] uppercase">状态: 正在服役</div>
+               <div className="text-[8px] text-gray-700 font-mono mt-1 uppercase">识别号: {user?.id?.slice(0,8) || 'Unknown'}</div>
+            </div>
+            <button
+              onClick={logout}
+              className="w-10 h-10 tactic-cut border border-white/10 flex items-center justify-center hover:bg-[#ef4444]/20 hover:border-[#ef4444]/50 transition-all group"
+              title="退出登录"
+            >
+              <FaSignOutAlt className="text-xs text-gray-500 group-hover:text-[#ef4444]" />
+            </button>
           </div>
         </header>
 

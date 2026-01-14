@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { paymentApi } from '../services/auth';
-import { FaTerminal, FaShieldAlt, FaBoxOpen, FaQrcode, FaCheckCircle, FaArrowLeft, FaSatellite } from 'react-icons/fa';
+import { useAuth } from '../context/AuthContext';
+import { FaTerminal, FaShieldAlt, FaBoxOpen, FaQrcode, FaCheckCircle, FaArrowLeft, FaSatellite, FaSignOutAlt } from 'react-icons/fa';
 
 const PLANS = {
   MONTHLY: { name: '月度特权', price: 29, duration: 30, description: '基础远程监控', level: '基础版' },
@@ -11,6 +12,7 @@ const PLANS = {
 
 export default function PaymentPage() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState('MONTHLY');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -69,9 +71,18 @@ export default function PaymentPage() {
             <p className="text-[10px] text-gray-600 uppercase tracking-[0.4em] font-bold">获取 24/7 基地报警与远程控制权限</p>
           </div>
         </div>
-        <div className="hidden md:flex gap-6 text-[10px] font-bold text-gray-500 uppercase">
-          <span>安全连接: 已加密</span>
-          <span>节点: HK-PAY-01</span>
+        <div className="flex items-center gap-6">
+          <div className="hidden md:flex gap-6 text-[10px] font-bold text-gray-500 uppercase">
+            <span>安全连接: 已加密</span>
+            <span>节点: HK-PAY-01</span>
+          </div>
+          <button
+            onClick={logout}
+            className="w-10 h-10 tactic-cut border border-white/10 flex items-center justify-center hover:bg-[#ef4444]/20 hover:border-[#ef4444]/50 transition-all group"
+            title="退出登录"
+          >
+            <FaSignOutAlt className="text-xs text-gray-500 group-hover:text-[#ef4444]" />
+          </button>
         </div>
       </header>
 
