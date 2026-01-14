@@ -68,7 +68,7 @@ router.put('/users/:id/adjust', async (req, res) => {
     // 3. 调整服务时间
     if (daysDelta !== undefined && daysDelta !== 0) {
       const sub = user.subscriptions;
-      let currentEndDate = sub && sub.endDate > new Date() ? new sub.endDate : new Date();
+      let currentEndDate = sub && sub.endDate > new Date() ? sub.endDate : new Date();
       const newEndDate = new Date(currentEndDate.getTime() + parseInt(daysDelta) * 24 * 60 * 60 * 1000);
 
       await prisma.subscriptions.update({

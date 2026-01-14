@@ -1,7 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import socketService from '../services/socket';
+import api from '../services/api';
 
 const AuthContext = createContext(null);
+
+// 订阅状态刷新间隔：5 分钟
+const SUBSCRIPTION_REFRESH_INTERVAL = 5 * 60 * 1000;
 
 /**
  * 解析 JWT token（不验证签名，仅解码）
@@ -53,6 +57,8 @@ export const AuthProvider = ({ children }) => {
     return null;
   });
 
+  const refreshingRef = useRef(false);
+
   const logout = useCallback(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -60,6 +66,41 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     window.location.href = '/login';
   }, []);
+
+  // 刷新用户信息（从服务器获取最新订阅状态）
+  const refreshUser = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    if (!token || isTokenExpired(token) || refreshingRef.current) return;
+
+    refreshingRef.current = true;
+    try {
+      const response = await api.get('/auth/me');
+      if (response.data.success) {
+        const newUserData = response.data.data;
+        // 更新 localStorage 和 state
+        localStorage.setItem('user', JSON.stringify(newUserData));
+        setUser(newUserData);
+      }
+    } catch (error) {
+      // 静默失败，不影响用户体验
+      console.warn('刷新用户信息失败:', error.message);
+    } finally {
+      refreshingRef.current = false;
+    }
+  }, []);
+
+  // 定期刷新订阅状态
+  useEffect(() => {
+    if (!user) return;
+
+    // 立即刷新一次
+    refreshUser();
+
+    // 每 5 分钟刷新一次
+    const interval = setInterval(refreshUser, SUBSCRIPTION_REFRESH_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [user?.id, refreshUser]);
 
   // 定期检查 token 是否过期
   useEffect(() => {
@@ -139,6 +180,7 @@ export const AuthProvider = ({ children }) => {
       user,
       setUser,
       logout,
+      refreshUser,
       isTokenExpired,
       isSubscriptionExpired,
       subscriptionDaysLeft
