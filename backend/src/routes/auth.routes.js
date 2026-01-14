@@ -81,10 +81,7 @@ router.post('/register', async (req, res) => {
     // 加密密码
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
-    // 创建用户和试用订阅（7天）
-    const trialEndDate = new Date();
-    trialEndDate.setDate(trialEndDate.getDate() + 7);
-
+    // 创建用户（无有效订阅，需管理员审核后赠送时长）
     const user = await prisma.users.create({
       data: {
         id: uuidv4(),
@@ -94,7 +91,7 @@ router.post('/register', async (req, res) => {
           create: {
             id: uuidv4(),
             planType: 'TRIAL',
-            endDate: trialEndDate,
+            endDate: new Date(), // 到期时间为当前，等待管理员审核
             updatedAt: new Date()
           }
         },

@@ -42,6 +42,16 @@ export default function SubscriptionStatus() {
   };
 
   const getStatusColor = () => {
+    // 判断是否为未激活状态（startDate 和 endDate 几乎相同）
+    const startDate = subscription?.startDate ? new Date(subscription.startDate) : null;
+    const endDate = subscription?.endDate ? new Date(subscription.endDate) : null;
+    const isNotActivated = startDate && endDate &&
+      Math.abs(endDate.getTime() - startDate.getTime()) < 60000;
+
+    if (isNotActivated) {
+      return 'text-gray-400 bg-gray-500/10 border-gray-500/50';
+    }
+
     const daysRemaining = calculateDaysRemaining();
 
     if (daysRemaining === 0 || subscription?.status !== 'ACTIVE') {
@@ -54,6 +64,16 @@ export default function SubscriptionStatus() {
   };
 
   const getStatusText = () => {
+    // 判断是否为未激活状态（startDate 和 endDate 几乎相同）
+    const startDate = subscription?.startDate ? new Date(subscription.startDate) : null;
+    const endDate = subscription?.endDate ? new Date(subscription.endDate) : null;
+    const isNotActivated = startDate && endDate &&
+      Math.abs(endDate.getTime() - startDate.getTime()) < 60000;
+
+    if (isNotActivated) {
+      return '未激活';
+    }
+
     if (subscription?.status !== 'ACTIVE') {
       return '已过期';
     }
@@ -132,6 +152,12 @@ export default function SubscriptionStatus() {
   const isExpiringSoon = daysRemaining <= 7 && subscription.status === 'ACTIVE';
   const isExpired = daysRemaining === 0 || subscription.status !== 'ACTIVE';
 
+  // 判断是否为未激活状态
+  const startDate = subscription?.startDate ? new Date(subscription.startDate) : null;
+  const endDate = subscription?.endDate ? new Date(subscription.endDate) : null;
+  const isNotActivated = startDate && endDate &&
+    Math.abs(endDate.getTime() - startDate.getTime()) < 60000;
+
   return (
     <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
       {/* 标题 */}
@@ -148,35 +174,39 @@ export default function SubscriptionStatus() {
       <div className="space-y-3 mb-6">
         <div className="flex justify-between items-center">
           <span className="text-gray-400">当前套餐:</span>
-          <span className="text-white font-medium">{getPlanName()}</span>
+          <span className="text-white font-medium">{isNotActivated ? '未订阅' : getPlanName()}</span>
         </div>
 
-        <div className="flex justify-between items-center">
-          <span className="text-gray-400">开始日期:</span>
-          <span className="text-white">{formatDate(subscription.startDate)}</span>
-        </div>
+        {!isNotActivated && (
+          <>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-400">开始日期:</span>
+              <span className="text-white">{formatDate(subscription.startDate)}</span>
+            </div>
 
-        <div className="flex justify-between items-center">
-          <span className="text-gray-400">到期日期:</span>
-          <span className="text-white">{formatDate(subscription.endDate)}</span>
-        </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-400">到期日期:</span>
+              <span className="text-white">{formatDate(subscription.endDate)}</span>
+            </div>
 
-        {subscription.status === 'ACTIVE' && (
-          <div className="flex justify-between items-center">
-            <span className="text-gray-400">剩余时间:</span>
-            <span className={`font-medium ${
-              isExpired ? 'text-red-400' :
-              isExpiringSoon ? 'text-yellow-400' :
-              'text-green-400'
-            }`}>
-              {daysRemaining} 天
-            </span>
-          </div>
+            {subscription.status === 'ACTIVE' && (
+              <div className="flex justify-between items-center">
+                <span className="text-gray-400">剩余时间:</span>
+                <span className={`font-medium ${
+                  isExpired ? 'text-red-400' :
+                  isExpiringSoon ? 'text-yellow-400' :
+                  'text-green-400'
+                }`}>
+                  {daysRemaining} 天
+                </span>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* 进度条 */}
-      {subscription.status === 'ACTIVE' && (
+      {/* 进度条 - 未激活时不显示 */}
+      {subscription.status === 'ACTIVE' && !isNotActivated && (
         <div className="mb-6">
           <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
             <div
@@ -194,7 +224,15 @@ export default function SubscriptionStatus() {
       )}
 
       {/* 提示信息 */}
-      {isExpired && (
+      {isNotActivated && (
+        <div className="mb-4 p-3 bg-gray-500/10 border border-gray-500/50 rounded-lg">
+          <p className="text-gray-400 text-sm text-center">
+            您尚未订阅，订阅后即可使用全部功能
+          </p>
+        </div>
+      )}
+
+      {isExpired && !isNotActivated && (
         <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 rounded-lg">
           <p className="text-red-400 text-sm text-center">
             您的订阅已过期，请续费以继续使用服务
@@ -202,7 +240,7 @@ export default function SubscriptionStatus() {
         </div>
       )}
 
-      {isExpiringSoon && !isExpired && (
+      {isExpiringSoon && !isExpired && !isNotActivated && (
         <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/50 rounded-lg">
           <p className="text-yellow-400 text-sm text-center">
             您的订阅即将到期，建议尽快续费
@@ -210,16 +248,16 @@ export default function SubscriptionStatus() {
         </div>
       )}
 
-      {/* 续费按钮 */}
+      {/* 订阅/续费按钮 */}
       <button
         onClick={() => navigate('/payment')}
         className={`w-full py-3 px-4 rounded-lg font-medium text-white transition-colors ${
-          isExpired || isExpiringSoon
+          isExpired || isExpiringSoon || isNotActivated
             ? 'bg-blue-600 hover:bg-blue-700'
             : 'bg-gray-700 hover:bg-gray-600'
         }`}
       >
-        {isExpired ? '立即续费' : isExpiringSoon ? '续费延长' : '续费'}
+        {isNotActivated ? '立即订阅' : isExpired ? '立即续费' : isExpiringSoon ? '续费延长' : '续费'}
       </button>
     </div>
   );
