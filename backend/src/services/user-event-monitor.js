@@ -149,6 +149,7 @@ class UserEventMonitor extends EventEmitter {
         data: {
           id: uuidv4(),
           serverId,
+          userId: this.userId,
           eventType: prismaEventType,
           eventData: typeof eventData === 'string' ? eventData : JSON.stringify(eventData),
           createdAt: new Date()
