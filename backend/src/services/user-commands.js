@@ -8,6 +8,9 @@ import prisma from '../lib/prisma.js';
 import logger from '../utils/logger.js';
 import { parseTimeString } from '../utils/timer.js';
 import { cmd, cmdConfig, formatDuration } from '../utils/messages.js';
+import { getItemName, searchItems } from '../utils/item-info.js';
+import { AppMarkerType } from '../utils/event-constants.js';
+import { formatPosition } from '../utils/coordinates.js';
 
 class UserCommands extends EventEmitter {
   constructor(userId, rustPlusService, eventMonitorService = null) {
@@ -130,6 +133,15 @@ class UserCommands extends EventEmitter {
       usage: '!large',
       handler: async (serverId, args, context) => {
         return this.handleLargeOilRig(serverId, args, context);
+      }
+    });
+
+    // 售货机搜索命令
+    this.registerCommand('shop', {
+      description: '搜索售货机物品',
+      usage: '!shop <物品名>',
+      handler: async (serverId, args, context) => {
+        return this.handleShop(serverId, args, context);
       }
     });
   }
@@ -429,6 +441,7 @@ class UserCommands extends EventEmitter {
     lines.push('  !team - 队伍统计');
     lines.push('  !online - 在线队友');
     lines.push('  !afk - 挂机队友');
+    lines.push('  !shop <物品> - 搜索售货机');
 
     // 事件命令
     if (this.eventMonitorService) {
@@ -774,11 +787,94 @@ class UserCommands extends EventEmitter {
   }
 
   /**
+   * !shop - 搜索售货机物品
+   */
+  async handleShop(serverId, args, context) {
+    try {
+      const mapSize = this.rustPlusService.getMapSize(serverId);
+      const response = await this.rustPlusService.getMapMarkers(serverId);
+      const markers = response.markers || [];
+
+      // 过滤售货机
+      const vendingMachines = markers.filter(m => m.type === AppMarkerType.VendingMachine);
+
+      if (vendingMachines.length === 0) {
+        return cmd('shop', 'empty');
+      }
+
+      // 如果没有搜索参数，显示统计
+      if (args.length === 0) {
+        return cmd('shop', 'summary', { count: vendingMachines.length });
+      }
+
+      // 搜索物品
+      const searchTerm = args.join(' ');
+      const matchingItemIds = searchItems(searchTerm);
+
+      if (matchingItemIds.length === 0) {
+        return cmd('shop', 'not_found', { item: searchTerm });
+      }
+
+      // 在售货机中搜索匹配的物品
+      const results = [];
+      const matchingIdSet = new Set(matchingItemIds.slice(0, 10)); // 只取前10个匹配结果
+
+      for (const vm of vendingMachines) {
+        if (!vm.sellOrders || vm.sellOrders.length === 0) continue;
+
+        for (const order of vm.sellOrders) {
+          if (matchingIdSet.has(String(order.itemId))) {
+            const position = formatPosition(vm.x, vm.y, mapSize);
+            const itemName = getItemName(order.itemId);
+            const currencyName = getItemName(order.currencyId);
+
+            results.push({
+              position,
+              itemName,
+              quantity: order.quantity,
+              cost: order.costPerItem,
+              currencyName,
+              stock: order.amountInStock,
+              vmName: vm.name || '售货机'
+            });
+          }
+        }
+      }
+
+      if (results.length === 0) {
+        return cmd('shop', 'not_found', { item: searchTerm });
+      }
+
+      // 格式化输出（限制结果数量，避免消息过长）
+      const maxResults = 5;
+      const displayResults = results.slice(0, maxResults);
+      const itemName = getItemName(matchingItemIds[0]);
+
+      let output = cmd('shop', 'found', { count: results.length, item: itemName }) + '\n';
+
+      for (const r of displayResults) {
+        output += `${r.position}: ${r.quantity}x ${r.cost}${r.currencyName} (库存${r.stock})\n`;
+      }
+
+      if (results.length > maxResults) {
+        output += `...还有 ${results.length - maxResults} 个结果`;
+      }
+
+      return output.trim();
+
+    } catch (error) {
+      logger.error('搜索售货机失败:', error);
+      return cmd('shop', 'error');
+    }
+  }
+
+  /**
    * 销毁服务，清理资源
    */
   destroy() {
     this.commands.clear();
     this.deviceCommandsCache.clear();
+    this.timeCache.clear();
     this.removeAllListeners();
     logger.debug(`👤 UserCommands 已销毁 (userId: ${this.userId})`);
   }

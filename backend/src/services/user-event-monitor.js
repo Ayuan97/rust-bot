@@ -806,13 +806,31 @@ class UserEventMonitor extends EventEmitter {
       // 检测成员变化（完整实现类似原 EventMonitorService）
       // 这里简化实现，重点是添加 userId 到所有事件
 
-      // 检测玩家死亡示例
+      // 检测玩家状态变化
       for (const member of teamInfo.members) {
         const steamId = member.steamId?.toString();
         if (!steamId) continue;
 
         const oldState = eventData.teamMembers.get(steamId);
-        if (!oldState) continue;
+
+        // 新成员加入队伍 - 动态添加到 teamMembers
+        if (!oldState) {
+          logger.server(serverId, `👥 新成员加入队伍: ${member.name}`);
+          eventData.teamMembers.set(steamId, {
+            name: member.name,
+            x: member.x,
+            y: member.y,
+            isOnline: member.isOnline,
+            isAlive: member.isAlive,
+            deathTime: member.deathTime,
+            spawnTime: member.spawnTime,
+            lastMovement: now,
+            afkSeconds: 0,
+            lastOnlineTime: member.isOnline ? now : null,
+            lastOfflineTime: member.isOnline ? null : now
+          });
+          continue;
+        }
 
         const position = formatPosition(member.x, member.y, mapSize, true, false, monuments);
 

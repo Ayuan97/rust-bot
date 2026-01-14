@@ -353,6 +353,24 @@ router.delete('/:id', async (req, res) => {
 // ============================================================
 
 /**
+ * GET /api/servers/:id/team
+ * 获取基础队伍信息
+ */
+router.get('/:id/team', async (req, res) => {
+  try {
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (!rustPlusService || !rustPlusService.isConnected(req.params.id)) {
+      return res.status(400).json({ success: false, error: '服务器未连接' });
+    }
+
+    const teamInfo = await rustPlusService.getTeamInfo(req.params.id);
+    res.json({ success: true, teamInfo });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/servers/:id/team-detailed
  * 获取增强型队伍信息（包含 Steam 头像、封禁状态和今日贡献）
  */
