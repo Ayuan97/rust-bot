@@ -1,91 +1,48 @@
-# Rust+ Credentials Helper
+# Rust+ Credentials Helper 浏览器插件
 
-一个帮助获取 Rust+ FCM 凭证的 Edge/Chrome 浏览器插件。
+这是一个用于自动获取 Rust+ 凭证的 Chrome/Edge 浏览器扩展。
+
+它解决了手动获取 Rust+ 凭证的两个核心问题：
+1. **Steam 登录与 Token 捕获**：自动处理 Facepunch 登录页面的认证数据。
+2. **FCM 注册**：直接与 `api.rustplusplus.com` 通信，获取 Google FCM 推送凭证。
 
 ## 功能
 
-- 🔐 自动完成 FCM 设备注册
-- 🎮 Steam 账号授权
-- 📋 一键复制凭证
-- 💾 下载凭证 JSON 文件
+- **一键登录**：点击插件按钮直接跳转 Steam 登录。
+- **自动捕获**：集成 Content Script，在 Steam 登录完成后自动捕获 `rustplus-auth-token`。
+- **自动注册 FCM**：使用捕获的 Token 自动注册 FCM 设备。
+- **格式化输出**：直接生成 Rust+ Web Dashboard 所需的完整 JSON 配置，以及 RustPlusPlus Bot 所需的命令格式。
 
-## 安装
+## 安装方法
 
-### 开发模式加载
+1. 打开浏览器扩展管理页面：
+   - Chrome: `chrome://extensions/`
+   - Edge: `edge://extensions/`
+2. 开启右上角的 **"开发者模式"**。
+3. 点击 **"加载已解压的扩展程序"**。
+4. 选择本项目中的 `browser-extension` 文件夹。
 
-1. 打开 Edge 浏览器，访问 `edge://extensions/`
-2. 开启右上角的 **开发人员模式**
-3. 点击 **加载解压缩的扩展**
-4. 选择 `browser-extension` 文件夹
+## 使用步骤
 
-### Chrome 安装
+1. 点击浏览器右上角的 Rust+ 插件图标。
+2. 点击 **"🔐 使用 Steam 登录"** 按钮。
+3. 在新弹出的标签页中完成 Steam 登录授权。
+4. 登录成功后，插件会自动跳转到结果页面。
+5. 等待 FCM 注册完成（通常只需几秒）。
+6. 分别复制 **完整配置 JSON** (用于 Dashboard) 或 **命令** (用于 Discord Bot)。
 
-1. 打开 Chrome 浏览器，访问 `chrome://extensions/`
-2. 开启右上角的 **开发者模式**
-3. 点击 **加载已解压的扩展程序**
-4. 选择 `browser-extension` 文件夹
+## 安全说明
 
-## 使用
+本插件代码完全开源，所有数据仅用于：
+1. 本地存储（`chrome.storage.local`）用于在页面间传递数据。
+2. 发送至 `api.rustplusplus.com` 用于注册 FCM（这是 Rust+ 社区广泛使用的公共 API）。
+3. 你的 Rust+ Auth Token 和 Steam ID 仅显示在结果页面供你复制，不会发送给任何第三方服务器（除了 FCM 注册过程需要验证）。
 
-### 前提条件
+## 目录结构
 
-1. 确保后端服务正在运行 (`npm run dev` in `backend/`)
-2. 后端服务默认地址: `http://localhost:3000`
-
-### 获取凭证
-
-1. 点击浏览器工具栏中的插件图标
-2. 点击 **开始获取凭证** 按钮
-3. 等待 FCM 注册完成（第 1 步）
-4. 在打开的新标签页中用 Steam 账号登录
-5. 登录成功后凭证会自动获取
-6. 复制或下载凭证 JSON
-
-### 高级设置
-
-如果后端服务不在默认地址，可以在插件设置中修改：
-
-1. 点击 **⚙️ 高级设置**
-2. 输入后端 API 地址
-3. 点击 **保存**
-
-## 文件结构
-
-```
-browser-extension/
-├── manifest.json      # 插件配置（Manifest V3）
-├── popup.html         # 弹窗 UI
-├── popup.css          # 弹窗样式
-├── popup.js           # 弹窗逻辑
-├── background.js      # 后台 Service Worker
-├── content.js         # 页面注入脚本
-├── inject.js          # ReactNativeWebView 拦截
-└── icons/             # 插件图标
-    ├── icon16.png
-    ├── icon48.png
-    └── icon128.png
-```
-
-## 工作原理
-
-1. **FCM 注册**: 插件调用后端 API，后端使用 `@liamcottle/push-receiver` 完成 FCM 设备注册
-2. **Steam 登录**: 打开 Rust+ 官方登录页面，通过注入脚本拦截 `ReactNativeWebView.postMessage` 获取 auth token
-3. **Rust+ 注册**: 将 FCM token 和 Steam auth token 提交到 Facepunch API 完成配对
-4. **凭证展示**: 将完整凭证展示给用户，支持复制和下载
-
-## 故障排除
-
-### FCM 注册失败
-
-- 检查后端服务是否运行
-- 检查后端是否可以访问 Google FCM（可能需要代理）
-
-### Steam 登录超时
-
-- 确保浏览器允许弹窗
-- 登录超时为 5 分钟，请在此时间内完成登录
-
-### 无法捕获 Auth Token
-
-- 刷新 Rust+ 登录页面后重试
-- 确保插件内容脚本正确注入（检查控制台日志）
+- `manifest.json`: 插件配置文件
+- `background.js`: 后台服务，处理消息传递
+- `content.js`: 注入到 Facepunch 页面，负责捕获 Token
+- `inject.js`: 注入到页面上下文，绕过 CSP 限制捕获 ReactNativeWebView 消息
+- `popup.html` & `popup-simple.js`: 插件弹窗界面
+- `result.html` & `result.js`: 结果展示与 FCM 注册逻辑

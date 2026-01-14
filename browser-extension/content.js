@@ -1,51 +1,74 @@
 /**
  * Rust+ Credentials Helper - Content Script
- * 注入到 Rust+ 页面，捕获 Auth Token
+ * 注入外部脚本文件到 Rust+ 页面，捕获 Auth Token
  */
 
 (function () {
     'use strict';
 
-    // Prevent multiple injections
-    if (window.__rustPlusCredentialsHelper) {
-        return;
-    }
+    // 防止重复注入
+    if (window.__rustPlusCredentialsHelper) return;
     window.__rustPlusCredentialsHelper = true;
 
-    console.log('[Rust+ Credentials Helper] Content script loaded');
+    console.log('[Rust+ Helper] Content script loaded:', window.location.href);
 
-    // Inject the page script to intercept ReactNativeWebView.postMessage
-    const script = document.createElement('script');
-    script.src = chrome.runtime.getURL('inject.js');
-    script.onload = function () {
-        this.remove();
-    };
-    (document.head || document.documentElement).appendChild(script);
+    // 注入外部脚本（绕过 CSP）
+    function injectScript() {
+        const script = document.createElement('script');
+        script.src = chrome.runtime.getURL('inject.js');
+        script.onload = function () {
+            console.log('[Rust+ Helper] inject.js 已加载');
+            this.remove(); // 加载后移除 script 标签
+        };
+        script.onerror = function () {
+            console.error('[Rust+ Helper] inject.js 加载失败');
+        };
 
-    // Listen for messages from injected script
-    window.addEventListener('message', (event) => {
-        // Only accept messages from same origin
-        if (event.source !== window) return;
+        // 尽早注入
+        (document.head || document.documentElement).appendChild(script);
+    }
 
-        if (event.data && event.data.type === 'RUSTPLUS_AUTH_DATA') {
-            console.log('[Rust+ Credentials Helper] Received auth data from page');
+    // 监听来自注入脚本的事件
+    window.addEventListener('__rustplus_auth__', function (e) {
+        console.log('[Rust+ Helper] 收到 auth 事件');
 
-            // Send to background/popup
-            chrome.runtime.sendMessage({
-                type: 'RUSTPLUS_AUTH_TOKEN',
-                authToken: event.data.authToken,
-                steamId: event.data.steamId
-            });
+        try {
+            const message = e.detail?.message;
+            if (!message) return;
+
+            const data = typeof message === 'string' ? JSON.parse(message) : message;
+            console.log('[Rust+ Helper] 解析的数据:', data);
+
+            if (data && (data.Token || data.token)) {
+                const authToken = data.Token || data.token;
+                const steamId = data.SteamId || data.steamId;
+
+                console.log('[Rust+ Helper] 发送 token 到 background');
+
+                // 发送到 background script
+                chrome.runtime.sendMessage({
+                    type: 'RUSTPLUS_AUTH_TOKEN',
+                    authToken: authToken,
+                    steamId: steamId
+                }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        console.error('[Rust+ Helper] 发送失败:', chrome.runtime.lastError);
+                    } else {
+                        console.log('[Rust+ Helper] 发送成功');
+                    }
+                });
+            }
+        } catch (err) {
+            console.error('[Rust+ Helper] 解析失败:', err);
         }
     });
 
-    // Also try to capture token from URL (older flow)
+    // 检查 URL 参数中的 token
     function checkUrlForToken() {
-        const url = new URL(window.location.href);
-        const token = url.searchParams.get('token');
-
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get('token') || params.get('Token');
         if (token) {
-            console.log('[Rust+ Credentials Helper] Found token in URL');
+            console.log('[Rust+ Helper] 从 URL 获取到 token');
             chrome.runtime.sendMessage({
                 type: 'RUSTPLUS_AUTH_TOKEN',
                 authToken: token
@@ -53,10 +76,13 @@
         }
     }
 
-    // Check immediately and on URL changes
+    // 注入脚本 - 尽早执行
+    injectScript();
+
+    // 检查 URL
     checkUrlForToken();
 
-    // Observe URL changes (for SPA navigation)
+    // 监听 URL 变化
     let lastUrl = location.href;
     new MutationObserver(() => {
         if (location.href !== lastUrl) {

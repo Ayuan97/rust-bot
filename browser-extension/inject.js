@@ -1,87 +1,44 @@
 /**
  * Rust+ Credentials Helper - Injected Page Script
- * 在页面上下文中运行，拦截 ReactNativeWebView.postMessage
- * 
- * Rust+ 官方 App 使用 ReactNativeWebView.postMessage 来传递认证数据，
- * 我们通过定义一个假的 ReactNativeWebView 对象来捕获这些数据。
+ * 此文件作为外部脚本注入到页面上下文中，绕过 CSP 限制
  */
 
 (function () {
     'use strict';
 
-    console.log('[Rust+ Credentials Helper] Injected script loaded');
+    console.log('[Rust+ Inject] Script loaded');
 
-    // Create a mock ReactNativeWebView object
-    // This mimics what the Rust+ mobile app provides
-    window.ReactNativeWebView = {
-        postMessage: function (message) {
-            console.log('[Rust+ Credentials Helper] Intercepted ReactNativeWebView.postMessage:', message);
+    // 标记扩展已安装
+    window.rustPlusExtensionInstalled = true;
 
-            try {
-                // Parse the message
-                const data = typeof message === 'string' ? JSON.parse(message) : message;
+    // 创建 ReactNativeWebView mock
+    function createReactNativeWebView() {
+        window.ReactNativeWebView = {
+            __rustplus__: true,
+            postMessage: function (message) {
+                console.log('[Rust+ Inject] 拦截 ReactNativeWebView.postMessage:', message);
 
-                // Check if this is auth data
-                if (data && (data.token || data.Token || data.authToken || data.AuthToken)) {
-                    const authToken = data.token || data.Token || data.authToken || data.AuthToken;
-                    const steamId = data.steamId || data.SteamId || data.playerId || data.PlayerId;
-
-                    console.log('[Rust+ Credentials Helper] Found auth token!');
-
-                    // Send to content script via window.postMessage
-                    window.postMessage({
-                        type: 'RUSTPLUS_AUTH_DATA',
-                        authToken: authToken,
-                        steamId: steamId
-                    }, '*');
-                }
-            } catch (error) {
-                console.error('[Rust+ Credentials Helper] Error parsing message:', error);
-
-                // Try sending raw message if it looks like a token
-                if (typeof message === 'string' && message.length > 20) {
-                    window.postMessage({
-                        type: 'RUSTPLUS_AUTH_DATA',
-                        authToken: message
-                    }, '*');
-                }
+                // 发送自定义事件到 content script
+                window.dispatchEvent(new CustomEvent('__rustplus_auth__', {
+                    detail: { message: message }
+                }));
             }
-        }
-    };
-
-    // Also override window.postMessage in case it's used differently
-    const originalPostMessage = window.postMessage.bind(window);
-    window.postMessage = function (message, targetOrigin, transfer) {
-        // Check if this might be auth data
-        if (message && typeof message === 'object') {
-            const token = message.token || message.Token || message.authToken || message.AuthToken;
-            if (token) {
-                console.log('[Rust+ Credentials Helper] Intercepted window.postMessage with token');
-                window.dispatchEvent(new CustomEvent('rustplus_auth', { detail: { token } }));
-            }
-        }
-        return originalPostMessage(message, targetOrigin, transfer);
-    };
-
-    // Listen for navigation to success page
-    const observer = new MutationObserver((mutations) => {
-        // Check if we're on a success page or if there's a token displayed
-        const pageText = document.body?.innerText || '';
-
-        // Look for success indicators
-        if (pageText.includes('Successfully') || pageText.includes('成功') ||
-            pageText.includes('Paired') || pageText.includes('已配对')) {
-            console.log('[Rust+ Credentials Helper] Detected success page');
-        }
-    });
-
-    // Start observing when DOM is ready
-    if (document.body) {
-        observer.observe(document.body, { childList: true, subtree: true });
-    } else {
-        document.addEventListener('DOMContentLoaded', () => {
-            observer.observe(document.body, { childList: true, subtree: true });
-        });
+        };
     }
+
+    // 立即创建
+    createReactNativeWebView();
+
+    // 定期检查并重新创建（防止被页面脚本覆盖）
+    setInterval(function () {
+        if (!window.ReactNativeWebView ||
+            !window.ReactNativeWebView.__rustplus__ ||
+            typeof window.ReactNativeWebView.postMessage !== 'function') {
+            console.log('[Rust+ Inject] 重新注入 ReactNativeWebView');
+            createReactNativeWebView();
+        }
+    }, 100);
+
+    console.log('[Rust+ Inject] ReactNativeWebView mock 已创建');
 
 })();

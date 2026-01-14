@@ -3,128 +3,124 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=400, initial-scale=1.0">
     <title>Rust+ Credentials Helper</title>
-    <link rel="stylesheet" href="popup.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 320px;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            padding: 24px;
+        }
+
+        h1 {
+            font-size: 18px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .subtitle {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+            margin-bottom: 12px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #e94560, #ff6b6b);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ccc;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .info {
+            font-size: 11px;
+            color: #666;
+            text-align: center;
+            line-height: 1.5;
+        }
+
+        .status {
+            background: rgba(0, 217, 160, 0.1);
+            border: 1px solid rgba(0, 217, 160, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 16px;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .status.has-token {
+            background: rgba(0, 217, 160, 0.15);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
 </head>
 
 <body>
-    <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <div class="logo">
-                <img src="icons/icon48.png" alt="Rust+">
-                <h1>Rust+ 凭证助手</h1>
-            </div>
-            <span class="version">v1.0.0</span>
-        </header>
+    <h1>🎮 Rust+ Token Helper</h1>
+    <p class="subtitle">获取 Steam Auth Token</p>
 
-        <!-- Status Section -->
-        <section class="status-section" id="statusSection">
-            <div class="status-indicator" id="statusIndicator">
-                <span class="status-dot"></span>
-                <span class="status-text">准备就绪</span>
-            </div>
-        </section>
-
-        <!-- Steps Section -->
-        <section class="steps-section" id="stepsSection">
-            <div class="step" id="step1">
-                <div class="step-number">1</div>
-                <div class="step-content">
-                    <h3>FCM 注册</h3>
-                    <p>向 Google FCM 注册设备</p>
-                </div>
-                <div class="step-status">
-                    <span class="icon-pending">⏳</span>
-                </div>
-            </div>
-
-            <div class="step" id="step2">
-                <div class="step-number">2</div>
-                <div class="step-content">
-                    <h3>Steam 登录</h3>
-                    <p>使用 Steam 账号授权</p>
-                </div>
-                <div class="step-status">
-                    <span class="icon-pending">⏳</span>
-                </div>
-            </div>
-
-            <div class="step" id="step3">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Rust+ 注册</h3>
-                    <p>注册到 Rust+ API</p>
-                </div>
-                <div class="step-status">
-                    <span class="icon-pending">⏳</span>
-                </div>
-            </div>
-        </section>
-
-        <!-- Action Button -->
-        <section class="action-section">
-            <button class="btn-primary" id="startBtn">
-                <span class="btn-icon">🚀</span>
-                开始获取凭证
-            </button>
-        </section>
-
-        <!-- Credentials Section (Hidden by default) -->
-        <section class="credentials-section hidden" id="credentialsSection">
-            <div class="credentials-header">
-                <h3>✅ 凭证获取成功</h3>
-                <button class="btn-small" id="copyBtn">
-                    <span>📋 复制</span>
-                </button>
-            </div>
-            <div class="credentials-preview">
-                <pre id="credentialsPreview"></pre>
-            </div>
-            <div class="credentials-actions">
-                <button class="btn-secondary" id="downloadBtn">
-                    <span>💾 下载 JSON</span>
-                </button>
-                <button class="btn-secondary" id="resetBtn">
-                    <span>🔄 重新获取</span>
-                </button>
-            </div>
-        </section>
-
-        <!-- Error Section (Hidden by default) -->
-        <section class="error-section hidden" id="errorSection">
-            <div class="error-header">
-                <span class="error-icon">❌</span>
-                <h3>获取失败</h3>
-            </div>
-            <p class="error-message" id="errorMessage"></p>
-            <button class="btn-secondary" id="retryBtn">
-                <span>🔄 重试</span>
-            </button>
-        </section>
-
-        <!-- Settings Section -->
-        <section class="settings-section">
-            <details>
-                <summary>⚙️ 高级设置</summary>
-                <div class="settings-content">
-                    <label>
-                        <span>后端 API 地址:</span>
-                        <input type="text" id="apiUrl" placeholder="http://localhost:3000">
-                    </label>
-                    <button class="btn-small" id="saveSettingsBtn">保存</button>
-                </div>
-            </details>
-        </section>
-
-        <!-- Footer -->
-        <footer class="footer">
-            <p>配合 <a href="#" id="dashboardLink">Rust+ Web Dashboard</a> 使用</p>
-        </footer>
+    <div class="status hidden" id="tokenStatus">
+        ✅ 已有 Token - <a href="#" id="viewTokenLink" style="color: #00d9a0;">查看</a>
     </div>
 
-    <script src="popup.js"></script>
+    <button class="btn btn-primary" id="startBtn">
+        🔐 使用 Steam 登录
+    </button>
+
+    <button class="btn btn-secondary hidden" id="viewResultBtn">
+        📋 查看已获取的 Token
+    </button>
+
+    <button class="btn btn-secondary hidden" id="clearBtn">
+        🗑️ 清除已保存的 Token
+    </button>
+
+    <p class="info">
+        登录成功后会自动跳转到结果页面<br>
+        你可以复制 Token 配合 FCM 凭证使用
+    </p>
+
+    <script src="popup-simple.js"></script>
 </body>
 
 </html>
