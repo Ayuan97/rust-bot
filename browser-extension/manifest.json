@@ -14,6 +14,7 @@
     "host_permissions": [
         "https://companion-rust.facepunch.com/*",
         "https://exp.host/*",
+        "https://api.rustplusplus.com/*",
         "http://localhost:3000/*",
         "http://127.0.0.1:3000/*"
     ],

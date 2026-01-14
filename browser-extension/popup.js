@@ -21,7 +21,7 @@ const errorMessage = document.getElementById('errorMessage');
 // State
 let currentCredentials = null;
 let settings = {
-    apiUrl: 'http://localhost:3000'
+    apiUrl: 'https://api.rustplusplus.com'
 };
 
 // Initialize
@@ -130,7 +130,7 @@ async function registerFCM() {
             'Content-Type': 'application/json'
         }
     }).catch(err => {
-        throw new Error('无法连接后端服务。请先启动后端: cd backend && npm run dev');
+        throw new Error('无法连接 API 服务，请检查网络连接');
     });
 
     if (!response.ok) {
