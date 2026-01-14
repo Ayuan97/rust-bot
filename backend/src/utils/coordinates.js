@@ -38,29 +38,32 @@ function isOutsideGridSystem(x, y, correctedMapSize) {
  * 获取 X 坐标对应的网格字母（A, B, C, ...）
  */
 function getGridPosLettersX(x, mapSize) {
-  let counter = 1;
-  for (let startGrid = 0; startGrid < mapSize; startGrid += GRID_DIAMETER) {
-    if (x >= startGrid && x <= (startGrid + GRID_DIAMETER)) {
-      return numberToLetters(counter);
-    }
-    counter++;
-  }
-  return null;
+  // 确保使用修正后的地图大小计算（虽然这里主要用GRID_DIAMETER）
+  // 索引从0开始
+  const index = Math.floor(x / GRID_DIAMETER);
+  if (index < 0) return null; // 或者处理负坐标
+
+  // 检查是否越界（根据传入的 mapSize）
+  // 注意：mapSize 应该是 correctedMapSize
+  const maxIndex = Math.floor(mapSize / GRID_DIAMETER);
+  if (index >= maxIndex) return null;
+
+  return numberToLetters(index + 1);
 }
 
 /**
  * 获取 Y 坐标对应的网格数字（0-29）
  */
 function getGridPosNumberY(y, mapSize) {
-  let counter = 1;
   const numberOfGrids = Math.floor(mapSize / GRID_DIAMETER);
-  for (let startGrid = 0; startGrid < mapSize; startGrid += GRID_DIAMETER) {
-    if (y >= startGrid && y <= (startGrid + GRID_DIAMETER)) {
-      return numberOfGrids - counter;
-    }
-    counter++;
+  const index = Math.floor(y / GRID_DIAMETER);
+
+  if (index < 0 || index >= numberOfGrids) {
+    return null;
   }
-  return null;
+
+  // Y轴反转：0 (底部) -> numberOfGrids - 1
+  return numberOfGrids - 1 - index;
 }
 
 /**
@@ -71,32 +74,11 @@ function getGridPosNumberY(y, mapSize) {
  * @returns {number|null} 子网格编号（1-9）或 null
  */
 function getSubGridNumber(x, y, mapSize) {
-  const correctedMapSize = getCorrectedMapSize(mapSize);
+  if (x < 0 || y < 0 || x > mapSize || y > mapSize) return null;
 
-  // 找到当前网格的起始位置
-  let gridStartX = 0;
-  let counter = 1;
-  for (let startGrid = 0; startGrid < correctedMapSize; startGrid += GRID_DIAMETER) {
-    if (x >= startGrid && x <= (startGrid + GRID_DIAMETER)) {
-      gridStartX = startGrid;
-      break;
-    }
-    counter++;
-  }
-
-  let gridStartY = 0;
-  counter = 1;
-  for (let startGrid = 0; startGrid < correctedMapSize; startGrid += GRID_DIAMETER) {
-    if (y >= startGrid && y <= (startGrid + GRID_DIAMETER)) {
-      gridStartY = startGrid;
-      break;
-    }
-    counter++;
-  }
-
-  // 计算在网格内的相对位置
-  const relativeX = x - gridStartX;
-  const relativeY = y - gridStartY;
+  // 使用 Math.floor 替代循环查找
+  const relativeX = x % GRID_DIAMETER;
+  const relativeY = y % GRID_DIAMETER;
 
   // 计算子网格大小
   const subGridWidth = GRID_DIAMETER / SUB_GRID_SIZE;
@@ -105,18 +87,24 @@ function getSubGridNumber(x, y, mapSize) {
   const subGridX = Math.floor(relativeX / subGridWidth);
   const subGridY = Math.floor(relativeY / subGridWidth);
 
-  // 防止越界
-  const clampedX = Math.min(subGridX, SUB_GRID_SIZE - 1);
-  const clampedY = Math.min(subGridY, SUB_GRID_SIZE - 1);
+  // 防止越界 (理论上 mod 结果不会越界，但为了安全)
+  const clampedX = Math.max(0, Math.min(subGridX, SUB_GRID_SIZE - 1));
+  const clampedY = Math.max(0, Math.min(subGridY, SUB_GRID_SIZE - 1));
 
   // 转换为 1-9 的编号
   // 布局：
   // 7 8 9
   // 4 5 6
   // 1 2 3
-  const subGridNumber = (SUB_GRID_SIZE - 1 - clampedY) * SUB_GRID_SIZE + clampedX + 1;
-
-  return subGridNumber;
+  // 注意：relativeY 越大越靠"上"(Grid内)？
+  // 整个 Grid 系统 Y=0 是底部。
+  // 在 Grid 内部，relativeY=0 也是底部。
+  // 布局 1,2,3 是底部 (row 0)。
+  // 7,8,9 是顶部 (row 2)。
+  // relativeY 增大 -> subGridY 增大 -> 行号增大.
+  // 所以 row = subGridY.
+  // 公式：row * 3 + col + 1.
+  return subGridY * SUB_GRID_SIZE + clampedX + 1;
 }
 
 /**
@@ -131,12 +119,8 @@ function getGridPos(x, y, mapSize, includeSubGrid = false) {
   // 先按报告的地图大小纠正
   let correctedMapSize = getCorrectedMapSize(mapSize);
 
-  // 如果坐标超出纠正后的范围，放大到能覆盖坐标的最近网格边界
-  if (isOutsideGridSystem(x, y, correctedMapSize)) {
-    const maxCoord = Math.max(x, y);
-    const gridsNeeded = Math.ceil((maxCoord + GRID_DIAMETER) / GRID_DIAMETER);
-    correctedMapSize = gridsNeeded * GRID_DIAMETER;
-  }
+  // 移除动态放大逻辑，避免坐标系偏移
+  // if (isOutsideGridSystem(x, y, correctedMapSize)) { ... }
 
   const gridPosLetters = getGridPosLettersX(x, correctedMapSize);
   const gridPosNumber = getGridPosNumberY(y, correctedMapSize);
