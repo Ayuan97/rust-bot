@@ -31,6 +31,10 @@ class UserCommands extends EventEmitter {
     // 设备命令缓存（serverId -> Device[]）
     this.deviceCommandsCache = new Map();
 
+    // 时间配置缓存（serverId -> { dayLengthMinutes, sunrise, sunset, lastTime, lastFetchTime }）
+    this.timeCache = new Map();
+    this.TIME_CACHE_TTL = 5 * 60 * 1000; // 5分钟刷新一次配置
+
     // 注册内置命令
     this.registerBuiltInCommands();
   }
@@ -167,14 +171,15 @@ class UserCommands extends EventEmitter {
         try {
           const response = await command.handler(serverId, args, context);
           if (response) {
-            await this.rustPlusService.sendTeamMessage(serverId, response);
+            await this.rustPlusService.sendTeamMessage(serverId, response, { isBot: true });
           }
           return true;
         } catch (error) {
           logger.error(`❌ 内置命令 "${commandName}" 执行失败:`, error.message);
           await this.rustPlusService.sendTeamMessage(
             serverId,
-            cmd('error', 'msg') || `❌ 命令执行失败`
+            cmd('error', 'msg') || `[错误] 命令执行失败`,
+            { isBot: true }
           );
           return true;
         }
@@ -183,14 +188,15 @@ class UserCommands extends EventEmitter {
       // 2. 尝试设备命令
       const deviceResponse = await this.tryDeviceCommand(serverId, commandName, args, context);
       if (deviceResponse !== null) {
-        await this.rustPlusService.sendTeamMessage(serverId, deviceResponse);
+        await this.rustPlusService.sendTeamMessage(serverId, deviceResponse, { isBot: true });
         return true;
       }
 
       // 3. 未知命令
       await this.rustPlusService.sendTeamMessage(
         serverId,
-        cmd('unknown', 'msg', { cmd: commandName }) || `❓ 未知命令: ${commandName}`
+        cmd('unknown', 'msg', { cmd: commandName }) || `[错误] 未知命令: ${commandName}`,
+        { isBot: true }
       );
       return true;
 
@@ -220,12 +226,12 @@ class UserCommands extends EventEmitter {
       } else if (device.type === 'SWITCH') {
         return await this.handleSwitchCommand(serverId, device, args, context);
       } else {
-        return `❓ 不支持的设备类型: ${device.type}`;
+        return `[错误] 不支持的设备类型: ${device.type}`;
       }
 
     } catch (error) {
       logger.error(`❌ 设备命令执行失败:`, error.message);
-      return `❌ 设备命令执行失败: ${error.message}`;
+      return `[错误] 设备命令执行失败: ${error.message}`;
     }
   }
 
@@ -263,7 +269,7 @@ class UserCommands extends EventEmitter {
       const info = await this.rustPlusService.getEntityInfo(serverId, device.entityId);
 
       if (!info || !info.payload) {
-        return `❌ 无法获取警报 "${device.name}" 的信息`;
+        return `[错误] 无法获取警报 "${device.name}" 的信息`;
       }
 
       const lastTrigger = device.lastTrigger ? new Date(device.lastTrigger) : null;
@@ -271,14 +277,14 @@ class UserCommands extends EventEmitter {
 
       if (lastTrigger) {
         const minutesAgo = Math.floor((now - lastTrigger) / 1000 / 60);
-        return `🚨 ${device.name}: 上次触发于 ${minutesAgo} 分钟前`;
+        return `[警报] ${device.name}: 上次触发于 ${minutesAgo} 分钟前`;
       } else {
-        return `🚨 ${device.name}: 从未触发`;
+        return `[警报] ${device.name}: 从未触发`;
       }
 
     } catch (error) {
       logger.error(`警报命令失败:`, error);
-      return `❌ 警报 "${device.name}" 不可达`;
+      return `[错误] 警报 "${device.name}" 不可达`;
     }
   }
 
@@ -293,20 +299,20 @@ class UserCommands extends EventEmitter {
       if (!subCommand) {
         const info = await this.rustPlusService.getEntityInfo(serverId, device.entityId);
         if (!info || !info.payload) {
-          return `❌ 无法获取设备 "${device.name}" 的信息`;
+          return `[错误] 无法获取设备 "${device.name}" 的信息`;
         }
         const state = info.payload.value ? '开启' : '关闭';
-        return `💡 ${device.name}: ${state}`;
+        return `[开关] ${device.name}: ${state}`;
       }
 
       // status 子命令
       if (subCommand === 'status') {
         const info = await this.rustPlusService.getEntityInfo(serverId, device.entityId);
         if (!info || !info.payload) {
-          return `❌ 无法获取设备 "${device.name}" 的信息`;
+          return `[错误] 无法获取设备 "${device.name}" 的信息`;
         }
         const state = info.payload.value ? '开启' : '关闭';
-        return `💡 ${device.name}: ${state}`;
+        return `[开关] ${device.name}: ${state}`;
       }
 
       // on 子命令
@@ -317,7 +323,7 @@ class UserCommands extends EventEmitter {
           // 带时间参数，延迟开启
           const delaySeconds = parseTimeString(timeArg);
           if (delaySeconds === null) {
-            return `❌ 无效的时间格式: ${timeArg}。示例: 5m, 1h30m`;
+            return `[错误] 无效的时间格式: ${timeArg} 示例: 5m, 1h30m`;
           }
 
           const delayMs = delaySeconds * 1000;
@@ -329,18 +335,19 @@ class UserCommands extends EventEmitter {
               await this.rustPlusService.turnSmartSwitchOn(serverId, device.entityId);
               await this.rustPlusService.sendTeamMessage(
                 serverId,
-                `✅ ${device.name} 已自动开启（延迟 ${delayMinutes} 分钟）`
+                `[定时] ${device.name} 已自动开启 (延迟 ${delayMinutes} 分钟)`,
+                { isBot: true }
               );
             } catch (error) {
               logger.error(`定时开启失败:`, error);
             }
           }, delayMs);
 
-          return `⏰ ${device.name} 将在 ${delayMinutes} 分钟后开启`;
+          return `[定时] ${device.name} 将在 ${delayMinutes} 分钟后开启`;
         } else {
           // 立即开启
           await this.rustPlusService.turnSmartSwitchOn(serverId, device.entityId);
-          return `✅ ${device.name} 已开启`;
+          return `[成功] ${device.name} 已开启`;
         }
       }
 
@@ -352,7 +359,7 @@ class UserCommands extends EventEmitter {
           // 带时间参数，延迟关闭
           const delaySeconds = parseTimeString(timeArg);
           if (delaySeconds === null) {
-            return `❌ 无效的时间格式: ${timeArg}。示例: 5m, 1h30m`;
+            return `[错误] 无效的时间格式: ${timeArg} 示例: 5m, 1h30m`;
           }
 
           const delayMs = delaySeconds * 1000;
@@ -364,18 +371,19 @@ class UserCommands extends EventEmitter {
               await this.rustPlusService.turnSmartSwitchOff(serverId, device.entityId);
               await this.rustPlusService.sendTeamMessage(
                 serverId,
-                `✅ ${device.name} 已自动关闭（延迟 ${delayMinutes} 分钟）`
+                `[定时] ${device.name} 已自动关闭 (延迟 ${delayMinutes} 分钟)`,
+                { isBot: true }
               );
             } catch (error) {
               logger.error(`定时关闭失败:`, error);
             }
           }, delayMs);
 
-          return `⏰ ${device.name} 将在 ${delayMinutes} 分钟后关闭`;
+          return `[定时] ${device.name} 将在 ${delayMinutes} 分钟后关闭`;
         } else {
           // 立即关闭
           await this.rustPlusService.turnSmartSwitchOff(serverId, device.entityId);
-          return `✅ ${device.name} 已关闭`;
+          return `[成功] ${device.name} 已关闭`;
         }
       }
 
@@ -383,24 +391,24 @@ class UserCommands extends EventEmitter {
       if (subCommand === 'toggle') {
         const info = await this.rustPlusService.getEntityInfo(serverId, device.entityId);
         if (!info || !info.payload) {
-          return `❌ 无法获取设备 "${device.name}" 的信息`;
+          return `[错误] 无法获取设备 "${device.name}" 的信息`;
         }
 
         const currentState = info.payload.value;
         if (currentState) {
           await this.rustPlusService.turnSmartSwitchOff(serverId, device.entityId);
-          return `✅ ${device.name} 已关闭`;
+          return `[成功] ${device.name} 已关闭`;
         } else {
           await this.rustPlusService.turnSmartSwitchOn(serverId, device.entityId);
-          return `✅ ${device.name} 已开启`;
+          return `[成功] ${device.name} 已开启`;
         }
       }
 
-      return `❓ 未知子命令: ${subCommand}。可用: on, off, status, toggle`;
+      return `[错误] 未知子命令: ${subCommand} 可用: on, off, status, toggle`;
 
     } catch (error) {
       logger.error(`开关命令失败:`, error);
-      return `❌ 设备 "${device.name}" 不可达`;
+      return `[错误] 设备 "${device.name}" 不可达`;
     }
   }
 
@@ -410,11 +418,11 @@ class UserCommands extends EventEmitter {
    * !help - 显示帮助
    */
   async handleHelp(serverId, args, context) {
-    const lines = ['📖 可用命令:'];
+    const lines = ['[帮助] 可用命令:'];
 
     // 内置命令
     lines.push('');
-    lines.push('📌 基础命令:');
+    lines.push('[基础]');
     lines.push('  !help - 显示此帮助');
     lines.push('  !time - 游戏时间');
     lines.push('  !pop - 服务器人数');
@@ -425,7 +433,7 @@ class UserCommands extends EventEmitter {
     // 事件命令
     if (this.eventMonitorService) {
       lines.push('');
-      lines.push('📌 事件命令:');
+      lines.push('[事件]');
       lines.push('  !cargo - 货船状态');
       lines.push('  !heli - 直升机状态');
       lines.push('  !small - 小型油井');
@@ -436,7 +444,7 @@ class UserCommands extends EventEmitter {
     const devices = await this.getDeviceCommands(serverId);
     if (devices.length > 0) {
       lines.push('');
-      lines.push('📌 设备命令:');
+      lines.push('[设备]');
       devices.forEach(device => {
         if (device.type === 'SWITCH') {
           lines.push(`  !${device.command} [on/off/status/toggle] [时间]`);
@@ -450,33 +458,55 @@ class UserCommands extends EventEmitter {
   }
 
   /**
-   * !time - 游戏时间
+   * !time - 游戏时间（使用缓存减少 API 请求）
    */
   async handleTime(serverId, args, context) {
     try {
-      const timeInfo = await this.rustPlusService.getTime(serverId);
+      const now = Date.now();
+      let cache = this.timeCache.get(serverId);
 
-      const currentTime = timeInfo.time || 0;
-      const sunrise = timeInfo.sunrise || 6.5;
-      const sunset = timeInfo.sunset || 18.5;
+      // 缓存过期或不存在，从 API 获取
+      if (!cache || (now - cache.lastFetchTime) > this.TIME_CACHE_TTL) {
+        const timeInfo = await this.rustPlusService.getTime(serverId);
+        cache = {
+          dayLengthMinutes: timeInfo.dayLengthMinutes || 60,
+          sunrise: timeInfo.sunrise || 6.5,
+          sunset: timeInfo.sunset || 18.5,
+          lastTime: timeInfo.time || 0,
+          lastFetchTime: now
+        };
+        this.timeCache.set(serverId, cache);
+      }
+
+      const { dayLengthMinutes, sunrise, sunset, lastTime, lastFetchTime } = cache;
+
+      // 根据时间流逝本地推算当前游戏时间
+      // 1 真实分钟 = 24 / dayLengthMinutes 游戏小时
+      const elapsedRealMinutes = (now - lastFetchTime) / 1000 / 60;
+      const gameHoursPerRealMinute = 24 / dayLengthMinutes;
+      const elapsedGameHours = elapsedRealMinutes * gameHoursPerRealMinute;
+      const currentTime = (lastTime + elapsedGameHours) % 24;
 
       const isDay = currentTime >= sunrise && currentTime < sunset;
       const hours = Math.floor(currentTime);
       const mins = Math.floor((currentTime - hours) * 60);
       const timeStr = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 
-      let timeUntil;
+      // 计算游戏内时间差（小时）
+      let gameHoursUntil;
       if (isDay) {
-        timeUntil = sunset - currentTime;
+        gameHoursUntil = sunset - currentTime;
       } else {
         if (currentTime < sunrise) {
-          timeUntil = sunrise - currentTime;
+          gameHoursUntil = sunrise - currentTime;
         } else {
-          timeUntil = (24 - currentTime) + sunrise;
+          gameHoursUntil = (24 - currentTime) + sunrise;
         }
       }
 
-      const minutesUntil = Math.floor(timeUntil * 60);
+      // 转换为真实时间（分钟）
+      const realMinutesPerGameHour = dayLengthMinutes / 24;
+      const minutesUntil = Math.floor(gameHoursUntil * realMinutesPerGameHour);
 
       // 使用模板: msg_night = 距离天黑, msg_day = 距离天亮
       if (isDay) {

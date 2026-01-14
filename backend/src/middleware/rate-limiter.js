@@ -110,9 +110,9 @@ export const apiLimiter = rateLimit({
   message: '请求过于频繁，请稍后再试'
 });
 
-// 认证接口限制：每分钟 10 次（防止暴力破解）
+// 认证接口限制：每分钟 20 次（防止暴力破解）
 export const authLimiter = rateLimit({
-  limit: 10,
+  limit: 20,
   windowMs: 60 * 1000,
   message: '登录尝试过于频繁，请稍后再试'
 });

@@ -225,6 +225,12 @@ class UserServiceManager extends EventEmitter {
       });
 
       this.rustPlusService.on('team:message', (data) => {
+        // 检查是否是 bot 自己发送的消息（避免命令输出被再次触发，导致无限循环）
+        if (this.rustPlusService.isBotMessage(data.serverId, data.message)) {
+          this.log('CHAT', `[团队] [BOT] ${data.message}`);
+          return; // 跳过 bot 自己的消息
+        }
+
         this.log('CHAT', `[团队] ${data.name}: ${data.message}`);
         // 转发事件
         this.emit('team:message', data);
@@ -830,7 +836,7 @@ class UserServiceManager extends EventEmitter {
       const customMessage = device.message;
 
       // 游戏内消息格式
-      let chatMessage = `🚨 [警报] ${deviceName}`;
+      let chatMessage = `[警报] ${deviceName}`;
       if (customMessage) {
         chatMessage += `: ${customMessage}`;
       }

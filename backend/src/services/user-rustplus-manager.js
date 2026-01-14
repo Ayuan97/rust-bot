@@ -6,7 +6,6 @@
 import RustPlusClient from '../lib/rustplus-client.js';
 import EventEmitter from 'events';
 import logger from '../utils/logger.js';
-import { getCorrectedMapSize } from '../utils/coordinates.js';
 
 class UserRustPlusManager extends EventEmitter {
   constructor(userId) {
@@ -337,12 +336,11 @@ class UserRustPlusManager extends EventEmitter {
     const res = await rustplus.sendRequestAsync({ getInfo: {} });
     const info = res.info;
     // 如果包含 mapSize，则用作地图大小缓存的权威来源
-    // 存储修正后的地图大小，确保与网格系统对齐
+    // 存储原始地图大小，coordinates.js 会在使用时进行网格修正
     if (info && info.mapSize) {
-      const correctedSize = getCorrectedMapSize(info.mapSize);
       this.mapCache.set(serverId, {
-        width: correctedSize,
-        height: correctedSize,
+        width: info.mapSize,
+        height: info.mapSize,
         lastUpdate: Date.now()
       });
     }
@@ -460,8 +458,8 @@ class UserRustPlusManager extends EventEmitter {
     try {
       const infoRes = await rustplus.sendRequestAsync({ getInfo: {} }, 15000);
       if (infoRes?.info?.mapSize) {
-        // 使用修正后的地图大小，确保与网格系统对齐
-        mapSize = getCorrectedMapSize(infoRes.info.mapSize);
+        // 存储原始地图大小，coordinates.js 会在使用时进行网格修正
+        mapSize = infoRes.info.mapSize;
       }
     } catch (e) {
       logger.warn(`⚠️ 用户 ${this.userId} 无法获取地图信息:`, e.message + '，将使用默认值', mapSize);
