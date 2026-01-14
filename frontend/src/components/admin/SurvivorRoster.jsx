@@ -254,6 +254,7 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
           <option value="">全部状态</option>
           <option value="active">活跃</option>
           <option value="inactive">已禁用</option>
+          <option value="not_activated">未激活</option>
           <option value="expired">已过期</option>
         </select>
 
@@ -357,15 +358,25 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
                 {/* 状态 */}
                 <td className="px-4 py-3">
-                  {!user.isActive ? (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400">已禁用</span>
-                  ) : user.subscriptions?.endDate && new Date(user.subscriptions.endDate) < new Date() ? (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-500/20 text-orange-400">已过期</span>
-                  ) : user.serviceStatus?.isServiceRunning ? (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/20 text-green-400">运行中</span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-400">离线</span>
-                  )}
+                  {(() => {
+                    // 判断未激活状态（startDate 和 endDate 几乎相同）
+                    const startDate = user.subscriptions?.startDate ? new Date(user.subscriptions.startDate) : null;
+                    const endDate = user.subscriptions?.endDate ? new Date(user.subscriptions.endDate) : null;
+                    const isNotActivated = startDate && endDate && Math.abs(endDate.getTime() - startDate.getTime()) < 60000;
+                    const isExpired = endDate && new Date() > endDate;
+
+                    if (!user.isActive) {
+                      return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400">已禁用</span>;
+                    } else if (isNotActivated) {
+                      return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-400">未激活</span>;
+                    } else if (isExpired) {
+                      return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-500/20 text-orange-400">已过期</span>;
+                    } else if (user.serviceStatus?.isServiceRunning) {
+                      return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/20 text-green-400">运行中</span>;
+                    } else {
+                      return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/20 text-yellow-400">待启动</span>;
+                    }
+                  })()}
                 </td>
 
                 {/* 操作 */}

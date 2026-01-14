@@ -200,7 +200,7 @@ router.get('/users', async (req, res) => {
       page = 1,
       limit = 20,
       search = '',
-      status = '', // 'active', 'inactive', 'expired'
+      status = '', // 'active', 'inactive', 'expired', 'not_activated'
       planType = '' // 'TRIAL', 'MONTHLY', 'QUARTERLY', 'YEARLY'
     } = req.query;
 
@@ -232,9 +232,10 @@ router.get('/users', async (req, res) => {
       };
     }
 
-    // 过期用户筛选
-    if (status === 'expired') {
+    // 过期用户筛选（包括未激活）
+    if (status === 'expired' || status === 'not_activated') {
       where.subscriptions = {
+        ...where.subscriptions,
         endDate: {
           lt: new Date()
         }
@@ -294,14 +295,31 @@ router.get('/users', async (req, res) => {
       };
     });
 
+    // 应用层过滤：区分"未激活"和"已过期"
+    let filteredUsers = usersWithStatus;
+    if (status === 'not_activated' || status === 'expired') {
+      filteredUsers = usersWithStatus.filter(user => {
+        if (!user.subscriptions) return false;
+        const startDate = new Date(user.subscriptions.startDate);
+        const endDate = new Date(user.subscriptions.endDate);
+        const isNotActivated = Math.abs(endDate.getTime() - startDate.getTime()) < 60000;
+
+        if (status === 'not_activated') {
+          return isNotActivated;
+        } else {
+          return !isNotActivated; // expired = 过期但不是未激活
+        }
+      });
+    }
+
     res.json({
       success: true,
       data: {
-        users: usersWithStatus,
-        total,
+        users: filteredUsers,
+        total: status === 'not_activated' || status === 'expired' ? filteredUsers.length : total,
         page: parseInt(page),
         limit: parseInt(limit),
-        totalPages: Math.ceil(total / take)
+        totalPages: Math.ceil((status === 'not_activated' || status === 'expired' ? filteredUsers.length : total) / take)
       }
     });
   } catch (error) {
