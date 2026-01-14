@@ -8,7 +8,7 @@ import prisma from '../lib/prisma.js';
 import logger from '../utils/logger.js';
 import { parseTimeString } from '../utils/timer.js';
 import { cmd, cmdConfig, formatDuration } from '../utils/messages.js';
-import { getItemName, searchItems } from '../utils/item-info.js';
+import { getItemName, getItemShortName, searchItems } from '../utils/item-info.js';
 import { AppMarkerType } from '../utils/event-constants.js';
 import { formatPosition } from '../utils/coordinates.js';
 
@@ -826,14 +826,18 @@ class UserCommands extends EventEmitter {
           if (matchingIdSet.has(String(order.itemId))) {
             const position = formatPosition(vm.x, vm.y, mapSize);
             const itemName = getItemName(order.itemId);
+            const itemShortName = getItemShortName(order.itemId);
             const currencyName = getItemName(order.currencyId);
+            const currencyShortName = getItemShortName(order.currencyId);
 
             results.push({
               position,
               itemName,
+              itemShortName,
               quantity: order.quantity,
               cost: order.costPerItem,
               currencyName,
+              currencyShortName,
               stock: order.amountInStock,
               vmName: vm.name || '售货机'
             });
@@ -849,11 +853,12 @@ class UserCommands extends EventEmitter {
       const maxResults = 5;
       const displayResults = results.slice(0, maxResults);
       const itemName = getItemName(matchingItemIds[0]);
+      const itemShortName = getItemShortName(matchingItemIds[0]);
 
-      let output = cmd('shop', 'found', { count: results.length, item: itemName }) + '\n';
+      let output = cmd('shop', 'found', { count: results.length, item: `:${itemShortName}: ${itemName}` }) + '\n';
 
       for (const r of displayResults) {
-        output += `${r.position}: ${r.quantity}x ${r.cost}${r.currencyName} (库存${r.stock})\n`;
+        output += `${r.position}: ${r.quantity}x :${r.itemShortName}: = ${r.cost}:${r.currencyShortName}: (库存${r.stock})\n`;
       }
 
       if (results.length > maxResults) {

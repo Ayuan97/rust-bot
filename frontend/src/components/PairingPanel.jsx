@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { FaQrcode, FaPlay, FaStop, FaSync, FaCheckCircle, FaTimesCircle, FaRocket, FaSatellite, FaInfoCircle, FaKey, FaShieldAlt } from 'react-icons/fa';
+import { FaQrcode, FaPlay, FaStop, FaSync, FaCheckCircle, FaTimesCircle, FaRocket, FaSatellite, FaInfoCircle, FaKey, FaShieldAlt, FaLock } from 'react-icons/fa';
 import { getPairingStatus, startPairing, stopPairing, resetPairing } from '../services/pairing';
 import socketService from '../services/socket';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmModal';
+import { useAuth } from '../context/AuthContext';
 import AutoRegisterPanel from './AutoRegisterPanel';
 
 function PairingPanel({ onServerPaired }) {
+  const { isSubscriptionExpired } = useAuth();
   const [status, setStatus] = useState({
     isListening: false,
     hasCredentials: false,
@@ -159,12 +161,20 @@ function PairingPanel({ onServerPaired }) {
               </div>
               <h4 className="text-sm font-black text-white uppercase mb-2 italic">系统未授权</h4>
               <p className="text-[10px] text-gray-500 mb-8 leading-relaxed max-w-xs mx-auto">需要建立 Steam 凭证链路以接收游戏内的配对信号。此过程仅需执行一次。</p>
-              <button 
-                onClick={() => setShowAutoRegister(true)}
-                className="px-10 py-3 bg-[#cd5241] text-white text-[10px] font-black uppercase italic tactic-cut hover:bg-[#b04537] transition-all shadow-lg shadow-[#cd5241]/20 flex items-center gap-3 mx-auto"
-              >
-                <FaRocket /> 启动自动授权协议
-              </button>
+              {isSubscriptionExpired ? (
+                <div className="space-y-3">
+                  <div className="px-6 py-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-400 text-[10px] font-bold flex items-center justify-center gap-2 mx-auto max-w-xs">
+                    <FaLock /> 请先订阅后再进行配对操作
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAutoRegister(true)}
+                  className="px-10 py-3 bg-[#cd5241] text-white text-[10px] font-black uppercase italic tactic-cut hover:bg-[#b04537] transition-all shadow-lg shadow-[#cd5241]/20 flex items-center gap-3 mx-auto"
+                >
+                  <FaRocket /> 启动自动授权协议
+                </button>
+              )}
             </div>
           ) : waitingForPairing ? (
             <div className="space-y-6">
@@ -200,23 +210,29 @@ function PairingPanel({ onServerPaired }) {
               </div>
               <h4 className="text-sm font-black text-white uppercase mb-2 italic">链路已就绪</h4>
               <p className="text-[10px] text-gray-500 mb-8 leading-relaxed">授权凭证已通过验证。点击下方按钮开始捕捉游戏内的配对信号。</p>
-              <div className="flex gap-3 justify-center">
-                <button 
-                  onClick={handleStart}
-                  disabled={loading}
-                  className="px-10 py-3 bg-[#cd5241] text-white text-[10px] font-black uppercase italic tactic-cut hover:bg-[#b04537] transition-all flex items-center gap-3"
-                >
-                  <FaPlay /> 开启信号捕获
-                </button>
-                <button 
-                  onClick={handleReset}
-                  disabled={loading}
-                  className="px-4 py-3 bg-white/5 border border-white/10 text-gray-500 hover:text-white tactic-cut transition-all"
-                  title="重置凭据"
-                >
-                  <FaSync className={loading ? 'animate-spin' : ''} />
-                </button>
-              </div>
+              {isSubscriptionExpired ? (
+                <div className="px-6 py-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-400 text-[10px] font-bold flex items-center justify-center gap-2 mx-auto max-w-xs">
+                  <FaLock /> 请先订阅后再进行配对操作
+                </div>
+              ) : (
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={handleStart}
+                    disabled={loading}
+                    className="px-10 py-3 bg-[#cd5241] text-white text-[10px] font-black uppercase italic tactic-cut hover:bg-[#b04537] transition-all flex items-center gap-3"
+                  >
+                    <FaPlay /> 开启信号捕获
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    disabled={loading}
+                    className="px-4 py-3 bg-white/5 border border-white/10 text-gray-500 hover:text-white tactic-cut transition-all"
+                    title="重置凭据"
+                  >
+                    <FaSync className={loading ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

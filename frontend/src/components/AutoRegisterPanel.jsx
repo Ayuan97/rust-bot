@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { FaRocket, FaCheckCircle, FaSpinner, FaSteam, FaShieldAlt, FaKey, FaArrowRight, FaTimes, FaInfoCircle, FaSatellite } from 'react-icons/fa';
+import { FaRocket, FaCheckCircle, FaSpinner, FaSteam, FaShieldAlt, FaKey, FaArrowRight, FaTimes, FaInfoCircle, FaSatellite, FaLock } from 'react-icons/fa';
 import { registerSimple } from '../services/pairing';
 import { useToast } from './Toast';
+import { useAuth } from '../context/AuthContext';
 
 function AutoRegisterPanel({ onComplete, onClose }) {
+  const { isSubscriptionExpired } = useAuth();
   const [step, setStep] = useState(1); // 1: 初始, 2: 等待输入凭证, 3: 注册中, 4: 成功
   const [loading, setLoading] = useState(false);
   const [steamWindow, setSteamWindow] = useState(null);
@@ -115,14 +117,20 @@ function AutoRegisterPanel({ onComplete, onClose }) {
               </div>
             </div>
 
-            <button
-              className="w-full tactic-cut bg-[#cd5241] py-5 text-[11px] font-black uppercase tracking-[0.3em] hover:bg-[#b04537] transition-all shadow-xl shadow-[#cd5241]/20 flex items-center justify-center gap-4 group"
-              onClick={handleOpenSteamLogin}
-              disabled={loading}
-            >
-              <FaRocket className="group-hover:scale-110 transition-transform" />
-              启动授权向导
-            </button>
+            {isSubscriptionExpired ? (
+              <div className="px-6 py-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-400 text-[11px] font-bold flex items-center justify-center gap-3">
+                <FaLock /> 订阅已过期，请先续费后再进行配对操作
+              </div>
+            ) : (
+              <button
+                className="w-full tactic-cut bg-[#cd5241] py-5 text-[11px] font-black uppercase tracking-[0.3em] hover:bg-[#b04537] transition-all shadow-xl shadow-[#cd5241]/20 flex items-center justify-center gap-4 group"
+                onClick={handleOpenSteamLogin}
+                disabled={loading}
+              >
+                <FaRocket className="group-hover:scale-110 transition-transform" />
+                启动授权向导
+              </button>
+            )}
           </div>
         )}
 

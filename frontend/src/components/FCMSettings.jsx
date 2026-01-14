@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import {
   FaBell, FaCheck, FaExclamationTriangle, FaTimes,
-  FaTrash, FaSync, FaSearch, FaInfoCircle, FaClipboard, FaTerminal, FaSave
+  FaTrash, FaSync, FaSearch, FaInfoCircle, FaClipboard, FaTerminal, FaSave, FaLock
 } from 'react-icons/fa';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmModal';
+import { useAuth } from '../context/AuthContext';
 import {
   getPairingStatus,
   resetPairing,
@@ -17,6 +18,7 @@ import {
  * FCM 配置组件 - 用于管理和诊断 FCM 凭证
  */
 function FCMSettings() {
+  const { isSubscriptionExpired } = useAuth();
   const [loading, setLoading] = useState(true);
   const [diagnosing, setDiagnosing] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -137,6 +139,11 @@ function FCMSettings() {
       return;
     }
 
+    if (isSubscriptionExpired) {
+      toast.warning('订阅已过期，请先续费后再更新凭证');
+      return;
+    }
+
     setUpdating(true);
     try {
       const res = await registerSimple(updateCommand);
@@ -206,7 +213,13 @@ function FCMSettings() {
               }
             </p>
             <button
-              onClick={() => setShowUpdateModal(true)}
+              onClick={() => {
+                if (isSubscriptionExpired) {
+                  toast.warning('订阅已过期，请先续费后再更新凭证');
+                  return;
+                }
+                setShowUpdateModal(true);
+              }}
               className={`mt-3 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors ${(isExpired || hasConnectionError)
                 ? 'bg-red-500 hover:bg-red-600 text-white'
                 : 'bg-yellow-500 hover:bg-yellow-600 text-black'
@@ -287,7 +300,13 @@ function FCMSettings() {
         {(status.hasCredentials || status.hasStoredCredentials) && (
           <>
             <button
-              onClick={() => setShowUpdateModal(true)}
+              onClick={() => {
+                if (isSubscriptionExpired) {
+                  toast.warning('订阅已过期，请先续费后再更新凭证');
+                  return;
+                }
+                setShowUpdateModal(true);
+              }}
               className="btn btn-ghost text-blue-400 hover:bg-blue-500/10"
             >
               <FaSync /> 更新凭证
