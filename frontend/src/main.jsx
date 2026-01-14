@@ -11,6 +11,7 @@ import AdminPage from './pages/AdminPage';
 import { ToastProvider } from './components/Toast';
 import { ConfirmProvider } from './components/ConfirmModal';
 import { AuthProvider } from './context/AuthContext';
+import ServicePausedBanner from './components/ServicePausedBanner';
 import './styles/index.css';
 
 // 私有路由组件 - 需要登录才能访问
@@ -49,6 +50,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <AuthProvider>
         <ToastProvider>
           <ConfirmProvider>
+            {/* 订阅过期提醒条 */}
+            <ServicePausedBanner />
+
             <Routes>
               {/* 公开路由 */}
               <Route path="/" element={<HomePage />} />

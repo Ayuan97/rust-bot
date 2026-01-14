@@ -18,6 +18,13 @@ const AdminPage = () => {
   const [activeTab, setActiveTab] = useState('survivors');
   const [systemStats, setSystemStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [preselectedUserId, setPreselectedUserId] = useState(null);
+
+  // 从幸存者大盘跳转到系统诊断
+  const handleNavigateToLogs = (userId) => {
+    setPreselectedUserId(userId);
+    setActiveTab('logs');
+  };
 
   useEffect(() => {
     fetchSystemStats();
@@ -132,10 +139,10 @@ const AdminPage = () => {
           <div className="absolute inset-0 scanline pointer-events-none opacity-5" />
           
           <div className="p-6">
-            {activeTab === 'survivors' && <SurvivorRoster />}
+            {activeTab === 'survivors' && <SurvivorRoster onNavigateToLogs={handleNavigateToLogs} />}
             {activeTab === 'trade' && <TradeCenter />}
             {activeTab === 'proxy' && <ProxyStation />}
-            {activeTab === 'logs' && <SystemLogs />}
+            {activeTab === 'logs' && <SystemLogs preselectedUserId={preselectedUserId} onUserSelected={() => setPreselectedUserId(null)} />}
           </div>
         </div>
       </div>

@@ -106,7 +106,7 @@ class SocketService {
 
   // ========== 服务器操作 ==========
 
-  connectToServer(config) {
+  connectToServer(serverId) {
     return new Promise((resolve, reject) => {
       if (!this.socket) {
         return reject(new Error('Socket 未连接'));
@@ -117,7 +117,8 @@ class SocketService {
         reject(new Error('连接服务器超时'));
       }, 15000); // 15秒超时
 
-      this.socket.emit('server:connect', config);
+      // 只发送 serverId，后端从数据库获取安全配置
+      this.socket.emit('server:connect', serverId);
 
       this.socket.once('server:connect:success', (data) => {
         clearTimeout(timeout);

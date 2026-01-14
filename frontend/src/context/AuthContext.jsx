@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import socketService from '../services/socket';
 
 const AuthContext = createContext(null);
@@ -117,8 +117,32 @@ export const AuthProvider = ({ children }) => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  // 计算订阅是否过期
+  const isSubscriptionExpired = useMemo(() => {
+    if (!user || !user.subscriptions) return true;
+    const endDate = new Date(user.subscriptions.endDate);
+    return new Date() > endDate;
+  }, [user]);
+
+  // 计算订阅剩余天数
+  const subscriptionDaysLeft = useMemo(() => {
+    if (!user || !user.subscriptions) return 0;
+    const endDate = new Date(user.subscriptions.endDate);
+    const now = new Date();
+    const diffTime = endDate - now;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return Math.max(0, diffDays);
+  }, [user]);
+
   return (
-    <AuthContext.Provider value={{ user, setUser, logout, isTokenExpired }}>
+    <AuthContext.Provider value={{
+      user,
+      setUser,
+      logout,
+      isTokenExpired,
+      isSubscriptionExpired,
+      subscriptionDaysLeft
+    }}>
       {children}
     </AuthContext.Provider>
   );

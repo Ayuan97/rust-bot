@@ -59,13 +59,8 @@ export const authenticate = async (req, res, next) => {
       });
     }
 
-    // 检查订阅是否过期
-    if (user.subscriptions && new Date() > user.subscriptions.endDate) {
-      return res.status(403).json({
-        success: false,
-        error: '订阅已过期，请续费'
-      });
-    }
+    // 计算订阅状态（不拦截，只标记）
+    const isSubscriptionExpired = !user.subscriptions || new Date() > user.subscriptions.endDate;
 
     // 将用户信息附加到请求对象
     req.user = {
@@ -73,7 +68,8 @@ export const authenticate = async (req, res, next) => {
       username: user.username,
       email: user.email,
       isAdmin: user.isAdmin,
-      subscriptions: user.subscriptions
+      subscriptions: user.subscriptions,
+      isSubscriptionExpired  // 订阅过期标记
     };
 
     next();
@@ -141,6 +137,7 @@ export const requireAdmin = (req, res, next) => {
 /**
  * 检查订阅是否有效
  * 必须配合 authenticate 使用
+ * 用于需要有效订阅才能执行的操作（如连接服务器、控制设备等）
  */
 export const requireActiveSubscription = (req, res, next) => {
   if (!req.user) {
@@ -153,14 +150,16 @@ export const requireActiveSubscription = (req, res, next) => {
   if (!req.user.subscriptions) {
     return res.status(403).json({
       success: false,
-      error: '未找到订阅信息'
+      error: '未找到订阅信息，请先订阅',
+      code: 'SUBSCRIPTION_REQUIRED'
     });
   }
 
   if (new Date() > req.user.subscriptions.endDate) {
     return res.status(403).json({
       success: false,
-      error: '订阅已过期，请续费'
+      error: '订阅已过期，续费后即可继续使用此功能',
+      code: 'SUBSCRIPTION_EXPIRED'
     });
   }
 

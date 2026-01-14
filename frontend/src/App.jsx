@@ -20,7 +20,7 @@ import FCMSettings from './components/FCMSettings';
 import AdminPage from './pages/AdminPage';
 
 function App() {
-  const { user, logout } = useAuth();
+  const { user, logout, isSubscriptionExpired } = useAuth();
   const toast = useToast();
 
   const [servers, setServers] = useState([]);
@@ -168,8 +168,6 @@ function App() {
     setShowMapModal(true);
   };
 
-  const isSubscriptionExpired = user?.subscription_status === 'expired';
-
   // 计算倒计时
   const wipeCountdown = useMemo(() => {
     if (!wipeInfo?.nextWipe) return '128:45:12'; // 默认值
@@ -194,7 +192,7 @@ function App() {
 
     // 如果选择了服务器但未连接
     if (activeServer && !activeServer.connected && activeView === 'hud') {
-      return <DisconnectedView server={activeServer} onConnect={() => handleConnect(activeServer)} loading={connectionLoading} fcmStatus={fcmStatus} />;
+      return <DisconnectedView server={activeServer} onConnect={() => handleConnect(activeServer)} loading={connectionLoading} fcmStatus={fcmStatus} isSubscriptionExpired={isSubscriptionExpired} />;
     }
 
     // 根据当前视图渲染内容，每个子组件内部处理自己的“无数据/演示”状态
@@ -505,7 +503,9 @@ function QuickToggle({ active, pro, disabled }) {
   );
 }
 
-function DisconnectedView({ server, onConnect, loading, fcmStatus }) {
+function DisconnectedView({ server, onConnect, loading, fcmStatus, isSubscriptionExpired }) {
+  const isDisabled = loading || isSubscriptionExpired;
+
   return (
     <div className="h-full flex items-center justify-center animate-fade-in relative overflow-hidden font-sans">
       <div className="max-w-md w-full tactic-border tactic-cut p-1 bg-black/40 relative z-10 shadow-2xl">
@@ -534,7 +534,9 @@ function DisconnectedView({ server, onConnect, loading, fcmStatus }) {
           <div className="bg-white/[0.02] border border-white/5 p-5 tactic-cut mb-10 text-left">
             <div className="flex justify-between items-center mb-4">
               <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest">系统就绪状态</span>
-              <span className="text-[10px] text-[#cd5241] font-black uppercase italic">等待远程授权</span>
+              <span className="text-[10px] text-[#cd5241] font-black uppercase italic">
+                {isSubscriptionExpired ? '服务已暂停' : '等待远程授权'}
+              </span>
             </div>
             <div className="space-y-4">
               <div className="flex items-start gap-3">
@@ -546,7 +548,7 @@ function DisconnectedView({ server, onConnect, loading, fcmStatus }) {
               <div className="flex items-start gap-3">
                 <div className="mt-1 w-1.5 h-1.5 rounded-full bg-gray-800" />
                 <p className="text-[9px] text-gray-500 font-medium leading-normal">
-                  <span className="text-gray-300 font-bold">实时链路 (WS):</span> 需要您手动启动“远程连接”来激活此服务器的实时控制面板。
+                  <span className="text-gray-300 font-bold">实时链路 (WS):</span> 需要您手动启动"远程连接"来激活此服务器的实时控制面板。
                 </p>
               </div>
             </div>
@@ -554,11 +556,17 @@ function DisconnectedView({ server, onConnect, loading, fcmStatus }) {
 
           <button
             onClick={onConnect}
-            disabled={loading}
-            className="w-full tactic-cut bg-[#cd5241] py-6 font-black uppercase tracking-[0.3em] hover:bg-[#b04537] transition-all shadow-2xl shadow-[#cd5241]/20 flex items-center justify-center gap-4 group text-lg"
+            disabled={isDisabled}
+            title={isSubscriptionExpired ? '续费后可连接服务器' : ''}
+            className={`w-full tactic-cut py-6 font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-4 group text-lg ${isDisabled
+              ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
+              : 'bg-[#cd5241] hover:bg-[#b04537] shadow-2xl shadow-[#cd5241]/20'
+              }`}
           >
             {loading ? (
               <>正在握手加密协议...</>
+            ) : isSubscriptionExpired ? (
+              <>服务已暂停 · 续费后可用</>
             ) : (
               <>
                 <FaPlay className="text-xs group-hover:scale-110 transition-transform" />

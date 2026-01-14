@@ -177,13 +177,18 @@ function SmartSwitchCard({ device, isReadOnly, onToggle, onEdit, onDelete, onPin
           <button
             onClick={() => !isReadOnly && onToggle(device)}
             disabled={isReadOnly}
-            className={`w-full py-3.5 tactic-cut flex items-center justify-center gap-3 transition-all duration-300 relative overflow-hidden group/btn ${isOn
-              ? 'bg-[#cd5241] text-white hover:bg-[#a03525]'
-              : 'bg-black/40 border border-white/10 text-gray-500 hover:bg-white/5 hover:text-gray-300'
+            title={isReadOnly ? '续费后可控制设备' : ''}
+            className={`w-full py-3.5 tactic-cut flex items-center justify-center gap-3 transition-all duration-300 relative overflow-hidden group/btn ${isReadOnly
+              ? 'bg-black/20 border border-white/5 text-gray-600 cursor-not-allowed'
+              : isOn
+                ? 'bg-[#cd5241] text-white hover:bg-[#a03525]'
+                : 'bg-black/40 border border-white/10 text-gray-500 hover:bg-white/5 hover:text-gray-300'
               }`}
           >
-            <FaPowerOff className={`text-sm ${isOn ? '' : 'group-hover/btn:scale-110 transition-transform'}`} />
-            <span className="text-xs font-black uppercase tracking-widest">{isOn ? '已启动' : '关闭中'}</span>
+            <FaPowerOff className={`text-sm ${isOn && !isReadOnly ? '' : 'group-hover/btn:scale-110 transition-transform'}`} />
+            <span className="text-xs font-black uppercase tracking-widest">
+              {isReadOnly ? '已暂停' : isOn ? '已启动' : '关闭中'}
+            </span>
           </button>
         </div>
       </div>

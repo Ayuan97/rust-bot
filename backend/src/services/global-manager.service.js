@@ -239,8 +239,11 @@ class GlobalServiceManager extends EventEmitter {
       const now = new Date();
       let expiredCount = 0;
 
+      // 创建 keys 快照，防止迭代期间 Map 被修改
+      const userIds = Array.from(this.userServices.keys());
+
       // 遍历所有活跃用户
-      for (const userId of this.userServices.keys()) {
+      for (const userId of userIds) {
         try {
           const user = await prisma.users.findUnique({
             where: { id: userId },

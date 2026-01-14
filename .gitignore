@@ -47,3 +47,4 @@ yarn-error.log*
 backend/bin/xray.exe
 backend/bin/wxray.exe
 backend/bin/Xray-windows-64.zip
+tmpclaude-*

@@ -88,13 +88,8 @@ function ServerCard({ server, onDelete, onSelect, isActive }) {
   const handleConnect = async () => {
     setLoading(true);
     try {
-      await socketService.connectToServer({
-        serverId: server.id,
-        ip: server.ip,
-        port: server.port,
-        playerId: server.player_id,
-        playerToken: server.player_token
-      });
+      // 只发送 serverId，后端从数据库获取安全配置
+      await socketService.connectToServer(server.id);
     } catch (error) {
       console.error('连接失败:', error);
       toast.error('连接失败: ' + error.message);

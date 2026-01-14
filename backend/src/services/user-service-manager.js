@@ -237,7 +237,7 @@ class UserServiceManager extends EventEmitter {
             data.steamId,
             data.message
           ).catch(error => {
-            console.error(`  ⚠️  命令处理失败:`, error.message);
+            this.log('CMD', `命令处理失败: ${error.message}`, 'ERROR');
           });
         }
       });
@@ -290,7 +290,9 @@ class UserServiceManager extends EventEmitter {
               value: data.value,
               time: Date.now()
             });
-          } catch (e) { }
+          } catch (e) {
+            console.error('记录设备状态变化失败:', e.message);
+          }
         }
       });
 
@@ -411,7 +413,7 @@ class UserServiceManager extends EventEmitter {
 
       // 5. 绑定 Automation 事件到 UserServiceManager
       this.automationService.on('automation:executed', (data) => {
-        this.emit('automation:executed', data);
+        this.emit('automation:executed', { ...data, userId: this.userId });
       });
 
       console.log(`  ✅ 子服务初始化完成`);
@@ -523,9 +525,37 @@ class UserServiceManager extends EventEmitter {
         }
       }
 
-      // TODO: 停止其他子服务
-      // if (this.commandsService) await this.commandsService.stop();
-      // if (this.dayNightNotifier) await this.dayNightNotifier.stop();
+      // 停止命令服务
+      if (this.commandsService) {
+        try {
+          this.commandsService.destroy();
+        } catch (error) {
+          console.error(`  ⚠️  停止命令服务失败:`, error.message);
+        }
+      }
+
+      // 停止昼夜提醒服务
+      if (this.dayNightNotifier) {
+        try {
+          this.dayNightNotifier.stopAll();
+        } catch (error) {
+          console.error(`  ⚠️  停止昼夜提醒服务失败:`, error.message);
+        }
+      }
+
+      // 清理所有子服务的事件监听器，防止内存泄漏
+      if (this.rustPlusService) {
+        this.rustPlusService.removeAllListeners();
+      }
+      if (this.fcmService) {
+        this.fcmService.removeAllListeners();
+      }
+      if (this.eventMonitorService) {
+        this.eventMonitorService.removeAllListeners();
+      }
+      if (this.automationService) {
+        this.automationService.removeAllListeners();
+      }
 
       console.log(`  ✅ 子服务已停止`);
     } catch (error) {

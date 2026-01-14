@@ -742,6 +742,16 @@ class UserCommands extends EventEmitter {
       return cmd('large', 'error');
     }
   }
+
+  /**
+   * 销毁服务，清理资源
+   */
+  destroy() {
+    this.commands.clear();
+    this.deviceCommandsCache.clear();
+    this.removeAllListeners();
+    logger.debug(`👤 UserCommands 已销毁 (userId: ${this.userId})`);
+  }
 }
 
 export default UserCommands;

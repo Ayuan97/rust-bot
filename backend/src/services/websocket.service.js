@@ -65,16 +65,15 @@ class WebSocketService {
         return next(new Error('账号已被禁用'));
       }
 
-      // 5. 检查订阅是否过期
-      if (user.subscriptions && new Date() > user.subscriptions.endDate) {
-        return next(new Error('订阅已过期，请续费'));
-      }
+      // 5. 计算订阅状态（不拦截，只标记）
+      const isSubscriptionExpired = !user.subscriptions || new Date() > user.subscriptions.endDate;
 
       // 6. 将用户信息附加到 socket
       socket.userId = user.id;
       socket.username = user.username;
       socket.email = user.email;
       socket.isAdmin = user.isAdmin;
+      socket.isSubscriptionExpired = isSubscriptionExpired;  // 订阅过期标记
 
       logger.debug(`✅ Socket 认证成功: 用户 ${user.username} (${user.id})`);
 
@@ -128,25 +127,45 @@ class WebSocketService {
       };
 
       // 客户端请求连接到 Rust+ 服务器
-      socket.on('server:connect', async (config) => {
+      socket.on('server:connect', async (data) => {
         try {
-          // 参数验证
-          if (!config || !config.serverId) {
+          // 参数验证 - 只接收 serverId
+          const serverId = typeof data === 'string' ? data : data?.serverId;
+          if (!serverId) {
             return socket.emit('server:connect:error', { error: '缺少必要参数: serverId' });
           }
 
           const userService = getUserService();
 
           // 检查是否已连接
-          if (userService.rustPlusService.isConnected(config.serverId)) {
-            return socket.emit('server:connect:error', { serverId: config.serverId, error: '服务器已连接' });
+          if (userService.rustPlusService.isConnected(serverId)) {
+            return socket.emit('server:connect:error', { serverId, error: '服务器已连接' });
           }
 
-          await userService.rustPlusService.connect(config);
-          socket.emit('server:connect:success', { serverId: config.serverId });
+          // 从数据库获取服务器配置，同时验证所有权
+          const server = await prisma.servers.findFirst({
+            where: {
+              id: serverId,
+              userId: socket.userId  // 确保服务器属于当前用户
+            }
+          });
+
+          if (!server) {
+            return socket.emit('server:connect:error', { serverId, error: '服务器不存在或无权访问' });
+          }
+
+          // 使用数据库中的安全配置连接
+          await userService.rustPlusService.connect({
+            serverId: server.id,
+            ip: server.ip,
+            port: server.port,
+            playerId: server.playerId,
+            playerToken: server.playerToken
+          });
+          socket.emit('server:connect:success', { serverId });
         } catch (error) {
           socket.emit('server:connect:error', {
-            serverId: config?.serverId,
+            serverId: typeof data === 'string' ? data : data?.serverId,
             error: error.message
           });
         }
@@ -170,9 +189,17 @@ class WebSocketService {
         }
       });
 
-      // 发送队伍消息
+      // 发送队伍消息（需要有效订阅）
       socket.on('message:send', async ({ serverId, message } = {}) => {
         try {
+          // 检查订阅状态
+          if (socket.isSubscriptionExpired) {
+            return socket.emit('message:send:error', {
+              error: '订阅已过期，续费后即可发送消息',
+              code: 'SUBSCRIPTION_EXPIRED'
+            });
+          }
+
           if (!serverId || !message) {
             return socket.emit('message:send:error', { error: '缺少 serverId 或 message' });
           }
@@ -206,9 +233,17 @@ class WebSocketService {
         }
       });
 
-      // 控制设备
+      // 控制设备（需要有效订阅）
       socket.on('device:control', async ({ serverId, entityId, value } = {}) => {
         try {
+          // 检查订阅状态
+          if (socket.isSubscriptionExpired) {
+            return socket.emit('device:control:error', {
+              error: '订阅已过期，续费后即可控制设备',
+              code: 'SUBSCRIPTION_EXPIRED'
+            });
+          }
+
           if (!serverId || entityId === undefined || value === undefined) {
             return socket.emit('device:control:error', { error: '缺少必要参数' });
           }

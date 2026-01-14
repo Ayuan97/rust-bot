@@ -5,7 +5,7 @@
 
 import express from 'express';
 import prisma from '../lib/prisma.js';
-import { authenticate } from '../middleware/auth.middleware.js';
+import { authenticate, requireActiveSubscription } from '../middleware/auth.middleware.js';
 import globalServiceManager from '../services/global-manager.service.js';
 import battlemetricsService from '../services/battlemetrics.service.js';
 
@@ -119,8 +119,9 @@ router.get('/:id', async (req, res) => {
 /**
  * POST /api/servers/:id/connect
  * 手动连接到服务器
+ * 需要有效订阅
  */
-router.post('/:id/connect', async (req, res) => {
+router.post('/:id/connect', requireActiveSubscription, async (req, res) => {
   try {
     const serverId = req.params.id;
     const server = await prisma.servers.findFirst({
@@ -157,8 +158,9 @@ router.post('/:id/connect', async (req, res) => {
 /**
  * POST /api/servers
  * 添加新服务器
+ * 需要有效订阅
  */
-router.post('/', async (req, res) => {
+router.post('/', requireActiveSubscription, async (req, res) => {
   try {
     const { id, name, ip, port, playerId, playerToken } = req.body;
 
@@ -445,8 +447,9 @@ router.get('/:id/chat', async (req, res) => {
 /**
  * POST /api/servers/:id/chat
  * 发送队伍消息
+ * 需要有效订阅
  */
-router.post('/:id/chat', async (req, res) => {
+router.post('/:id/chat', requireActiveSubscription, async (req, res) => {
   try {
     const { message } = req.body;
     if (!message) return res.status(400).json({ success: false, error: '消息内容不能为空' });
@@ -617,8 +620,9 @@ router.get('/:id/devices', async (req, res) => {
 /**
  * POST /api/servers/:id/devices
  * 添加设备
+ * 需要有效订阅
  */
-router.post('/:id/devices', async (req, res) => {
+router.post('/:id/devices', requireActiveSubscription, async (req, res) => {
   try {
     const { entityId, name, type } = req.body;
     const serverId = req.params.id;

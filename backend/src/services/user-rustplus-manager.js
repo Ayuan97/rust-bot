@@ -239,6 +239,7 @@ class UserRustPlusManager extends EventEmitter {
       if (key.startsWith(`${serverId}:`)) {
         const camera = this.cameras.get(key);
         try {
+          camera?.removeAllListeners?.();
           await camera?.unsubscribe?.();
         } catch (e) {
           logger.debug(`相机取消订阅失败 (${key}): ${e.message}`);
@@ -796,6 +797,8 @@ class UserRustPlusManager extends EventEmitter {
     const key = this.makeCameraKey(serverId, cameraId);
     const camera = this.cameras.get(key);
     if (camera) {
+      // 先移除所有事件监听器，防止内存泄漏
+      camera.removeAllListeners();
       await camera.unsubscribe();
       this.cameras.delete(key);
     }

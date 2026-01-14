@@ -403,17 +403,22 @@ class UserFCMManager extends EventEmitter {
       // 错误处理
       tlsSocket.once('error', (err) => {
         logger.error(`❌ 用户 ${this.userId} TLS 错误:`, err.message);
+        tlsSocket.destroy();
+        proxySocket.destroy();
         done(err);
       });
 
       proxySocket.once('error', (err) => {
         logger.error(`❌ 用户 ${this.userId} 代理 Socket 错误:`, err.message);
+        tlsSocket.destroy();
+        proxySocket.destroy();
         done(err);
       });
 
       proxySocket.once('close', (hadError) => {
         if (!resolved) {
           logger.error(`❌ 用户 ${this.userId} 代理连接被关闭, hadError:`, hadError);
+          tlsSocket.destroy();
           done(new Error('代理连接被关闭'));
         }
       });

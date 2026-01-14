@@ -5,7 +5,7 @@
 
 import express from 'express';
 import prisma from '../lib/prisma.js';
-import { authenticate } from '../middleware/auth.middleware.js';
+import { authenticate, requireActiveSubscription } from '../middleware/auth.middleware.js';
 import globalServiceManager from '../services/global-manager.service.js';
 
 const router = express.Router();
@@ -74,8 +74,9 @@ router.get('/status', async (req, res) => {
 /**
  * POST /api/pairing/start
  * 开始 FCM 监听
+ * 需要有效订阅
  */
-router.post('/start', async (req, res) => {
+router.post('/start', requireActiveSubscription, async (req, res) => {
   try {
     const fcmService = getUserFCMService(req.user.id);
 
@@ -152,11 +153,12 @@ router.post('/stop', async (req, res) => {
 /**
  * POST /api/pairing/register/simple
  * 简化版配对：直接使用用户的 Companion 凭证
+ * 需要有效订阅
  *
  * 用户从 companion-rust.facepunch.com 复制凭证命令后提交
  * 格式: /credentials add gcm_android_id:xxx gcm_security_token:xxx steam_id:xxx ...
  */
-router.post('/register/simple', async (req, res) => {
+router.post('/register/simple', requireActiveSubscription, async (req, res) => {
   try {
     const { credentials_command } = req.body;
 
