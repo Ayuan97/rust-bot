@@ -11,6 +11,6 @@ export default defineConfig({
         changeOrigin: true
       }
     },
-    allowedHosts: ['www.rustplusplus.com']
+    allowedHosts: ['.rustplusplus.com']
   }
 })
