@@ -15,23 +15,30 @@ export const authenticate = async (req, res, next) => {
     // 获取 Authorization 头
     const authHeader = req.headers.authorization;
 
-    if (!authHeader) {
+    // 也支持从查询参数获取 token（用于图片等资源请求）
+    const queryToken = req.query.token;
+
+    let token = null;
+
+    if (authHeader) {
+      // 格式: "Bearer <token>"
+      const parts = authHeader.split(' ');
+      if (parts.length === 2 && parts[0] === 'Bearer') {
+        token = parts[1];
+      }
+    }
+
+    // 如果 header 中没有有效 token，尝试从查询参数获取
+    if (!token && queryToken) {
+      token = queryToken;
+    }
+
+    if (!token) {
       return res.status(401).json({
         success: false,
         error: '未提供认证令牌'
       });
     }
-
-    // 格式: "Bearer <token>"
-    const parts = authHeader.split(' ');
-    if (parts.length !== 2 || parts[0] !== 'Bearer') {
-      return res.status(401).json({
-        success: false,
-        error: '认证令牌格式错误'
-      });
-    }
-
-    const token = parts[1];
 
     // 验证 token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);

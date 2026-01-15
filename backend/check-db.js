@@ -3,17 +3,23 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  const servers = await prisma.servers.findMany({
-    include: { users: { select: { username: true } } }
+  const profiles = await prisma.player_profiles.findMany({
+    take: 10
   });
 
-  console.log('服务器与用户对应关系:');
-  servers.forEach(s => {
-    console.log(`  - ${s.name}`);
-    console.log(`    用户: ${s.users.username}`);
-    console.log(`    ID: ${s.id}`);
-    console.log('');
-  });
+  console.log('player_profiles 表数据:');
+  if (profiles.length === 0) {
+    console.log('  (空表，尚未刷新玩家数据)');
+  } else {
+    profiles.forEach(p => {
+      console.log(`  - ${p.name || '未知'}`);
+      console.log(`    steamId: ${p.steamId}`);
+      console.log(`    avatar: ${p.avatar ? '有' : '无'}`);
+      console.log(`    playtime: ${p.playtime}`);
+      console.log(`    lastUpdated: ${p.lastUpdated}`);
+      console.log('');
+    });
+  }
 }
 
 main()

@@ -593,6 +593,107 @@ router.put('/:id/extended-teammates/:steamId', async (req, res) => {
 });
 
 /**
+ * GET /api/servers/:id/player-stats/:steamId
+ * 获取玩家详细统计数据（总数据 + 历史每日数据 + 今日数据）
+ */
+router.get('/:id/player-stats/:steamId', async (req, res) => {
+  try {
+    const { steamId } = req.params;
+
+    // 1. 获取玩家资料
+    const profile = await prisma.player_profiles.findUnique({
+      where: { steamId }
+    });
+
+    // 2. 获取当前总统计（实时值）
+    const currentStats = await prisma.player_stats.findMany({
+      where: { steamId }
+    });
+
+    // 3. 获取所有历史快照（按日期分组）
+    const snapshots = await prisma.player_stats_snapshots.findMany({
+      where: { steamId },
+      orderBy: { snapshotDate: 'desc' }
+    });
+
+    // 4. 按日期分组快照数据
+    const dailyData = {};
+    snapshots.forEach(snap => {
+      const dateKey = snap.snapshotDate.toISOString().split('T')[0];
+      if (!dailyData[dateKey]) {
+        dailyData[dateKey] = {};
+      }
+      dailyData[dateKey][snap.statKey] = snap.statValue;
+    });
+
+    // 5. 计算每日增量（与前一天对比）
+    const sortedDates = Object.keys(dailyData).sort().reverse();
+    const dailyContributions = [];
+
+    for (let i = 0; i < sortedDates.length; i++) {
+      const date = sortedDates[i];
+      const todayStats = dailyData[date];
+      const yesterdayStats = dailyData[sortedDates[i + 1]] || {};
+
+      const contribution = {};
+      Object.keys(todayStats).forEach(key => {
+        const diff = todayStats[key] - (yesterdayStats[key] || 0);
+        if (diff > 0) {
+          contribution[key] = diff;
+        }
+      });
+
+      if (Object.keys(contribution).length > 0) {
+        dailyContributions.push({
+          date,
+          contribution
+        });
+      }
+    }
+
+    // 6. 计算今日贡献（实时值 - 今日快照）
+    const today = new Date().toISOString().split('T')[0];
+    const todaySnapshot = dailyData[today] || {};
+    const todayContribution = {};
+
+    currentStats.forEach(stat => {
+      const snapshotValue = todaySnapshot[stat.statKey] || 0;
+      const diff = stat.statValue - snapshotValue;
+      if (diff > 0) {
+        todayContribution[stat.statKey] = diff;
+      }
+    });
+
+    // 7. 构建总数据对象
+    const totalStats = {};
+    currentStats.forEach(stat => {
+      totalStats[stat.statKey] = stat.statValue;
+    });
+
+    res.json({
+      success: true,
+      data: {
+        profile: profile ? {
+          steamId: profile.steamId,
+          name: profile.name,
+          avatar: profile.avatar,
+          playtime: profile.playtime,
+          vacBanned: profile.vacBanned,
+          gameBans: profile.gameBans,
+          lastUpdated: profile.lastUpdated
+        } : null,
+        totalStats,
+        todayContribution,
+        dailyHistory: dailyContributions.slice(0, 30) // 最近30天
+      }
+    });
+  } catch (error) {
+    console.error('获取玩家统计失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/servers/:id/chat
  * 获取队伍聊天历史
  */
