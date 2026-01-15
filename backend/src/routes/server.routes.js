@@ -465,6 +465,7 @@ router.get('/:id/extended-teammates', async (req, res) => {
     const extendedTeammates = await prisma.extended_teammates.findMany({
       where: { userId, serverId }
     });
+    const extendedSteamIds = new Set(extendedTeammates.map(t => t.steamId));
 
     // 3. 获取当前队伍成员（实时）
     const rustPlusService = getUserRustPlusService(userId);
@@ -486,26 +487,33 @@ router.get('/:id/extended-teammates', async (req, res) => {
       }
     }
 
-    // 4. 获取所有玩家的 Steam 资料
-    const steamIds = extendedTeammates.map(t => t.steamId);
+    // 4. 合并所有 steamId（extended + 当前队伍中但不在 extended 里的）
+    const allSteamIds = [...extendedSteamIds];
+    for (const steamId of currentTeamIds) {
+      if (!extendedSteamIds.has(steamId)) {
+        allSteamIds.push(steamId);
+      }
+    }
+
+    // 5. 获取所有玩家的 Steam 资料
     const [profiles, stats, snapshots] = await Promise.all([
       prisma.player_profiles.findMany({
-        where: { steamId: { in: steamIds } }
+        where: { steamId: { in: allSteamIds } }
       }),
       prisma.player_stats.findMany({
-        where: { steamId: { in: steamIds } }
+        where: { steamId: { in: allSteamIds } }
       }),
       prisma.player_stats_snapshots.findMany({
         where: {
-          steamId: { in: steamIds },
+          steamId: { in: allSteamIds },
           snapshotDate: new Date()
         }
       })
     ]);
 
-    // 5. 合并数据
-    const teammates = extendedTeammates.map(teammate => {
-      const steamId = teammate.steamId;
+    // 6. 合并数据
+    const teammates = allSteamIds.map(steamId => {
+      const teammate = extendedTeammates.find(t => t.steamId === steamId);
       const profile = profiles.find(p => p.steamId === steamId);
       const memberStats = stats.filter(s => s.steamId === steamId);
       const memberSnapshots = snapshots.filter(s => s.steamId === steamId);
@@ -522,7 +530,7 @@ router.get('/:id/extended-teammates', async (req, res) => {
 
       return {
         steamId,
-        name: profile?.name || '未知',
+        name: teamMember?.name || profile?.name || '未知',
         inTeam,
         // 在队伍中时有的字段
         ...(inTeam && teamMember ? {
@@ -538,10 +546,10 @@ router.get('/:id/extended-teammates', async (req, res) => {
         gameBans: profile?.gameBans || 0,
         contribution,
         // 元数据
-        addedAt: teammate.addedAt,
-        lastSeenAt: teammate.lastSeenAt,
+        addedAt: teammate?.addedAt || null,
+        lastSeenAt: teammate?.lastSeenAt || null,
         profileUpdatedAt: profile?.lastUpdated || null,
-        notes: teammate.notes
+        notes: teammate?.notes || null
       };
     });
 
