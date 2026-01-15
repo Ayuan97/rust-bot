@@ -527,26 +527,55 @@ function PlayerDetailModal({ player, stats, loading, onClose }) {
                 <div>
                   <div className="text-xs text-gray-500 mb-4 flex items-center gap-2">
                     <FaCalendarAlt className="text-[#cd5241]" />
-                    今日数据基于 00:00 快照计算
+                    今日数据基于首次上线快照计算，每 15 分钟更新
                   </div>
                   {Object.keys(stats?.todayContribution || {}).length > 0 ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {Object.entries(stats.todayContribution).map(([key, value]) => {
-                        const config = STAT_CONFIG[key] || { name: key, icon: FaHammer, color: 'text-gray-400' };
-                        const Icon = config.icon;
-                        return (
-                          <div key={key} className="bg-white/[0.03] p-4 tactic-cut border border-white/5">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Icon className={`text-sm ${config.color}`} />
-                              <span className="text-[10px] text-gray-500 font-bold uppercase">{config.name}</span>
+                    <>
+                      {/* 今日总贡献 */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+                        {Object.entries(stats.todayContribution).map(([key, value]) => {
+                          const config = STAT_CONFIG[key] || { name: key, icon: FaHammer, color: 'text-gray-400' };
+                          const Icon = config.icon;
+                          return (
+                            <div key={key} className="bg-white/[0.03] p-4 tactic-cut border border-white/5">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Icon className={`text-sm ${config.color}`} />
+                                <span className="text-[10px] text-gray-500 font-bold uppercase">{config.name}</span>
+                              </div>
+                              <div className="text-2xl font-mono font-black text-[#a3e635]">
+                                +{formatNumber(value)}
+                              </div>
                             </div>
-                            <div className="text-2xl font-mono font-black text-[#a3e635]">
-                              +{formatNumber(value)}
-                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* 今日 15 分钟细粒度时间线 */}
+                      {stats?.todayHistory?.length > 0 && (
+                        <div className="border-t border-white/10 pt-4">
+                          <div className="text-xs text-gray-500 mb-3 flex items-center gap-2">
+                            <FaClock className="text-[#cd5241]" />
+                            今日变化时间线
                           </div>
-                        );
-                      })}
-                    </div>
+                          <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar">
+                            {stats.todayHistory.map((record, idx) => {
+                              const time = new Date(record.snapshotDate);
+                              const timeStr = time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+                              const config = STAT_CONFIG[record.statKey] || { name: record.statKey, icon: FaHammer, color: 'text-gray-400' };
+                              const Icon = config.icon;
+                              return (
+                                <div key={idx} className="flex items-center gap-3 text-xs bg-white/[0.02] p-2 rounded">
+                                  <span className="font-mono text-gray-500 w-12">{timeStr}</span>
+                                  <Icon className={`${config.color} text-sm`} />
+                                  <span className="text-gray-400">{config.name}</span>
+                                  <span className="text-white font-mono ml-auto">{formatNumber(record.statValue)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="text-center text-gray-600 py-8">今日暂无贡献数据</div>
                   )}
@@ -589,10 +618,42 @@ function PlayerDetailModal({ player, stats, loading, onClose }) {
                 <div>
                   <div className="text-xs text-gray-500 mb-4 flex items-center gap-2">
                     <FaHistory className="text-[#cd5241]" />
-                    最近 30 天每日贡献
+                    今日显示15分钟细粒度记录，往日显示每日汇总
                   </div>
+
+                  {/* 今日 15 分钟细粒度记录 */}
+                  {stats?.todayHistory?.length > 0 && (
+                    <div className="mb-6">
+                      <div className="text-xs font-bold text-white mb-3 flex items-center gap-2">
+                        <span className="bg-[#cd5241] px-2 py-0.5 tactic-cut">今日</span>
+                        <span className="text-gray-500">15分钟粒度</span>
+                      </div>
+                      <div className="space-y-2 max-h-[250px] overflow-y-auto custom-scrollbar">
+                        {stats.todayHistory.map((record, idx) => {
+                          const time = new Date(record.snapshotDate);
+                          const timeStr = time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+                          const config = STAT_CONFIG[record.statKey] || { name: record.statKey, icon: FaHammer, color: 'text-gray-400' };
+                          const Icon = config.icon;
+                          return (
+                            <div key={idx} className="flex items-center gap-3 text-xs bg-white/[0.02] p-2.5 rounded border border-white/5">
+                              <span className="font-mono text-[#cd5241] w-12">{timeStr}</span>
+                              <Icon className={`${config.color} text-sm`} />
+                              <span className="text-gray-400">{config.name}</span>
+                              <span className="text-white font-mono ml-auto">{formatNumber(record.statValue)}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 往日每日汇总 */}
                   {stats?.dailyHistory?.length > 0 ? (
                     <div className="space-y-3">
+                      <div className="text-xs font-bold text-white mb-3 flex items-center gap-2">
+                        <span className="bg-gray-700 px-2 py-0.5 tactic-cut">历史</span>
+                        <span className="text-gray-500">每日汇总</span>
+                      </div>
                       {stats.dailyHistory.map((day, idx) => (
                         <div key={day.date} className="bg-white/[0.03] p-4 tactic-cut border border-white/5">
                           <div className="flex items-center justify-between mb-3">
@@ -614,7 +675,7 @@ function PlayerDetailModal({ player, stats, loading, onClose }) {
                         </div>
                       ))}
                     </div>
-                  ) : (
+                  ) : !stats?.todayHistory?.length && (
                     <div className="text-center text-gray-600 py-8">暂无历史记录</div>
                   )}
                 </div>

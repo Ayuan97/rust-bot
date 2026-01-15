@@ -617,7 +617,11 @@ router.put('/:id/extended-teammates/:steamId', async (req, res) => {
 
 /**
  * GET /api/servers/:id/player-stats/:steamId
- * 获取玩家详细统计数据（总数据 + 历史每日数据 + 今日数据）
+ * 获取玩家详细统计数据
+ * - totalStats: 总数据
+ * - todayContribution: 今日贡献（当前值 - 今日基准）
+ * - todayHistory: 今日15分钟细粒度记录
+ * - dailyHistory: 往日每天汇总
  */
 router.get('/:id/player-stats/:steamId', async (req, res) => {
   try {
@@ -633,61 +637,114 @@ router.get('/:id/player-stats/:steamId', async (req, res) => {
       where: { steamId }
     });
 
-    // 3. 获取所有历史快照（按日期分组）
-    const snapshots = await prisma.player_stats_snapshots.findMany({
+    // 3. 计算今日日期范围
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // 4. 获取所有快照
+    const allSnapshots = await prisma.player_stats_snapshots.findMany({
       where: { steamId },
-      orderBy: { snapshotDate: 'desc' }
+      orderBy: { snapshotDate: 'asc' }
     });
 
-    // 4. 按日期分组快照数据
-    const dailyData = {};
-    snapshots.forEach(snap => {
-      const dateKey = snap.snapshotDate.toISOString().split('T')[0];
-      if (!dailyData[dateKey]) {
-        dailyData[dateKey] = {};
+    // 5. 分离今日快照和历史快照
+    const todaySnapshots = allSnapshots.filter(s =>
+      s.snapshotDate >= todayStart && s.snapshotDate <= todayEnd
+    );
+    const pastSnapshots = allSnapshots.filter(s =>
+      s.snapshotDate < todayStart
+    );
+
+    // 6. 构建今日15分钟历史记录
+    // 按时间分组快照
+    const todayTimeGroups = {};
+    todaySnapshots.forEach(snap => {
+      const timeKey = snap.snapshotDate.toISOString();
+      if (!todayTimeGroups[timeKey]) {
+        todayTimeGroups[timeKey] = { time: snap.snapshotDate, stats: {} };
       }
-      dailyData[dateKey][snap.statKey] = snap.statValue;
+      todayTimeGroups[timeKey].stats[snap.statKey] = snap.statValue;
     });
 
-    // 5. 计算每日增量（与前一天对比）
-    const sortedDates = Object.keys(dailyData).sort().reverse();
-    const dailyContributions = [];
+    // 转换为数组并计算增量
+    const timeKeys = Object.keys(todayTimeGroups).sort();
+    const todayHistory = [];
 
-    for (let i = 0; i < sortedDates.length; i++) {
-      const date = sortedDates[i];
-      const todayStats = dailyData[date];
-      const yesterdayStats = dailyData[sortedDates[i + 1]] || {};
+    for (let i = 0; i < timeKeys.length; i++) {
+      const current = todayTimeGroups[timeKeys[i]];
+      const prev = i > 0 ? todayTimeGroups[timeKeys[i - 1]] : null;
 
       const contribution = {};
-      Object.keys(todayStats).forEach(key => {
-        const diff = todayStats[key] - (yesterdayStats[key] || 0);
-        if (diff > 0) {
+      Object.keys(current.stats).forEach(key => {
+        const prevValue = prev ? (prev.stats[key] || 0) : 0;
+        const diff = current.stats[key] - prevValue;
+        // 第一条记录不算贡献（是基准）
+        if (diff > 0 && i > 0) {
           contribution[key] = diff;
         }
       });
 
-      if (Object.keys(contribution).length > 0) {
-        dailyContributions.push({
-          date,
-          contribution
+      // 只添加有贡献的记录，或者是第一条（基准）
+      if (Object.keys(contribution).length > 0 || i === 0) {
+        todayHistory.push({
+          time: current.time,
+          stats: current.stats,
+          contribution: i === 0 ? {} : contribution, // 第一条记录贡献为空
+          isBaseline: i === 0
         });
       }
     }
 
-    // 6. 计算今日贡献（实时值 - 今日快照）
-    const today = new Date().toISOString().split('T')[0];
-    const todaySnapshot = dailyData[today] || {};
-    const todayContribution = {};
+    // 7. 构建每日历史汇总（往日数据）
+    const dailyData = {};
+    pastSnapshots.forEach(snap => {
+      const dateKey = snap.snapshotDate.toISOString().split('T')[0];
+      if (!dailyData[dateKey]) {
+        dailyData[dateKey] = { earliest: {}, latest: {} };
+      }
+      // 记录每天最早和最晚的值
+      if (!dailyData[dateKey].earliestTime || snap.snapshotDate < dailyData[dateKey].earliestTime) {
+        dailyData[dateKey].earliest[snap.statKey] = snap.statValue;
+        dailyData[dateKey].earliestTime = snap.snapshotDate;
+      }
+      if (!dailyData[dateKey].latestTime || snap.snapshotDate > dailyData[dateKey].latestTime) {
+        dailyData[dateKey].latest[snap.statKey] = snap.statValue;
+        dailyData[dateKey].latestTime = snap.snapshotDate;
+      }
+    });
 
+    // 计算每日贡献（当天最晚值 - 当天最早值）
+    const dailyHistory = Object.keys(dailyData)
+      .sort()
+      .reverse()
+      .slice(0, 30)
+      .map(date => {
+        const dayData = dailyData[date];
+        const contribution = {};
+        Object.keys(dayData.latest).forEach(key => {
+          const diff = dayData.latest[key] - (dayData.earliest[key] || 0);
+          if (diff > 0) {
+            contribution[key] = diff;
+          }
+        });
+        return { date, contribution };
+      })
+      .filter(d => Object.keys(d.contribution).length > 0);
+
+    // 8. 计算今日贡献（当前实时值 - 今日基准快照）
+    const todayBaseline = todayHistory.length > 0 ? todayHistory[0].stats : {};
+    const todayContribution = {};
     currentStats.forEach(stat => {
-      const snapshotValue = todaySnapshot[stat.statKey] || 0;
-      const diff = stat.statValue - snapshotValue;
+      const baselineValue = todayBaseline[stat.statKey] || 0;
+      const diff = stat.statValue - baselineValue;
       if (diff > 0) {
         todayContribution[stat.statKey] = diff;
       }
     });
 
-    // 7. 构建总数据对象
+    // 9. 构建总数据对象
     const totalStats = {};
     currentStats.forEach(stat => {
       totalStats[stat.statKey] = stat.statValue;
@@ -707,7 +764,8 @@ router.get('/:id/player-stats/:steamId', async (req, res) => {
         } : null,
         totalStats,
         todayContribution,
-        dailyHistory: dailyContributions.slice(0, 30) // 最近30天
+        todayHistory: todayHistory.reverse(), // 最新的在前面
+        dailyHistory
       }
     });
   } catch (error) {

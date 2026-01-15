@@ -1729,8 +1729,8 @@ class UserEventMonitor extends EventEmitter {
       const todayEnd = new Date();
       todayEnd.setHours(23, 59, 59, 999);
 
-      // 检查今日快照，如果不存在则创建（00:00 快照）
-      let snapshot = await prisma.player_stats_snapshots.findFirst({
+      // 查找今日的基准快照（当天第一个快照）
+      let baselineSnapshot = await prisma.player_stats_snapshots.findFirst({
         where: {
           steamId,
           statKey: internalKey,
@@ -1738,25 +1738,41 @@ class UserEventMonitor extends EventEmitter {
             gte: todayStart,
             lte: todayEnd
           }
-        }
+        },
+        orderBy: { snapshotDate: 'asc' } // 取最早的一个作为基准
       });
 
-      if (!snapshot) {
-        snapshot = await prisma.player_stats_snapshots.create({
-          data: {
-            steamId,
-            statKey: internalKey,
-            statValue: value, // 初始快照值应为当前值
-            snapshotDate: todayStart // 使用今日 00:00 作为快照时间
-          }
-        });
-        logger.debug(`[Steam] 已为 ${steamId} 创建 ${internalKey} 的今日初始快照`);
-      }
-
-      // 获取旧值以计算增量
+      // 获取当前存储的值
       const oldStat = await prisma.player_stats.findUnique({
         where: { steamId_statKey: { steamId, statKey: internalKey } }
       });
+
+      // 如果没有基准快照，说明是今天第一次获取数据
+      const isFirstFetchToday = !baselineSnapshot;
+
+      if (isFirstFetchToday) {
+        // 首次获取：创建基准快照，贡献从此刻开始计算
+        baselineSnapshot = await prisma.player_stats_snapshots.create({
+          data: {
+            steamId,
+            statKey: internalKey,
+            statValue: value,
+            snapshotDate: new Date() // 使用当前精确时间
+          }
+        });
+        logger.debug(`[Steam] 已为 ${steamId} 创建 ${internalKey} 的今日基准快照`);
+      } else if (oldStat && value !== oldStat.statValue) {
+        // 非首次获取且数值有变化：创建新的历史快照
+        await prisma.player_stats_snapshots.create({
+          data: {
+            steamId,
+            statKey: internalKey,
+            statValue: value,
+            snapshotDate: new Date() // 使用当前精确时间
+          }
+        });
+        logger.debug(`[Steam] 已为 ${steamId} 创建 ${internalKey} 的历史快照`);
+      }
 
       // 更新实时统计
       await prisma.player_stats.upsert({
@@ -1765,12 +1781,12 @@ class UserEventMonitor extends EventEmitter {
         create: { steamId, statKey: internalKey, statValue: value }
       });
 
-      // 如果有旧值且增量达到阈值，触发事件
-      if (oldStat && value > oldStat.statValue) {
+      // 如果有旧值且增量达到阈值，触发事件（首次获取不触发）
+      if (!isFirstFetchToday && oldStat && value > oldStat.statValue) {
         const delta = value - oldStat.statValue;
         if (delta >= (thresholds[internalKey] || 1)) {
-          // 计算今日累计贡献 (当前值 - 今日快照值)
-          const todayTotal = Math.max(0, value - snapshot.statValue);
+          // 计算今日累计贡献 (当前值 - 基准快照值)
+          const todayTotal = Math.max(0, value - baselineSnapshot.statValue);
 
           this.emit('player:contribution', {
             serverId,
