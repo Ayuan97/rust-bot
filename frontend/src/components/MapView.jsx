@@ -233,10 +233,6 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
     const left = ((x + margin) / totalSize) * 100;
     const top = ((size + margin - y) / totalSize) * 100;
 
-    // 调试：查看计算值
-    console.log(`[getPos] mapSize=${size}, oceanMargin=${margin}, totalSize=${totalSize}`);
-    console.log(`[getPos] x=${x}, y=${y} => left=${left.toFixed(2)}%, top=${top.toFixed(2)}%`);
-
     return { left: `${left}%`, top: `${top}%` };
   };
 
@@ -364,19 +360,26 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
       >
         {/* 变换容器 */}
         <div
-          className="absolute inset-0 transition-transform duration-75 ease-out origin-center"
+          className="absolute inset-0 transition-transform duration-75 ease-out origin-center flex items-center justify-center"
           style={{
-            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-            width: '100%',
-            height: '100%'
+            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`
           }}
         >
+          {/* 地图内容容器 - 保持 1:1 宽高比，居中显示 */}
+          <div
+            className="relative"
+            style={{
+              aspectRatio: '1 / 1',
+              height: '100%',
+              maxWidth: '100%'
+            }}
+          >
           {/* 地图背景 */}
           {mapImageUrl && (
             <img
               src={mapImageUrl}
               alt="Rust Map"
-              className="absolute inset-0 w-full h-full object-contain z-0 opacity-80"
+              className="absolute inset-0 w-full h-full object-fill z-0 opacity-80"
               style={{
                 filter: 'grayscale(0.2) contrast(1.1)',
                 imageRendering: 'auto'
@@ -516,6 +519,7 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
               </div>
             </div>
           )}
+          </div>{/* 关闭地图内容容器 */}
         </div>
 
         {/* 右下角信息 */}
