@@ -233,6 +233,10 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
     const left = ((x + margin) / totalSize) * 100;
     const top = ((size + margin - y) / totalSize) * 100;
 
+    // 调试：查看计算值
+    console.log(`[getPos] mapSize=${size}, oceanMargin=${margin}, totalSize=${totalSize}`);
+    console.log(`[getPos] x=${x}, y=${y} => left=${left.toFixed(2)}%, top=${top.toFixed(2)}%`);
+
     return { left: `${left}%`, top: `${top}%` };
   };
 
@@ -445,19 +449,19 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
           })}
 
           {/* 队友标记 */}
-          {layerVisibility.players && teamMembers.map((member) => {
+          {layerVisibility.players && teamMembers.map((member, index) => {
             const grid = coordsToGrid(member.x, member.y, mapInfo.mapSize);
             const isLocked = focusTarget?.steamId === member.steamId ||
               (focusTarget?.x === member.x && focusTarget?.y === member.y);
 
-            // 调试：打印玩家坐标
-            console.log(`[Map] 玩家 ${member.name}: x=${member.x}, y=${member.y}, isOnline=${member.isOnline}`);
-
             return (
               <div
                 key={member.steamId}
-                className="absolute -translate-x-1/2 -translate-y-1/2 transition-all duration-1000 z-30 cursor-pointer group"
-                style={getPos(member.x, member.y)}
+                className="absolute -translate-x-1/2 -translate-y-1/2 transition-all duration-1000 cursor-pointer group"
+                style={{
+                  ...getPos(member.x, member.y),
+                  zIndex: 30 + index  // 确保每个玩家有不同的 z-index
+                }}
                 onClick={() => onLocatePlayer?.(member)}
               >
                 <div className="relative">
@@ -482,7 +486,7 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
                       {!member.isAlive && <span className="text-[#ef4444]">[已阵亡]</span>}
                       {!member.isOnline && <span className="text-gray-500">[离线]</span>}
                     </span>
-                    <div className="text-[8px] text-gray-500 font-mono mt-0.5">{grid} | x:{member.x?.toFixed(0)} y:{member.y?.toFixed(0)}</div>
+                    <div className="text-[8px] text-gray-500 font-mono mt-0.5">{grid}</div>
                   </div>
 
                   {/* 锁定特效 */}
