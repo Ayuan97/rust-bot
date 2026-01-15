@@ -36,19 +36,17 @@ function isOutsideGridSystem(x, y, correctedMapSize) {
 
 /**
  * 获取 X 坐标对应的网格字母（A, B, C, ...）
+ * 完全按照 rustplusplus 实现
  */
 function getGridPosLettersX(x, mapSize) {
-  // 确保使用修正后的地图大小计算（虽然这里主要用GRID_DIAMETER）
-  // 索引从0开始
-  const index = Math.floor(x / GRID_DIAMETER);
-  if (index < 0) return null; // 或者处理负坐标
-
-  // 检查是否越界（根据传入的 mapSize）
-  // 注意：mapSize 应该是 correctedMapSize
-  const maxIndex = Math.floor(mapSize / GRID_DIAMETER);
-  if (index >= maxIndex) return null;
-
-  return numberToLetters(index + 1);
+  let counter = 1;
+  for (let startGrid = 0; startGrid < mapSize; startGrid += GRID_DIAMETER) {
+    if (x >= startGrid && x <= (startGrid + GRID_DIAMETER)) {
+      return numberToLetters(counter);
+    }
+    counter++;
+  }
+  return null;
 }
 
 /**
@@ -119,11 +117,12 @@ function getSubGridNumber(x, y, mapSize) {
  * @returns {string|null} 网格位置（如 "A5" 或 "A5-3"）或 null（超出范围）
  */
 function getGridPos(x, y, mapSize, includeSubGrid = false) {
-  // 先按报告的地图大小纠正
-  let correctedMapSize = getCorrectedMapSize(mapSize);
+  const correctedMapSize = getCorrectedMapSize(mapSize);
 
-  // 移除动态放大逻辑，避免坐标系偏移
-  // if (isOutsideGridSystem(x, y, correctedMapSize)) { ... }
+  // 与 rustplusplus 一致：先检查是否超出网格系统
+  if (isOutsideGridSystem(x, y, correctedMapSize)) {
+    return null;
+  }
 
   const gridPosLetters = getGridPosLettersX(x, correctedMapSize);
   const gridPosNumber = getGridPosNumberY(y, correctedMapSize);
@@ -135,7 +134,6 @@ function getGridPos(x, y, mapSize, includeSubGrid = false) {
   const baseGrid = gridPosLetters + gridPosNumber;
 
   if (includeSubGrid) {
-    // 子网格也使用放大后的有效地图大小确保命中
     const subGrid = getSubGridNumber(x, y, correctedMapSize);
     if (subGrid !== null) {
       return `${baseGrid}-${subGrid}`;
