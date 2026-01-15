@@ -103,9 +103,9 @@ export function rateLimit(options = {}) {
  * 预设的速率限制配置
  */
 
-// 通用 API 限制：每分钟 100 次
+// 通用 API 限制：每分钟 300 次
 export const apiLimiter = rateLimit({
-  limit: 100,
+  limit: 300,
   windowMs: 60 * 1000,
   message: '请求过于频繁，请稍后再试'
 });

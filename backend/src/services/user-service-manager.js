@@ -37,6 +37,9 @@ class UserServiceManager extends EventEmitter {
     this.commandsService = new UserCommands(userId, this.rustPlusService, this.eventMonitorService);  // 游戏内命令
     this.dayNightNotifier = new DayNightNotifier(userId, this.rustPlusService);  // 昼夜提醒
 
+    // 待确认的服务器配对数据（单服务器限制）
+    this.pendingServerPairing = null;
+
     console.log(`👤 UserServiceManager 已创建 (userId: ${userId})`);
   }
 
@@ -629,74 +632,183 @@ class UserServiceManager extends EventEmitter {
     try {
       this.log('PAIRING', `正在处理服务器配对: ${data.name} (${data.ip}:${data.port})`);
 
-      // 1. 保存/更新服务器信息到数据库
-      // 使用 upsert，如果 ID 冲突则更新
-      const serverData = {
-        name: data.name,
-        ip: data.ip,
-        port: String(data.port),
-        playerId: data.playerId,
-        playerToken: data.playerToken,
-        userId: this.userId,
-        // 如果是从 FCM 来的，通常带有 id，但要注意 Prisma 的 ID 生成策略
-        // 这里假设 data.id 是 Rust+ 返回的服务器 ID（通常是 GUID）
-        id: data.id,
-        updatedAt: new Date()
-      };
-
-      // 检查是否已存在（Prisma upsert 需要 unique key，通常是 id）
-      // 这里先尝试查找
-      const existing = await prisma.servers.findUnique({
-        where: { id: data.id }
+      // 1. 检查用户现有的真实服务器（排除 FCM 占位符）
+      const existingServers = await prisma.servers.findMany({
+        where: {
+          userId: this.userId,
+          ip: { not: '0.0.0.0' },
+          NOT: { id: { startsWith: 'fcm-' } }
+        }
       });
 
-      if (existing) {
-        await prisma.servers.update({
-          where: { id: data.id },
-          data: serverData
+      // 2. 检查是否是同一服务器的更新（IP:Port 相同）
+      const isSameServer = existingServers.some(
+        s => s.ip === data.ip && s.port === String(data.port)
+      );
+
+      // 3. 如果已有不同服务器，需要用户确认替换
+      if (existingServers.length > 0 && !isSameServer) {
+        const oldServer = existingServers[0];
+
+        this.log('PAIRING', `检测到需要替换服务器: ${oldServer.name} -> ${data.name}`);
+
+        // 暂存新服务器数据
+        this.pendingServerPairing = {
+          newServer: data,
+          oldServer: {
+            id: oldServer.id,
+            name: oldServer.name,
+            ip: oldServer.ip,
+            port: oldServer.port
+          },
+          timestamp: Date.now()
+        };
+
+        // 发送确认请求到前端
+        this.emit('server:replace:confirm', {
+          userId: this.userId,
+          oldServer: {
+            id: oldServer.id,
+            name: oldServer.name,
+            ip: oldServer.ip,
+            port: oldServer.port
+          },
+          newServer: {
+            name: data.name,
+            ip: data.ip,
+            port: data.port
+          }
         });
-        this.log('PAIRING', `更新已存在的服务器信息: ${data.name}`);
-      } else {
-        await prisma.servers.create({
-          data: serverData
-        });
-        this.log('PAIRING', `保存新服务器信息: ${data.name}`);
+
+        return; // 等待用户确认
       }
 
-      // 2. 更新内存中的用户数据
-      // 重新加载用户数据以确保同步
-      await this._loadUserData();
-
-      // 3. 如果已有连接，先断开
-      if (this.rustPlusService.connections.has(data.id)) {
-        this.log('PAIRING', `断开旧连接...`);
-        await this.rustPlusService.disconnect(data.id);
-      }
-
-      // 4. 发起新连接
-      this.log('PAIRING', `正在连接到新服务器...`);
-      await this.rustPlusService.connect({
-        serverId: data.id,
-        ip: data.ip,
-        port: data.port, // rustplus-client 内部会处理 string/int
-        playerId: data.playerId,
-        playerToken: data.playerToken
-      });
-
-      // 5. 启动相关子服务 (由于是新配对，需要手动触发启动)
-      this.log('PAIRING', `正在启动实时监控与自动化服务...`);
-      try {
-        await this.eventMonitorService.start(data.id);
-        await this.automationService.start(data.id);
-        await this.dayNightNotifier.start(data.id);
-        this.log('PAIRING', `所有实时服务已就绪`);
-      } catch (svcError) {
-        this.log('PAIRING', `实时服务启动失败: ${svcError.message}`, 'WARN');
-      }
+      // 4. 无需确认，直接执行配对
+      await this._executeServerPairing(data);
 
     } catch (error) {
       this.log('PAIRING', `配对处理失败: ${error.message}`, 'ERROR');
       console.error(error);
+    }
+  }
+
+  /**
+   * 处理用户确认替换的响应
+   * @param {boolean} confirmed - 用户是否确认替换
+   */
+  async handleServerReplaceResponse(confirmed) {
+    if (!this.pendingServerPairing) {
+      this.log('PAIRING', '没有待确认的配对请求', 'WARN');
+      return;
+    }
+
+    const { newServer, oldServer, timestamp } = this.pendingServerPairing;
+
+    // 检查是否超时（5分钟）
+    if (Date.now() - timestamp > 5 * 60 * 1000) {
+      this.log('PAIRING', '配对确认已超时', 'WARN');
+      this.pendingServerPairing = null;
+      return;
+    }
+
+    if (!confirmed) {
+      this.log('PAIRING', `用户取消了服务器替换: ${newServer.name}`);
+      this.pendingServerPairing = null;
+      return;
+    }
+
+    try {
+      this.log('PAIRING', `用户确认替换服务器: ${oldServer.name} -> ${newServer.name}`);
+
+      // 1. 断开旧服务器连接
+      if (this.rustPlusService.isConnected(oldServer.id)) {
+        await this.rustPlusService.disconnect(oldServer.id);
+      }
+
+      // 2. 停止旧服务器的相关服务
+      this.eventMonitorService.stop(oldServer.id);
+      this.automationService.stop(oldServer.id);
+      this.dayNightNotifier.stop(oldServer.id);
+
+      // 3. 删除旧服务器（会级联删除 devices 和 event_logs）
+      await prisma.servers.delete({
+        where: { id: oldServer.id }
+      });
+      this.log('PAIRING', `已删除旧服务器: ${oldServer.name}`);
+
+      // 4. 执行新服务器配对
+      await this._executeServerPairing(newServer);
+
+    } catch (error) {
+      this.log('PAIRING', `替换服务器失败: ${error.message}`, 'ERROR');
+      console.error(error);
+    } finally {
+      this.pendingServerPairing = null;
+    }
+  }
+
+  /**
+   * 执行实际的服务器配对逻辑
+   * @private
+   */
+  async _executeServerPairing(data) {
+    // 1. 保存/更新服务器信息到数据库
+    const serverData = {
+      name: data.name,
+      ip: data.ip,
+      port: String(data.port),
+      playerId: data.playerId,
+      playerToken: data.playerToken,
+      userId: this.userId,
+      id: data.id,
+      updatedAt: new Date()
+    };
+
+    const existing = await prisma.servers.findUnique({
+      where: { id: data.id }
+    });
+
+    if (existing) {
+      await prisma.servers.update({
+        where: { id: data.id },
+        data: serverData
+      });
+      this.log('PAIRING', `更新已存在的服务器信息: ${data.name}`);
+    } else {
+      await prisma.servers.create({
+        data: serverData
+      });
+      this.log('PAIRING', `保存新服务器信息: ${data.name}`);
+    }
+
+    // 2. 更新内存中的用户数据
+    await this._loadUserData();
+
+    // 3. 如果已有连接，先断开
+    if (this.rustPlusService.connections.has(data.id)) {
+      this.log('PAIRING', `断开旧连接...`);
+      await this.rustPlusService.disconnect(data.id);
+    }
+
+    // 4. 发起新连接
+    this.log('PAIRING', `正在连接到新服务器...`);
+    await this.rustPlusService.connect({
+      serverId: data.id,
+      ip: data.ip,
+      port: data.port,
+      playerId: data.playerId,
+      playerToken: data.playerToken
+    });
+
+    // 5. 启动相关子服务
+    this.log('PAIRING', `正在启动实时监控与自动化服务...`);
+    try {
+      await this.eventMonitorService.start(data.id);
+      await this.automationService.start(data.id);
+      await this.dayNightNotifier.start(data.id);
+      this.log('PAIRING', `所有实时服务已就绪`);
+    } catch (svcError) {
+      this.log('PAIRING', `实时服务启动失败: ${svcError.message}`, 'WARN');
     }
   }
 

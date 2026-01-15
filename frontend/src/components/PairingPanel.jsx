@@ -38,14 +38,32 @@ function PairingPanel({ onServerPaired }) {
       toast.success(`新智能设备已上线 (ID: ${entityInfo.entityId})`);
     };
 
+    // 监听服务器替换确认请求
+    const handleServerReplaceConfirm = async (data) => {
+      const { oldServer, newServer } = data;
+
+      const confirmed = await confirm({
+        type: 'warning',
+        title: '切换服务器',
+        message: `检测到您正在配对新服务器:\n\n当前: ${oldServer.name} (${oldServer.ip}:${oldServer.port})\n新的: ${newServer.name} (${newServer.ip}:${newServer.port})\n\n确定要替换吗？旧服务器的设备配置和事件记录将被删除。`,
+        confirmText: '确认替换',
+        cancelText: '保留当前'
+      });
+
+      // 发送确认响应
+      socketService.sendServerReplaceResponse(confirmed);
+    };
+
     socketService.on('server:paired', handleServerPaired);
     socketService.on('entity:paired', handleEntityPaired);
+    socketService.on('server:replace:confirm', handleServerReplaceConfirm);
 
     return () => {
       socketService.off('server:paired', handleServerPaired);
       socketService.off('entity:paired', handleEntityPaired);
+      socketService.off('server:replace:confirm', handleServerReplaceConfirm);
     };
-  }, [onServerPaired]);
+  }, [onServerPaired, confirm]);
 
   const fetchStatus = async () => {
     try {
