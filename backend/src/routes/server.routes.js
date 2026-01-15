@@ -497,6 +497,12 @@ router.get('/:id/extended-teammates', async (req, res) => {
     const steamIdArray = [...allSteamIds];
 
     // 5. 获取 Steam 资料和统计数据
+    // 计算今天的日期范围
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+
     const [profiles, stats, todaySnapshots] = await Promise.all([
       prisma.player_profiles.findMany({
         where: { steamId: { in: steamIdArray } }
@@ -507,7 +513,10 @@ router.get('/:id/extended-teammates', async (req, res) => {
       prisma.player_stats_snapshots.findMany({
         where: {
           steamId: { in: steamIdArray },
-          snapshotDate: new Date().toISOString().split('T')[0] // 今天的日期
+          snapshotDate: {
+            gte: todayStart,
+            lt: todayEnd
+          }
         }
       })
     ]);
