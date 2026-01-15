@@ -202,15 +202,22 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
       const margin = mapInfo.oceanMargin;
       const totalSize = size + 2 * margin;
 
+      // 计算目标在地图上的百分比位置 (0-1)
       const posPercent = {
         x: (focusTarget.x + margin) / totalSize,
         y: (size + margin - focusTarget.y) / totalSize
       };
 
-      const newX = (rect.width / 2) - (posPercent.x * rect.width * 2);
-      const newY = (rect.height / 2) - (posPercent.y * rect.height * 2);
+      // 目标缩放比例
+      const targetScale = 2;
 
-      setTransform({ scale: 2, x: newX, y: newY });
+      // 因为 transform-origin 是 center，缩放以中心为原点
+      // 目标相对于中心的偏移 = (posPercent - 0.5) * containerSize * scale
+      // 要让目标居中，translate = -偏移
+      const newX = -(posPercent.x - 0.5) * rect.width * targetScale;
+      const newY = -(posPercent.y - 0.5) * rect.height * targetScale;
+
+      setTransform({ scale: targetScale, x: newX, y: newY });
     }
   }, [focusTarget, mapInfo.mapSize, mapInfo.oceanMargin]);
 
@@ -443,6 +450,9 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
             const isLocked = focusTarget?.steamId === member.steamId ||
               (focusTarget?.x === member.x && focusTarget?.y === member.y);
 
+            // 调试：打印玩家坐标
+            console.log(`[Map] 玩家 ${member.name}: x=${member.x}, y=${member.y}, isOnline=${member.isOnline}`);
+
             return (
               <div
                 key={member.steamId}
@@ -460,7 +470,7 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
                       ? 'bg-[#ef4444] shadow-[#ef4444]/60'
                       : member.isOnline
                         ? 'bg-[#a3e635] shadow-[#a3e635]/60 animate-pulse'
-                        : 'bg-gray-800'
+                        : 'bg-gray-600'
                     }`}>
                     <FaUser className="text-[8px] text-white" />
                   </div>
@@ -470,8 +480,9 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
                     <span className="text-[10px] font-black text-white uppercase tracking-tighter flex items-center gap-2">
                       {member.name}
                       {!member.isAlive && <span className="text-[#ef4444]">[已阵亡]</span>}
+                      {!member.isOnline && <span className="text-gray-500">[离线]</span>}
                     </span>
-                    <div className="text-[8px] text-gray-500 font-mono mt-0.5">{grid}</div>
+                    <div className="text-[8px] text-gray-500 font-mono mt-0.5">{grid} | x:{member.x?.toFixed(0)} y:{member.y?.toFixed(0)}</div>
                   </div>
 
                   {/* 锁定特效 */}
@@ -506,7 +517,7 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
         {/* 右下角信息 */}
         <div className="absolute bottom-4 right-4 flex items-center gap-4 text-[10px] text-gray-600 font-bold uppercase bg-black/60 px-3 py-2 tactic-cut">
           <span>缩放: <span className="text-white">{(transform.scale * 100).toFixed(0)}%</span></span>
-          <span>队友: <span className="text-[#a3e635]">{teamMembers.length}</span></span>
+          <span>在线: <span className="text-[#a3e635]">{teamMembers.filter(m => m.isOnline).length}</span>/{teamMembers.length}</span>
           <span>标记: <span className="text-[#cd5241]">{filteredMarkers.length}</span></span>
         </div>
 

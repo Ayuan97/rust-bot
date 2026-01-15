@@ -1791,18 +1791,22 @@ class UserEventMonitor extends EventEmitter {
         });
         console.log(`[Steam] 📸 ${playerName} 创建 ${internalKey} 今日基准快照: ${value}`);
       } else {
-        // 非首次获取：始终创建历史快照（用于时间线）
-        // 检查是否距离上次快照至少 5 分钟，避免过于频繁
+        // 非首次获取：只有数值变化时才创建历史快照
         const lastSnapshot = await prisma.player_stats_snapshots.findFirst({
           where: { steamId, statKey: internalKey },
           orderBy: { snapshotDate: 'desc' }
         });
 
+        // 检查数值是否有变化
+        const hasValueChanged = !lastSnapshot || lastSnapshot.statValue !== value;
+
+        // 检查是否距离上次快照至少 5 分钟
         const minInterval = 5 * 60 * 1000; // 5 分钟
-        const shouldCreateSnapshot = !lastSnapshot ||
+        const hasEnoughInterval = !lastSnapshot ||
           (Date.now() - new Date(lastSnapshot.snapshotDate).getTime() >= minInterval);
 
-        if (shouldCreateSnapshot) {
+        // 只有数值变化且间隔足够时才创建快照
+        if (hasValueChanged && hasEnoughInterval) {
           await prisma.player_stats_snapshots.create({
             data: {
               steamId,

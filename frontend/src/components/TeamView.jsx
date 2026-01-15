@@ -628,23 +628,53 @@ function PlayerDetailModal({ player, stats, loading, onClose }) {
                     Steam 公开统计数据（累计）
                   </div>
                   {Object.keys(stats?.totalStats || {}).length > 0 ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {Object.entries(stats.totalStats).map(([key, value]) => {
-                        const config = STAT_CONFIG[key] || { name: key, icon: FaHammer, color: 'text-gray-400' };
-                        const Icon = config.icon;
-                        return (
-                          <div key={key} className="bg-white/[0.03] p-4 tactic-cut border border-white/5">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Icon className={`text-sm ${config.color}`} />
-                              <span className="text-[10px] text-gray-500 font-bold uppercase">{config.name}</span>
+                    <>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {Object.entries(stats.totalStats).map(([key, value]) => {
+                          const config = STAT_CONFIG[key] || { name: key, icon: FaHammer, color: 'text-gray-400' };
+                          const Icon = config.icon;
+                          return (
+                            <div key={key} className="bg-white/[0.03] p-4 tactic-cut border border-white/5">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Icon className={`text-sm ${config.color}`} />
+                                <span className="text-[10px] text-gray-500 font-bold uppercase">{config.name}</span>
+                              </div>
+                              <div className="text-2xl font-mono font-black text-white">
+                                {formatNumber(value)}
+                              </div>
                             </div>
-                            <div className="text-2xl font-mono font-black text-white">
-                              {formatNumber(value)}
+                          );
+                        })}
+                      </div>
+
+                      {/* 计算比率 */}
+                      {(stats.totalStats.bullets_fired > 0 || stats.totalStats.bullets_hit > 0) && (
+                        <div className="mt-4 grid grid-cols-2 gap-3">
+                          {stats.totalStats.bullets_fired > 0 && (
+                            <div className="bg-gradient-to-r from-[#cd5241]/10 to-transparent p-4 tactic-cut border border-[#cd5241]/20">
+                              <div className="text-[10px] text-gray-500 font-bold uppercase mb-1">命中率</div>
+                              <div className="text-2xl font-mono font-black text-[#a3e635]">
+                                {((stats.totalStats.bullets_hit || 0) / stats.totalStats.bullets_fired * 100).toFixed(1)}%
+                              </div>
+                              <div className="text-[10px] text-gray-600 mt-1">
+                                {formatNumber(stats.totalStats.bullets_hit || 0)} / {formatNumber(stats.totalStats.bullets_fired)} 发
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          )}
+                          {stats.totalStats.bullets_hit > 0 && (
+                            <div className="bg-gradient-to-r from-[#cd5241]/10 to-transparent p-4 tactic-cut border border-[#cd5241]/20">
+                              <div className="text-[10px] text-gray-500 font-bold uppercase mb-1">爆头率</div>
+                              <div className="text-2xl font-mono font-black text-[#a3e635]">
+                                {((stats.totalStats.headshots || 0) / stats.totalStats.bullets_hit * 100).toFixed(1)}%
+                              </div>
+                              <div className="text-[10px] text-gray-600 mt-1">
+                                {formatNumber(stats.totalStats.headshots || 0)} / {formatNumber(stats.totalStats.bullets_hit)} 命中
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="text-center text-gray-600 py-8">暂无统计数据（可能资料未公开）</div>
                   )}

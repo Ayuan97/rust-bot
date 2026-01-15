@@ -729,6 +729,34 @@ router.get('/:id/player-stats/:steamId', async (req, res) => {
       }
     }
 
+    // 6.5 如果当前实时值与最后一个快照不同，添加"当前"记录到时间线
+    const lastSnapshot = todayHistory.length > 0 ? todayHistory[todayHistory.length - 1] : null;
+    if (lastSnapshot && currentStats.length > 0) {
+      const currentStatsMap = {};
+      currentStats.forEach(s => { currentStatsMap[s.statKey] = s.statValue; });
+
+      // 计算当前值与最后快照的差异
+      const currentContribution = {};
+      Object.keys(currentStatsMap).forEach(key => {
+        const lastValue = lastSnapshot.stats[key] || 0;
+        const diff = currentStatsMap[key] - lastValue;
+        if (diff > 0) {
+          currentContribution[key] = diff;
+        }
+      });
+
+      // 只有有变化时才添加当前记录
+      if (Object.keys(currentContribution).length > 0) {
+        todayHistory.push({
+          snapshotDate: new Date(),
+          stats: currentStatsMap,
+          contribution: currentContribution,
+          isBaseline: false,
+          isCurrent: true  // 标记为当前实时数据
+        });
+      }
+    }
+
     // 7. 构建每日历史汇总（往日数据）
     const dailyData = {};
     pastSnapshots.forEach(snap => {
