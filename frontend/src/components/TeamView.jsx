@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FaUsers, FaChartLine, FaMapMarkerAlt, FaHeartbeat, FaClock, FaSkullCrossbones, FaExclamationTriangle, FaInfoCircle, FaShieldAlt, FaHammer, FaCrosshairs, FaGhost, FaTree, FaMountain, FaCogs, FaSkull, FaTrash, FaSync, FaTimes, FaCalendarAlt, FaTrophy, FaHistory } from 'react-icons/fa';
 import { coordsToGrid, formatActiveTime } from '../utils/mapUtils';
-import { getExtendedTeammates, deleteExtendedTeammate, getPlayerStats } from '../services/api';
+import { getExtendedTeammates, deleteExtendedTeammate, getPlayerStats, refreshPlayerData } from '../services/api';
 
 // 统计字段的中文名和图标映射
 const STAT_CONFIG = {
@@ -22,6 +22,7 @@ export default function TeamView({ server, teamData, onLocate }) {
   const [allTeammates, setAllTeammates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // 玩家详情弹窗状态
   const [selectedPlayer, setSelectedPlayer] = useState(null);
@@ -77,6 +78,26 @@ export default function TeamView({ server, teamData, onLocate }) {
     }
   };
 
+  // 手动刷新 Steam 数据
+  const handleRefresh = async () => {
+    if (isDemo || refreshing) return;
+    setRefreshing(true);
+    try {
+      // 1. 调用后端刷新 Steam 数据（与自动刷新逻辑一致）
+      await refreshPlayerData(server.id);
+      // 2. 重新获取队友列表（包含最新数据）
+      const res = await getExtendedTeammates(server.id);
+      if (res.data.success) {
+        setAllTeammates(res.data.teammates || []);
+      }
+    } catch (e) {
+      console.error('刷新数据失败:', e);
+      alert('刷新失败: ' + (e.response?.data?.error || e.message));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   // 打开玩家详情弹窗
   const openPlayerDetail = async (member) => {
     setSelectedPlayer(member);
@@ -128,19 +149,36 @@ export default function TeamView({ server, teamData, onLocate }) {
             <FaInfoCircle className="text-[#cd5241]" /> 实时对接 Steam 与 Rust 数据，精准追踪团队贡献与生理指标
           </p>
         </div>
-        <div className="flex gap-2 p-1 bg-black/40 tactic-cut border border-white/5 shadow-inner">
-          <TabBtn
-            active={activeTab === 'members'}
-            onClick={() => setActiveTab('members')}
-            icon={<FaUsers />}
-            label="团队矩阵"
-          />
-          <TabBtn
-            active={activeTab === 'ranking'}
-            onClick={() => setActiveTab('ranking')}
-            icon={<FaChartLine />}
-            label="今日贡献榜"
-          />
+        <div className="flex items-center gap-3">
+          {/* 手动刷新按钮 */}
+          {!isDemo && (
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className={`flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wider
+                bg-black/40 border border-white/10 hover:border-[#cd5241]/50 hover:bg-[#cd5241]/10
+                transition-all duration-200 tactic-cut
+                ${refreshing ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title="从 Steam 刷新最新数据"
+            >
+              <FaSync className={`text-[#cd5241] ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{refreshing ? '刷新中...' : '刷新数据'}</span>
+            </button>
+          )}
+          <div className="flex gap-2 p-1 bg-black/40 tactic-cut border border-white/5 shadow-inner">
+            <TabBtn
+              active={activeTab === 'members'}
+              onClick={() => setActiveTab('members')}
+              icon={<FaUsers />}
+              label="团队矩阵"
+            />
+            <TabBtn
+              active={activeTab === 'ranking'}
+              onClick={() => setActiveTab('ranking')}
+              icon={<FaChartLine />}
+              label="今日贡献榜"
+            />
+          </div>
         </div>
       </div>
 

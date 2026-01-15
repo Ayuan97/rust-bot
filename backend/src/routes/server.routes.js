@@ -576,6 +576,38 @@ router.get('/:id/extended-teammates', async (req, res) => {
 });
 
 /**
+ * POST /api/servers/:id/refresh-player-data
+ * 手动刷新队友的 Steam 数据（与自动刷新逻辑一致）
+ */
+router.post('/:id/refresh-player-data', requireActiveSubscription, async (req, res) => {
+  try {
+    const { id: serverId } = req.params;
+    const userId = req.user.id;
+
+    // 获取用户的 EventMonitor 服务
+    const userService = globalServiceManager.getUserService(userId);
+    if (!userService || !userService.eventMonitorService) {
+      return res.status(400).json({ success: false, error: '服务未启动' });
+    }
+
+    const eventMonitor = userService.eventMonitorService;
+
+    // 检查服务器是否正在监控中
+    if (!eventMonitor.eventData.has(serverId)) {
+      return res.status(400).json({ success: false, error: '服务器未连接或未启动监控' });
+    }
+
+    // 调用与自动刷新相同的方法
+    await eventMonitor.refreshPlayerData(serverId);
+
+    res.json({ success: true, message: '刷新完成' });
+  } catch (error) {
+    console.error('手动刷新玩家数据失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * DELETE /api/servers/:id/extended-teammates/:steamId
  * 从扩展队友列表中删除玩家
  */

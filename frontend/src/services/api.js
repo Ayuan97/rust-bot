@@ -73,6 +73,8 @@ export const deleteExtendedTeammate = (serverId, steamId) => api.delete(`/server
 
 export const updateTeammateNotes = (serverId, steamId, notes) => api.put(`/servers/${serverId}/extended-teammates/${steamId}`, { notes });
 
+export const refreshPlayerData = (serverId) => api.post(`/servers/${serverId}/refresh-player-data`);
+
 // ========== 玩家统计 ==========
 
 export const getPlayerStats = (serverId, steamId) => api.get(`/servers/${serverId}/player-stats/${steamId}`);
