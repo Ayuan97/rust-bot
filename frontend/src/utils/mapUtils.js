@@ -19,7 +19,7 @@ function numberToLetters(num) {
 /**
  * 修正地图大小（对齐到网格）
  */
-function getCorrectedMapSize(mapSize) {
+export function getCorrectedMapSize(mapSize) {
     const remainder = mapSize % GRID_DIAMETER;
     const offset = GRID_DIAMETER - remainder;
     return (remainder < 120) ? mapSize - remainder : mapSize + offset;
