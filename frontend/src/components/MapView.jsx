@@ -3,7 +3,7 @@ import {
   FaMapMarkedAlt, FaPlus, FaMinus, FaExpand, FaSync,
   FaLayerGroup, FaExclamationTriangle, FaInfoCircle,
   FaUser, FaSkull, FaShoppingCart, FaHelicopter,
-  FaShip, FaParachute, FaPlane, FaLandmark, FaEye, FaEyeSlash
+  FaShip, FaParachuteBox, FaPlane, FaLandmark, FaEye, FaEyeSlash
 } from 'react-icons/fa';
 import { getMapInfo } from '../services/api';
 import socketService from '../services/socket';
@@ -31,7 +31,7 @@ const MARKER_CONFIG = {
   [AppMarkerType.VendingMachine]: { icon: FaShoppingCart, color: '#22d3ee', label: '售货机', layer: 'vending' },
   [AppMarkerType.CH47]: { icon: FaHelicopter, color: '#f59e0b', label: '支奴干', layer: 'vehicles' },
   [AppMarkerType.CargoShip]: { icon: FaShip, color: '#3b82f6', label: '货船', layer: 'vehicles' },
-  [AppMarkerType.Crate]: { icon: FaParachute, color: '#a855f7', label: '空投', layer: 'events' },
+  [AppMarkerType.Crate]: { icon: FaParachuteBox, color: '#a855f7', label: '空投', layer: 'events' },
   [AppMarkerType.GenericRadius]: { icon: FaLandmark, color: '#6b7280', label: '区域', layer: 'misc' },
   [AppMarkerType.PatrolHelicopter]: { icon: FaPlane, color: '#dc2626', label: '巡逻机', layer: 'vehicles' }
 };
