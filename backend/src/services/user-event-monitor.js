@@ -15,7 +15,7 @@ import logger from '../utils/logger.js';
 import steamService from './steam.service.js';
 
 // 刷新间隔
-const PLAYER_DATA_REFRESH_INTERVAL = 15 * 60 * 1000; // 15分钟刷新一次 Steam 数据
+const PLAYER_DATA_REFRESH_INTERVAL = 1 * 60 * 1000; // TODO: 测试用1分钟，正式环境改回 15 * 60 * 1000
 const PLAYER_STATS_SNAPSHOT_INTERVAL = 24 * 60 * 60 * 1000; // 每天 00:00 快照（逻辑上在 checkPlayerStats 中处理）
 
 // 默认通知设置
@@ -234,19 +234,22 @@ class UserEventMonitor extends EventEmitter {
     this.pollIntervals.set(serverId, interval);
 
     // 启动玩家数据刷新轮询
+    console.log(`[Steam] ⏰ 启动玩家数据定时刷新 (每 ${PLAYER_DATA_REFRESH_INTERVAL / 60000} 分钟)`);
     const playerInterval = setInterval(async () => {
+      console.log(`[Steam] ⏰ 定时刷新触发...`);
       try {
         await this.refreshPlayerData(serverId);
       } catch (error) {
-        logger.error(`[Steam] 刷新玩家数据失败 ${serverId}:`, error.message);
+        console.error(`[Steam] ❌ 定时刷新失败 ${serverId}:`, error.message);
       }
     }, PLAYER_DATA_REFRESH_INTERVAL);
 
     this.pollIntervals.set(`${serverId}:players`, playerInterval);
 
     // 初始刷新一次
+    console.log(`[Steam] 🚀 执行初始刷新...`);
     this.refreshPlayerData(serverId).catch(e => {
-      logger.debug(`[Steam] 初始刷新玩家数据失败: ${e.message}`);
+      console.error(`[Steam] ❌ 初始刷新失败:`, e.message);
     });
   }
 
@@ -1786,18 +1789,30 @@ class UserEventMonitor extends EventEmitter {
             snapshotDate: new Date() // 使用当前精确时间
           }
         });
-        logger.debug(`[Steam] 已为 ${steamId} 创建 ${internalKey} 的今日基准快照`);
-      } else if (oldStat && value !== oldStat.statValue) {
-        // 非首次获取且数值有变化：创建新的历史快照
-        await prisma.player_stats_snapshots.create({
-          data: {
-            steamId,
-            statKey: internalKey,
-            statValue: value,
-            snapshotDate: new Date() // 使用当前精确时间
-          }
+        console.log(`[Steam] 📸 ${playerName} 创建 ${internalKey} 今日基准快照: ${value}`);
+      } else {
+        // 非首次获取：始终创建历史快照（用于时间线）
+        // 检查是否距离上次快照至少 30 秒，避免过于频繁（测试用，正式环境可改为 5 分钟）
+        const lastSnapshot = await prisma.player_stats_snapshots.findFirst({
+          where: { steamId, statKey: internalKey },
+          orderBy: { snapshotDate: 'desc' }
         });
-        logger.debug(`[Steam] 已为 ${steamId} 创建 ${internalKey} 的历史快照`);
+
+        const minInterval = 30 * 1000; // TODO: 测试用30秒，正式环境改回 5 * 60 * 1000
+        const shouldCreateSnapshot = !lastSnapshot ||
+          (Date.now() - new Date(lastSnapshot.snapshotDate).getTime() >= minInterval);
+
+        if (shouldCreateSnapshot) {
+          await prisma.player_stats_snapshots.create({
+            data: {
+              steamId,
+              statKey: internalKey,
+              statValue: value,
+              snapshotDate: new Date()
+            }
+          });
+          console.log(`[Steam] 📸 ${playerName} 创建 ${internalKey} 快照: ${value}`);
+        }
       }
 
       // 更新实时统计
