@@ -1365,7 +1365,15 @@ class UserEventMonitor extends EventEmitter {
 
           if (this.isNotificationEnabled('player_online')) {
             try {
-              const msg = notify('player_online', { name: member.name });
+              let msg;
+              // 如果有上次下线时间，计算离线时长
+              if (oldState.lastOfflineTime) {
+                const offlineDuration = now - oldState.lastOfflineTime;
+                const duration = formatDuration(offlineDuration);
+                msg = notify('player_online_with_duration', { name: member.name, duration });
+              } else {
+                msg = notify('player_online', { name: member.name });
+              }
               if (msg) {
                 await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
               }
@@ -1397,7 +1405,15 @@ class UserEventMonitor extends EventEmitter {
 
           if (this.isNotificationEnabled('player_offline')) {
             try {
-              const msg = notify('player_offline', { name: member.name });
+              let msg;
+              // 如果有上线时间，计算本次游玩时长
+              if (oldState.lastOnlineTime) {
+                const sessionDuration = now - oldState.lastOnlineTime;
+                const duration = formatDuration(sessionDuration);
+                msg = notify('player_offline_with_duration', { name: member.name, duration });
+              } else {
+                msg = notify('player_offline', { name: member.name });
+              }
               if (msg) {
                 await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
               }

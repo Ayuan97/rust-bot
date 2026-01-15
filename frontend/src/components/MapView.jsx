@@ -362,12 +362,15 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
         >
           {/* 地图背景 */}
           {mapImageUrl && (
-            <div
-              className="absolute inset-0 z-0 bg-contain bg-no-repeat bg-center opacity-80"
+            <img
+              src={mapImageUrl}
+              alt="Rust Map"
+              className="absolute inset-0 w-full h-full object-contain z-0 opacity-80"
               style={{
-                backgroundImage: `url(${mapImageUrl})`,
-                filter: 'grayscale(0.2) contrast(1.1)'
+                filter: 'grayscale(0.2) contrast(1.1)',
+                imageRendering: 'auto'
               }}
+              draggable={false}
             />
           )}
 

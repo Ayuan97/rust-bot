@@ -825,6 +825,19 @@ router.get('/:id/map-info', async (req, res) => {
       return res.status(400).json({ success: false, error: '服务器未连接' });
     }
 
+    // 尝试从缓存获取 oceanMargin，如果没有则先调用 getMap 填充缓存
+    let oceanMargin = rustPlusService.getMapOceanMargin(req.params.id);
+    if (oceanMargin === 0) {
+      // 缓存中没有 oceanMargin，调用 getMap 获取（会自动缓存）
+      try {
+        const mapData = await rustPlusService.getMap(req.params.id);
+        oceanMargin = mapData?.oceanMargin || 0;
+      } catch (e) {
+        // 获取失败则使用默认值
+        oceanMargin = 500;
+      }
+    }
+
     const [markers, info] = await Promise.all([
       rustPlusService.getMapMarkers(req.params.id),
       rustPlusService.getServerInfo(req.params.id)
@@ -842,7 +855,7 @@ router.get('/:id/map-info', async (req, res) => {
       mapSize: info?.mapSize || 4500,
       monuments: info?.monuments || [],
       img: server?.img || null,
-      oceanMargin: info?.oceanMargin || 500
+      oceanMargin
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
