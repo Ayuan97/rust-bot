@@ -446,7 +446,7 @@ router.get('/:id/team-detailed', async (req, res) => {
 
 /**
  * GET /api/servers/:id/extended-teammates
- * 获取扩展队友列表（包含在队伍/不在队伍状态）
+ * 获取扩展队友列表（统一列表，包含在队伍/不在队伍状态）
  */
 router.get('/:id/extended-teammates', async (req, res) => {
   try {
@@ -461,96 +461,102 @@ router.get('/:id/extended-teammates', async (req, res) => {
       return res.status(404).json({ success: false, error: '服务器不存在' });
     }
 
-    // 2. 获取扩展队友列表
-    const extendedTeammates = await prisma.extended_teammates.findMany({
-      where: { userId, serverId }
-    });
-    const extendedSteamIds = new Set(extendedTeammates.map(t => t.steamId));
-
-    // 3. 获取当前队伍成员（实时）
+    // 2. 获取当前队伍成员（实时）
     const rustPlusService = getUserRustPlusService(userId);
-    let currentTeamIds = [];
-    let teamMembersMap = new Map();
+    const currentTeamMap = new Map(); // steamId -> teamMember
 
     if (rustPlusService && rustPlusService.isConnected(serverId)) {
       try {
         const teamInfo = await rustPlusService.getTeamInfo(serverId);
-        if (teamInfo && teamInfo.members) {
+        if (teamInfo?.members) {
           for (const m of teamInfo.members) {
             const steamId = m.steamId?.toString();
-            currentTeamIds.push(steamId);
-            teamMembersMap.set(steamId, m);
+            if (steamId) {
+              currentTeamMap.set(steamId, m);
+            }
           }
         }
       } catch (e) {
-        // 获取实时队伍失败，继续处理
+        console.error('获取实时队伍失败:', e.message);
       }
     }
 
-    // 4. 合并所有 steamId（extended + 当前队伍中但不在 extended 里的）
-    const allSteamIds = [...extendedSteamIds];
-    for (const steamId of currentTeamIds) {
-      if (!extendedSteamIds.has(steamId)) {
-        allSteamIds.push(steamId);
-      }
+    // 3. 获取扩展队友列表（数据库）
+    const extendedRecords = await prisma.extended_teammates.findMany({
+      where: { userId, serverId }
+    });
+    const extendedSteamIds = new Set(extendedRecords.map(r => r.steamId));
+
+    // 4. 合并：当前队伍中但不在 extended 表的，也要显示
+    const allSteamIds = new Set([...extendedSteamIds, ...currentTeamMap.keys()]);
+
+    if (allSteamIds.size === 0) {
+      return res.json({ success: true, teammates: [] });
     }
 
-    // 5. 获取所有玩家的 Steam 资料
-    const [profiles, stats, snapshots] = await Promise.all([
+    const steamIdArray = [...allSteamIds];
+
+    // 5. 获取 Steam 资料和统计数据
+    const [profiles, stats, todaySnapshots] = await Promise.all([
       prisma.player_profiles.findMany({
-        where: { steamId: { in: allSteamIds } }
+        where: { steamId: { in: steamIdArray } }
       }),
       prisma.player_stats.findMany({
-        where: { steamId: { in: allSteamIds } }
+        where: { steamId: { in: steamIdArray } }
       }),
       prisma.player_stats_snapshots.findMany({
         where: {
-          steamId: { in: allSteamIds },
-          snapshotDate: new Date()
+          steamId: { in: steamIdArray },
+          snapshotDate: new Date().toISOString().split('T')[0] // 今天的日期
         }
       })
     ]);
 
-    // 6. 合并数据
-    const teammates = allSteamIds.map(steamId => {
-      const teammate = extendedTeammates.find(t => t.steamId === steamId);
+    // 6. 构建返回数据
+    const teammates = steamIdArray.map(steamId => {
+      const extRecord = extendedRecords.find(r => r.steamId === steamId);
       const profile = profiles.find(p => p.steamId === steamId);
-      const memberStats = stats.filter(s => s.steamId === steamId);
-      const memberSnapshots = snapshots.filter(s => s.steamId === steamId);
-      const inTeam = currentTeamIds.includes(steamId);
-      const teamMember = teamMembersMap.get(steamId);
+      const playerStats = stats.filter(s => s.steamId === steamId);
+      const playerSnapshots = todaySnapshots.filter(s => s.steamId === steamId);
+      const teamMember = currentTeamMap.get(steamId);
+      const inTeam = currentTeamMap.has(steamId);
 
-      // 计算今日贡献
+      // 计算今日贡献（所有玩家都计算，不只是在队伍中的）
       const contribution = {};
-      memberStats.forEach(s => {
-        const snapshot = memberSnapshots.find(sn => sn.statKey === s.statKey);
+      playerStats.forEach(s => {
+        const snapshot = playerSnapshots.find(sn => sn.statKey === s.statKey);
         const diff = snapshot ? (s.statValue - snapshot.statValue) : 0;
-        contribution[s.statKey] = Math.max(0, diff);
+        if (diff > 0) {
+          contribution[s.statKey] = diff;
+        }
       });
 
       return {
         steamId,
-        name: teamMember?.name || profile?.name || '未知',
+        name: teamMember?.name || profile?.name || '未知玩家',
         inTeam,
-        // 在队伍中时有的字段
-        ...(inTeam && teamMember ? {
-          x: teamMember.x,
-          y: teamMember.y,
-          isOnline: teamMember.isOnline,
-          isAlive: teamMember.isAlive
-        } : {}),
-        // Steam 数据
+        // 实时数据（仅在队伍中时有）
+        x: inTeam ? teamMember?.x : null,
+        y: inTeam ? teamMember?.y : null,
+        isOnline: inTeam ? teamMember?.isOnline : null,
+        isAlive: inTeam ? teamMember?.isAlive : null,
+        // Steam 资料
         avatar: profile?.avatar || null,
         playtime: profile?.playtime || 0,
         vacBanned: profile?.vacBanned || false,
-        gameBans: profile?.gameBans || 0,
+        // 贡献数据
         contribution,
-        // 元数据
-        addedAt: teammate?.addedAt || null,
-        lastSeenAt: teammate?.lastSeenAt || null,
-        profileUpdatedAt: profile?.lastUpdated || null,
-        notes: teammate?.notes || null
+        // 时间信息
+        addedAt: extRecord?.addedAt || new Date(),
+        lastSeenAt: extRecord?.lastSeenAt || (inTeam ? new Date() : null),
+        lastUpdated: profile?.lastUpdated || null
       };
+    });
+
+    // 按 inTeam 优先排序，然后按 lastSeenAt 排序
+    teammates.sort((a, b) => {
+      if (a.inTeam !== b.inTeam) return b.inTeam ? 1 : -1;
+      return new Date(b.lastSeenAt || 0) - new Date(a.lastSeenAt || 0);
     });
 
     res.json({ success: true, teammates });

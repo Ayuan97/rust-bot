@@ -257,15 +257,31 @@ export default function TeamView({ server, teamData, onLocate }) {
 }
 
 function PlayerCard({ member, onLocate, onClick, onDelete, deletingId }) {
-  const isDead = !member.isAlive;
-  const isOffline = !member.isOnline;
-  const inTeam = member.inTeam !== false; // 默认 true
+  const inTeam = member.inTeam !== false;
+  const isDead = inTeam ? !member.isAlive : false;
+  const isOffline = inTeam ? !member.isOnline : true;
 
   // 获取前6个有值的统计数据
   const topStats = Object.entries(member.contribution || {})
     .filter(([_, v]) => v > 0)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6);
+
+  // 格式化上次更新时间
+  const formatLastSeen = (dateStr) => {
+    if (!dateStr) return '从未';
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1) return '刚刚';
+    if (diffMins < 60) return `${diffMins}分钟前`;
+    if (diffHours < 24) return `${diffHours}小时前`;
+    if (diffDays < 30) return `${diffDays}天前`;
+    return date.toLocaleDateString('zh-CN');
+  };
 
   return (
     <div
@@ -291,7 +307,7 @@ function PlayerCard({ member, onLocate, onClick, onDelete, deletingId }) {
           </div>
         )}
 
-        <div className="flex justify-between items-start mb-6 relative z-10">
+        <div className="flex justify-between items-start mb-4 relative z-10">
           <div className="flex items-center gap-4">
             <div className={`w-14 h-14 tactic-cut relative overflow-hidden border-2 shadow-lg transition-all ${
               !inTeam ? 'border-white/10 grayscale' :
@@ -306,7 +322,7 @@ function PlayerCard({ member, onLocate, onClick, onDelete, deletingId }) {
                   {isDead && inTeam ? <FaSkullCrossbones className="text-2xl text-red-500" /> : <FaUsers className="text-2xl text-gray-600" />}
                 </div>
               )}
-              {/* 在线状态小圆点 */}
+              {/* 在线状态小圆点 - 仅在队伍中显示 */}
               {inTeam && (
                 <div className={`absolute bottom-0 right-0 w-3 h-3 border-2 border-black rounded-full ${member.isOnline ? 'bg-[#a3e635]' : 'bg-gray-700'}`} />
               )}
@@ -317,24 +333,22 @@ function PlayerCard({ member, onLocate, onClick, onDelete, deletingId }) {
                 {member.vacBanned && <FaExclamationTriangle className="text-red-500 text-xs" title="Steam 封禁记录" />}
               </div>
               <div className="text-[10px] text-gray-500 font-black uppercase tracking-widest mt-1">
-                {!inTeam ? '不在队伍' : isOffline ? '离线 OFF' : isDead ? '已阵亡 DEAD' : '在线 ON'}
+                {!inTeam ? '不在队伍' : isOffline ? '离线' : isDead ? '已阵亡' : '在线'}
               </div>
             </div>
           </div>
+          {/* 右上角：位置或删除按钮 */}
           <div className="text-right flex flex-col items-end gap-1">
             {inTeam && member.grid ? (
               <>
                 <div className="text-lg font-mono font-black text-[#cd5241] leading-none">[{member.grid}]</div>
-                <div className="flex items-center gap-2">
-                  <div className="text-[8px] text-gray-600 font-bold uppercase tracking-tighter">GRID_COORD</div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onLocate?.(member.x, member.y, member.name); }}
-                    className="text-[#cd5241] hover:text-white transition-colors p-1 hover:bg-[#cd5241]/20 rounded"
-                    title="在地图上定位"
-                  >
-                    <FaMapMarkerAlt size={10} />
-                  </button>
-                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onLocate?.(member.x, member.y, member.name); }}
+                  className="text-[#cd5241] hover:text-white transition-colors p-1 hover:bg-[#cd5241]/20 rounded text-[10px]"
+                  title="在地图上定位"
+                >
+                  <FaMapMarkerAlt size={12} />
+                </button>
               </>
             ) : (
               <button
@@ -349,7 +363,7 @@ function PlayerCard({ member, onLocate, onClick, onDelete, deletingId }) {
           </div>
         </div>
 
-        {/* 核心统计数据预览 - 动态显示 */}
+        {/* 核心统计数据预览 */}
         <div className="grid grid-cols-3 gap-2 mb-4 relative z-10">
           {topStats.length > 0 ? (
             topStats.map(([key, value]) => {
@@ -358,7 +372,7 @@ function PlayerCard({ member, onLocate, onClick, onDelete, deletingId }) {
               return (
                 <div key={key} className="bg-white/[0.03] p-2 tactic-cut border border-white/5">
                   <div className="text-[8px] text-gray-600 font-black uppercase truncate mb-1">{config.name}</div>
-                  <div className={`flex items-center gap-1 text-xs font-mono font-black text-[#a3e635]`}>
+                  <div className="flex items-center gap-1 text-xs font-mono font-black text-[#a3e635]">
                     <Icon className={`text-[10px] ${config.color}`} />
                     {value > 1000 ? `${(value / 1000).toFixed(1)}k` : value}
                   </div>
@@ -366,14 +380,23 @@ function PlayerCard({ member, onLocate, onClick, onDelete, deletingId }) {
               );
             })
           ) : (
-            <div className="col-span-3 text-center text-[10px] text-gray-600 py-4">暂无今日数据</div>
+            <div className="col-span-3 text-center text-[10px] text-gray-600 py-4">
+              {inTeam ? '暂无今日数据' : '无数据'}
+            </div>
           )}
         </div>
 
-        <div className="mt-auto space-y-4 relative z-10 pt-4 border-t border-white/5">
+        {/* 底部信息 */}
+        <div className="mt-auto space-y-2 relative z-10 pt-3 border-t border-white/5">
           <div className="flex justify-between items-center text-[10px] font-bold text-gray-600">
-            <div className="flex items-center gap-2"><FaClock className="text-[#cd5241]" /> {Math.round((member.playtime || 0) / 60)}H 总时长</div>
-            <div className="uppercase tracking-tighter opacity-50">#{member.steamId.slice(-4)}</div>
+            <div className="flex items-center gap-2">
+              <FaClock className="text-[#cd5241]" />
+              {Math.round((member.playtime || 0) / 60)}H 游戏时长
+            </div>
+          </div>
+          <div className="flex justify-between items-center text-[9px] text-gray-600">
+            <span>{inTeam ? '数据更新' : '上次在队伍'}</span>
+            <span className="font-mono">{formatLastSeen(inTeam ? member.lastUpdated : member.lastSeenAt)}</span>
           </div>
         </div>
       </div>
