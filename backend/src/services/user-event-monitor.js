@@ -1652,11 +1652,17 @@ class UserEventMonitor extends EventEmitter {
       // 3. 合并去重
       const allSteamIds = [...new Set([...currentTeamIds, ...extendedIds])];
 
-      if (allSteamIds.length === 0) return;
+      if (allSteamIds.length === 0) {
+        console.log(`[Steam] ⚠️ 没有需要刷新的玩家 (用户 ${this.userId})`);
+        return;
+      }
 
-      logger.debug(`[Steam] 刷新 ${allSteamIds.length} 名成员的资料（当前队伍: ${currentTeamIds.length}, 扩展列表: ${extendedIds.length}）`);
+      console.log(`[Steam] 🔄 开始刷新 ${allSteamIds.length} 名成员的资料（当前队伍: ${currentTeamIds.length}, 扩展列表: ${extendedIds.length}）`);
 
       const playersData = await steamService.getBatchPlayerData(allSteamIds);
+
+      let updatedCount = 0;
+      let statsCount = 0;
 
       for (const data of playersData) {
         if (!data.summary) continue;
@@ -1680,14 +1686,18 @@ class UserEventMonitor extends EventEmitter {
             gameBans: data.ban?.NumberOfGameBans || 0,
           }
         });
+        updatedCount++;
 
         // 如果有统计数据，保存并检查快照
         if (data.stats && !data.stats.private) {
           await this.updatePlayerStats(serverId, data.steamId, data.summary.personaname, data.stats);
+          statsCount++;
         }
       }
+
+      console.log(`[Steam] ✅ 刷新完成: ${updatedCount} 个资料, ${statsCount} 个统计数据`);
     } catch (error) {
-      logger.debug(`[Steam] 刷新玩家数据失败 (用户 ${this.userId}): ${error?.message || error}`);
+      console.error(`[Steam] ❌ 刷新玩家数据失败 (用户 ${this.userId}):`, error?.message || error);
     }
   }
 
