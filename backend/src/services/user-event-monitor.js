@@ -13,6 +13,7 @@ import { getItemName, isImportantItem } from '../utils/item-info.js';
 import { v4 as uuidv4 } from 'uuid';
 import logger from '../utils/logger.js';
 import steamService from './steam.service.js';
+import globalManager from './global-manager.service.js';
 
 // 刷新间隔
 const PLAYER_DATA_REFRESH_INTERVAL = 10 * 60 * 1000; // 10分钟刷新一次 Steam 数据
@@ -1289,7 +1290,30 @@ class UserEventMonitor extends EventEmitter {
     if (!eventData) return;
 
     try {
-      const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
+      // 获取服务器配置以获取 ip 和 port
+      const serverConfig = this.rustPlusService.serverConfigs.get(serverId);
+      let teamInfo;
+
+      if (serverConfig) {
+        const { ip, port, playerId } = serverConfig;
+
+        // 尝试从缓存获取（同队伍用户共享）
+        teamInfo = globalManager.getCachedTeamInfo(ip, port, playerId);
+
+        if (!teamInfo) {
+          // 缓存未命中，发起 API 请求
+          teamInfo = await this.rustPlusService.getTeamInfo(serverId);
+
+          // 更新缓存供同队伍用户使用
+          if (teamInfo) {
+            globalManager.setCachedTeamInfo(ip, port, teamInfo);
+          }
+        }
+      } else {
+        // 无配置，直接查询
+        teamInfo = await this.rustPlusService.getTeamInfo(serverId);
+      }
+
       if (!teamInfo || !teamInfo.members) return;
 
       const mapSize = this.rustPlusService.getMapSize(serverId);

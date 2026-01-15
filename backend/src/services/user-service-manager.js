@@ -752,6 +752,9 @@ class UserServiceManager extends EventEmitter {
    * @private
    */
   async _executeServerPairing(data) {
+    // 生成用户专属的服务器 ID（防止不同用户配对同一服务器时 ID 冲突）
+    const userServerId = `${this.userId}_${data.id}`;
+
     // 1. 保存/更新服务器信息到数据库
     const serverData = {
       name: data.name,
@@ -760,17 +763,22 @@ class UserServiceManager extends EventEmitter {
       playerId: data.playerId,
       playerToken: data.playerToken,
       userId: this.userId,
-      id: data.id,
+      id: userServerId,
       updatedAt: new Date()
     };
 
-    const existing = await prisma.servers.findUnique({
-      where: { id: data.id }
+    // 使用 userId + ip + port 作为查找条件（多租户隔离）
+    const existing = await prisma.servers.findFirst({
+      where: {
+        userId: this.userId,
+        ip: data.ip,
+        port: String(data.port)
+      }
     });
 
     if (existing) {
       await prisma.servers.update({
-        where: { id: data.id },
+        where: { id: existing.id },
         data: serverData
       });
       this.log('PAIRING', `更新已存在的服务器信息: ${data.name}`);
@@ -785,15 +793,15 @@ class UserServiceManager extends EventEmitter {
     await this._loadUserData();
 
     // 3. 如果已有连接，先断开
-    if (this.rustPlusService.connections.has(data.id)) {
+    if (this.rustPlusService.connections.has(userServerId)) {
       this.log('PAIRING', `断开旧连接...`);
-      await this.rustPlusService.disconnect(data.id);
+      await this.rustPlusService.disconnect(userServerId);
     }
 
     // 4. 发起新连接
     this.log('PAIRING', `正在连接到新服务器...`);
     await this.rustPlusService.connect({
-      serverId: data.id,
+      serverId: userServerId,
       ip: data.ip,
       port: data.port,
       playerId: data.playerId,
@@ -803,9 +811,9 @@ class UserServiceManager extends EventEmitter {
     // 5. 启动相关子服务
     this.log('PAIRING', `正在启动实时监控与自动化服务...`);
     try {
-      await this.eventMonitorService.start(data.id);
-      await this.automationService.start(data.id);
-      await this.dayNightNotifier.start(data.id);
+      await this.eventMonitorService.start(userServerId);
+      await this.automationService.start(userServerId);
+      await this.dayNightNotifier.start(userServerId);
       this.log('PAIRING', `所有实时服务已就绪`);
     } catch (svcError) {
       this.log('PAIRING', `实时服务启动失败: ${svcError.message}`, 'WARN');

@@ -20,7 +20,75 @@ class GlobalServiceManager extends EventEmitter {
     // 检查间隔（1 小时）
     this.CHECK_INTERVAL = 60 * 60 * 1000;
 
+    // 队伍信息缓存（同队伍用户共享）
+    // 结构: Map<serverKey, { teamInfo, memberSteamIds: Set, timestamp }>
+    // serverKey = `${ip}:${port}`
+    this.teamInfoCache = new Map();
+    this.TEAM_CACHE_TTL = 5000; // 缓存有效期 5 秒
+
     console.log('🌐 GlobalServiceManager 已创建');
+  }
+
+  // ========== 队伍信息缓存方法 ==========
+
+  /**
+   * 获取缓存的队伍信息（如果同队伍）
+   * @param {string} ip - 服务器 IP
+   * @param {string} port - 服务器端口
+   * @param {string} playerId - 当前用户的 Steam ID
+   * @returns {object|null} - 缓存的 teamInfo 或 null
+   */
+  getCachedTeamInfo(ip, port, playerId) {
+    const serverKey = `${ip}:${port}`;
+    const cached = this.teamInfoCache.get(serverKey);
+
+    if (!cached) return null;
+
+    // 检查缓存是否过期
+    if (Date.now() - cached.timestamp > this.TEAM_CACHE_TTL) {
+      this.teamInfoCache.delete(serverKey);
+      return null;
+    }
+
+    // 检查当前用户是否在缓存的队伍中
+    if (cached.memberSteamIds.has(playerId)) {
+      return cached.teamInfo;
+    }
+
+    return null;
+  }
+
+  /**
+   * 设置队伍信息缓存
+   * @param {string} ip - 服务器 IP
+   * @param {string} port - 服务器端口
+   * @param {object} teamInfo - 队伍信息
+   */
+  setCachedTeamInfo(ip, port, teamInfo) {
+    if (!teamInfo || !teamInfo.members) return;
+
+    const serverKey = `${ip}:${port}`;
+    const memberSteamIds = new Set(
+      teamInfo.members.map(m => m.steamId?.toString()).filter(Boolean)
+    );
+
+    this.teamInfoCache.set(serverKey, {
+      teamInfo,
+      memberSteamIds,
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * 清理过期的队伍缓存
+   */
+  cleanExpiredTeamCache() {
+    const now = Date.now();
+    for (const [key, cached] of this.teamInfoCache.entries()) {
+      if (now - cached.timestamp > this.TEAM_CACHE_TTL) {
+        this.teamInfoCache.delete(key);
+      }
+    }
   }
 
   /**
