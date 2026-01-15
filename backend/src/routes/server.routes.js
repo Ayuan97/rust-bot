@@ -721,7 +721,7 @@ router.get('/:id/player-stats/:steamId', async (req, res) => {
       // 只添加有贡献的记录，或者是第一条（基准）
       if (Object.keys(contribution).length > 0 || i === 0) {
         todayHistory.push({
-          time: current.time,
+          snapshotDate: current.time,  // 修复：前端使用 snapshotDate
           stats: current.stats,
           contribution: i === 0 ? {} : contribution, // 第一条记录贡献为空
           isBaseline: i === 0
