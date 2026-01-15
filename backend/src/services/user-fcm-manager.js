@@ -183,6 +183,12 @@ class UserFCMManager extends EventEmitter {
       logger.info(`🔗 用户 ${this.userId} FCM 连接已建立`);
       logger.info(`📡 用户 ${this.userId} 开始接收推送通知...`);
       this.lastError = null; // 连接成功，清除错误
+
+      // 设置 TCP keepalive 防止连接被中间设备断开
+      if (this.fcmListener._socket) {
+        this.fcmListener._socket.setKeepAlive(true, 30000); // 每 30 秒发送 keepalive
+        logger.debug(`✅ 用户 ${this.userId} FCM TCP keepalive 已启用`);
+      }
     });
 
     // 添加断开连接事件监听
@@ -201,7 +207,7 @@ class UserFCMManager extends EventEmitter {
         logger.info(`💡 提示：FCM 断开不影响游戏内事件（死亡、聊天等）`);
         logger.info(`   → 游戏内事件通过 Rust+ WebSocket 接收`);
         logger.info(`   → FCM 仅用于接收配对推送（在游戏中点击 Pair）`);
-        logger.info(`   → 将每 5 分钟尝试重连一次`);
+        logger.info(`   → 将在 30 秒后尝试重连`);
         this.lastDisconnectTime = now;
       }
 
@@ -212,7 +218,7 @@ class UserFCMManager extends EventEmitter {
         clearTimeout(this.reconnectTimer);
       }
 
-      // 5 分钟后重连
+      // 30 秒后重连（缩短间隔以便快速恢复配对功能）
       this.reconnectTimer = setTimeout(async () => {
         if (!this.isListening && this.credentials && !this._manualStop) {
           try {
@@ -222,7 +228,7 @@ class UserFCMManager extends EventEmitter {
             logger.error(`❌ 用户 ${this.userId} FCM 重连失败:`, error.message);
           }
         }
-      }, 300000); // 5 分钟 = 300000 毫秒
+      }, 30000); // 30 秒
     });
 
     // 监听错误

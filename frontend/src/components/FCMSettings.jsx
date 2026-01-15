@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   FaBell, FaCheck, FaExclamationTriangle, FaTimes,
-  FaTrash, FaSync, FaSearch, FaInfoCircle, FaClipboard, FaTerminal, FaSave, FaLock
+  FaTrash, FaSync, FaSearch, FaInfoCircle, FaClipboard, FaTerminal, FaSave, FaLock, FaPlug
 } from 'react-icons/fa';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmModal';
@@ -11,7 +11,8 @@ import {
   resetPairing,
   diagnoseCredentials,
   registerSimple,
-  verifyCredentials
+  verifyCredentials,
+  startPairing
 } from '../services/pairing';
 
 /**
@@ -23,6 +24,7 @@ function FCMSettings() {
   const [diagnosing, setDiagnosing] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
 
   const [status, setStatus] = useState({
     isListening: false,
@@ -130,6 +132,27 @@ function FCMSettings() {
       toast.error('重置失败: ' + (error.response?.data?.error || error.message));
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleReconnect = async () => {
+    if (isSubscriptionExpired) {
+      toast.warning('订阅已过期，请先续费');
+      return;
+    }
+
+    setReconnecting(true);
+    try {
+      const res = await startPairing();
+      if (res.data.success) {
+        toast.success('FCM 重连成功');
+        await loadStatus();
+        await handleDiagnose(true);
+      }
+    } catch (error) {
+      toast.error('重连失败: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setReconnecting(false);
     }
   };
 
@@ -295,7 +318,20 @@ function FCMSettings() {
           )}
         </button>
 
-
+        {/* 重连按钮 - 有凭证但未连接时显示 */}
+        {(status.hasCredentials || status.hasStoredCredentials) && !status.isListening && (
+          <button
+            onClick={handleReconnect}
+            disabled={reconnecting}
+            className="btn btn-secondary bg-green-600 hover:bg-green-500 text-white border-none"
+          >
+            {reconnecting ? (
+              <span className="animate-spin">...</span>
+            ) : (
+              <><FaPlug /> 重连 FCM</>
+            )}
+          </button>
+        )}
 
         {(status.hasCredentials || status.hasStoredCredentials) && (
           <>

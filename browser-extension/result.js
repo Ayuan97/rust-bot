@@ -5,7 +5,7 @@
 
 let credentials = null;
 let fullConfig = null;
-let programFormat = null; // 程序需要的格式
+let credentialsCommand = null; // 程序需要的命令格式
 
 // 初始化
 document.addEventListener('DOMContentLoaded', async () => {
@@ -37,8 +37,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // 设置按钮事件
-    document.getElementById('copyAllBtn').addEventListener('click', copyAll);
-    document.getElementById('copyProgramFormat').addEventListener('click', copyProgramFormatJson);
+    document.getElementById('copyCommandBtn').addEventListener('click', copyCommand);
     document.getElementById('downloadBtn').addEventListener('click', downloadCredentials);
 
     // 单项复制按钮
@@ -104,47 +103,35 @@ function showSuccess(fcmCreds, expoToken) {
     document.getElementById('registeringState').classList.add('hidden');
     document.getElementById('successState').classList.remove('hidden');
 
-    // 计算过期时间 (FCM 凭证通常 7 天有效)
-    const issuedDate = new Date();
-    const expireDate = new Date(issuedDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+    // 记录注册时间
+    const registerDate = new Date();
 
-    // 生成程序需要的格式
-    programFormat = {
-        gcm_android_id: String(fcmCreds.gcm.androidId),
-        gcm_security_token: String(fcmCreds.gcm.securityToken),
-        steam_id: credentials.steamId,
-        fcm_token: fcmCreds.fcm.token,
-        auth_token: credentials.authToken,
-        issued_date: issuedDate.toISOString(),
-        expire_date: expireDate.toISOString()
-    };
+    // 生成程序需要的命令格式 (不包含 expire_date，因为 FCM 凭证没有固定过期时间)
+    const gcmAndroidId = String(fcmCreds.gcm.androidId);
+    const gcmSecurityToken = String(fcmCreds.gcm.securityToken);
+    const steamId = credentials.steamId;
 
-    // 1. 显示主要凭证字段
-    document.getElementById('gcmAndroidId').textContent = programFormat.gcm_android_id;
-    document.getElementById('gcmSecurityToken').textContent = programFormat.gcm_security_token;
-    document.getElementById('steamId').textContent = programFormat.steam_id;
+    credentialsCommand = `/credentials add gcm_android_id:${gcmAndroidId} gcm_security_token:${gcmSecurityToken} steam_id:${steamId}`;
 
-    // 2. 显示过期时间
-    const expireDateStr = expireDate.toLocaleString('zh-CN', {
+    // 1. 显示命令
+    document.getElementById('credentialsCommand').textContent = credentialsCommand;
+
+    // 2. 显示详细字段
+    document.getElementById('gcmAndroidId').textContent = gcmAndroidId;
+    document.getElementById('gcmSecurityToken').textContent = gcmSecurityToken;
+    document.getElementById('steamId').textContent = steamId;
+
+    // 3. 显示注册时间
+    const registerDateStr = registerDate.toLocaleString('zh-CN', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit'
     });
-    document.getElementById('expireDate').textContent = expireDateStr;
+    document.getElementById('registerDate').textContent = registerDateStr;
 
-    // 计算剩余天数
-    const daysLeft = Math.ceil((expireDate - new Date()) / (24 * 60 * 60 * 1000));
-    const expireDaysEl = document.getElementById('expireDays');
-    if (daysLeft > 0) {
-        expireDaysEl.textContent = `剩余 ${daysLeft} 天`;
-    } else {
-        expireDaysEl.textContent = '已过期';
-        document.getElementById('expireInfo').classList.add('expired');
-    }
-
-    // 3. 完整配置放到详情里
+    // 4. 完整配置放到详情里
     document.getElementById('fullCredentialsDisplay').textContent = JSON.stringify(fullConfig, null, 2);
 }
 
@@ -155,28 +142,37 @@ function showError(message) {
     document.getElementById('errorMessage').innerText = message;
 }
 
-async function copyAll() {
-    if (!fullConfig) return;
-    const json = JSON.stringify(fullConfig, null, 2);
-    await navigator.clipboard.writeText(json);
-    showCopyFeedback();
-}
-
-async function copyProgramFormatJson() {
-    if (!programFormat) return;
-    const json = JSON.stringify(programFormat, null, 2);
-    await navigator.clipboard.writeText(json);
-    showCopyFeedback('程序格式已复制!');
+async function copyCommand() {
+    if (!credentialsCommand) return;
+    await navigator.clipboard.writeText(credentialsCommand);
+    showCopyFeedback('命令已复制!');
 }
 
 function downloadCredentials() {
-    if (!programFormat) return;
-    const json = JSON.stringify(programFormat, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
+    if (!credentialsCommand) return;
+
+    // 下载包含命令和详细信息的文本文件
+    const content = `Rust+ FCM 凭证
+=====================================
+
+【复制以下命令到程序中使用】
+${credentialsCommand}
+
+【详细信息】
+GCM Android ID: ${document.getElementById('gcmAndroidId').textContent}
+GCM Security Token: ${document.getElementById('gcmSecurityToken').textContent}
+Steam ID: ${document.getElementById('steamId').textContent}
+注册时间: ${document.getElementById('registerDate').textContent}
+
+【完整 JSON 配置】
+${JSON.stringify(fullConfig, null, 2)}
+`;
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `rustplus_credentials_${programFormat.steam_id}.json`;
+    a.download = `rustplus_credentials_${credentials.steamId}.txt`;
     a.click();
     URL.revokeObjectURL(url);
     showCopyFeedback('已下载!');
