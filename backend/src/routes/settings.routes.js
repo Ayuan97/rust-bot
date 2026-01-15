@@ -39,7 +39,6 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   // 其他事件
   crate_spawn: false,
   ch47_spawn: false,
-  raid_detected: true,
   vending_new: false,
 
   // 昼夜提醒

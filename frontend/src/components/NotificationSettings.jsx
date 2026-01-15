@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FaBell, FaUser, FaShip, FaHelicopter, FaOilCan, FaBox, FaSync, FaSun, FaMoon } from 'react-icons/fa';
 import { useToast } from './Toast';
+import api from '../services/api';
 
 // 默认通知设置
 const DEFAULT_SETTINGS = {
@@ -29,7 +30,6 @@ const DEFAULT_SETTINGS = {
   // 其他事件
   crate_spawn: false,
   ch47_spawn: false,
-  raid_detected: true,
   vending_new: false,
 
   // 昼夜提醒
@@ -99,13 +99,10 @@ const NOTIFICATION_GROUPS = [
     items: [
       { key: 'crate_spawn', label: '上锁箱子' },
       { key: 'ch47_spawn', label: 'CH47' },
-      { key: 'raid_detected', label: '袭击检测' },
       { key: 'vending_new', label: '新售货机' },
     ]
   }
 ];
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 function NotificationSettings() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -119,12 +116,14 @@ function NotificationSettings() {
 
   const fetchSettings = async () => {
     try {
-      const response = await fetch(`${API_URL}/settings/notifications`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.settings) {
-          setSettings(prev => ({ ...prev, ...data.settings }));
-        }
+      const response = await api.get('/settings/notifications');
+      if (response.data.success && response.data.settings) {
+        // 过滤掉 null/undefined 值，确保不覆盖默认值
+        const serverSettings = response.data.settings;
+        const filteredSettings = Object.fromEntries(
+          Object.entries(serverSettings).filter(([_, v]) => v !== null && v !== undefined)
+        );
+        setSettings(prev => ({ ...prev, ...filteredSettings }));
       }
     } catch (error) {
       console.error('加载通知设置失败:', error);
@@ -139,13 +138,7 @@ function NotificationSettings() {
 
     try {
       setSaving(true);
-      const response = await fetch(`${API_URL}/settings/notifications`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [key]: value })
-      });
-
-      if (!response.ok) throw new Error('保存失败');
+      await api.post('/settings/notifications', { [key]: value });
     } catch (error) {
       setSettings(prev => ({ ...prev, [key]: oldValue }));
       toast.error('保存设置失败');
@@ -157,11 +150,9 @@ function NotificationSettings() {
   const handleReset = async () => {
     try {
       setSaving(true);
-      const response = await fetch(`${API_URL}/settings/notifications/reset`, {
-        method: 'POST'
-      });
+      const response = await api.post('/settings/notifications/reset');
 
-      if (response.ok) {
+      if (response.data.success) {
         setSettings(DEFAULT_SETTINGS);
         toast.success('已恢复默认设置');
       } else {

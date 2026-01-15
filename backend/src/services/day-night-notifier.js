@@ -1,24 +1,71 @@
 /**
- * 昼夜自动提醒服务
+ * 昼夜自动提醒服务（用户级别）
  * 天亮：从配置的分钟数开始，每分钟提醒直到天亮
  * 天黑：从配置的分钟数开始，每分钟提醒直到天黑
  */
 
-import { getNotificationSettings } from '../routes/settings.routes.js';
+import prisma from '../lib/prisma.js';
+import logger from '../utils/logger.js';
+
+// 默认通知设置
+const DEFAULT_SETTINGS = {
+  day_night_enabled: true,
+  day_notify_minutes: 5,
+  night_notify_minutes: 8,
+};
 
 class DayNightNotifier {
-  constructor(rustPlusService) {
+  constructor(userId, rustPlusService) {
+    if (!userId) {
+      throw new Error('userId 是必需的');
+    }
+    if (!rustPlusService) {
+      throw new Error('rustPlusService 是必需的');
+    }
+
+    this.userId = userId;
     this.rustPlusService = rustPlusService;
     this.timers = new Map(); // serverId -> timer
     this.lastNotifiedMinute = new Map(); // serverId -> { type: 'day'|'night', minute: number }
     this.checkInterval = 60 * 1000; // 每分钟检查一次
+    this.notificationSettings = null;
+  }
+
+  /**
+   * 加载用户的通知设置
+   */
+  async loadNotificationSettings() {
+    try {
+      let settings = await prisma.notification_settings.findUnique({
+        where: { userId: this.userId }
+      });
+
+      if (!settings) {
+        settings = await prisma.notification_settings.create({
+          data: {
+            userId: this.userId,
+            settings: DEFAULT_SETTINGS
+          }
+        });
+      }
+
+      this.notificationSettings = {
+        ...DEFAULT_SETTINGS,
+        ...(typeof settings.settings === 'object' ? settings.settings : {})
+      };
+
+      logger.debug(`用户 ${this.userId} 的昼夜提醒设置已加载`);
+    } catch (error) {
+      logger.error(`加载用户 ${this.userId} 的昼夜提醒设置失败:`, error);
+      this.notificationSettings = DEFAULT_SETTINGS;
+    }
   }
 
   /**
    * 获取昼夜提醒配置
    */
   getConfig() {
-    const settings = getNotificationSettings();
+    const settings = this.notificationSettings || DEFAULT_SETTINGS;
     return {
       enabled: settings.day_night_enabled !== false,
       dayNotifyStart: settings.day_notify_minutes || 5,
@@ -29,21 +76,26 @@ class DayNightNotifier {
   /**
    * 启动某个服务器的昼夜提醒
    */
-  start(serverId) {
+  async start(serverId) {
     if (this.timers.has(serverId)) {
-      console.log(`⏰ 服务器 ${serverId} 的昼夜提醒已在运行`);
+      logger.debug(`⏰ 服务器 ${serverId} 的昼夜提醒已在运行 (用户 ${this.userId})`);
       return;
     }
 
-    console.log(`⏰ 启动服务器 ${serverId} 的昼夜提醒 (检查间隔: ${this.checkInterval/1000}秒)`);
+    // 加载设置（如果还未加载）
+    if (!this.notificationSettings) {
+      await this.loadNotificationSettings();
+    }
+
+    logger.info(`⏰ 启动服务器 ${serverId} 的昼夜提醒 (用户 ${this.userId})`);
 
     const timer = setInterval(async () => {
       try {
         await this.checkAndNotify(serverId);
       } catch (error) {
         const errorMessage = error?.message || JSON.stringify(error) || String(error);
-        if (!errorMessage.includes('服务器未连接')) {
-          console.error(`❌ 昼夜提醒检查失败 ${serverId}:`, error);
+        if (!errorMessage.includes('服务器未连接') && !errorMessage.includes('Timeout')) {
+          logger.error(`❌ 昼夜提醒检查失败 ${serverId} (用户 ${this.userId}):`, error.message);
         }
       }
     }, this.checkInterval);
@@ -60,8 +112,15 @@ class DayNightNotifier {
       clearInterval(timer);
       this.timers.delete(serverId);
       this.lastNotifiedMinute.delete(serverId);
-      console.log(`⏹️  已停止服务器 ${serverId} 的昼夜提醒`);
+      logger.info(`⏹️ 已停止服务器 ${serverId} 的昼夜提醒 (用户 ${this.userId})`);
     }
+  }
+
+  /**
+   * 刷新通知设置（当用户修改设置时调用）
+   */
+  async refreshSettings() {
+    await this.loadNotificationSettings();
   }
 
   /**
@@ -80,20 +139,18 @@ class DayNightNotifier {
     const currentTime = timeInfo.time || 0;
     const sunrise = timeInfo.sunrise || 6;
     const sunset = timeInfo.sunset || 18;
-    const dayLengthMinutes = timeInfo.dayLengthMinutes || 45; // 默认45分钟一天
+    const dayLengthMinutes = timeInfo.dayLengthMinutes || 45;
 
     const isDaytime = currentTime >= sunrise && currentTime < sunset;
 
     // 计算距离下次昼夜变化的时间（游戏时间）
     let nextChangeTime;
-    let changeType; // 'night' 或 'day'
+    let changeType;
 
     if (isDaytime) {
-      // 白天，计算距离天黑的时间
       nextChangeTime = sunset;
       changeType = 'night';
     } else {
-      // 夜晚，计算距离天亮的时间
       if (currentTime < sunrise) {
         nextChangeTime = sunrise;
       } else {
@@ -106,19 +163,17 @@ class DayNightNotifier {
     const gameTimeDiff = nextChangeTime - currentTime;
 
     // 转换为真实时间（分钟）
-    // 公式: 真实分钟 = 游戏时间差(小时) × (一天真实分钟数 / 24小时)
     const realMinutes = Math.floor(gameTimeDiff * (dayLengthMinutes / 24));
 
-    // 根据类型获取通知开始时间（从配置读取）
+    // 根据类型获取通知开始时间
     const notifyStart = changeType === 'day' ? config.dayNotifyStart : config.nightNotifyStart;
 
-    // 检查是否在通知范围内（realMinutes <= notifyStart 且 > 0）
+    // 检查是否在通知范围内
     if (realMinutes <= notifyStart && realMinutes > 0) {
       const lastNotify = this.lastNotifiedMinute.get(serverId);
 
-      // 避免同一分钟重复发送：检查类型和分钟数是否相同
+      // 避免同一分钟重复发送
       if (!lastNotify || lastNotify.type !== changeType || lastNotify.minute !== realMinutes) {
-        // 发送通知（不使用表情符号）
         let message;
         if (changeType === 'night') {
           message = `${realMinutes} 分钟后 天黑`;
@@ -126,10 +181,9 @@ class DayNightNotifier {
           message = `${realMinutes} 分钟后 天亮`;
         }
 
-        console.log(`🌓 [昼夜提醒] ${message}`);
-        await this.rustPlusService.sendTeamMessage(serverId, message);
+        logger.info(`🌓 [昼夜提醒] ${message} (用户 ${this.userId})`);
+        await this.rustPlusService.sendTeamMessage(serverId, message, { isBot: true });
 
-        // 记录本次通知
         this.lastNotifiedMinute.set(serverId, { type: changeType, minute: realMinutes });
       }
     }

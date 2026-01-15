@@ -106,25 +106,26 @@ model proxy_config {
 }
 
 model servers {
-  id              String       @id
-  userId          String
-  name            String       @db.VarChar(100)
-  ip              String       @db.VarChar(45)
-  port            String       @db.VarChar(10)
-  playerId        String       @db.VarChar(50)
-  playerToken     String       @db.VarChar(50)
-  battlemetricsId String?      @db.VarChar(50)
-  img             String?      @db.Text
-  logo            String?      @db.Text
-  url             String?      @db.VarChar(255)
-  description     String?      @db.Text
-  fcmCredentials  Json?
-  isActive        Boolean      @default(true)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime
-  devices         devices[]
-  event_logs      event_logs[]
-  users           users        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                 String               @id
+  userId             String
+  name               String               @db.VarChar(100)
+  ip                 String               @db.VarChar(45)
+  port               String               @db.VarChar(10)
+  playerId           String               @db.VarChar(50)
+  playerToken        String               @db.VarChar(50)
+  battlemetricsId    String?              @db.VarChar(50)
+  img                String?              @db.Text
+  logo               String?              @db.Text
+  url                String?              @db.VarChar(255)
+  description        String?              @db.Text
+  fcmCredentials     Json?
+  isActive           Boolean              @default(true)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime
+  devices            devices[]
+  event_logs         event_logs[]
+  extended_teammates extended_teammates[]
+  users              users                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, ip, port])
   @@index([playerId])
@@ -168,6 +169,7 @@ model users {
   subscriptions         subscriptions?
   devices               devices[]
   event_logs            event_logs[]
+  extended_teammates    extended_teammates[]
 
   @@index([email])
   @@index([username])
@@ -201,6 +203,24 @@ model player_stats_snapshots {
   snapshotDate DateTime @default(now())
 
   @@unique([steamId, statKey, snapshotDate])
+}
+
+model extended_teammates {
+  id         String    @id @default(uuid())
+  userId     String
+  serverId   String
+  steamId    String
+  addedAt    DateTime  @default(now())
+  lastSeenAt DateTime?
+  notes      String?   @db.VarChar(255)
+
+  users   users   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  servers servers @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, serverId, steamId])
+  @@index([userId])
+  @@index([serverId])
+  @@index([steamId])
 }
 
 enum orders_type {

@@ -1,12 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { FaUsers, FaChartLine, FaMapMarkerAlt, FaHeartbeat, FaClock, FaSkullCrossbones, FaExclamationTriangle, FaInfoCircle, FaShieldAlt, FaHammer, FaCrosshairs, FaGhost } from 'react-icons/fa';
+import { FaUsers, FaChartLine, FaMapMarkerAlt, FaHeartbeat, FaClock, FaSkullCrossbones, FaExclamationTriangle, FaInfoCircle, FaShieldAlt, FaHammer, FaCrosshairs, FaGhost, FaTree, FaMountain, FaCogs, FaSkull, FaUserFriends, FaTrash, FaSync } from 'react-icons/fa';
 import { coordsToGrid, formatActiveTime } from '../utils/mapUtils';
-import { getTeamDetailed } from '../services/api';
+import { getTeamDetailed, getExtendedTeammates, deleteExtendedTeammate } from '../services/api';
+
+// 统计字段的中文名和图标映射
+const STAT_CONFIG = {
+  players_killed: { name: '击杀', icon: FaCrosshairs, color: 'text-red-500' },
+  kill_npc: { name: 'NPC', icon: FaGhost, color: 'text-blue-500' },
+  gather_wood: { name: '木材', icon: FaTree, color: 'text-green-500' },
+  gather_stone: { name: '石头', icon: FaMountain, color: 'text-gray-400' },
+  gather_metal: { name: '金属', icon: FaCogs, color: 'text-orange-500' },
+  gather_scrap: { name: '废料', icon: FaCogs, color: 'text-yellow-500' },
+  deaths: { name: '死亡', icon: FaSkull, color: 'text-red-400' },
+  headshots: { name: '爆头', icon: FaCrosshairs, color: 'text-purple-500' },
+  bullets_fired: { name: '射击', icon: FaCrosshairs, color: 'text-gray-500' },
+  bullets_hit: { name: '命中', icon: FaCrosshairs, color: 'text-green-400' },
+};
 
 export default function TeamView({ server, teamData, onLocate }) {
   const [activeTab, setActiveTab] = useState('members');
   const [detailedMembers, setDetailedMembers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [extendedTeammates, setExtendedTeammates] = useState([]);
+  const [extendedLoading, setExtendedLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   // 只有在没有服务器或服务器未连接时才是演示模式
   const isDemo = !server || !server.connected;
@@ -14,9 +31,9 @@ export default function TeamView({ server, teamData, onLocate }) {
   useEffect(() => {
     if (isDemo) {
       setDetailedMembers([
-        { steamId: '1', name: '演示玩家_A', x: 100, y: 200, isOnline: true, isAlive: true, avatar: null, playtime: 1250, vacBanned: false, contribution: { gather_stone: 5500, kill_npc: 12 } },
-        { steamId: '2', name: '演示玩家_B', x: -50, y: 300, isOnline: true, isAlive: false, avatar: null, playtime: 450, vacBanned: true, contribution: { gather_wood: 8200, players_killed: 3 } },
-        { steamId: '3', name: '演示玩家_C', x: 400, y: -100, isOnline: false, isAlive: true, avatar: null, playtime: 3200, vacBanned: false, contribution: { gather_metal: 1200, kill_npc: 45 } },
+        { steamId: '1', name: '演示玩家_A', x: 100, y: 200, isOnline: true, isAlive: true, avatar: null, playtime: 1250, vacBanned: false, contribution: { gather_stone: 5500, kill_npc: 12, gather_wood: 3200, gather_scrap: 450 } },
+        { steamId: '2', name: '演示玩家_B', x: -50, y: 300, isOnline: true, isAlive: false, avatar: null, playtime: 450, vacBanned: true, contribution: { gather_wood: 8200, players_killed: 3, deaths: 5, headshots: 8 } },
+        { steamId: '3', name: '演示玩家_C', x: 400, y: -100, isOnline: false, isAlive: true, avatar: null, playtime: 3200, vacBanned: false, contribution: { gather_metal: 1200, kill_npc: 45, gather_scrap: 890 } },
       ]);
       setLoading(false);
       return;
@@ -39,6 +56,42 @@ export default function TeamView({ server, teamData, onLocate }) {
     const interval = setInterval(fetchData, 30000); // 30秒更新一次
     return () => clearInterval(interval);
   }, [server?.id, isDemo]);
+
+  // 获取扩展队友数据
+  useEffect(() => {
+    if (isDemo || activeTab !== 'all') return;
+
+    const fetchExtended = async () => {
+      setExtendedLoading(true);
+      try {
+        const res = await getExtendedTeammates(server.id);
+        if (res.data.success) {
+          setExtendedTeammates(res.data.teammates || []);
+        }
+      } catch (e) {
+        console.error('获取扩展队友数据失败:', e);
+      } finally {
+        setExtendedLoading(false);
+      }
+    };
+
+    fetchExtended();
+  }, [server?.id, isDemo, activeTab]);
+
+  // 删除扩展队友
+  const handleDeleteTeammate = async (steamId) => {
+    if (!window.confirm('确定要删除这个队友吗？')) return;
+    setDeletingId(steamId);
+    try {
+      await deleteExtendedTeammate(server.id, steamId);
+      setExtendedTeammates(prev => prev.filter(t => t.steamId !== steamId));
+    } catch (e) {
+      console.error('删除队友失败:', e);
+      alert('删除失败: ' + (e.response?.data?.error || e.message));
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const teammates = detailedMembers.map(m => ({
     ...m,
@@ -78,6 +131,12 @@ export default function TeamView({ server, teamData, onLocate }) {
             icon={<FaChartLine />}
             label="今日贡献榜"
           />
+          <TabBtn
+            active={activeTab === 'all'}
+            onClick={() => setActiveTab('all')}
+            icon={<FaUserFriends />}
+            label="全部队友"
+          />
         </div>
       </div>
 
@@ -101,15 +160,17 @@ export default function TeamView({ server, teamData, onLocate }) {
         </div>
       )}
 
-      {activeTab === 'members' ? (
+      {activeTab === 'members' && (
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {teammates.map((member) => (
-              <PlayerCard key={member.steamId} member={member} />
+              <PlayerCard key={member.steamId} member={member} onLocate={onLocate} />
             ))}
           </div>
         </div>
-      ) : (
+      )}
+
+      {activeTab === 'ranking' && (
         /* --- 今日贡献排行榜 --- */
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
           <div className="max-w-4xl mx-auto space-y-5">
@@ -144,8 +205,8 @@ export default function TeamView({ server, teamData, onLocate }) {
                     <div className="hidden sm:block">
                       <div className="text-[10px] text-gray-600 font-black uppercase mb-2 tracking-widest text-right">主要产出</div>
                       <div className="flex gap-2">
-                        {Object.entries(item.contribution || {}).filter(([_, v]) => v > 0).slice(0, 2).map(([k, v]) => (
-                          <span key={k} className="text-[10px] font-bold bg-[#cd5241]/10 px-2 py-0.5 tactic-cut text-[#cd5241] uppercase">{k.replace('gather_', '')}</span>
+                        {Object.entries(item.contribution || {}).filter(([_, v]) => v > 0).slice(0, 3).map(([k, v]) => (
+                          <span key={k} className="text-[10px] font-bold bg-[#cd5241]/10 px-2 py-0.5 tactic-cut text-[#cd5241] uppercase">{STAT_CONFIG[k]?.name || k}</span>
                         ))}
                       </div>
                     </div>
@@ -162,13 +223,32 @@ export default function TeamView({ server, teamData, onLocate }) {
           </div>
         </div>
       )}
+
+      {activeTab === 'all' && (
+        /* --- 全部队友 --- */
+        <ExtendedTeammatesList
+          teammates={extendedTeammates}
+          loading={extendedLoading}
+          isDemo={isDemo}
+          onDelete={handleDeleteTeammate}
+          deletingId={deletingId}
+          onLocate={onLocate}
+          mapSize={server?.mapSize || 4500}
+        />
+      )}
     </div>
   );
 }
 
-function PlayerCard({ member }) {
+function PlayerCard({ member, onLocate }) {
   const isDead = !member.isAlive;
   const isOffline = !member.isOnline;
+
+  // 获取前6个有值的统计数据
+  const topStats = Object.entries(member.contribution || {})
+    .filter(([_, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
 
   return (
     <div className={`tactic-border tactic-cut p-1 bg-black/30 group hover:border-[#cd5241]/50 transition-all ${isDead ? 'opacity-80' : ''}`}>
@@ -206,18 +286,40 @@ function PlayerCard({ member }) {
               </div>
             </div>
           </div>
-          <div className="text-right">
+          <div className="text-right flex flex-col items-end gap-1">
             <div className="text-lg font-mono font-black text-[#cd5241] leading-none">[{member.grid}]</div>
-            <div className="text-[8px] text-gray-600 font-bold uppercase mt-2 tracking-tighter">GRID_COORD</div>
+            <div className="flex items-center gap-2">
+              <div className="text-[8px] text-gray-600 font-bold uppercase tracking-tighter">GRID_COORD</div>
+              <button
+                onClick={() => onLocate?.(member.x, member.y, member.name)}
+                className="text-[#cd5241] hover:text-white transition-colors p-1 hover:bg-[#cd5241]/20 rounded"
+                title="在地图上定位"
+              >
+                <FaMapMarkerAlt size={10} />
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* 核心统计数据预览 */}
-        <div className="grid grid-cols-2 gap-3 mb-6 relative z-10">
-          <StatSmall icon={<FaCrosshairs />} label="今日击杀" value={member.contribution?.players_killed || 0} color="text-red-500" />
-          <StatSmall icon={<FaGhost />} label="今日NPC" value={member.contribution?.kill_npc || 0} color="text-[#3b82f6]" />
-          <StatSmall icon={<FaHammer />} label="今日木材" value={member.contribution?.gather_wood || 0} />
-          <StatSmall icon={<FaHammer />} label="今日金属" value={member.contribution?.gather_metal || 0} />
+        {/* 核心统计数据预览 - 动态显示 */}
+        <div className="grid grid-cols-3 gap-2 mb-4 relative z-10">
+          {topStats.length > 0 ? (
+            topStats.map(([key, value]) => {
+              const config = STAT_CONFIG[key] || { name: key, icon: FaHammer, color: 'text-gray-400' };
+              const Icon = config.icon;
+              return (
+                <div key={key} className="bg-white/[0.03] p-2 tactic-cut border border-white/5">
+                  <div className="text-[8px] text-gray-600 font-black uppercase truncate mb-1">{config.name}</div>
+                  <div className={`flex items-center gap-1 text-xs font-mono font-black text-[#a3e635]`}>
+                    <Icon className={`text-[10px] ${config.color}`} />
+                    {value > 1000 ? `${(value / 1000).toFixed(1)}k` : value}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="col-span-3 text-center text-[10px] text-gray-600 py-4">暂无今日数据</div>
+          )}
         </div>
 
         <div className="mt-auto space-y-4 relative z-10 pt-4 border-t border-white/5">
@@ -226,18 +328,6 @@ function PlayerCard({ member }) {
             <div className="uppercase tracking-tighter opacity-50">#{member.steamId.slice(-4)}</div>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function StatSmall({ icon, label, value, color = "text-gray-400" }) {
-  return (
-    <div className="bg-white/[0.03] p-2 tactic-cut border border-white/5">
-      <div className="text-[8px] text-gray-600 font-black uppercase truncate mb-1">{label}</div>
-      <div className={`flex items-center gap-2 text-xs font-mono font-black ${value > 0 ? 'text-[#a3e635]' : 'text-gray-700'}`}>
-        <span className={color}>{icon}</span>
-        {value > 1000 ? `${(value / 1000).toFixed(1)}k` : value}
       </div>
     </div>
   );
@@ -255,3 +345,217 @@ function TabBtn({ active, onClick, icon, label }) {
   );
 }
 
+// 格式化时间距离
+function formatTimeAgo(dateString) {
+  if (!dateString) return '从未';
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return '刚刚';
+  if (diffMins < 60) return `${diffMins}分钟前`;
+  if (diffHours < 24) return `${diffHours}小时前`;
+  if (diffDays < 30) return `${diffDays}天前`;
+  return date.toLocaleDateString('zh-CN');
+}
+
+// 扩展队友列表组件
+function ExtendedTeammatesList({ teammates, loading, isDemo, onDelete, deletingId, onLocate, mapSize }) {
+  if (isDemo) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="bg-[#cd5241]/10 border-l-4 border-[#cd5241] p-6 max-w-md">
+          <div className="flex items-center gap-4">
+            <FaExclamationTriangle className="text-[#cd5241] text-2xl flex-shrink-0" />
+            <div className="text-sm text-gray-300">
+              <span className="font-black text-white uppercase block mb-1">[ 演示模式 ]</span>
+              请先连接服务器以查看全部队友列表
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex items-center gap-3 text-gray-500">
+          <FaSync className="animate-spin" />
+          <span className="text-sm font-bold uppercase">正在加载队友数据...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (teammates.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="bg-blue-500/10 border-l-4 border-blue-500 p-6 max-w-md">
+          <div className="flex items-center gap-4">
+            <FaInfoCircle className="text-blue-500 text-2xl flex-shrink-0" />
+            <div className="text-sm text-gray-300">
+              <span className="font-black text-white uppercase block mb-1">[ 暂无数据 ]</span>
+              系统会在你加入游戏队伍后自动同步队友信息
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 统计在队伍中的人数
+  const inTeamCount = teammates.filter(t => t.inTeam).length;
+
+  return (
+    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6">
+      {/* 说明信息 */}
+      <div className="p-5 bg-white/[0.02] border border-white/10 tactic-cut flex items-start gap-4">
+        <FaUserFriends className="text-[#cd5241] text-xl mt-1" />
+        <div className="flex-1">
+          <p className="text-xs text-gray-400 leading-relaxed font-medium">
+            <span className="text-white font-bold block mb-1 uppercase tracking-widest">扩展队友列表</span>
+            系统会自动同步所有曾加入过队伍的玩家。即使被踢出队伍，记录也会保留。你可以手动删除不再需要追踪的玩家。
+          </p>
+          <div className="flex items-center gap-4 mt-3 text-[10px] font-bold">
+            <span className="text-gray-500">共 {teammates.length} 人</span>
+            <span className="text-[#a3e635]">在队伍 {inTeamCount} 人</span>
+            <span className="text-gray-600">不在队伍 {teammates.length - inTeamCount} 人</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 统一列表 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {teammates.map(member => (
+          <ExtendedTeammateCard
+            key={member.steamId}
+            member={member}
+            onDelete={onDelete}
+            deletingId={deletingId}
+            onLocate={onLocate}
+            mapSize={mapSize}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 扩展队友卡片
+function ExtendedTeammateCard({ member, onDelete, deletingId, onLocate, mapSize }) {
+  const inTeam = member.inTeam;
+  const grid = inTeam ? coordsToGrid(member.x, member.y, mapSize) : null;
+
+  // 获取前4个有值的统计数据
+  const topStats = Object.entries(member.contribution || {})
+    .filter(([_, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
+
+  return (
+    <div className={`tactic-border tactic-cut p-1 bg-black/30 group transition-all ${inTeam ? 'hover:border-[#a3e635]/50' : 'opacity-70 hover:opacity-100 hover:border-gray-600'}`}>
+      <div className="bg-black/40 p-4 relative overflow-hidden h-full flex flex-col">
+        {/* 在队伍中标识 */}
+        {inTeam && (
+          <div className="absolute top-0 right-0 bg-[#a3e635] text-black text-[8px] font-black uppercase px-2 py-0.5">
+            队伍中
+          </div>
+        )}
+
+        {/* 头部：头像 + 名称 */}
+        <div className="flex justify-between items-start mb-4">
+          <div className="flex items-center gap-3">
+            <div className={`w-12 h-12 tactic-cut relative overflow-hidden border-2 ${inTeam ? 'border-[#a3e635]/30' : 'border-white/10 grayscale'}`}>
+              {member.avatar ? (
+                <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gray-900">
+                  <FaUsers className="text-xl text-gray-600" />
+                </div>
+              )}
+              {inTeam && (
+                <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 border-2 border-black rounded-full ${member.isOnline ? 'bg-[#a3e635]' : 'bg-gray-600'}`} />
+              )}
+            </div>
+            <div>
+              <div className="text-sm font-black truncate max-w-[120px] flex items-center gap-2">
+                {member.name || '未知玩家'}
+                {member.vacBanned && <FaExclamationTriangle className="text-red-500 text-xs" title="Steam 封禁记录" />}
+              </div>
+              <div className="text-[10px] text-gray-600 font-bold uppercase tracking-widest mt-0.5">
+                {inTeam ? (member.isOnline ? '在线' : '离线') : '不在队伍'}
+              </div>
+            </div>
+          </div>
+
+          {/* 删除按钮 */}
+          <button
+            onClick={() => onDelete(member.steamId)}
+            disabled={deletingId === member.steamId}
+            className="text-gray-600 hover:text-red-500 transition-colors p-1.5 hover:bg-red-500/10 rounded disabled:opacity-50"
+            title="删除此队友"
+          >
+            {deletingId === member.steamId ? <FaSync className="animate-spin text-xs" /> : <FaTrash className="text-xs" />}
+          </button>
+        </div>
+
+        {/* 在队伍中：显示位置和在线状态 */}
+        {inTeam && grid && (
+          <div className="flex items-center justify-between mb-3 text-[10px]">
+            <div className="flex items-center gap-2">
+              <FaMapMarkerAlt className="text-[#cd5241]" />
+              <span className="font-mono font-bold text-[#cd5241]">[{grid}]</span>
+            </div>
+            <button
+              onClick={() => onLocate?.(member.x, member.y, member.name)}
+              className="text-[#cd5241] hover:text-white transition-colors px-2 py-1 hover:bg-[#cd5241]/20 rounded text-[10px] font-bold uppercase"
+            >
+              定位
+            </button>
+          </div>
+        )}
+
+        {/* 统计数据（如果有） */}
+        {topStats.length > 0 && (
+          <div className="grid grid-cols-2 gap-1.5 mb-3">
+            {topStats.map(([key, value]) => {
+              const config = STAT_CONFIG[key] || { name: key, icon: FaHammer, color: 'text-gray-400' };
+              const Icon = config.icon;
+              return (
+                <div key={key} className="bg-white/[0.03] p-1.5 tactic-cut border border-white/5">
+                  <div className="text-[8px] text-gray-600 font-bold uppercase truncate">{config.name}</div>
+                  <div className="flex items-center gap-1 text-[10px] font-mono font-bold text-[#a3e635]">
+                    <Icon className={`text-[8px] ${config.color}`} />
+                    {value > 1000 ? `${(value / 1000).toFixed(1)}k` : value}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 底部信息 */}
+        <div className="mt-auto pt-3 border-t border-white/5 space-y-1.5">
+          <div className="flex justify-between items-center text-[9px] text-gray-600">
+            <span className="font-bold uppercase">首次加入</span>
+            <span className="font-mono">{formatTimeAgo(member.addedAt)}</span>
+          </div>
+          <div className="flex justify-between items-center text-[9px] text-gray-600">
+            <span className="font-bold uppercase">最后在线</span>
+            <span className="font-mono">{formatTimeAgo(member.lastSeenAt)}</span>
+          </div>
+          {member.playtime > 0 && (
+            <div className="flex justify-between items-center text-[9px] text-gray-600">
+              <span className="font-bold uppercase">游戏时长</span>
+              <span className="font-mono">{Math.round(member.playtime / 60)}H</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

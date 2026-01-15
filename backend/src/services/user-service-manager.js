@@ -10,6 +10,7 @@ import UserFCMManager from './user-fcm-manager.js';
 import UserEventMonitor from './user-event-monitor.js';
 import UserAutomation from './user-automation.js';
 import UserCommands from './user-commands.js';
+import DayNightNotifier from './day-night-notifier.js';
 
 class UserServiceManager extends EventEmitter {
   constructor(userId) {
@@ -34,7 +35,7 @@ class UserServiceManager extends EventEmitter {
     this.eventMonitorService = new UserEventMonitor(userId, this.rustPlusService);  // 事件监控
     this.automationService = new UserAutomation(userId, this.rustPlusService);      // 设备自动化
     this.commandsService = new UserCommands(userId, this.rustPlusService, this.eventMonitorService);  // 游戏内命令
-    this.dayNightNotifier = null;     // 昼夜提醒（待实现）
+    this.dayNightNotifier = new DayNightNotifier(userId, this.rustPlusService);  // 昼夜提醒
 
     console.log(`👤 UserServiceManager 已创建 (userId: ${userId})`);
   }
@@ -460,6 +461,9 @@ class UserServiceManager extends EventEmitter {
           if (this.automationService) {
             this.automationService.start(server.id);
           }
+          if (this.dayNightNotifier) {
+            await this.dayNightNotifier.start(server.id);
+          }
         } catch (error) {
           console.error(`  ❌ 连接服务器 ${server.name || server.id} 失败:`, error.message);
           // 不抛出错误，允许部分失败
@@ -684,6 +688,7 @@ class UserServiceManager extends EventEmitter {
       try {
         await this.eventMonitorService.start(data.id);
         await this.automationService.start(data.id);
+        await this.dayNightNotifier.start(data.id);
         this.log('PAIRING', `所有实时服务已就绪`);
       } catch (svcError) {
         this.log('PAIRING', `实时服务启动失败: ${svcError.message}`, 'WARN');

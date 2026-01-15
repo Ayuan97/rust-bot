@@ -15,7 +15,7 @@ import logger from '../utils/logger.js';
 import steamService from './steam.service.js';
 
 // 刷新间隔
-const PLAYER_DATA_REFRESH_INTERVAL = 30 * 60 * 1000; // 30分钟刷新一次 Steam 数据
+const PLAYER_DATA_REFRESH_INTERVAL = 15 * 60 * 1000; // 15分钟刷新一次 Steam 数据
 const PLAYER_STATS_SNAPSHOT_INTERVAL = 24 * 60 * 60 * 1000; // 每天 00:00 快照（逻辑上在 checkPlayerStats 中处理）
 
 // 默认通知设置
@@ -36,7 +36,6 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   oil_rig_unlocked: true,
   crate_spawn: false,
   ch47_spawn: false,
-  raid_detected: true,
   vending_new: false,
   day_night_enabled: true,
   day_notify_minutes: 5,
@@ -186,6 +185,8 @@ class UserEventMonitor extends EventEmitter {
       cargoShipTracers: new Map(),
       patrolHeliTracers: new Map(),
       ch47Tracers: new Map(),
+      ch47Types: new Map(),           // CH47 类型追踪: id -> 'oil_rig' | 'crate'
+      ch47CrateDropInfo: null,        // CH47 投放箱子信息: { time, x, y, position }
       cargoShipDockedStatus: new Map(),
       lastEvents: {
         cargoShipSpawn: null,
@@ -198,10 +199,9 @@ class UserEventMonitor extends EventEmitter {
         patrolHeliDowned: null,
         patrolHeliLeave: null,
         ch47Spawn: null,
-        lockedCrateSpawn: null,
-        raidDetected: null
+        ch47CrateDrop: null,          // CH47 投放箱子时间
+        lockedCrateSpawn: null
       },
-      explosions: [],
       knownVendingMachines: new Map(),
       isFirstPoll: true,
       teamMembers: new Map(),
@@ -361,7 +361,6 @@ class UserEventMonitor extends EventEmitter {
     await this.checkPatrolHelicopters(serverId, currentMarkers, previousMarkers);
     await this.checkCH47s(serverId, currentMarkers, previousMarkers);
     await this.checkLockedCrates(serverId, currentMarkers, previousMarkers);
-    await this.checkExplosions(serverId, currentMarkers, previousMarkers);
     await this.checkVendingMachines(serverId, currentMarkers, previousMarkers);
     await this.checkTeamInfo(serverId);
 
@@ -605,22 +604,20 @@ class UserEventMonitor extends EventEmitter {
   }
 
   /**
-   * 检测武装直升机事件（简化版本，完整实现类似货船）
+   * 检测武装直升机事件
    */
   async checkPatrolHelicopters(serverId, currentMarkers, previousMarkers) {
-    // 实现与原 EventMonitorService 类似，但添加 userId 到所有事件
-    // 这里省略完整实现以节省空间，实际应包含所有逻辑
     const currentHelis = currentMarkers.filter(m => m.type === AppMarkerType.PatrolHelicopter);
     const previousHelis = previousMarkers.filter(m => m.type === AppMarkerType.PatrolHelicopter);
     const eventData = this.eventData.get(serverId);
+    const mapSize = this.rustPlusService.getMapSize(serverId);
 
-    // 新刷新的直升机（简化示例）
+    // 新刷新的直升机
     const newHelis = currentHelis.filter(c =>
       !previousHelis.some(p => p.id === c.id)
     );
 
     for (const heli of newHelis) {
-      const { mapSize } = await this.rustPlusService.getLiveMapContext(serverId);
       const position = formatPosition(heli.x, heli.y, mapSize);
       const direction = this.getMapDirection(heli.x, heli.y, mapSize);
       const now = Date.now();
@@ -633,6 +630,8 @@ class UserEventMonitor extends EventEmitter {
         const py = Math.min(Math.max(heli.y + Math.sin(theta) * STEP, 0), mapSize);
         predictedPosition = formatPosition(px, py, mapSize);
       }
+
+      logger.server(serverId, `🚁 武装直升机刷新 @ ${position} ${direction}`);
 
       eventData.lastEvents.patrolHeliSpawn = now;
 
@@ -657,7 +656,7 @@ class UserEventMonitor extends EventEmitter {
             ? notify('heli_spawn_predicted', { position, direction, predicted: predictedPosition })
             : notify('heli_spawn', { position, direction });
           if (message) {
-            await this.rustPlusService.sendTeamMessage(serverId, message);
+            await this.rustPlusService.sendTeamMessage(serverId, message, { isBot: true });
           }
         } catch (e) {
           logger.debug(`发送直升机刷新通知失败: ${e.message}`);
@@ -669,8 +668,127 @@ class UserEventMonitor extends EventEmitter {
       }
     }
 
-    // 处理已消失的直升机（省略详细实现）
-    // ... 类似原实现，添加 userId 到事件
+    // 已消失的直升机
+    const leftHelis = previousHelis.filter(p =>
+      !currentHelis.some(c => c.id === p.id)
+    );
+
+    for (const heli of leftHelis) {
+      const tracer = eventData.patrolHeliTracers.get(heli.id) || [];
+      const lastPos = tracer.length > 0 ? tracer[tracer.length - 1] : { x: heli.x, y: heli.y };
+      const position = formatPosition(lastPos.x, lastPos.y, mapSize);
+      const direction = this.getMapDirection(lastPos.x, lastPos.y, mapSize);
+      const now = Date.now();
+
+      // 判断是击落还是离开（不在地图边缘 = 击落）
+      const isNearEdge = this.isNearMapEdge(lastPos.x, lastPos.y, mapSize);
+
+      if (!isNearEdge) {
+        // 击落
+        logger.server(serverId, `🚁 武装直升机被击落 @ ${position} ${direction}`);
+
+        eventData.lastEvents.patrolHeliDowned = now;
+
+        const payload = {
+          userId: this.userId,
+          serverId,
+          markerId: heli.id,
+          x: lastPos.x,
+          y: lastPos.y,
+          position,
+          direction,
+          time: now
+        };
+
+        this.emit(EventType.PATROL_HELI_DOWNED, payload);
+        await this.saveEventLog(serverId, EventType.PATROL_HELI_DOWNED, payload);
+
+        if (this.isNotificationEnabled('heli_downed')) {
+          try {
+            const msg = notify('heli_downed', { position, direction });
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            }
+          } catch (e) {
+            logger.debug(`发送直升机击落通知失败: ${e.message}`);
+          }
+        }
+
+        // 启动箱子解锁计时器（约15分钟）
+        EventTimerManager.stopTimer(`heli_crate_${heli.id}`, serverId);
+
+        const crateTimer = EventTimerManager.startTimer(
+          `heli_crate_${heli.id}`,
+          serverId,
+          EventTiming.HELI_CRATE_UNLOCK_TIME || 15 * 60 * 1000,
+          async () => {
+            logger.server(serverId, `🚁 直升机残骸箱子已解锁 @ ${position}`);
+
+            this.emit('patrol_heli:crate_unlocked', {
+              userId: this.userId,
+              serverId,
+              position,
+              time: Date.now()
+            });
+
+            if (this.isNotificationEnabled('heli_downed')) {
+              try {
+                const msg = `直升机残骸箱子已解锁 @ ${position}`;
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              } catch (e) {
+                logger.debug(`发送直升机箱子解锁通知失败: ${e.message}`);
+              }
+            }
+          }
+        );
+
+        // 添加警告（解锁前3分钟）
+        crateTimer.addWarning(3 * 60 * 1000, async (timeLeft) => {
+          const minutesLeft = Math.floor(timeLeft / 60000);
+
+          logger.server(serverId, `🚁 直升机残骸箱子 ${minutesLeft} 分钟后解锁`);
+
+          if (this.isNotificationEnabled('heli_downed')) {
+            try {
+              const msg = `直升机残骸箱子 ${minutesLeft} 分钟后解锁 @ ${position}`;
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            } catch (e) {
+              logger.debug(`发送直升机箱子警告通知失败: ${e.message}`);
+            }
+          }
+        });
+
+      } else {
+        // 离开
+        logger.server(serverId, `🚁 武装直升机离开 ${direction}`);
+
+        eventData.lastEvents.patrolHeliLeave = now;
+
+        const payload = {
+          userId: this.userId,
+          serverId,
+          markerId: heli.id,
+          direction,
+          time: now
+        };
+
+        this.emit(EventType.PATROL_HELI_LEAVE, payload);
+
+        if (this.isNotificationEnabled('heli_leave')) {
+          try {
+            const msg = notify('heli_leave', { direction });
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            }
+          } catch (e) {
+            logger.debug(`发送直升机离开通知失败: ${e.message}`);
+          }
+        }
+      }
+
+      // 清理追踪数据
+      eventData.patrolHeliTracers.delete(heli.id);
+    }
 
     // 更新追踪路径
     for (const heli of currentHelis) {
@@ -686,20 +804,366 @@ class UserEventMonitor extends EventEmitter {
   }
 
   /**
-   * 检测 CH47 事件（简化版本）
+   * 检测 CH47 事件
+   * CH47 出现在油井附近时触发油井事件
    */
   async checkCH47s(serverId, currentMarkers, previousMarkers) {
-    // 完整实现类似原 EventMonitorService，添加 userId 到所有事件
-    // 这里省略以节省空间
+    const currentCH47s = currentMarkers.filter(m => m.type === AppMarkerType.CH47);
+    const previousCH47s = previousMarkers.filter(m => m.type === AppMarkerType.CH47);
+    const eventData = this.eventData.get(serverId);
+    const monuments = this.monuments.get(serverId) || [];
+    const mapSize = this.rustPlusService.getMapSize(serverId);
+
+    // 获取油井位置
+    const smallOilRigs = monuments.filter(m => m.token === 'oil_rig_small');
+    const largeOilRigs = monuments.filter(m => m.token === 'large_oil_rig');
+
+    // 新出现的 CH47
+    const newCH47s = currentCH47s.filter(c =>
+      !previousCH47s.some(p => p.id === c.id)
+    );
+
+    for (const ch47 of newCH47s) {
+      const position = formatPosition(ch47.x, ch47.y, mapSize);
+      const now = Date.now();
+
+      // 首次轮询跳过事件触发
+      if (eventData.isFirstPoll) {
+        if (!eventData.ch47Tracers.has(ch47.id)) {
+          eventData.ch47Tracers.set(ch47.id, []);
+        }
+        continue;
+      }
+
+      let foundOilRig = false;
+
+      // 检查是否在小油井附近
+      for (const oilRig of smallOilRigs) {
+        const distance = getDistance(ch47.x, ch47.y, oilRig.x, oilRig.y);
+        if (distance <= EventTiming.OIL_RIG_CHINOOK_MAX_SPAWN_DISTANCE) {
+          foundOilRig = true;
+          const oilRigPosition = formatPosition(oilRig.x, oilRig.y, mapSize);
+          const direction = this.getMapDirection(oilRig.x, oilRig.y, mapSize);
+
+          logger.server(serverId, `🛢️ 小油井已触发 @ ${oilRigPosition} ${direction}`);
+
+          eventData.lastEvents.smallOilRigTriggered = now;
+
+          const payload = {
+            userId: this.userId,
+            serverId,
+            markerId: ch47.id,
+            oilRigType: 'small',
+            x: oilRig.x,
+            y: oilRig.y,
+            position: oilRigPosition,
+            direction,
+            time: now
+          };
+
+          this.emit(EventType.SMALL_OIL_RIG_TRIGGERED, payload);
+          await this.saveEventLog(serverId, EventType.SMALL_OIL_RIG_TRIGGERED, payload);
+
+          // 发送触发通知
+          if (this.isNotificationEnabled('oil_rig_triggered')) {
+            try {
+              const msg = notify('small_oil_triggered', { direction });
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {
+              logger.debug(`发送小油井触发通知失败: ${e.message}`);
+            }
+          }
+
+          // 停止旧计时器（如果存在）
+          EventTimerManager.stopTimer('small_oil_crate', serverId);
+
+          // 启动箱子解锁计时器（15分钟）
+          const crateTimer = EventTimerManager.startTimer(
+            'small_oil_crate',
+            serverId,
+            EventTiming.OIL_RIG_LOCKED_CRATE_UNLOCK_TIME,
+            async () => {
+              logger.server(serverId, `🛢️ 小油井箱子已解锁`);
+
+              eventData.lastEvents.smallOilRigCrateUnlocked = Date.now();
+
+              const unlockPayload = {
+                userId: this.userId,
+                serverId,
+                oilRigType: 'small',
+                position: oilRigPosition,
+                time: Date.now()
+              };
+
+              this.emit(EventType.SMALL_OIL_RIG_CRATE_UNLOCKED, unlockPayload);
+              await this.saveEventLog(serverId, EventType.SMALL_OIL_RIG_CRATE_UNLOCKED, unlockPayload);
+
+              if (this.isNotificationEnabled('oil_rig_unlocked')) {
+                try {
+                  const msg = notify('small_oil_unlocked', {});
+                  if (msg) {
+                    await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                  }
+                } catch (e) {
+                  logger.debug(`发送小油井解锁通知失败: ${e.message}`);
+                }
+              }
+            }
+          );
+
+          // 添加警告（解锁前3分钟）
+          crateTimer.addWarning(EventTiming.OIL_RIG_CRATE_WARNING_TIME, async (timeLeft) => {
+            const minutesLeft = Math.floor(timeLeft / 60000);
+
+            logger.server(serverId, `🛢️ 小油井箱子 ${minutesLeft} 分钟后解锁`);
+
+            this.emit(EventType.SMALL_OIL_RIG_CRATE_WARNING, {
+              userId: this.userId,
+              serverId,
+              oilRigType: 'small',
+              minutesLeft,
+              time: Date.now()
+            });
+
+            if (this.isNotificationEnabled('oil_rig_warning')) {
+              try {
+                const msg = notify('small_oil_warning', { minutes: minutesLeft });
+                if (msg) {
+                  await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                }
+              } catch (e) {
+                logger.debug(`发送小油井警告通知失败: ${e.message}`);
+              }
+            }
+          });
+
+          // 标记 CH47 类型为油井
+          eventData.ch47Types.set(ch47.id, 'oil_rig');
+
+          break;
+        }
+      }
+
+      // 检查是否在大油井附近
+      if (!foundOilRig) {
+        for (const oilRig of largeOilRigs) {
+          const distance = getDistance(ch47.x, ch47.y, oilRig.x, oilRig.y);
+          if (distance <= EventTiming.OIL_RIG_CHINOOK_MAX_SPAWN_DISTANCE) {
+            foundOilRig = true;
+            const oilRigPosition = formatPosition(oilRig.x, oilRig.y, mapSize);
+            const direction = this.getMapDirection(oilRig.x, oilRig.y, mapSize);
+
+            logger.server(serverId, `🛢️ 大油井已触发 @ ${oilRigPosition} ${direction}`);
+
+            eventData.lastEvents.largeOilRigTriggered = now;
+
+            const payload = {
+              userId: this.userId,
+              serverId,
+              markerId: ch47.id,
+              oilRigType: 'large',
+              x: oilRig.x,
+              y: oilRig.y,
+              position: oilRigPosition,
+              direction,
+              time: now
+            };
+
+            this.emit(EventType.LARGE_OIL_RIG_TRIGGERED, payload);
+            await this.saveEventLog(serverId, EventType.LARGE_OIL_RIG_TRIGGERED, payload);
+
+            // 发送触发通知
+            if (this.isNotificationEnabled('oil_rig_triggered')) {
+              try {
+                const msg = notify('large_oil_triggered', { direction });
+                if (msg) {
+                  await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                }
+              } catch (e) {
+                logger.debug(`发送大油井触发通知失败: ${e.message}`);
+              }
+            }
+
+            // 停止旧计时器（如果存在）
+            EventTimerManager.stopTimer('large_oil_crate', serverId);
+
+            // 启动箱子解锁计时器（15分钟）
+            const crateTimer = EventTimerManager.startTimer(
+              'large_oil_crate',
+              serverId,
+              EventTiming.OIL_RIG_LOCKED_CRATE_UNLOCK_TIME,
+              async () => {
+                logger.server(serverId, `🛢️ 大油井箱子已解锁`);
+
+                eventData.lastEvents.largeOilRigCrateUnlocked = Date.now();
+
+                const unlockPayload = {
+                  userId: this.userId,
+                  serverId,
+                  oilRigType: 'large',
+                  position: oilRigPosition,
+                  time: Date.now()
+                };
+
+                this.emit(EventType.LARGE_OIL_RIG_CRATE_UNLOCKED, unlockPayload);
+                await this.saveEventLog(serverId, EventType.LARGE_OIL_RIG_CRATE_UNLOCKED, unlockPayload);
+
+                if (this.isNotificationEnabled('oil_rig_unlocked')) {
+                  try {
+                    const msg = notify('large_oil_unlocked', {});
+                    if (msg) {
+                      await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                    }
+                  } catch (e) {
+                    logger.debug(`发送大油井解锁通知失败: ${e.message}`);
+                  }
+                }
+              }
+            );
+
+            // 添加警告（解锁前3分钟）
+            crateTimer.addWarning(EventTiming.OIL_RIG_CRATE_WARNING_TIME, async (timeLeft) => {
+              const minutesLeft = Math.floor(timeLeft / 60000);
+
+              logger.server(serverId, `🛢️ 大油井箱子 ${minutesLeft} 分钟后解锁`);
+
+              this.emit(EventType.LARGE_OIL_RIG_CRATE_WARNING, {
+                userId: this.userId,
+                serverId,
+                oilRigType: 'large',
+                minutesLeft,
+                time: Date.now()
+              });
+
+              if (this.isNotificationEnabled('oil_rig_warning')) {
+                try {
+                  const msg = notify('large_oil_warning', { minutes: minutesLeft });
+                  if (msg) {
+                    await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                  }
+                } catch (e) {
+                  logger.debug(`发送大油井警告通知失败: ${e.message}`);
+                }
+              }
+            });
+
+            // 标记 CH47 类型为油井
+            eventData.ch47Types.set(ch47.id, 'oil_rig');
+
+            break;
+          }
+        }
+      }
+
+      // 不在油井附近，是普通 CH47 刷新（投放箱子）
+      if (!foundOilRig) {
+        const direction = this.getMapDirection(ch47.x, ch47.y, mapSize);
+
+        logger.server(serverId, `🚁 CH47 出现 @ ${position} ${direction} (投放上锁箱子)`);
+
+        eventData.lastEvents.ch47Spawn = now;
+
+        // 标记 CH47 类型为投放箱子
+        eventData.ch47Types.set(ch47.id, 'crate');
+
+        const payload = {
+          userId: this.userId,
+          serverId,
+          markerId: ch47.id,
+          x: ch47.x,
+          y: ch47.y,
+          position,
+          direction,
+          time: now
+        };
+
+        this.emit(EventType.CH47_SPAWN, payload);
+        await this.saveEventLog(serverId, EventType.CH47_SPAWN, payload);
+
+        // 使用 ch47_crate_spawn 模板，明确说明是来投放箱子的
+        if (this.isNotificationEnabled('ch47_spawn')) {
+          try {
+            const msg = notify('ch47_crate_spawn', { position, direction });
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            }
+          } catch (e) {
+            logger.debug(`发送CH47出现通知失败: ${e.message}`);
+          }
+        }
+      }
+
+      // 初始化追踪路径
+      if (!eventData.ch47Tracers.has(ch47.id)) {
+        eventData.ch47Tracers.set(ch47.id, []);
+      }
+    }
+
+    // 已离开的 CH47
+    const leftCH47s = previousCH47s.filter(p =>
+      !currentCH47s.some(c => c.id === p.id)
+    );
+
+    for (const ch47 of leftCH47s) {
+      const position = formatPosition(ch47.x, ch47.y, mapSize);
+      const ch47Type = eventData.ch47Types.get(ch47.id);
+
+      logger.server(serverId, `🚁 CH47 离开 @ ${position}`);
+
+      this.emit(EventType.CH47_LEAVE, {
+        userId: this.userId,
+        serverId,
+        markerId: ch47.id,
+        position,
+        time: Date.now()
+      });
+
+      // 如果是投放箱子类型的 CH47 离开，记录投放信息
+      if (ch47Type === 'crate') {
+        const tracer = eventData.ch47Tracers.get(ch47.id) || [];
+        // 获取 CH47 最后的位置（可能是投放点附近）
+        const lastPos = tracer.length > 0 ? tracer[tracer.length - 1] : { x: ch47.x, y: ch47.y };
+        const dropPosition = formatPosition(lastPos.x, lastPos.y, mapSize);
+
+        eventData.ch47CrateDropInfo = {
+          time: Date.now(),
+          x: lastPos.x,
+          y: lastPos.y,
+          position: dropPosition
+        };
+        eventData.lastEvents.ch47CrateDrop = Date.now();
+
+        logger.server(serverId, `📦 CH47 可能在 ${dropPosition} 附近投放了上锁箱子`);
+      }
+
+      eventData.ch47Tracers.delete(ch47.id);
+      eventData.ch47Types.delete(ch47.id);
+    }
+
+    // 更新追踪路径
+    for (const ch47 of currentCH47s) {
+      const tracer = eventData.ch47Tracers.get(ch47.id) || [];
+      tracer.push({ x: ch47.x, y: ch47.y, time: Date.now() });
+
+      if (tracer.length > 100) {
+        tracer.shift();
+      }
+
+      eventData.ch47Tracers.set(ch47.id, tracer);
+    }
   }
 
   /**
    * 检测上锁箱子事件
    */
-  checkLockedCrates(serverId, currentMarkers, previousMarkers) {
+  async checkLockedCrates(serverId, currentMarkers, previousMarkers) {
     const currentCrates = currentMarkers.filter(m => m.type === AppMarkerType.Crate);
     const previousCrates = previousMarkers.filter(m => m.type === AppMarkerType.Crate);
     const eventData = this.eventData.get(serverId);
+    const mapSize = this.rustPlusService.getMapSize(serverId);
+    const monuments = this.monuments.get(serverId) || [];
 
     // 新出现的箱子
     const newCrates = currentCrates.filter(c =>
@@ -707,11 +1171,28 @@ class UserEventMonitor extends EventEmitter {
     );
 
     for (const crate of newCrates) {
-      const mapSize = this.rustPlusService.getMapSize(serverId);
       const position = formatPosition(crate.x, crate.y, mapSize);
       const now = Date.now();
 
-      logger.server(serverId, `🔒 上锁箱子 @ ${position}`);
+      // 首次轮询跳过
+      if (eventData.isFirstPoll) {
+        continue;
+      }
+
+      // 检测箱子来源
+      let crateSource = 'ch47'; // 默认是 CH47 投放
+
+      // 检查是否在油井附近
+      const oilRigs = monuments.filter(m =>
+        m.token === 'oil_rig_small' || m.token === 'large_oil_rig'
+      );
+      for (const oilRig of oilRigs) {
+        const distance = getDistance(crate.x, crate.y, oilRig.x, oilRig.y);
+        if (distance <= EventTiming.OIL_RIG_CHINOOK_MAX_SPAWN_DISTANCE) {
+          crateSource = oilRig.token === 'oil_rig_small' ? 'small_oil_rig' : 'large_oil_rig';
+          break;
+        }
+      }
 
       eventData.lastEvents.lockedCrateSpawn = now;
 
@@ -722,11 +1203,29 @@ class UserEventMonitor extends EventEmitter {
         x: crate.x,
         y: crate.y,
         position,
+        source: crateSource,
         time: now
       };
 
       this.emit(EventType.LOCKED_CRATE_SPAWN, payload);
-      // 不需要保存上锁箱子事件到数据库（太频繁）
+
+      // CH47 投放的箱子 - 发送精确落地位置
+      if (crateSource === 'ch47') {
+        logger.server(serverId, `📦 上锁箱子已落地 @ ${position}`);
+
+        if (this.isNotificationEnabled('crate_spawn')) {
+          try {
+            const msg = notify('crate_spawn', { position });
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            }
+          } catch (e) {
+            logger.debug(`发送上锁箱子通知失败: ${e.message}`);
+          }
+        }
+      } else {
+        logger.server(serverId, `🔒 上锁箱子 @ ${position} (${crateSource})`);
+      }
     }
 
     // 已消失的箱子
@@ -735,7 +1234,6 @@ class UserEventMonitor extends EventEmitter {
     );
 
     for (const crate of despawnedCrates) {
-      const mapSize = this.rustPlusService.getMapSize(serverId);
       const position = formatPosition(crate.x, crate.y, mapSize);
 
       this.emit(EventType.LOCKED_CRATE_DESPAWN, {
@@ -749,19 +1247,35 @@ class UserEventMonitor extends EventEmitter {
   }
 
   /**
-   * 检测爆炸事件
-   */
-  checkExplosions(serverId, currentMarkers, previousMarkers) {
-    // 完整实现类似原 EventMonitorService
-    // 省略以节省空间
-  }
-
-  /**
    * 检测售货机事件
    */
   checkVendingMachines(serverId, currentMarkers, previousMarkers) {
-    // 完整实现类似原 EventMonitorService
-    // 省略以节省空间
+    const currentVendings = currentMarkers.filter(m => m.type === AppMarkerType.VendingMachine);
+    const previousVendings = previousMarkers.filter(m => m.type === AppMarkerType.VendingMachine);
+    const mapSize = this.rustPlusService.getMapSize(serverId);
+
+    // 新出现的售货机
+    const newVendings = currentVendings.filter(c =>
+      !previousVendings.some(p => p.id === c.id)
+    );
+
+    for (const vending of newVendings) {
+      const position = formatPosition(vending.x, vending.y, mapSize);
+
+      logger.server(serverId, `🛒 检测到新售货机: ${vending.name || '未命名'} @ ${position}`);
+
+      this.emit('vending:new', {
+        userId: this.userId,
+        serverId,
+        vendingId: vending.id,
+        name: vending.name || '未命名售货机',
+        position,
+        x: vending.x,
+        y: vending.y,
+        sellOrders: vending.sellOrders || [],
+        time: Date.now()
+      });
+    }
   }
 
   /**
@@ -834,6 +1348,128 @@ class UserEventMonitor extends EventEmitter {
 
         const position = formatPosition(member.x, member.y, mapSize, true, false, monuments);
 
+        // 检测上线
+        if (oldState.isOnline === false && member.isOnline === true) {
+          logger.server(serverId, `🟢 ${member.name} 上线`);
+
+          const payload = {
+            userId: this.userId,
+            serverId,
+            steamId,
+            name: member.name,
+            time: now
+          };
+
+          this.emit(EventType.PLAYER_ONLINE, payload);
+          await this.saveEventLog(serverId, EventType.PLAYER_ONLINE, payload);
+
+          if (this.isNotificationEnabled('player_online')) {
+            try {
+              const msg = notify('player_online', { name: member.name });
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {
+              logger.debug(`发送玩家上线通知失败: ${e.message}`);
+            }
+          }
+
+          // 重置 AFK 状态
+          oldState.lastMovement = now;
+          oldState.afkSeconds = 0;
+          oldState.lastOnlineTime = now;
+        }
+
+        // 检测下线
+        if (oldState.isOnline === true && member.isOnline === false) {
+          logger.server(serverId, `🔴 ${member.name} 下线`);
+
+          const payload = {
+            userId: this.userId,
+            serverId,
+            steamId,
+            name: member.name,
+            time: now
+          };
+
+          this.emit(EventType.PLAYER_OFFLINE, payload);
+          await this.saveEventLog(serverId, EventType.PLAYER_OFFLINE, payload);
+
+          if (this.isNotificationEnabled('player_offline')) {
+            try {
+              const msg = notify('player_offline', { name: member.name });
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {
+              logger.debug(`发送玩家下线通知失败: ${e.message}`);
+            }
+          }
+
+          oldState.lastOfflineTime = now;
+        }
+
+        // 检测 AFK（玩家在线但位置不变超过5分钟）
+        if (member.isOnline) {
+          const hasMoved = oldState.x !== member.x || oldState.y !== member.y;
+
+          if (hasMoved) {
+            // 如果之前是 AFK 状态，发送返回通知
+            if (oldState.afkSeconds >= 300) {
+              logger.server(serverId, `🏃 ${member.name} 已返回`);
+
+              const payload = {
+                userId: this.userId,
+                serverId,
+                steamId,
+                name: member.name,
+                afkDuration: oldState.afkSeconds,
+                time: now
+              };
+
+              this.emit(EventType.PLAYER_AFK_RETURNED, payload);
+
+              // AFK 返回不发送游戏内通知，避免刷屏
+            }
+
+            oldState.lastMovement = now;
+            oldState.afkSeconds = 0;
+          } else {
+            // 位置没变，累计 AFK 时间
+            const timeSinceLastMove = Math.floor((now - oldState.lastMovement) / 1000);
+            oldState.afkSeconds = timeSinceLastMove;
+
+            // 刚达到 5 分钟 AFK 阈值时发送通知
+            if (timeSinceLastMove >= 300 && timeSinceLastMove < 310) {
+              logger.server(serverId, `💤 ${member.name} 已挂机 5 分钟`);
+
+              const payload = {
+                userId: this.userId,
+                serverId,
+                steamId,
+                name: member.name,
+                position,
+                afkSeconds: timeSinceLastMove,
+                time: now
+              };
+
+              this.emit(EventType.PLAYER_AFK, payload);
+              await this.saveEventLog(serverId, EventType.PLAYER_AFK, payload);
+
+              if (this.isNotificationEnabled('player_afk')) {
+                try {
+                  const msg = notify('player_afk', { name: member.name, minutes: 5 });
+                  if (msg) {
+                    await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                  }
+                } catch (e) {
+                  logger.debug(`发送玩家挂机通知失败: ${e.message}`);
+                }
+              }
+            }
+          }
+        }
+
         // 检测死亡
         const isAliveFlipToDead = oldState.isAlive === true && member.isAlive === false;
         const isDeathTimeChanged = oldState.deathTime !== member.deathTime;
@@ -877,12 +1513,63 @@ class UserEventMonitor extends EventEmitter {
         oldState.deathTime = member.deathTime;
         oldState.spawnTime = member.spawnTime;
       }
+
+      // 同步到扩展队友列表（只添加不删除）
+      await this.syncExtendedTeammates(serverId, teamInfo);
     } catch (error) {
       const errorStr = JSON.stringify(error) || String(error);
       if (errorStr.includes('not_found') || errorStr.includes('Timeout') || errorStr.includes('未连接')) {
         return;
       }
       logger.debug(`队伍轮询失败 (用户 ${this.userId}): ${error?.message || errorStr}`);
+    }
+  }
+
+  /**
+   * 同步队友到扩展队友列表（只添加/更新，不删除）
+   */
+  async syncExtendedTeammates(serverId, teamInfo) {
+    if (!teamInfo || !teamInfo.members) return;
+
+    const now = new Date();
+
+    for (const member of teamInfo.members) {
+      const steamId = member.steamId?.toString();
+      if (!steamId) continue;
+
+      try {
+        // Upsert: 存在则更新 lastSeenAt，不存在则创建
+        await prisma.extended_teammates.upsert({
+          where: {
+            userId_serverId_steamId: {
+              userId: this.userId,
+              serverId,
+              steamId
+            }
+          },
+          update: {
+            lastSeenAt: now
+          },
+          create: {
+            userId: this.userId,
+            serverId,
+            steamId,
+            lastSeenAt: now
+          }
+        });
+
+        // 同步更新 player_profiles 中的名称
+        await prisma.player_profiles.upsert({
+          where: { steamId },
+          update: { name: member.name },
+          create: {
+            steamId,
+            name: member.name
+          }
+        });
+      } catch (e) {
+        logger.debug(`[扩展队友] 同步失败 ${steamId}: ${e.message}`);
+      }
     }
   }
 
@@ -931,101 +1618,157 @@ class UserEventMonitor extends EventEmitter {
 
   /**
    * 刷新所有队友的 Steam 数据（头像、封禁等）
+   * 包括当前队伍成员和扩展队友列表中的所有玩家
    */
   async refreshPlayerData(serverId) {
-    const eventData = this.eventData.get(serverId);
-    if (!eventData || eventData.teamMembers.size === 0) return;
+    try {
+      // 1. 获取当前队伍成员
+      const eventData = this.eventData.get(serverId);
+      const currentTeamIds = eventData ? Array.from(eventData.teamMembers.keys()) : [];
 
-    const steamIds = Array.from(eventData.teamMembers.keys());
-    logger.debug(`[Steam] 刷新 ${steamIds.length} 名成员的资料...`);
-
-    const playersData = await steamService.getBatchPlayerData(steamIds);
-
-    for (const data of playersData) {
-      if (!data.summary) continue;
-
-      await prisma.player_profiles.upsert({
-        where: { steamId: data.steamId },
-        update: {
-          name: data.summary.personaname,
-          avatar: data.summary.avatarfull,
-          playtime: data.playtime?.playtime_forever || 0,
-          vacBanned: data.ban?.VACBanned || false,
-          gameBans: data.ban?.NumberOfGameBans || 0,
-          lastUpdated: new Date()
-        },
-        create: {
-          steamId: data.steamId,
-          name: data.summary.personaname,
-          avatar: data.summary.avatarfull,
-          playtime: data.playtime?.playtime_forever || 0,
-          vacBanned: data.ban?.VACBanned || false,
-          gameBans: data.ban?.NumberOfGameBans || 0,
-        }
+      // 2. 获取扩展队友列表中的所有玩家
+      const extendedTeammates = await prisma.extended_teammates.findMany({
+        where: { userId: this.userId, serverId },
+        select: { steamId: true }
       });
+      const extendedIds = extendedTeammates.map(t => t.steamId);
 
-      // 如果有统计数据，保存并检查快照
-      if (data.stats && !data.stats.private) {
-        await this.updatePlayerStats(serverId, data.steamId, data.summary.personaname, data.stats);
+      // 3. 合并去重
+      const allSteamIds = [...new Set([...currentTeamIds, ...extendedIds])];
+
+      if (allSteamIds.length === 0) return;
+
+      logger.debug(`[Steam] 刷新 ${allSteamIds.length} 名成员的资料（当前队伍: ${currentTeamIds.length}, 扩展列表: ${extendedIds.length}）`);
+
+      const playersData = await steamService.getBatchPlayerData(allSteamIds);
+
+      for (const data of playersData) {
+        if (!data.summary) continue;
+
+        await prisma.player_profiles.upsert({
+          where: { steamId: data.steamId },
+          update: {
+            name: data.summary.personaname,
+            avatar: data.summary.avatarfull,
+            playtime: data.playtime?.playtime_forever || 0,
+            vacBanned: data.ban?.VACBanned || false,
+            gameBans: data.ban?.NumberOfGameBans || 0,
+            lastUpdated: new Date()
+          },
+          create: {
+            steamId: data.steamId,
+            name: data.summary.personaname,
+            avatar: data.summary.avatarfull,
+            playtime: data.playtime?.playtime_forever || 0,
+            vacBanned: data.ban?.VACBanned || false,
+            gameBans: data.ban?.NumberOfGameBans || 0,
+          }
+        });
+
+        // 如果有统计数据，保存并检查快照
+        if (data.stats && !data.stats.private) {
+          await this.updatePlayerStats(serverId, data.steamId, data.summary.personaname, data.stats);
+        }
       }
+    } catch (error) {
+      logger.debug(`[Steam] 刷新玩家数据失败 (用户 ${this.userId}): ${error?.message || error}`);
     }
   }
 
   /**
    * 更新并对比玩家实时统计数据
+   * Steam API 字段映射到内部字段名
    */
   async updatePlayerStats(serverId, steamId, playerName, stats) {
-    const statKeys = ['players_killed', 'kill_npc', 'gather_wood', 'gather_stone', 'gather_metal'];
+    // Steam API 返回的字段名 -> 内部字段名
+    const steamToInternalMap = {
+      'kill_player': 'players_killed',      // 击杀玩家
+      'kill_scientist': 'kill_npc',         // 击杀 NPC (科学家)
+      'harvested_wood': 'gather_wood',      // 采集木材
+      'harvested_stones': 'gather_stone',   // 采集石头
+      'acquired_metal.ore': 'gather_metal', // 获取金属矿
+      'acquired_scrap': 'gather_scrap',     // 获取废料
+      'deaths': 'deaths',                   // 死亡次数
+      'headshot': 'headshots',              // 爆头数
+      'bullet_fired': 'bullets_fired',      // 射击次数
+      'bullet_hit_player': 'bullets_hit',   // 命中玩家次数
+    };
+
     const thresholds = {
       'players_killed': 1,
-      'kill_npc': 5,
-      'gather_wood': 2000,
-      'gather_stone': 2000,
-      'gather_metal': 1000
+      'kill_npc': 3,
+      'gather_wood': 1000,
+      'gather_stone': 1000,
+      'gather_metal': 500,
+      'gather_scrap': 100,
+      'deaths': 1,
+      'headshots': 5,
+      'bullets_fired': 50,
+      'bullets_hit': 10,
     };
+
     const statNames = {
       'players_killed': '玩家击杀',
       'kill_npc': 'NPC击杀',
       'gather_wood': '木材',
       'gather_stone': '石料',
-      'gather_metal': '金属'
+      'gather_metal': '金属矿',
+      'gather_scrap': '废料',
+      'deaths': '死亡',
+      'headshots': '爆头',
+      'bullets_fired': '射击',
+      'bullets_hit': '命中',
     };
 
-    for (const key of statKeys) {
-      const value = stats[key] || 0;
+    for (const [steamKey, internalKey] of Object.entries(steamToInternalMap)) {
+      const value = stats[steamKey] || 0;
+
+      // 计算今日日期范围
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
 
       // 检查今日快照，如果不存在则创建（00:00 快照）
-      let snapshot = await prisma.player_stats_snapshots.findUnique({
-        where: { steamId_statKey_snapshotDate: { steamId, statKey: key, snapshotDate: new Date() } }
+      let snapshot = await prisma.player_stats_snapshots.findFirst({
+        where: {
+          steamId,
+          statKey: internalKey,
+          snapshotDate: {
+            gte: todayStart,
+            lte: todayEnd
+          }
+        }
       });
 
       if (!snapshot) {
         snapshot = await prisma.player_stats_snapshots.create({
           data: {
             steamId,
-            statKey: key,
-            statValue: value // 初始快照值应为当前值
+            statKey: internalKey,
+            statValue: value, // 初始快照值应为当前值
+            snapshotDate: todayStart // 使用今日 00:00 作为快照时间
           }
         });
-        logger.debug(`[Steam] 已为 ${steamId} 创建 ${key} 的今日初始快照`);
+        logger.debug(`[Steam] 已为 ${steamId} 创建 ${internalKey} 的今日初始快照`);
       }
 
       // 获取旧值以计算增量
       const oldStat = await prisma.player_stats.findUnique({
-        where: { steamId_statKey: { steamId, statKey: key } }
+        where: { steamId_statKey: { steamId, statKey: internalKey } }
       });
 
       // 更新实时统计
       await prisma.player_stats.upsert({
-        where: { steamId_statKey: { steamId, statKey: key } },
+        where: { steamId_statKey: { steamId, statKey: internalKey } },
         update: { statValue: value, updatedAt: new Date() },
-        create: { steamId, statKey: key, statValue: value }
+        create: { steamId, statKey: internalKey, statValue: value }
       });
 
       // 如果有旧值且增量达到阈值，触发事件
       if (oldStat && value > oldStat.statValue) {
         const delta = value - oldStat.statValue;
-        if (delta >= (thresholds[key] || 1)) {
+        if (delta >= (thresholds[internalKey] || 1)) {
           // 计算今日累计贡献 (当前值 - 今日快照值)
           const todayTotal = Math.max(0, value - snapshot.statValue);
 
@@ -1033,12 +1776,12 @@ class UserEventMonitor extends EventEmitter {
             serverId,
             steamId,
             playerName,
-            statKey: key,
-            statName: statNames[key] || key,
+            statKey: internalKey,
+            statName: statNames[internalKey] || internalKey,
             amount: todayTotal,
             delta
           });
-          logger.debug(`[Steam] 玩家 ${playerName} (${steamId}) 贡献更新: ${key} 今日累计: ${todayTotal}`);
+          logger.debug(`[Steam] 玩家 ${playerName} (${steamId}) 贡献更新: ${internalKey} 今日累计: ${todayTotal}`);
         }
       }
     }

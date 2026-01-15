@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 设置按钮事件
     document.getElementById('copyCommandBtn').addEventListener('click', copyCommand);
     document.getElementById('downloadBtn').addEventListener('click', downloadCredentials);
+    document.getElementById('retryBtn').addEventListener('click', () => location.reload());
 
     // 单项复制按钮
     document.querySelectorAll('.copy-btn').forEach(btn => {

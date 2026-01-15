@@ -65,6 +65,14 @@ export const sendTeamMessage = (serverId, message) => api.post(`/servers/${serve
 
 export const getMapInfo = (serverId) => api.get(`/servers/${serverId}/map-info`);
 
+// ========== 扩展队友列表 ==========
+
+export const getExtendedTeammates = (serverId) => api.get(`/servers/${serverId}/extended-teammates`);
+
+export const deleteExtendedTeammate = (serverId, steamId) => api.delete(`/servers/${serverId}/extended-teammates/${steamId}`);
+
+export const updateTeammateNotes = (serverId, steamId, notes) => api.put(`/servers/${serverId}/extended-teammates/${steamId}`, { notes });
+
 // ========== 设备管理 ==========
 
 export const getDevices = (serverId) => api.get(`/servers/${serverId}/devices`);

@@ -445,6 +445,154 @@ router.get('/:id/team-detailed', async (req, res) => {
 });
 
 /**
+ * GET /api/servers/:id/extended-teammates
+ * 获取扩展队友列表（包含在队伍/不在队伍状态）
+ */
+router.get('/:id/extended-teammates', async (req, res) => {
+  try {
+    const serverId = req.params.id;
+    const userId = req.user.id;
+
+    // 1. 验证服务器归属
+    const server = await prisma.servers.findFirst({
+      where: { id: serverId, userId }
+    });
+    if (!server) {
+      return res.status(404).json({ success: false, error: '服务器不存在' });
+    }
+
+    // 2. 获取扩展队友列表
+    const extendedTeammates = await prisma.extended_teammates.findMany({
+      where: { userId, serverId }
+    });
+
+    // 3. 获取当前队伍成员（实时）
+    const rustPlusService = getUserRustPlusService(userId);
+    let currentTeamIds = [];
+    let teamMembersMap = new Map();
+
+    if (rustPlusService && rustPlusService.isConnected(serverId)) {
+      try {
+        const teamInfo = await rustPlusService.getTeamInfo(serverId);
+        if (teamInfo && teamInfo.members) {
+          for (const m of teamInfo.members) {
+            const steamId = m.steamId?.toString();
+            currentTeamIds.push(steamId);
+            teamMembersMap.set(steamId, m);
+          }
+        }
+      } catch (e) {
+        // 获取实时队伍失败，继续处理
+      }
+    }
+
+    // 4. 获取所有玩家的 Steam 资料
+    const steamIds = extendedTeammates.map(t => t.steamId);
+    const [profiles, stats, snapshots] = await Promise.all([
+      prisma.player_profiles.findMany({
+        where: { steamId: { in: steamIds } }
+      }),
+      prisma.player_stats.findMany({
+        where: { steamId: { in: steamIds } }
+      }),
+      prisma.player_stats_snapshots.findMany({
+        where: {
+          steamId: { in: steamIds },
+          snapshotDate: new Date()
+        }
+      })
+    ]);
+
+    // 5. 合并数据
+    const teammates = extendedTeammates.map(teammate => {
+      const steamId = teammate.steamId;
+      const profile = profiles.find(p => p.steamId === steamId);
+      const memberStats = stats.filter(s => s.steamId === steamId);
+      const memberSnapshots = snapshots.filter(s => s.steamId === steamId);
+      const inTeam = currentTeamIds.includes(steamId);
+      const teamMember = teamMembersMap.get(steamId);
+
+      // 计算今日贡献
+      const contribution = {};
+      memberStats.forEach(s => {
+        const snapshot = memberSnapshots.find(sn => sn.statKey === s.statKey);
+        const diff = snapshot ? (s.statValue - snapshot.statValue) : 0;
+        contribution[s.statKey] = Math.max(0, diff);
+      });
+
+      return {
+        steamId,
+        name: profile?.name || '未知',
+        inTeam,
+        // 在队伍中时有的字段
+        ...(inTeam && teamMember ? {
+          x: teamMember.x,
+          y: teamMember.y,
+          isOnline: teamMember.isOnline,
+          isAlive: teamMember.isAlive
+        } : {}),
+        // Steam 数据
+        avatar: profile?.avatar || null,
+        playtime: profile?.playtime || 0,
+        vacBanned: profile?.vacBanned || false,
+        gameBans: profile?.gameBans || 0,
+        contribution,
+        // 元数据
+        addedAt: teammate.addedAt,
+        lastSeenAt: teammate.lastSeenAt,
+        profileUpdatedAt: profile?.lastUpdated || null,
+        notes: teammate.notes
+      };
+    });
+
+    res.json({ success: true, teammates });
+  } catch (error) {
+    console.error('获取扩展队友列表失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * DELETE /api/servers/:id/extended-teammates/:steamId
+ * 从扩展队友列表中删除玩家
+ */
+router.delete('/:id/extended-teammates/:steamId', async (req, res) => {
+  try {
+    const { id: serverId, steamId } = req.params;
+    const userId = req.user.id;
+
+    await prisma.extended_teammates.deleteMany({
+      where: { userId, serverId, steamId }
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PUT /api/servers/:id/extended-teammates/:steamId
+ * 更新玩家备注
+ */
+router.put('/:id/extended-teammates/:steamId', async (req, res) => {
+  try {
+    const { id: serverId, steamId } = req.params;
+    const { notes } = req.body;
+    const userId = req.user.id;
+
+    await prisma.extended_teammates.updateMany({
+      where: { userId, serverId, steamId },
+      data: { notes }
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/servers/:id/chat
  * 获取队伍聊天历史
  */

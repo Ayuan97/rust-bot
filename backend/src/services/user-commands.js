@@ -6,11 +6,13 @@
 import { EventEmitter } from 'events';
 import prisma from '../lib/prisma.js';
 import logger from '../utils/logger.js';
+import translate from 'translate';
 import { parseTimeString } from '../utils/timer.js';
 import { cmd, cmdConfig, formatDuration } from '../utils/messages.js';
 import { getItemName, getItemShortName, searchItems } from '../utils/item-info.js';
 import { AppMarkerType } from '../utils/event-constants.js';
 import { formatPosition } from '../utils/coordinates.js';
+import { getLanguageCode } from '../utils/languages.js';
 
 class UserCommands extends EventEmitter {
   constructor(userId, rustPlusService, eventMonitorService = null) {
@@ -144,6 +146,24 @@ class UserCommands extends EventEmitter {
         return this.handleShop(serverId, args, context);
       }
     });
+
+    // 翻译命令（英文翻译到其他语言）
+    this.registerCommand('tr', {
+      description: '翻译文本（默认从英文翻译）',
+      usage: '!tr <语言> <文本> 或 !tr language <语言名>',
+      handler: async (serverId, args, context) => {
+        return this.handleTranslateTo(serverId, args, context);
+      }
+    });
+
+    // 翻译命令（指定源语言和目标语言）
+    this.registerCommand('trf', {
+      description: '翻译文本（指定源语言）',
+      usage: '!trf <源语言> <目标语言> <文本>',
+      handler: async (serverId, args, context) => {
+        return this.handleTranslateFromTo(serverId, args, context);
+      }
+    });
   }
 
   /**
@@ -255,9 +275,7 @@ class UserCommands extends EventEmitter {
       const devices = await prisma.devices.findMany({
         where: {
           serverId,
-          servers: {
-            userId: this.userId
-          },
+          userId: this.userId,
           command: {
             not: null
           },
@@ -452,6 +470,13 @@ class UserCommands extends EventEmitter {
       lines.push('  !small - 小型油井');
       lines.push('  !large - 大型油井');
     }
+
+    // 翻译命令
+    lines.push('');
+    lines.push('[翻译]');
+    lines.push('  !tr <语言> <文本> - 翻译文本');
+    lines.push('  !tr lang <语言名> - 查询语言代码');
+    lines.push('  !trf <源> <目标> <文本> - 指定源语言翻译');
 
     // 设备命令
     const devices = await this.getDeviceCommands(serverId);
@@ -668,7 +693,6 @@ class UserCommands extends EventEmitter {
 
       const lastPos = firstTracer[firstTracer.length - 1];
       const mapSize = this.rustPlusService.getMapSize(serverId);
-      const { formatPosition } = await import('../utils/coordinates.js');
       const position = formatPosition(lastPos.x, lastPos.y, mapSize);
 
       return cmd('cargo', 'msg_active', { position });
@@ -701,7 +725,6 @@ class UserCommands extends EventEmitter {
 
       const lastPos = firstTracer[firstTracer.length - 1];
       const mapSize = this.rustPlusService.getMapSize(serverId);
-      const { formatPosition } = await import('../utils/coordinates.js');
       const position = formatPosition(lastPos.x, lastPos.y, mapSize);
 
       return cmd('heli', 'msg', { position });
@@ -870,6 +893,83 @@ class UserCommands extends EventEmitter {
     } catch (error) {
       logger.error('搜索售货机失败:', error);
       return cmd('shop', 'error');
+    }
+  }
+
+  /**
+   * !tr - 翻译文本（默认从英文翻译到目标语言）
+   * 用法: !tr <语言代码> <文本>
+   *       !tr language <语言名称>  获取语言代码
+   */
+  async handleTranslateTo(serverId, args, context) {
+    try {
+      if (args.length === 0) {
+        return '[翻译] 用法: !tr <语言> <文本> 或 !tr language <语言名>';
+      }
+
+      const subCommand = args[0].toLowerCase();
+
+      // !tr language <语言名称> - 查询语言代码
+      if (subCommand === 'language' || subCommand === 'lang') {
+        if (args.length < 2) {
+          return '[翻译] 请输入语言名称，如: !tr language 日语';
+        }
+
+        const languageName = args.slice(1).join(' ');
+        const code = getLanguageCode(languageName);
+
+        if (code) {
+          return `[翻译] "${languageName}" 的语言代码是: ${code}`;
+        } else {
+          return `[翻译] 未找到语言: ${languageName}`;
+        }
+      }
+
+      // !tr <语言代码> <文本> - 翻译文本
+      if (args.length < 2) {
+        return '[翻译] 请输入要翻译的文本，如: !tr zh Hello World';
+      }
+
+      const targetLang = getLanguageCode(args[0]) || args[0];
+      const text = args.slice(1).join(' ');
+
+      const result = await translate(text, { to: targetLang });
+      return `[翻译] ${result}`;
+
+    } catch (error) {
+      logger.error('翻译失败:', error);
+      if (error.message?.includes('language')) {
+        return `[翻译] 不支持的语言: ${args[0]}`;
+      }
+      return '[翻译] 翻译失败，请稍后重试';
+    }
+  }
+
+  /**
+   * !trf - 翻译文本（指定源语言和目标语言）
+   * 用法: !trf <源语言> <目标语言> <文本>
+   */
+  async handleTranslateFromTo(serverId, args, context) {
+    try {
+      if (args.length < 3) {
+        return '[翻译] 用法: !trf <源语言> <目标语言> <文本>  例: !trf en zh Hello';
+      }
+
+      const fromLang = getLanguageCode(args[0]) || args[0];
+      const toLang = getLanguageCode(args[1]) || args[1];
+      const text = args.slice(2).join(' ');
+
+      const result = await translate(text, { from: fromLang, to: toLang });
+      return `[翻译] ${result}`;
+
+    } catch (error) {
+      logger.error('翻译失败:', error);
+      // 尝试从错误信息中提取不支持的语言
+      const match = error.message?.match(/language "(.+?)"/);
+      if (match) {
+        return `[翻译] 不支持的语言: ${match[1]}`;
+      }
+      return '[翻译] 翻译失败，请稍后重试';
     }
   }
 

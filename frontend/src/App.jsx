@@ -6,7 +6,7 @@ import {
   FaGlobe, FaTools, FaBell
 } from 'react-icons/fa';
 import { useAuth } from './context/AuthContext';
-import { getServers, connectServer, getMapInfo, getTeamInfo } from './services/api';
+import api, { getServers, connectServer, getMapInfo, getTeamInfo } from './services/api';
 import { useToast } from './components/Toast';
 import socketService from './services/socket';
 import { getCorrectedMapSize } from './utils/coordinates';
@@ -19,6 +19,7 @@ import PairingPanel from './components/PairingPanel';
 import FCMSettings from './components/FCMSettings';
 import NotificationSettings from './components/NotificationSettings';
 import AdminPage from './pages/AdminPage';
+import MapView from './components/MapView';
 
 function App() {
   const { user, logout, isSubscriptionExpired } = useAuth();
@@ -35,6 +36,13 @@ function App() {
   const [wipeInfo, setWipeInfo] = useState(null);
   const [mapFocusTarget, setMapFocusTarget] = useState(null);
   const [fcmStatus, setFcmStatus] = useState({ isListening: false, hasCredentials: false });
+  const [wipeCountdownTick, setWipeCountdownTick] = useState(0);
+
+  // 倒计时定时器 (每秒更新)
+  useEffect(() => {
+    const timer = setInterval(() => setWipeCountdownTick(t => t + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     fetchServers();
@@ -166,7 +174,7 @@ function App() {
 
   const handleLocateTarget = (x, y, name) => {
     setMapFocusTarget({ x, y, name });
-    setShowMapModal(true);
+    setActiveView('map');
   };
 
   // 计算倒计时
@@ -181,7 +189,7 @@ function App() {
     const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     const s = Math.floor((diff % (1000 * 60)) / 1000);
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  }, [activeServer, wipeInfo, Math.floor(Date.now() / 10000)]); // 每10秒更新一次
+  }, [activeServer, wipeInfo, wipeCountdownTick]);
 
   // --- Render Views ---
   const renderView = () => {
@@ -217,6 +225,15 @@ function App() {
             onLocate={handleLocateTarget}
           />
         );
+      case 'map':
+        return (
+          <MapView
+            server={activeServer}
+            teamData={teamData}
+            focusTarget={mapFocusTarget}
+            onLocatePlayer={(member) => setMapFocusTarget({ x: member.x, y: member.y, name: member.name })}
+          />
+        );
       case 'devices':
         return <DeviceControl serverId={activeServer?.id} isReadOnly={isSubscriptionExpired} />;
       case 'settings':
@@ -248,6 +265,7 @@ function App() {
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
           <NavIcon id="hud" icon={<FaTerminal />} active={activeView} onClick={setActiveView} label="基地概览" />
           <NavIcon id="team" icon={<FaUsers />} active={activeView} onClick={setActiveView} label="队友动态" />
+          <NavIcon id="map" icon={<FaMapMarkedAlt />} active={activeView} onClick={setActiveView} label="实时地图" />
           <NavIcon id="devices" icon={<FaCogs />} active={activeView} onClick={setActiveView} label="智能中控" />
           <div className="h-px w-8 bg-white/5 mx-auto my-1" />
           <NavIcon id="settings" icon={<FaCog />} active={activeView} onClick={setActiveView} label="预警配置" />
@@ -321,7 +339,7 @@ function App() {
             <button
               onClick={() => {
                 setMapFocusTarget(null);
-                setShowMapModal(true);
+                setActiveView('map');
               }}
               className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 tactic-cut text-[10px] font-black uppercase tracking-widest flex items-center gap-3 transition-all"
             >

@@ -28,6 +28,7 @@
     "cargo_egress_warning": "货船将在 {minutes} 分钟后Egress 坐标 {position}",
     "cargo_egress": "货船Egress 辐射快速上升 坐标 {position} 赶紧撤离！",
     "cargo_leave": "货船已离开地图",
+    "ch47_crate_spawn": "CH47 出现 {direction} 坐标 {position} 投放上锁箱子",
     "ch47_spawn": "CH47出现 坐标 {position}",
     "ch47_leave": "CH47已离开"
   },
