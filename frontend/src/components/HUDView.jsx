@@ -3,7 +3,7 @@ import { FaShieldAlt, FaPlus, FaClock, FaUsers, FaSkullCrossbones, FaLock, FaLig
 import ChatPanel from './ChatPanel';
 import EventTracker from './EventTracker';
 import SubscriptionStatus from './SubscriptionStatus';
-import { getDevices } from '../services/api';
+import { getDevices, getTeamDetailed } from '../services/api';
 import socketService from '../services/socket';
 
 function QuickToggle({ label, active, pro, disabled }) {
@@ -61,12 +61,39 @@ export default function HUDView({ server, teamData, isSubscriptionExpired, onPai
   // 只有在没有服务器或服务器未连接时才是演示模式
   const isDemo = !server || !server.connected;
 
-  // 演示模式显示假数据,已连接则显示真实数据(即使为空)
-  const members = isDemo ? [
-    { steamId: 'demo1', name: '基地指挥官 (您)', isOnline: true, isAlive: true },
-    { steamId: 'demo2', name: '侦查员_Echo', isOnline: true, isAlive: false },
-    { steamId: 'demo3', name: '守卫_Alpha', isOnline: false, isAlive: true }
-  ] : (teamData?.members || []);
+  // 详细队员数据（包含头像）
+  const [detailedMembers, setDetailedMembers] = useState([]);
+
+  // 获取详细队员数据
+  useEffect(() => {
+    if (isDemo) {
+      setDetailedMembers([
+        { steamId: 'demo1', name: '基地指挥官 (您)', isOnline: true, isAlive: true, avatar: null },
+        { steamId: 'demo2', name: '侦查员_Echo', isOnline: true, isAlive: false, avatar: null },
+        { steamId: 'demo3', name: '守卫_Alpha', isOnline: false, isAlive: true, avatar: null }
+      ]);
+      return;
+    }
+
+    const fetchDetailed = async () => {
+      try {
+        const res = await getTeamDetailed(server.id);
+        if (res.data.success) {
+          setDetailedMembers(res.data.members || []);
+        }
+      } catch (e) {
+        console.error('获取详细队伍数据失败:', e);
+        // 降级使用基础数据
+        setDetailedMembers(teamData?.members || []);
+      }
+    };
+
+    fetchDetailed();
+    const interval = setInterval(fetchDetailed, 30000);
+    return () => clearInterval(interval);
+  }, [server?.id, isDemo]);
+
+  const members = detailedMembers;
 
   const maxDisplay = 12;
 
@@ -221,11 +248,28 @@ export default function HUDView({ server, teamData, isSubscriptionExpired, onPai
             </div>
             <div className="grid grid-cols-4 gap-2">
               {members.map((member) => (
-                <div key={member.steamId} className="aspect-square bg-white/[0.03] border border-white/5 tactic-cut flex items-center justify-center relative group cursor-pointer hover:bg-[#cd5241]/10 transition-all">
-                  <div className={`w-2.5 h-2.5 rounded-full shadow-lg ${!member.isAlive ? 'bg-[#ef4444] shadow-[#ef4444]/40' :
+                <div key={member.steamId} className="aspect-square bg-white/[0.03] border border-white/5 tactic-cut flex items-center justify-center relative group cursor-pointer hover:bg-[#cd5241]/10 transition-all overflow-hidden">
+                  {member.avatar ? (
+                    <img
+                      src={member.avatar}
+                      alt={member.name}
+                      className={`w-full h-full object-cover ${!member.isOnline && member.isAlive ? 'grayscale opacity-50' : ''}`}
+                    />
+                  ) : (
+                    <FaUsers className="text-gray-600 text-lg" />
+                  )}
+                  {/* 状态指示点 */}
+                  <div className={`absolute bottom-1 right-1 w-2 h-2 rounded-full shadow-lg ${!member.isAlive ? 'bg-[#ef4444] shadow-[#ef4444]/40' :
                     member.isOnline ? 'bg-[#a3e635] shadow-[#a3e635]/40 animate-pulse' :
-                      'bg-gray-800'
+                      'bg-gray-600'
                     }`} />
+                  {/* 死亡遮罩 */}
+                  {!member.isAlive && (
+                    <div className="absolute inset-0 bg-red-900/40 flex items-center justify-center">
+                      <FaSkullCrossbones className="text-red-500 text-lg" />
+                    </div>
+                  )}
+                  {/* Hover 显示名字 */}
                   <div className="absolute inset-0 bg-[#cd5241] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-[9px] text-white font-black p-2 text-center leading-tight">
                     {member.name}
                   </div>
