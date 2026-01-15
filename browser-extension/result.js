@@ -6,6 +6,7 @@
 let credentials = null;
 let fullConfig = null;
 let credentialsCommand = null; // 程序需要的命令格式
+let fcmData = null; // 保存 FCM 注册数据
 
 // 初始化
 document.addEventListener('DOMContentLoaded', async () => {
@@ -64,38 +65,58 @@ async function startFCMRegistration() {
     document.getElementById('registeringState').classList.remove('hidden');
 
     try {
-        console.log('开始请求后端 FCM 注册 API...');
-
-        // 调用后端 API (使用 rustplusplus 公共 API)
-        const response = await fetch('https://api.rustplusplus.com/api/fcm/register', {
+        // Step 1: 调用 FCM 注册 API
+        console.log('Step 1: 请求 FCM 注册 API...');
+        const fcmResponse = await fetch('https://api.rustplusplus.com/api/fcm/register', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             }
         });
 
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || '后端 API 请求失败');
+        if (!fcmResponse.ok) {
+            const error = await fcmResponse.json();
+            throw new Error(error.message || 'FCM 注册失败');
         }
 
-        const data = await response.json();
-        console.log('FCM 注册成功:', data);
+        fcmData = await fcmResponse.json();
+        console.log('FCM 注册成功:', fcmData);
+
+        // Step 2: 注册到 Rust+ API
+        console.log('Step 2: 注册到 Rust+ API...');
+        const registerResponse = await fetch('https://companion-rust.facepunch.com/api/push/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                AuthToken: credentials.authToken,
+                DeviceId: 'rustplus-web-dashboard',
+                PushKind: 3,
+                PushToken: fcmData.expoPushToken
+            })
+        });
+
+        if (!registerResponse.ok) {
+            console.warn('Rust+ API 注册失败，但凭证仍可使用');
+        } else {
+            console.log('Rust+ API 注册成功');
+        }
 
         // 组装完整配置
         fullConfig = {
-            fcm_credentials: data.fcmCredentials,
-            expo_push_token: data.expoPushToken,
+            fcm_credentials: fcmData.fcmCredentials,
+            expo_push_token: fcmData.expoPushToken,
             rustplus_auth_token: credentials.authToken,
             steam_id: credentials.steamId,
             generated_at: new Date().toISOString()
         };
 
-        showSuccess(data.fcmCredentials, data.expoPushToken);
+        showSuccess(fcmData.fcmCredentials, fcmData.expoPushToken);
 
     } catch (error) {
-        console.error('FCM 注册失败:', error);
-        showError('FCM 注册失败: ' + error.message);
+        console.error('注册失败:', error);
+        showError('注册失败: ' + error.message);
     }
 }
 
@@ -103,28 +124,47 @@ function showSuccess(fcmCreds, expoToken) {
     document.getElementById('registeringState').classList.add('hidden');
     document.getElementById('successState').classList.remove('hidden');
 
-    // 从 Steam Auth Token (JWT) 中解析过期时间
+    console.log('credentials 数据:', credentials);
+    console.log('rawData:', credentials.rawData);
+
+    // 获取过期时间 - 优先从 Companion API 响应获取
     let expireTimestamp = null;
     let issuedTimestamp = null;
-    try {
-        // JWT 格式: header.payload.signature
-        const tokenParts = credentials.authToken.split('.');
-        if (tokenParts.length >= 2) {
-            // 解码 payload (Base64)
-            const payload = JSON.parse(atob(tokenParts[1]));
-            console.log('JWT payload:', payload);
 
-            // exp 是过期时间 (Unix 时间戳，秒)
-            if (payload.exp) {
-                expireTimestamp = payload.exp;
+    // 1. 首先尝试从 Companion API 响应中获取
+    if (credentials.expiry) {
+        expireTimestamp = credentials.expiry;
+        console.log('从 Companion API 获取 expiry:', expireTimestamp);
+    }
+    if (credentials.issued) {
+        issuedTimestamp = credentials.issued;
+        console.log('从 Companion API 获取 issued:', issuedTimestamp);
+    }
+
+    // 2. 如果没有，尝试从 rawData 中获取
+    if (!expireTimestamp && credentials.rawData) {
+        const raw = credentials.rawData;
+        expireTimestamp = raw.Expiry || raw.expiry || raw.ExpiryDate || raw.expiryDate || raw.exp;
+        issuedTimestamp = raw.Issued || raw.issued || raw.IssuedDate || raw.issuedDate || raw.iat;
+        console.log('从 rawData 获取 expiry:', expireTimestamp, 'issued:', issuedTimestamp);
+    }
+
+    // 3. 如果还没有，从 Steam Auth Token 中解析
+    // Token 格式: base64(json).signature (不是标准 JWT)
+    if (!expireTimestamp && credentials.authToken) {
+        try {
+            const tokenParts = credentials.authToken.split('.');
+            if (tokenParts.length >= 1) {
+                // 第一部分是 Base64 编码的 JSON
+                const payload = JSON.parse(atob(tokenParts[0]));
+                console.log('Token payload:', payload);
+                if (payload.exp) expireTimestamp = payload.exp;
+                if (payload.iss) issuedTimestamp = payload.iss;
+                console.log('从 Token 获取 exp:', expireTimestamp, 'iss:', issuedTimestamp);
             }
-            // iat 是签发时间
-            if (payload.iat) {
-                issuedTimestamp = payload.iat;
-            }
+        } catch (e) {
+            console.warn('解析 Token 失败:', e);
         }
-    } catch (e) {
-        console.warn('解析 JWT 失败:', e);
     }
 
     // 生成程序需要的命令格式
@@ -182,7 +222,10 @@ function showSuccess(fcmCreds, expoToken) {
                 `<strong style="color: #e94560;">已过期!</strong> (${expireDateStr})`;
         }
     } else {
+        // 没有过期时间，显示注册时间
         document.getElementById('registerDate').textContent = new Date().toLocaleString('zh-CN');
+        document.querySelector('.expire-info span:nth-child(2)').innerHTML =
+            `注册时间: <strong id="registerDate">${new Date().toLocaleString('zh-CN')}</strong>`;
     }
 
     // 4. 完整配置放到详情里

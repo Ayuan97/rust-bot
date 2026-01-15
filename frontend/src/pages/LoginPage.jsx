@@ -117,6 +117,9 @@ export default function LoginPage() {
 
         <div className="mt-8 text-center opacity-30">
            <div className="text-[8px] text-gray-500 uppercase tracking-[0.5em] font-mono">Unauthorized_access_prohibited</div>
+           <Link to="/privacy" className="text-[8px] text-gray-500 hover:text-[#cd5241] transition-colors uppercase tracking-widest mt-2 inline-block">
+             [ 隐私策略 ]
+           </Link>
         </div>
       </div>
     </div>

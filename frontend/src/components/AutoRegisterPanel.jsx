@@ -1,12 +1,27 @@
 import { useState } from 'react';
-import { FaRocket, FaCheckCircle, FaSpinner, FaSteam, FaShieldAlt, FaKey, FaArrowRight, FaTimes, FaInfoCircle, FaSatellite, FaLock } from 'react-icons/fa';
+import { FaRocket, FaCheckCircle, FaSpinner, FaSteam, FaShieldAlt, FaKey, FaArrowRight, FaTimes, FaInfoCircle, FaSatellite, FaLock, FaPuzzlePiece, FaChrome, FaEdge, FaDownload, FaExternalLinkAlt } from 'react-icons/fa';
 import { registerSimple } from '../services/pairing';
 import { useToast } from './Toast';
 import { useAuth } from '../context/AuthContext';
 
+// 插件商店链接 - 发布后替换为真实链接
+const STORE_LINKS = {
+  chrome: 'https://chromewebstore.google.com/detail/rust-credentials-helper/YOUR_CHROME_EXTENSION_ID',
+  edge: 'https://microsoftedge.microsoft.com/addons/detail/rust-credentials-helper/YOUR_EDGE_EXTENSION_ID'
+};
+
+// 检测浏览器类型
+function detectBrowser() {
+  const ua = navigator.userAgent;
+  if (ua.includes('Edg/')) return 'edge';
+  if (ua.includes('Chrome/')) return 'chrome';
+  return 'chrome'; // 默认 Chrome
+}
+
 function AutoRegisterPanel({ onComplete, onClose }) {
   const { isSubscriptionExpired } = useAuth();
-  const [step, setStep] = useState(1); // 1: 初始, 2: 等待输入凭证, 3: 注册中, 4: 成功
+  const [step, setStep] = useState(0); // 0: 插件安装, 1: 初始, 2: 等待输入凭证, 3: 注册中, 4: 成功
+  const [browser] = useState(detectBrowser);
   const [loading, setLoading] = useState(false);
   const [steamWindow, setSteamWindow] = useState(null);
   const [credentialsInput, setCredentialsInput] = useState('');
@@ -94,13 +109,97 @@ function AutoRegisterPanel({ onComplete, onClose }) {
         </header>
 
         {/* 战术步骤指示器 */}
-        <div className="flex items-center justify-between mb-12 px-4">
-          <StepIndicator num="01" label="STEAM 验证" active={step >= 1} completed={step > 1} />
+        <div className="flex items-center justify-between mb-12 px-2">
+          <StepIndicator num="01" label="安装插件" active={step >= 0} completed={step > 0} />
+          <div className={`flex-1 h-px transition-all duration-1000 ${step > 0 ? 'bg-[#cd5241]' : 'bg-white/5'}`} />
+          <StepIndicator num="02" label="STEAM 验证" active={step >= 1} completed={step > 1} />
           <div className={`flex-1 h-px transition-all duration-1000 ${step > 1 ? 'bg-[#cd5241]' : 'bg-white/5'}`} />
-          <StepIndicator num="02" label="提取凭证" active={step >= 2} completed={step > 2} />
+          <StepIndicator num="03" label="提取凭证" active={step >= 2} completed={step > 2} />
           <div className={`flex-1 h-px transition-all duration-1000 ${step > 2 ? 'bg-[#cd5241]' : 'bg-white/5'}`} />
-          <StepIndicator num="03" label="建立握手" active={step >= 3} completed={step >= 4} />
+          <StepIndicator num="04" label="建立握手" active={step >= 3} completed={step >= 4} />
         </div>
+
+        {/* 步骤 0: 安装浏览器插件 */}
+        {step === 0 && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="p-4 bg-blue-500/5 border border-blue-500/20 tactic-cut">
+              <div className="flex items-start gap-3">
+                <FaInfoCircle className="text-blue-400 mt-0.5" />
+                <div>
+                  <p className="text-xs text-gray-300 leading-relaxed">
+                    为了自动获取 Steam 凭证，需要先安装我们的浏览器插件。
+                    插件会在你登录 Steam 时自动提取并显示凭证信息。
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-l-2 border-[#cd5241] pl-2">
+                选择你的浏览器安装插件
+              </p>
+
+              <button
+                onClick={() => window.open(STORE_LINKS.chrome, '_blank')}
+                className={`w-full p-4 tactic-cut flex items-center gap-4 transition-all border ${
+                  browser === 'chrome'
+                    ? 'bg-[#4285f4]/10 border-[#4285f4]/30'
+                    : 'bg-white/5 border-white/10 hover:border-white/20'
+                }`}
+              >
+                <div className="w-10 h-10 bg-[#4285f4]/20 rounded-lg flex items-center justify-center">
+                  <FaChrome className="text-[#4285f4] text-xl" />
+                </div>
+                <div className="text-left flex-1">
+                  <div className="font-bold text-sm text-white">Google Chrome</div>
+                  <div className="text-[10px] text-gray-500">Chrome 网上应用店</div>
+                </div>
+                <FaExternalLinkAlt className="text-gray-600" />
+              </button>
+
+              <button
+                onClick={() => window.open(STORE_LINKS.edge, '_blank')}
+                className={`w-full p-4 tactic-cut flex items-center gap-4 transition-all border ${
+                  browser === 'edge'
+                    ? 'bg-[#0078d4]/10 border-[#0078d4]/30'
+                    : 'bg-white/5 border-white/10 hover:border-white/20'
+                }`}
+              >
+                <div className="w-10 h-10 bg-[#0078d4]/20 rounded-lg flex items-center justify-center">
+                  <FaEdge className="text-[#0078d4] text-xl" />
+                </div>
+                <div className="text-left flex-1">
+                  <div className="font-bold text-sm text-white">Microsoft Edge</div>
+                  <div className="text-[10px] text-gray-500">Edge 加载项商店</div>
+                </div>
+                <FaExternalLinkAlt className="text-gray-600" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-yellow-500/5 border border-yellow-500/20 tactic-cut">
+              <p className="text-[10px] text-gray-400 leading-relaxed">
+                <span className="text-yellow-400 font-bold">提示：</span>
+                安装完成后，浏览器右上角会出现插件图标 <FaPuzzlePiece className="inline text-[#cd5241]" />。
+                确认安装成功后点击下方按钮继续。
+              </p>
+            </div>
+
+            <button
+              onClick={() => setStep(1)}
+              className="w-full tactic-cut bg-[#a3e635] text-black py-4 text-[11px] font-black uppercase tracking-[0.2em] hover:bg-[#93d434] transition-all flex items-center justify-center gap-3"
+            >
+              <FaCheckCircle />
+              已完成安装，继续下一步
+            </button>
+
+            <button
+              onClick={() => setStep(1)}
+              className="w-full py-3 border border-white/10 tactic-cut text-gray-600 text-[10px] font-black uppercase hover:text-white transition-all"
+            >
+              跳过（我已安装过插件）
+            </button>
+          </div>
+        )}
 
         {/* 步骤 1: 初始指引 */}
         {step === 1 && (
@@ -110,10 +209,10 @@ function AutoRegisterPanel({ onComplete, onClose }) {
                 <FaInfoCircle /> 授权引导说明
               </h3>
               <div className="space-y-4">
-                <GuideStep num="1" text="点击下方按钮，系统将弹出 Steam 官方授权窗口" />
-                <GuideStep num="2" text="在弹出窗口中完成 Steam 身份验证" />
-                <GuideStep num="3" text="复制 Companion 页面显示的 /credentials 原始指令" />
-                <GuideStep num="4" text="返回本终端粘贴指令完成链路授权" />
+                <GuideStep num="1" text="点击下方按钮，打开 Steam 官方授权页面" />
+                <GuideStep num="2" text="使用 Steam 账号登录完成身份验证" />
+                <GuideStep num="3" text="登录成功后，插件会自动显示凭证信息" />
+                <GuideStep num="4" text="复制完整的 /credentials 指令粘贴到下一步" />
               </div>
             </div>
 
@@ -139,11 +238,11 @@ function AutoRegisterPanel({ onComplete, onClose }) {
           <div className="space-y-8 animate-fade-in">
             <div className="p-6 bg-[#cd5241]/5 border border-[#cd5241]/20 tactic-cut relative overflow-hidden">
               <div className="flex items-center gap-4 mb-4">
-                <FaSteam className="text-[#cd5241] text-2xl" />
+                <FaPuzzlePiece className="text-[#cd5241] text-2xl" />
                 <span className="text-xs font-black text-white uppercase tracking-widest italic">等待凭证输入...</span>
               </div>
               <p className="text-[10px] text-gray-400 leading-relaxed uppercase">
-                请在 Steam 窗口中复制以 <span className="text-[#cd5241] font-mono">/credentials add</span> 开头的完整命令，并粘贴到下方终端区域。
+                请在插件结果页面中点击复制按钮，获取以 <span className="text-[#cd5241] font-mono">/credentials add</span> 开头的完整命令，并粘贴到下方。
               </p>
             </div>
 

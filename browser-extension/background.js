@@ -14,11 +14,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === 'RUSTPLUS_AUTH_TOKEN') {
         console.log('[Background] 收到 Rust+ Auth Token');
+        console.log('[Background] 完整数据:', message);
+
         capturedAuthData = {
             authToken: message.authToken,
             steamId: message.steamId,
+            issued: message.issued,
+            expiry: message.expiry,
+            rawData: message.rawData,
             capturedAt: Date.now()
         };
+
+        console.log('[Background] issued:', message.issued);
+        console.log('[Background] expiry:', message.expiry);
 
         // 保存到存储
         chrome.storage.local.set({ authData: capturedAuthData });

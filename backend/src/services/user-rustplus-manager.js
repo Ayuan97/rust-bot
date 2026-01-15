@@ -155,9 +155,9 @@ class UserRustPlusManager extends EventEmitter {
           // 静默处理
         }
 
-        // 主动获取地图信息以缓存地图大小
+        // 直接调用 getServerInfo 获取并保存 mapSize
         try {
-          await this.getMap(serverId);
+          await this.getServerInfo(serverId);
         } catch (err) {
           // 静默处理
         }
@@ -380,31 +380,9 @@ class UserRustPlusManager extends EventEmitter {
    * @returns {number} 地图大小（默认4500）
    */
   getMapSize(serverId) {
-    // 优先使用缓存
+    // 直接返回缓存的 mapSize，无复杂的过期/刷新逻辑
     const cached = this.mapCache.get(serverId);
-    if (cached) {
-      // 检查缓存是否过期，防止服务器擦除后使用旧数据
-      // 缓存 TTL 调整为 10 分钟，保证坐标换算更及时
-      const CACHE_EXPIRE_TIME = 10 * 60 * 1000; // 10分钟
-      const now = Date.now();
-
-      if (now - cached.lastUpdate > CACHE_EXPIRE_TIME) {
-        // 缓存过期，但仍返回缓存值（不阻塞当前操作）
-        // 后台异步刷新
-        this.refreshMapCacheInBackground(serverId);
-      }
-
-      // 使用地图的宽度作为地图大小（Rust地图通常是正方形）
-      return cached.width || 4500;
-    }
-
-    // 如果没有缓存，尝试异步获取（不阻塞）
-    if (this.connections.has(serverId)) {
-      this.refreshMapCacheInBackground(serverId);
-    }
-
-    // 返回默认值（标准地图大小）
-    return 4500;
+    return cached?.width || 4500;
   }
 
   /**
@@ -412,37 +390,6 @@ class UserRustPlusManager extends EventEmitter {
    */
   getMapOceanMargin(serverId) {
     return this.mapCache.get(serverId)?.oceanMargin || 0;
-  }
-
-  /**
-   * 获取可靠的地图大小（必要时同步刷新缓存）
-   * 用于需要准确坐标换算的场景（如通知/消息格式化）
-   * @param {string} serverId
-   * @returns {Promise<number>}
-   */
-  async getReliableMapSize(serverId) {
-    const cached = this.mapCache.get(serverId);
-    const TTL = 10 * 60 * 1000; // 10分钟
-    const now = Date.now();
-    const needRefresh = !cached || (now - cached.lastUpdate > TTL);
-
-    if (needRefresh) {
-      try {
-        // 优先使用 AppInfo.mapSize
-        const info = await this.getServerInfo(serverId);
-        if (info && info.mapSize) return info.mapSize;
-        // 不再使用 AppMap.width 作为世界尺寸来源，避免像素尺寸污染
-        // 仅在没有可靠信息时继续使用已有缓存（若存在），否则返回默认 4500
-      } catch (e) {
-        logger.warn(`⚠️ 用户 ${this.userId} 同步刷新地图失败 (${serverId}):`, e?.message || e);
-      }
-    }
-    const width = this.mapCache.get(serverId)?.width;
-    // 简单有效性校验：像素图常见宽度（如 2048、3072、3125）小于 3500，则视为不可靠
-    if (!width || width < 3500) {
-      return 4500;
-    }
-    return width;
   }
 
   /**
@@ -477,33 +424,6 @@ class UserRustPlusManager extends EventEmitter {
     }
 
     return { mapSize, oceanMargin };
-  }
-
-  /**
-   * 后台异步刷新地图缓存
-   * @param {string} serverId - 服务器ID
-   */
-  async refreshMapCacheInBackground(serverId) {
-    // 防止重复刷新
-    const refreshKey = `refreshing_${serverId}`;
-    if (this[refreshKey]) {
-      return;
-    }
-
-    this[refreshKey] = true;
-
-    try {
-      // 优先从 getInfo 刷新世界尺寸
-      const info = await this.getServerInfo(serverId);
-      if (!info?.mapSize) {
-        // 退回 getMap 仅为更新时间戳
-        await this.getMap(serverId);
-      }
-    } catch (error) {
-      // 静默处理刷新失败
-    } finally {
-      delete this[refreshKey];
-    }
   }
 
   /**

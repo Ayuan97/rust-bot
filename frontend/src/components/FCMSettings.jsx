@@ -502,114 +502,116 @@ function FCMSettings() {
 
       {/* 更新凭证模态框 */}
       {showUpdateModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-2xl bg-[#121417] border border-white/10 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
-            {/* Modal Header */}
-            <div className="p-6 border-b border-white/5 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400">
-                  <FaSync />
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-2xl tactic-border tactic-cut p-1 bg-black/60">
+            <div className="bg-black/80 flex flex-col max-h-[85vh]">
+              {/* Modal Header */}
+              <div className="p-5 border-b border-white/5 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 tactic-cut bg-[#cd5241]/20 flex items-center justify-center text-[#cd5241]">
+                    <FaSync />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black uppercase italic text-white tracking-tight">更新 FCM 凭证</h3>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-widest">请获取新的凭证命令并粘贴到下方</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-xl font-bold text-white">更新 FCM 凭证</h3>
-                  <p className="text-sm text-gray-400">请获取新的凭证命令并粘贴到下方</p>
-                </div>
+                <button
+                  onClick={() => setShowUpdateModal(false)}
+                  className="w-8 h-8 tactic-cut bg-white/5 hover:bg-[#cd5241]/20 flex items-center justify-center text-gray-400 hover:text-[#cd5241] transition-colors"
+                >
+                  <FaTimes />
+                </button>
               </div>
-              <button
-                onClick={() => setShowUpdateModal(false)}
-                className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
-              >
-                <FaTimes />
-              </button>
-            </div>
 
-            {/* Modal Body */}
-            <div className="p-6 flex-1 overflow-y-auto space-y-6">
-              {/* 步骤指引 */}
-              <div className="space-y-4">
-                <div className="flex gap-4">
-                  <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</div>
-                  <div>
-                    <p className="text-gray-300 text-sm">点击下方链接登录 Rust+ 官网</p>
-                    <a
-                      href="https://companion-rust.facepunch.com/login"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-400 hover:underline text-sm inline-flex items-center gap-1 mt-1"
-                    >
-                      companion-rust.facepunch.com <FaExternalLinkIcon />
-                    </a>
-                  </div>
-                </div>
-                <div className="flex gap-4">
-                  <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</div>
-                  <div>
-                    <p className="text-gray-300 text-sm">登录成功后，打开浏览器控制台 (F12)</p>
-                  </div>
-                </div>
-                <div className="flex gap-4">
-                  <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</div>
-                  <div>
-                    <p className="text-gray-300 text-sm">
-                      复制以下代码在控制台运行，然后将生成的 <code className="bg-white/10 px-1 py-0.5 rounded text-xs">/credentials add ...</code> 命令粘贴到下方
-                    </p>
-                    <div className="mt-2 bg-black/50 p-3 rounded-lg border border-white/5 text-xs font-mono text-gray-400 overflow-x-auto relative group">
-                      <code>
-                        {`copy(\`/credentials add gcm_android_id:\${localStorage.gcm_android_id} gcm_security_token:\${localStorage.gcm_security_token} steam_id:\${localStorage.steam_id} fcm_token:\${localStorage.fcm_token} auth_token:\${localStorage.auth_token} expire_date:\${localStorage.expire_date}\`)`}
-                      </code>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(`copy(\`/credentials add gcm_android_id:\${localStorage.gcm_android_id} gcm_security_token:\${localStorage.gcm_security_token} steam_id:\${localStorage.steam_id} fcm_token:\${localStorage.fcm_token} auth_token:\${localStorage.auth_token} expire_date:\${localStorage.expire_date}\`)`);
-                          toast.success('代码已复制');
-                        }}
-                        className="absolute right-2 top-2 p-1.5 rounded bg-white/10 hover:bg-white/20 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="复制代码"
+              {/* Modal Body */}
+              <div className="p-5 flex-1 overflow-y-auto space-y-5">
+                {/* 步骤指引 */}
+                <div className="space-y-4">
+                  <div className="flex gap-4">
+                    <div className="w-6 h-6 tactic-cut bg-[#cd5241]/20 text-[#cd5241] flex items-center justify-center text-xs font-black shrink-0 mt-0.5">1</div>
+                    <div>
+                      <p className="text-gray-300 text-sm">点击下方链接登录 Rust+ 官网</p>
+                      <a
+                        href="https://companion-rust.facepunch.com/login"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#cd5241] hover:underline text-sm inline-flex items-center gap-1 mt-1 font-bold"
                       >
-                        <FaClipboard />
-                      </button>
+                        companion-rust.facepunch.com <FaExternalLinkIcon />
+                      </a>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-6 h-6 tactic-cut bg-[#cd5241]/20 text-[#cd5241] flex items-center justify-center text-xs font-black shrink-0 mt-0.5">2</div>
+                    <div>
+                      <p className="text-gray-300 text-sm">登录成功后，打开浏览器控制台 (F12)</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-6 h-6 tactic-cut bg-[#cd5241]/20 text-[#cd5241] flex items-center justify-center text-xs font-black shrink-0 mt-0.5">3</div>
+                    <div>
+                      <p className="text-gray-300 text-sm">
+                        复制以下代码在控制台运行，然后将生成的 <code className="bg-white/10 px-1 py-0.5 tactic-cut text-xs text-[#cd5241]">/credentials add ...</code> 命令粘贴到下方
+                      </p>
+                      <div className="mt-2 bg-black/50 p-3 tactic-cut border border-white/5 text-xs font-mono text-gray-400 overflow-x-auto relative group">
+                        <code>
+                          {`copy(\`/credentials add gcm_android_id:\${localStorage.gcm_android_id} gcm_security_token:\${localStorage.gcm_security_token} steam_id:\${localStorage.steam_id} fcm_token:\${localStorage.fcm_token} auth_token:\${localStorage.auth_token} expire_date:\${localStorage.expire_date}\`)`}
+                        </code>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(`copy(\`/credentials add gcm_android_id:\${localStorage.gcm_android_id} gcm_security_token:\${localStorage.gcm_security_token} steam_id:\${localStorage.steam_id} fcm_token:\${localStorage.fcm_token} auth_token:\${localStorage.auth_token} expire_date:\${localStorage.expire_date}\`)`);
+                            toast.success('代码已复制');
+                          }}
+                          className="absolute right-2 top-2 p-1.5 tactic-cut bg-white/10 hover:bg-[#cd5241]/30 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="复制代码"
+                        >
+                          <FaClipboard />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
+
+                {/* 输入区域 */}
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-gray-300 uppercase tracking-widest flex items-center gap-2">
+                    <FaTerminal className="text-[#cd5241]" />
+                    粘贴凭证命令
+                  </label>
+                  <textarea
+                    value={updateCommand}
+                    onChange={(e) => setUpdateCommand(e.target.value)}
+                    placeholder="/credentials add gcm_android_id:..."
+                    className="w-full h-28 bg-black/50 border border-white/10 tactic-cut p-4 text-sm font-mono text-gray-200 focus:border-[#cd5241] outline-none resize-none placeholder:text-gray-600"
+                  />
+                </div>
               </div>
 
-              {/* 输入区域 */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
-                  <FaTerminal className="text-rust-accent" />
-                  粘贴凭证命令
-                </label>
-                <textarea
-                  value={updateCommand}
-                  onChange={(e) => setUpdateCommand(e.target.value)}
-                  placeholder="/credentials add gcm_android_id:..."
-                  className="w-full h-32 bg-black/30 border border-white/10 rounded-xl p-4 text-sm font-mono text-gray-200 focus:border-rust-accent focus:ring-1 focus:ring-rust-accent outline-none resize-none placeholder:text-gray-600"
-                />
+              {/* Modal Footer */}
+              <div className="p-5 border-t border-white/5 flex justify-end gap-3 bg-black/40">
+                <button
+                  onClick={() => setShowUpdateModal(false)}
+                  className="px-4 py-2 tactic-cut text-xs font-black uppercase text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleUpdateCredentials}
+                  disabled={updating || !updateCommand.trim()}
+                  className={`px-6 py-2.5 tactic-cut text-xs font-black uppercase flex items-center gap-2 transition-all ${updating || !updateCommand.trim()
+                    ? 'bg-gray-800 cursor-not-allowed text-gray-500'
+                    : 'bg-[#cd5241] hover:bg-[#b04537] text-white shadow-lg shadow-[#cd5241]/20'
+                    }`}
+                >
+                  {updating ? (
+                    <span className="animate-spin">...</span>
+                  ) : (
+                    <FaSave />
+                  )}
+                  {updating ? '正在更新...' : '保存并更新'}
+                </button>
               </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-6 border-t border-white/5 flex justify-end gap-3 bg-dark-900/50 rounded-b-2xl">
-              <button
-                onClick={() => setShowUpdateModal(false)}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleUpdateCredentials}
-                disabled={updating || !updateCommand.trim()}
-                className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${updating || !updateCommand.trim()
-                  ? 'bg-blue-600/50 cursor-not-allowed text-white/50'
-                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20'
-                  }`}
-              >
-                {updating ? (
-                  <span className="animate-spin mr-2">...</span>
-                ) : (
-                  <FaSave />
-                )}
-                {updating ? '正在更新...' : '保存并更新'}
-              </button>
             </div>
           </div>
         </div>

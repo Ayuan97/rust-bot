@@ -20,7 +20,7 @@ function SettingsPanel({ isOpen, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-dark-800 rounded-2xl w-full max-w-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+      <div className="bg-dark-800 rounded-2xl w-auto min-w-[600px] border border-white/10 shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-white/10 flex justify-between items-center bg-dark-900/50">
           <div className="flex items-center gap-3">

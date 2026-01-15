@@ -144,6 +144,12 @@ export default function RegisterPage() {
             </div>
           </div>
         </div>
+
+        <div className="mt-8 text-center opacity-30">
+          <Link to="/privacy" className="text-[8px] text-gray-500 hover:text-[#cd5241] transition-colors uppercase tracking-widest">
+            [ 隐私策略 ]
+          </Link>
+        </div>
       </div>
     </div>
   );

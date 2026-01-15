@@ -17,6 +17,7 @@ import ChatPanel from './components/ChatPanel';
 import SubscriptionStatus from './components/SubscriptionStatus';
 import PairingPanel from './components/PairingPanel';
 import FCMSettings from './components/FCMSettings';
+import NotificationSettings from './components/NotificationSettings';
 import AdminPage from './pages/AdminPage';
 
 function App() {
@@ -399,58 +400,76 @@ function NavIcon({ id, icon, active, onClick, label }) {
 
 function ServerSettingsView({ server }) {
   const isDemo = !server;
-  const [activeTab, setActiveTab] = useState('fcm'); // 'fcm' or 'alerts'
+  const [activeTab, setActiveTab] = useState('fcm');
+
+  const tabs = [
+    { id: 'fcm', label: 'FCM 推送', icon: <FaBell />, desc: '配对凭证管理' },
+    { id: 'notifications', label: '通知设置', icon: <FaBell />, desc: '队伍聊天通知' },
+    { id: 'alerts', label: '预警规则', icon: <FaShieldAlt />, desc: '自动化报警' },
+  ];
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8 animate-fade-in font-sans">
-      <div className="tactic-border tactic-cut p-1 bg-black/40 shadow-2xl">
-        <div className="bg-black/40 p-8">
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <h3 className="text-2xl font-black uppercase mb-2 italic glow-text flex items-center gap-3">
-                <FaCog className="text-[#cd5241]" /> 系统配置
-              </h3>
-              <p className="text-gray-500 text-[10px] font-bold uppercase tracking-[0.3em]">推送凭证与预警规则设置</p>
-            </div>
+    <div className="h-full flex gap-6 animate-fade-in font-sans">
+      {/* 左侧导航栏 */}
+      <div className="w-56 shrink-0 tactic-border tactic-cut p-1 bg-black/40">
+        <div className="bg-black/60 h-full flex flex-col">
+          {/* 标题 */}
+          <div className="p-5 border-b border-white/5">
+            <h3 className="text-lg font-black uppercase italic glow-text flex items-center gap-2">
+              <FaCog className="text-[#cd5241]" /> 系统配置
+            </h3>
             {isDemo && (
-              <div className="px-3 py-1 bg-[#cd5241]/10 border border-[#cd5241]/30 text-[#cd5241] text-[9px] font-black tactic-cut animate-pulse">
+              <div className="mt-2 px-2 py-1 bg-[#cd5241]/10 border border-[#cd5241]/30 text-[#cd5241] text-[8px] font-black tactic-cut text-center">
                 演示模式
               </div>
             )}
           </div>
 
-          {/* 标签页切换 */}
-          <div className="flex gap-2 mb-6 border-b border-white/5">
-            <button
-              onClick={() => setActiveTab('fcm')}
-              className={`px-4 py-2 text-sm font-bold uppercase transition-all ${activeTab === 'fcm'
-                ? 'text-[#cd5241] border-b-2 border-[#cd5241]'
-                : 'text-gray-500 hover:text-gray-300'
+          {/* 导航项 */}
+          <div className="flex-1 p-3 space-y-1">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`w-full text-left p-3 tactic-cut transition-all ${
+                  activeTab === tab.id
+                    ? 'bg-[#cd5241] text-white'
+                    : 'bg-white/[0.02] hover:bg-white/5 text-gray-400 hover:text-white'
                 }`}
-            >
-              <FaBell className="inline mr-2" />
-              FCM推送配置
-            </button>
-            <button
-              onClick={() => setActiveTab('alerts')}
-              className={`px-4 py-2 text-sm font-bold uppercase transition-all ${activeTab === 'alerts'
-                ? 'text-[#cd5241] border-b-2 border-[#cd5241]'
-                : 'text-gray-500 hover:text-gray-300'
-                }`}
-            >
-              <FaShieldAlt className="inline mr-2" />
-              预警配置
-            </button>
+              >
+                <div className="flex items-center gap-2">
+                  <span className={activeTab === tab.id ? 'text-white' : 'text-gray-500'}>{tab.icon}</span>
+                  <span className="text-xs font-black uppercase tracking-tight">{tab.label}</span>
+                </div>
+                <p className="text-[9px] mt-1 opacity-60 uppercase tracking-wider">{tab.desc}</p>
+              </button>
+            ))}
           </div>
 
-          {/* FCM配置标签页 */}
-          {activeTab === 'fcm' && (
-            <FCMSettings />
-          )}
+          {/* 底部信息 */}
+          <div className="p-4 border-t border-white/5 text-center">
+            <p className="text-[8px] text-gray-600 uppercase tracking-widest">Rust+ Dashboard v1.0</p>
+          </div>
+        </div>
+      </div>
 
-          {/* 预警配置标签页 */}
+      {/* 右侧内容区 */}
+      <div className="flex-1 tactic-border tactic-cut p-1 bg-black/40 overflow-hidden">
+        <div className="bg-black/40 h-full overflow-y-auto p-6">
+          {/* FCM 配置 */}
+          {activeTab === 'fcm' && <FCMSettings />}
+
+          {/* 通知设置 */}
+          {activeTab === 'notifications' && <NotificationSettingsEmbed />}
+
+          {/* 预警规则 */}
           {activeTab === 'alerts' && (
-            <div className="space-y-8">
+            <div className="space-y-6">
+              <div className="mb-6">
+                <h4 className="text-lg font-black uppercase italic text-white mb-1">预警规则配置</h4>
+                <p className="text-[10px] text-gray-500 uppercase tracking-widest">自动化报警与防御联动</p>
+              </div>
+
               <SettingRow
                 title="核心房智能警报器"
                 desc="当领地柜房间或核心防区的 Smart Alarm 被触发时，发送毫秒级推送提醒。"
@@ -475,14 +494,27 @@ function ServerSettingsView({ server }) {
               />
 
               {isDemo && (
-                <div className="mt-12 p-6 bg-white/[0.02] border border-dashed border-white/10 tactic-cut text-center">
-                  <p className="text-xs text-gray-600 italic">你可以在这里配置所有的自动化逻辑。请先在左侧选择或添加一个活跃的服务器节点。</p>
+                <div className="mt-8 p-5 bg-white/[0.02] border border-dashed border-white/10 tactic-cut text-center">
+                  <p className="text-xs text-gray-600 italic">请先在左侧选择或添加一个活跃的服务器节点。</p>
                 </div>
               )}
             </div>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// 嵌入式通知设置组件（复用 NotificationSettings 的逻辑）
+function NotificationSettingsEmbed() {
+  return (
+    <div>
+      <div className="mb-6">
+        <h4 className="text-lg font-black uppercase italic text-white mb-1">通知设置</h4>
+        <p className="text-[10px] text-gray-500 uppercase tracking-widest">队伍聊天通知配置</p>
+      </div>
+      <NotificationSettings />
     </div>
   );
 }

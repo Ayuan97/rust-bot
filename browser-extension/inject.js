@@ -18,6 +18,15 @@
             postMessage: function (message) {
                 console.log('[Rust+ Inject] 拦截 ReactNativeWebView.postMessage:', message);
 
+                // 尝试解析消息，打印完整内容
+                try {
+                    const data = typeof message === 'string' ? JSON.parse(message) : message;
+                    console.log('[Rust+ Inject] 解析后的完整数据:', JSON.stringify(data, null, 2));
+                    console.log('[Rust+ Inject] 数据字段:', Object.keys(data));
+                } catch (e) {
+                    console.log('[Rust+ Inject] 原始消息:', message);
+                }
+
                 // 发送自定义事件到 content script
                 window.dispatchEvent(new CustomEvent('__rustplus_auth__', {
                     detail: { message: message }

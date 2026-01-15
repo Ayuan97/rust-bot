@@ -37,19 +37,31 @@
             if (!message) return;
 
             const data = typeof message === 'string' ? JSON.parse(message) : message;
-            console.log('[Rust+ Helper] 解析的数据:', data);
+            console.log('[Rust+ Helper] 解析的完整数据:', JSON.stringify(data, null, 2));
+            console.log('[Rust+ Helper] 所有字段:', Object.keys(data));
 
             if (data && (data.Token || data.token)) {
                 const authToken = data.Token || data.token;
                 const steamId = data.SteamId || data.steamId;
+                // 捕获可能的 Issued 和 Expiry 字段
+                const issued = data.Issued || data.issued || data.IssuedDate || data.issuedDate || data.iat;
+                const expiry = data.Expiry || data.expiry || data.ExpiryDate || data.expiryDate || data.exp;
+
+                console.log('[Rust+ Helper] Token:', authToken?.substring(0, 50) + '...');
+                console.log('[Rust+ Helper] SteamId:', steamId);
+                console.log('[Rust+ Helper] Issued:', issued);
+                console.log('[Rust+ Helper] Expiry:', expiry);
 
                 console.log('[Rust+ Helper] 发送 token 到 background');
 
-                // 发送到 background script
+                // 发送到 background script - 包含所有字段
                 chrome.runtime.sendMessage({
                     type: 'RUSTPLUS_AUTH_TOKEN',
                     authToken: authToken,
-                    steamId: steamId
+                    steamId: steamId,
+                    issued: issued,
+                    expiry: expiry,
+                    rawData: data  // 发送完整原始数据
                 }, (response) => {
                     if (chrome.runtime.lastError) {
                         console.error('[Rust+ Helper] 发送失败:', chrome.runtime.lastError);

@@ -735,6 +735,7 @@ class UserServiceManager extends EventEmitter {
       const deviceData = {
         id: deviceId,
         serverId: data.serverId,
+        userId: this.userId,
         entityId: entityId,
         name: data.entityName || `设备 ${entityId}`,
         type: deviceType,
