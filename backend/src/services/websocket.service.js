@@ -698,6 +698,35 @@ class WebSocketService {
   }
 
   /**
+   * 断开指定用户的所有 WebSocket 连接
+   * @param {string} userId - 用户 ID
+   * @param {string} reason - 断开原因
+   */
+  disconnectUser(userId, reason = '账号已被删除') {
+    if (!this.io) return;
+
+    const userRoom = `user:${userId}`;
+
+    // 获取该用户房间内的所有 socket
+    const sockets = this.io.sockets.adapter.rooms.get(userRoom);
+
+    if (sockets && sockets.size > 0) {
+      console.log(`🔌 断开用户 ${userId} 的 ${sockets.size} 个连接 (原因: ${reason})`);
+
+      // 向用户发送断开通知
+      this.io.to(userRoom).emit('force:disconnect', { reason });
+
+      // 断开所有连接
+      for (const socketId of sockets) {
+        const socket = this.io.sockets.sockets.get(socketId);
+        if (socket) {
+          socket.disconnect(true);
+        }
+      }
+    }
+  }
+
+  /**
    * 获取 Socket.IO 实例
    */
   getIO() {

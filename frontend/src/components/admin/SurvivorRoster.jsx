@@ -127,6 +127,33 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
     }
   };
 
+  // 删除用户
+  const handleDeleteUser = async (user) => {
+    // 二次确认
+    const confirmText = `确定要永久删除用户 "${user.username}" 吗？\n\n此操作将删除该用户的所有数据：\n- 服务器配对信息\n- 设备配置\n- 事件日志\n- 订单记录\n- 订阅信息\n\n此操作不可撤销！`;
+
+    if (!confirm(confirmText)) return;
+
+    // 再次确认
+    const finalConfirm = prompt(`请输入用户名 "${user.username}" 以确认删除：`);
+    if (finalConfirm !== user.username) {
+      if (finalConfirm !== null) {
+        toast.error('用户名不匹配，取消删除');
+      }
+      return;
+    }
+
+    try {
+      const res = await api.delete(`/admin/users/${user.id}`);
+      if (res.data.success) {
+        toast.success(`用户 ${user.username} 已删除`);
+        fetchUsers();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || '删除用户失败');
+    }
+  };
+
   // 查看用户详情
   const handleViewDetail = async (user) => {
     setSelectedUser(user);
@@ -436,6 +463,17 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                     >
                       {user.isActive ? <FaBan className="text-xs" /> : <FaCheckCircle className="text-xs" />}
                     </button>
+
+                    {/* 删除用户 */}
+                    {!user.isAdmin && (
+                      <button
+                        onClick={() => handleDeleteUser(user)}
+                        className="p-1.5 bg-gray-800 hover:bg-red-600/30 hover:text-red-400 rounded transition-all"
+                        title="删除用户"
+                      >
+                        <FaTrashAlt className="text-xs" />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

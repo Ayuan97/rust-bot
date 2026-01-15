@@ -539,6 +539,98 @@ router.put('/users/:id/subscription', async (req, res) => {
 });
 
 /**
+ * DELETE /api/admin/users/:id
+ * 删除用户（包括所有关联数据）
+ */
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.user.id;
+
+    // 1. 检查用户是否存在
+    const user = await prisma.users.findUnique({
+      where: { id },
+      include: {
+        subscriptions: true,
+        servers: true
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: '用户不存在'
+      });
+    }
+
+    // 2. 禁止删除管理员账号
+    if (user.isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: '无法删除管理员账号'
+      });
+    }
+
+    // 3. 禁止删除自己
+    if (id === adminId) {
+      return res.status(403).json({
+        success: false,
+        error: '无法删除自己的账号'
+      });
+    }
+
+    // 4. 断开用户的 WebSocket 连接
+    const websocketService = (await import('../services/websocket.service.js')).default;
+    websocketService.disconnectUser(id, '账号已被管理员删除');
+
+    // 5. 停止并删除用户服务实例
+    if (globalServiceManager.userServices.has(id)) {
+      await globalServiceManager.removeUserService(id, '管理员删除用户');
+    }
+
+    // 6. 删除数据库记录（Prisma 会自动级联删除关联数据）
+    await prisma.users.delete({
+      where: { id }
+    });
+
+    // 7. 记录管理员操作日志
+    await prisma.admin_logs.create({
+      data: {
+        id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        adminId,
+        targetUserId: id,
+        action: 'DELETE_USER',
+        details: {
+          username: user.username,
+          email: user.email,
+          serversCount: user.servers.length,
+          reason: req.body.reason || '管理员操作'
+        }
+      }
+    });
+
+    console.log(`🗑️ 管理员 ${req.user.username} 删除了用户 ${user.username}`);
+
+    res.json({
+      success: true,
+      message: `用户 ${user.username} 已删除`,
+      data: {
+        deletedUser: {
+          id: user.id,
+          username: user.username
+        }
+      }
+    });
+  } catch (error) {
+    console.error('删除用户失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '删除用户失败: ' + error.message
+    });
+  }
+});
+
+/**
  * DELETE /api/admin/users/:userId/servers/:serverId
  * 强制断开用户服务器连接
  */
