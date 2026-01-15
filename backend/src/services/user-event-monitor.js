@@ -15,7 +15,7 @@ import logger from '../utils/logger.js';
 import steamService from './steam.service.js';
 
 // 刷新间隔
-const PLAYER_DATA_REFRESH_INTERVAL = 1 * 60 * 1000; // TODO: 测试用1分钟，正式环境改回 15 * 60 * 1000
+const PLAYER_DATA_REFRESH_INTERVAL = 10 * 60 * 1000; // 10分钟刷新一次 Steam 数据
 const PLAYER_STATS_SNAPSHOT_INTERVAL = 24 * 60 * 60 * 1000; // 每天 00:00 快照（逻辑上在 checkPlayerStats 中处理）
 
 // 默认通知设置
@@ -1792,13 +1792,13 @@ class UserEventMonitor extends EventEmitter {
         console.log(`[Steam] 📸 ${playerName} 创建 ${internalKey} 今日基准快照: ${value}`);
       } else {
         // 非首次获取：始终创建历史快照（用于时间线）
-        // 检查是否距离上次快照至少 30 秒，避免过于频繁（测试用，正式环境可改为 5 分钟）
+        // 检查是否距离上次快照至少 5 分钟，避免过于频繁
         const lastSnapshot = await prisma.player_stats_snapshots.findFirst({
           where: { steamId, statKey: internalKey },
           orderBy: { snapshotDate: 'desc' }
         });
 
-        const minInterval = 30 * 1000; // TODO: 测试用30秒，正式环境改回 5 * 60 * 1000
+        const minInterval = 5 * 60 * 1000; // 5 分钟
         const shouldCreateSnapshot = !lastSnapshot ||
           (Date.now() - new Date(lastSnapshot.snapshotDate).getTime() >= minInterval);
 
