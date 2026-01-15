@@ -4,7 +4,7 @@
     "version": "1.0.0",
     "description": "获取 Rust+ Steam Auth Token",
     "icons": {
-        "128": "icons/icon128.png"
+        "128": "icons/logo.png"
     },
     "permissions": [
         "storage",
@@ -17,7 +17,7 @@
     "action": {
         "default_popup": "popup.html",
         "default_icon": {
-            "128": "icons/icon128.png"
+            "128": "icons/logo.png"
         },
         "default_title": "Rust+ Credentials Helper"
     },
