@@ -276,7 +276,7 @@ function FCMSettings() {
                   ? `类型: ${status.credentialType || 'GCM'} ${status.steamId ? `| Steam: ${status.steamId}` : ''}`
                   : status.hasCredentials || status.hasStoredCredentials
                     ? 'FCM 未在监听（可能断开或未启动）'
-                    : '请在配对面板中配置 FCM 凭证'
+                    : '请点击下方按钮添加 FCM 凭证'
                 }
               </div>
             </div>
@@ -294,6 +294,22 @@ function FCMSettings() {
 
       {/* 操作按钮 */}
       <div className="flex gap-3 flex-wrap">
+        {/* 添加凭证按钮 - 没有凭证时显示 */}
+        {!(status.hasCredentials || status.hasStoredCredentials) && (
+          <button
+            onClick={() => {
+              if (isSubscriptionExpired) {
+                toast.warning('订阅已过期，请先续费后再添加凭证');
+                return;
+              }
+              setShowUpdateModal(true);
+            }}
+            className="btn btn-primary bg-rust-accent hover:bg-rust-accent/80"
+          >
+            <FaPlug /> 添加 FCM 凭证
+          </button>
+        )}
+
         <button
           onClick={() => handleDiagnose(false)}
           disabled={diagnosing}

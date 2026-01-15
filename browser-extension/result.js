@@ -103,15 +103,44 @@ function showSuccess(fcmCreds, expoToken) {
     document.getElementById('registeringState').classList.add('hidden');
     document.getElementById('successState').classList.remove('hidden');
 
-    // 记录注册时间
-    const registerDate = new Date();
+    // 从 Steam Auth Token (JWT) 中解析过期时间
+    let expireTimestamp = null;
+    let issuedTimestamp = null;
+    try {
+        // JWT 格式: header.payload.signature
+        const tokenParts = credentials.authToken.split('.');
+        if (tokenParts.length >= 2) {
+            // 解码 payload (Base64)
+            const payload = JSON.parse(atob(tokenParts[1]));
+            console.log('JWT payload:', payload);
 
-    // 生成程序需要的命令格式 (不包含 expire_date，因为 FCM 凭证没有固定过期时间)
+            // exp 是过期时间 (Unix 时间戳，秒)
+            if (payload.exp) {
+                expireTimestamp = payload.exp;
+            }
+            // iat 是签发时间
+            if (payload.iat) {
+                issuedTimestamp = payload.iat;
+            }
+        }
+    } catch (e) {
+        console.warn('解析 JWT 失败:', e);
+    }
+
+    // 生成程序需要的命令格式
     const gcmAndroidId = String(fcmCreds.gcm.androidId);
     const gcmSecurityToken = String(fcmCreds.gcm.securityToken);
     const steamId = credentials.steamId;
 
-    credentialsCommand = `/credentials add gcm_android_id:${gcmAndroidId} gcm_security_token:${gcmSecurityToken} steam_id:${steamId}`;
+    // 构建命令，如果有过期时间就加上
+    let command = `/credentials add gcm_android_id:${gcmAndroidId} gcm_security_token:${gcmSecurityToken} steam_id:${steamId}`;
+    if (issuedTimestamp) {
+        command += ` issued_date:${issuedTimestamp}`;
+    }
+    if (expireTimestamp) {
+        command += ` expire_date:${expireTimestamp}`;
+    }
+    credentialsCommand = command;
 
     // 1. 显示命令
     document.getElementById('credentialsCommand').textContent = credentialsCommand;
@@ -121,15 +150,40 @@ function showSuccess(fcmCreds, expoToken) {
     document.getElementById('gcmSecurityToken').textContent = gcmSecurityToken;
     document.getElementById('steamId').textContent = steamId;
 
-    // 3. 显示注册时间
-    const registerDateStr = registerDate.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-    document.getElementById('registerDate').textContent = registerDateStr;
+    // 3. 显示过期时间
+    if (expireTimestamp) {
+        const expireDate = new Date(expireTimestamp * 1000);
+        const expireDateStr = expireDate.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        document.getElementById('registerDate').textContent = expireDateStr;
+
+        // 计算剩余天数
+        const now = new Date();
+        const daysLeft = Math.ceil((expireDate - now) / (24 * 60 * 60 * 1000));
+
+        // 更新标签和样式
+        const expireInfo = document.querySelector('.expire-info');
+        const expireIcon = document.querySelector('.expire-icon');
+
+        if (daysLeft > 0) {
+            expireIcon.textContent = '⏰';
+            expireInfo.querySelector('span:nth-child(2)').innerHTML =
+                `有效期至: <strong id="registerDate">${expireDateStr}</strong> (剩余 ${daysLeft} 天)`;
+        } else {
+            expireIcon.textContent = '⚠️';
+            expireInfo.style.background = 'rgba(233, 69, 96, 0.1)';
+            expireInfo.style.borderColor = 'rgba(233, 69, 96, 0.3)';
+            expireInfo.querySelector('span:nth-child(2)').innerHTML =
+                `<strong style="color: #e94560;">已过期!</strong> (${expireDateStr})`;
+        }
+    } else {
+        document.getElementById('registerDate').textContent = new Date().toLocaleString('zh-CN');
+    }
 
     // 4. 完整配置放到详情里
     document.getElementById('fullCredentialsDisplay').textContent = JSON.stringify(fullConfig, null, 2);
