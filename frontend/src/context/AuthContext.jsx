@@ -160,7 +160,9 @@ export const AuthProvider = ({ children }) => {
 
   // 计算订阅是否过期
   const isSubscriptionExpired = useMemo(() => {
-    if (!user || !user.subscriptions) return true;
+    // 用户未登录或订阅数据未加载时，不假设过期
+    if (!user) return false;
+    if (!user.subscriptions || !user.subscriptions.endDate) return false;
     const endDate = new Date(user.subscriptions.endDate);
     return new Date() > endDate;
   }, [user]);
