@@ -7,6 +7,7 @@ import express from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
 import prisma from '../lib/prisma.js';
 import globalServiceManager from '../services/global-manager.service.js';
+import paymentService from '../services/payment.service.js';
 
 const router = express.Router();
 
@@ -986,6 +987,202 @@ router.get('/system', async (req, res) => {
     res.status(500).json({
       success: false,
       error: '获取系统状态失败'
+    });
+  }
+});
+
+// ========== 套餐管理 API ==========
+
+/**
+ * GET /api/admin/plans
+ * 获取所有套餐配置（包括禁用的）
+ */
+router.get('/plans', async (req, res) => {
+  try {
+    const plans = await paymentService.getPlans(true); // 包含禁用的套餐
+
+    res.json({
+      success: true,
+      data: plans
+    });
+  } catch (error) {
+    console.error('获取套餐列表失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '获取套餐列表失败'
+    });
+  }
+});
+
+/**
+ * POST /api/admin/plans
+ * 创建新套餐
+ */
+router.post('/plans', async (req, res) => {
+  try {
+    const { code, name, price, duration, description, features, sortOrder, isActive, highlighted } = req.body;
+
+    // 验证必填字段
+    if (!code || !name || price === undefined || !duration) {
+      return res.status(400).json({
+        success: false,
+        error: '缺少必填字段: code, name, price, duration'
+      });
+    }
+
+    // 验证 code 格式（大写字母和下划线）
+    if (!/^[A-Z][A-Z0-9_]*$/.test(code)) {
+      return res.status(400).json({
+        success: false,
+        error: '套餐代码必须是大写字母开头，只能包含大写字母、数字和下划线'
+      });
+    }
+
+    const plan = await paymentService.createPlan({
+      code,
+      name,
+      price: parseFloat(price),
+      duration: parseInt(duration),
+      description,
+      features: features || [],
+      sortOrder: sortOrder || 0,
+      isActive: isActive !== false,
+      highlighted: highlighted || false
+    });
+
+    console.log(`📦 管理员创建套餐: ${name} (${code})`);
+
+    res.json({
+      success: true,
+      data: plan
+    });
+  } catch (error) {
+    console.error('创建套餐失败:', error);
+
+    // 处理唯一约束错误
+    if (error.code === 'P2002') {
+      return res.status(400).json({
+        success: false,
+        error: '套餐代码已存在'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: error.message || '创建套餐失败'
+    });
+  }
+});
+
+/**
+ * PUT /api/admin/plans/:id
+ * 更新套餐
+ */
+router.put('/plans/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { code, name, price, duration, description, features, sortOrder, isActive, highlighted } = req.body;
+
+    // 验证 code 格式（如果提供）
+    if (code && !/^[A-Z][A-Z0-9_]*$/.test(code)) {
+      return res.status(400).json({
+        success: false,
+        error: '套餐代码必须是大写字母开头，只能包含大写字母、数字和下划线'
+      });
+    }
+
+    const plan = await paymentService.updatePlan(id, {
+      code,
+      name,
+      price: price !== undefined ? parseFloat(price) : undefined,
+      duration: duration !== undefined ? parseInt(duration) : undefined,
+      description,
+      features,
+      sortOrder,
+      isActive,
+      highlighted
+    });
+
+    console.log(`📦 管理员更新套餐: ${plan.name} (${plan.code})`);
+
+    res.json({
+      success: true,
+      data: plan
+    });
+  } catch (error) {
+    console.error('更新套餐失败:', error);
+
+    if (error.code === 'P2025') {
+      return res.status(404).json({
+        success: false,
+        error: '套餐不存在'
+      });
+    }
+
+    if (error.code === 'P2002') {
+      return res.status(400).json({
+        success: false,
+        error: '套餐代码已存在'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: error.message || '更新套餐失败'
+    });
+  }
+});
+
+/**
+ * DELETE /api/admin/plans/:id
+ * 删除套餐
+ */
+router.delete('/plans/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await paymentService.deletePlan(id);
+
+    console.log(`📦 管理员删除套餐: ${id}`);
+
+    res.json({
+      success: true,
+      message: '套餐已删除'
+    });
+  } catch (error) {
+    console.error('删除套餐失败:', error);
+
+    if (error.code === 'P2025') {
+      return res.status(404).json({
+        success: false,
+        error: '套餐不存在'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: error.message || '删除套餐失败'
+    });
+  }
+});
+
+/**
+ * POST /api/admin/plans/init
+ * 初始化默认套餐
+ */
+router.post('/plans/init', async (req, res) => {
+  try {
+    await paymentService.initDefaultPlans();
+
+    res.json({
+      success: true,
+      message: '默认套餐初始化完成'
+    });
+  } catch (error) {
+    console.error('初始化套餐失败:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || '初始化套餐失败'
     });
   }
 });

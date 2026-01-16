@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authApi } from '../services/auth';
-import { FaTerminal, FaUserPlus, FaLock, FaArrowRight, FaClock } from 'react-icons/fa';
+import { FaTerminal, FaUserPlus, FaLock, FaArrowRight, FaClock, FaArrowLeft } from 'react-icons/fa';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -46,14 +46,24 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen bg-[#0d0e10] text-[#e0e0e0] font-sans flex items-center justify-center p-6 relative overflow-hidden">
       <div className="fixed inset-0 pointer-events-none z-50 opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_4px,3px_100%]"></div>
-      
+
+      {/* 返回首页按钮 */}
+      <Link
+        to="/"
+        className="fixed top-6 left-6 z-50 flex items-center gap-2 text-gray-500 hover:text-white transition-colors group"
+      >
+        <FaArrowLeft className="group-hover:-translate-x-1 transition-transform" />
+        <span className="text-xs font-bold uppercase tracking-wider">返回首页</span>
+      </Link>
+
       <div className="max-w-md w-full relative z-10 py-12">
         <div className="text-center mb-10">
+          {/* 注册页特有的红色主题图标 */}
           <div className="w-16 h-16 tactic-cut bg-[#cd5241] flex items-center justify-center mx-auto mb-6 shadow-lg shadow-[#cd5241]/20">
-            <FaTerminal className="text-white text-2xl" />
+            <FaUserPlus className="text-white text-2xl" />
           </div>
-          <h1 className="text-2xl font-black uppercase tracking-widest glow-text italic">申请指挥官授权</h1>
-          <p className="text-[10px] text-gray-600 uppercase tracking-[0.4em] mt-2 font-mono">建立全新的 Rust 远程控制终端</p>
+          <h1 className="text-2xl font-black uppercase tracking-widest glow-text italic">创建指挥官账号</h1>
+          <p className="text-[10px] text-[#cd5241] uppercase tracking-[0.4em] mt-2 font-mono">// NEW_REGISTRATION //</p>
         </div>
 
         <div className="tactic-border tactic-cut p-1 bg-black/40 backdrop-blur-xl">
@@ -137,8 +147,8 @@ export default function RegisterPage() {
             <div className="mt-8 text-center border-t border-white/5 pt-6">
               <p className="text-gray-600 text-[10px] uppercase tracking-widest">
                 已有指挥官账号？{' '}
-                <Link to="/login" className="text-[#cd5241] hover:text-white transition-colors font-black">
-                  [ 启动身份验证 ]
+                <Link to="/login" className="text-blue-500 hover:text-white transition-colors font-black">
+                  [ 立即登录 ]
                 </Link>
               </p>
             </div>

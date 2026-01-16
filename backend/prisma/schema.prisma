@@ -61,7 +61,8 @@ model orders {
   id            String               @id
   userId        String
   type          orders_type          @default(AUTH_BUY)
-  planType      orders_planType?
+  planType      orders_planType?     // 旧字段，保持兼容
+  planId        String?              // 新字段，关联套餐配置
   amount        Decimal              @db.Decimal(10, 2)
   balanceBefore Decimal?             @db.Decimal(10, 2)
   balanceAfter  Decimal?             @db.Decimal(10, 2)
@@ -75,11 +76,13 @@ model orders {
   createdAt     DateTime             @default(now())
   updatedAt     DateTime
   users         users                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan          subscription_plans?  @relation(fields: [planId], references: [id])
 
   @@index([createdAt])
   @@index([status])
   @@index([tradeNo])
   @@index([userId])
+  @@index([planId])
 }
 
 model admin_logs {
@@ -304,4 +307,22 @@ enum subscriptions_status {
   ACTIVE
   EXPIRED
   CANCELLED
+}
+
+model subscription_plans {
+  id          String   @id @default(uuid())
+  code        String   @unique @db.VarChar(50)  // 套餐代码: WEEKLY, BIWEEKLY, MONTHLY 等
+  name        String   @db.VarChar(100)         // 显示名称: 周卡, 半月卡, 月卡
+  price       Decimal  @db.Decimal(10, 2)       // 价格
+  duration    Int                                // 时长(天)
+  description String?  @db.VarChar(255)         // 描述
+  features    Json?                              // 功能特性列表 JSON
+  sortOrder   Int      @default(0)              // 排序顺序
+  isActive    Boolean  @default(true)           // 是否启用
+  highlighted Boolean  @default(false)          // 是否推荐(高亮显示)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  orders      orders[]
+
+  @@index([isActive, sortOrder])
 }

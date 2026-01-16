@@ -6,7 +6,7 @@
  * - GET    /api/payment/orders         - 获取当前用户的订单列表
  * - GET    /api/payment/orders/:id     - 获取订单详情
  * - POST   /api/payment/orders/:id/cancel - 取消订单
- * - GET    /api/payment/plans          - 获取套餐价格配置
+ * - GET    /api/payment/plans          - 获取套餐价格配置（公开）
  */
 
 import express from 'express';
@@ -17,12 +17,39 @@ import { authenticate } from '../middleware/auth.middleware.js';
 const router = express.Router();
 
 /**
+ * GET /api/payment/plans
+ * 获取套餐配置（公开接口，用于首页展示）
+ *
+ * 响应:
+ * {
+ *   "success": true,
+ *   "plans": [ { id, code, name, price, duration, description, features, highlighted } ]
+ * }
+ */
+router.get('/plans', async (req, res) => {
+  try {
+    const plans = await paymentService.getPlans(false); // 只获取启用的套餐
+
+    res.json({
+      success: true,
+      plans,
+    });
+  } catch (error) {
+    console.error('[支付] 获取套餐配置失败:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || '获取套餐配置失败',
+    });
+  }
+});
+
+/**
  * POST /api/payment/create-order
  * 创建支付订单
  *
  * 请求体:
  * {
- *   "planType": "MONTHLY" | "QUARTERLY" | "YEARLY",
+ *   "planId": "套餐 ID",
  *   "paymentMethod": "ALIPAY" | "WECHAT"
  * }
  *
@@ -34,21 +61,21 @@ const router = express.Router();
  */
 router.post('/create-order', authenticate, async (req, res) => {
   try {
-    const { planType, paymentMethod } = req.body;
-    const userId = req.user.id; // 从 JWT 中获取用户 ID
+    const { planId, paymentMethod } = req.body;
+    const userId = req.user.id;
 
     // 验证必填字段
-    if (!planType || !paymentMethod) {
+    if (!planId || !paymentMethod) {
       return res.status(400).json({
         success: false,
-        error: '缺少必填字段: planType 或 paymentMethod',
+        error: '缺少必填字段: planId 或 paymentMethod',
       });
     }
 
     // 创建订单
-    const order = await paymentService.createOrder(userId, planType, paymentMethod);
+    const order = await paymentService.createOrder(userId, planId, paymentMethod);
 
-    console.log(`[支付] 用户 ${userId} 创建订单: ${order.id} (${planType}, ${paymentMethod})`);
+    console.log(`[支付] 用户 ${userId} 创建订单: ${order.id} (套餐: ${order.planName}, ${paymentMethod})`);
 
     res.json({
       success: true,
@@ -178,45 +205,6 @@ router.post('/orders/:id/cancel', authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || '取消订单失败',
-    });
-  }
-});
-
-/**
- * GET /api/payment/plans
- * 获取套餐价格和时长配置
- *
- * 响应:
- * {
- *   "success": true,
- *   "plans": {
- *     "MONTHLY": { "price": 29, "duration": 30 },
- *     ...
- *   }
- * }
- */
-router.get('/plans', async (req, res) => {
-  try {
-    const prices = paymentService.getPlanPrices();
-    const durations = paymentService.getPlanDurations();
-
-    const plans = {};
-    for (const planType of ['TRIAL', 'MONTHLY', 'QUARTERLY', 'YEARLY']) {
-      plans[planType] = {
-        price: prices[planType],
-        duration: durations[planType],
-      };
-    }
-
-    res.json({
-      success: true,
-      plans,
-    });
-  } catch (error) {
-    console.error('[支付] 获取套餐配置失败:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || '获取套餐配置失败',
     });
   }
 });

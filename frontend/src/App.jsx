@@ -15,7 +15,7 @@ import TeamView from './components/TeamView';
 import DeviceControl from './components/DeviceControl';
 import ChatPanel from './components/ChatPanel';
 import SubscriptionStatus from './components/SubscriptionStatus';
-import PairingPanel from './components/PairingPanel';
+import PairingWizard from './components/PairingWizard';
 import FCMSettings from './components/FCMSettings';
 import NotificationSettings from './components/NotificationSettings';
 import AdminPage from './pages/AdminPage';
@@ -27,8 +27,7 @@ function App() {
 
   const [servers, setServers] = useState([]);
   const [activeServer, setActiveServer] = useState(null);
-  const [activeView, setActiveView] = useState('hud'); // 'hud', 'team', 'devices', 'settings', 'proxy'
-  const [showPairingPanel, setShowPairingPanel] = useState(false);
+  const [activeView, setActiveView] = useState('hud'); // 'hud', 'team', 'devices', 'settings', 'pairing', 'admin'
   const [showMapModal, setShowMapModal] = useState(false);
   const [connectionLoading, setConnectionLoading] = useState(false);
   const [teamData, setTeamData] = useState(null);
@@ -193,10 +192,24 @@ function App() {
 
   // --- Render Views ---
   const renderView = () => {
+    // 配对向导视图（独立处理）
+    if (activeView === 'pairing') {
+      return (
+        <PairingWizard
+          fcmStatus={fcmStatus}
+          onComplete={() => {
+            fetchServers();
+            setActiveView('hud');
+          }}
+          onCancel={() => setActiveView('hud')}
+        />
+      );
+    }
+
     // 只有在 HUD 视图且完全没有任何服务器节点时，显示 EmptyState
     // 其他视图允许以演示模式显示
     if (servers.length === 0 && activeView === 'hud') {
-      return <EmptyState onPair={() => setShowPairingPanel(true)} />;
+      return <EmptyState onPair={() => setActiveView('pairing')} fcmStatus={fcmStatus} isSubscriptionExpired={isSubscriptionExpired} />;
     }
 
     // 如果选择了服务器但未连接
@@ -213,7 +226,7 @@ function App() {
             teamData={teamData}
             fcmStatus={fcmStatus}
             isSubscriptionExpired={isSubscriptionExpired}
-            onPair={() => setShowPairingPanel(true)}
+            onPair={() => setActiveView('pairing')}
             onLockdown={handleLockdown}
           />
         );
@@ -245,7 +258,7 @@ function App() {
           </div>
         );
       default:
-        return <HUDView server={activeServer} teamData={teamData} isSubscriptionExpired={isSubscriptionExpired} onPair={() => setShowPairingPanel(true)} />;
+        return <HUDView server={activeServer} teamData={teamData} isSubscriptionExpired={isSubscriptionExpired} onPair={() => setActiveView('pairing')} />;
     }
   };
 
@@ -353,35 +366,6 @@ function App() {
           {renderView()}
         </div>
       </main>
-
-      {/* 配对模态框 */}
-      {showPairingPanel && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-fade-in">
-          <div className="w-full max-w-xl tactic-border tactic-cut p-1 bg-black/60 relative">
-            <button
-              onClick={() => setShowPairingPanel(false)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors z-20"
-            >
-              <FaTimes />
-            </button>
-            <div className="bg-black/80 p-6">
-              <div className="flex items-center gap-4 mb-6 border-b border-white/5 pb-4">
-                <div className="w-10 h-10 bg-[#cd5241]/20 tactic-cut flex items-center justify-center text-[#cd5241]">
-                  <FaSatellite className="animate-pulse" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black uppercase italic text-white tracking-tighter">添加服务器配对</h3>
-                  <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">请按照下方指引完成 Rust+ 链路建立</p>
-                </div>
-              </div>
-              <PairingPanel onServerPaired={() => {
-                fetchServers();
-                setShowPairingPanel(false);
-              }} />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 实时地图模态框 */}
       {showMapModal && (
@@ -644,32 +628,70 @@ function DisconnectedView({ server, onConnect, loading, fcmStatus, isSubscriptio
   );
 }
 
-function EmptyState({ onPair }) {
+function EmptyState({ onPair, fcmStatus, isSubscriptionExpired }) {
+  const hasCredentials = fcmStatus?.hasCredentials || fcmStatus?.hasStoredCredentials;
+
   return (
     <div className="h-full flex flex-col items-center justify-center relative animate-fade-in font-sans">
       <div className="relative z-10 text-center max-w-xl">
-        <div className="flex justify-center mb-10">
-          <div className="w-24 h-24 tactic-cut bg-[#cd5241]/10 border border-[#cd5241]/30 flex items-center justify-center relative group">
-            <FaSatellite className="text-4xl text-[#cd5241] animate-bounce" />
+        <div className="flex justify-center mb-8">
+          <div className="w-20 h-20 tactic-cut bg-[#cd5241]/10 border border-[#cd5241]/30 flex items-center justify-center relative group">
+            <FaSatellite className="text-3xl text-[#cd5241] animate-bounce" />
             <div className="absolute -inset-4 border border-[#cd5241]/10 tactic-cut animate-ping" />
           </div>
         </div>
 
-        <h2 className="text-4xl font-black italic uppercase tracking-tighter mb-4 glow-text">
+        <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-3 glow-text">
           未检测到活跃服务器
         </h2>
 
-        <p className="text-gray-500 text-sm mb-12 leading-relaxed font-medium">
-          系统处于待机模式。你需要先配对一个 Rust+ 服务器来开启远程监控功能。
-          <br />建立连接后，即可获得实时的基地预警、队友状态追踪和远程开关控制。
+        <p className="text-gray-500 text-sm mb-8 leading-relaxed font-medium">
+          系统处于待机模式，添加服务器开启远程监控
         </p>
+
+        {/* 状态卡片 */}
+        <div className="mb-8 p-4 bg-white/[0.02] border border-white/5 tactic-cut text-left max-w-sm mx-auto">
+          <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-3 border-l-2 border-[#cd5241] pl-2">
+            当前状态
+          </p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-500">FCM 凭证</span>
+              <span className={`flex items-center gap-2 ${hasCredentials ? 'text-green-400' : 'text-gray-600'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${hasCredentials ? 'bg-green-400' : 'bg-gray-600'}`} />
+                {hasCredentials ? '已配置' : '未配置'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-500">服务器</span>
+              <span className="flex items-center gap-2 text-gray-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-600" />
+                未配对
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-500">订阅状态</span>
+              <span className={`flex items-center gap-2 ${isSubscriptionExpired ? 'text-yellow-500' : 'text-green-400'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isSubscriptionExpired ? 'bg-yellow-500' : 'bg-green-400'}`} />
+                {isSubscriptionExpired ? '已过期' : '有效'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 提示文字 */}
+        {hasCredentials && !isSubscriptionExpired && (
+          <p className="text-xs text-green-400/80 mb-6">
+            ✓ FCM 已就绪，只需在游戏中配对即可
+          </p>
+        )}
 
         <button
           onClick={onPair}
-          className="group relative px-16 py-6 bg-[#cd5241] text-white font-black uppercase italic tactic-cut hover:scale-105 transition-all shadow-2xl shadow-[#cd5241]/30 overflow-hidden text-xl"
+          className="group relative px-12 py-5 bg-[#cd5241] text-white font-black uppercase italic tactic-cut hover:scale-105 transition-all shadow-2xl shadow-[#cd5241]/30 overflow-hidden text-lg"
         >
-          <span className="relative z-10 flex items-center gap-4">
-            <FaPlus /> 立即添加服务器
+          <span className="relative z-10 flex items-center gap-3">
+            <FaPlus /> 添加服务器
           </span>
         </button>
       </div>

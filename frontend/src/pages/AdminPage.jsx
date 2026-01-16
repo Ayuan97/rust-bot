@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  FaUsers, FaChartLine, FaSatellite, FaTerminal, FaHistory, 
+import {
+  FaUsers, FaChartLine, FaSatellite, FaTerminal, FaHistory,
   FaExclamationTriangle, FaSearch, FaFilter, FaSync, FaCog,
   FaArrowUp, FaArrowDown, FaWallet, FaHourglassHalf, FaCircle,
-  FaShieldAlt, FaTools, FaDatabase
+  FaShieldAlt, FaTools, FaDatabase, FaBoxOpen
 } from 'react-icons/fa';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
-// 子组件导入 (稍后创建)
+// 子组件导入
 import SurvivorRoster from '../components/admin/SurvivorRoster';
 import TradeCenter from '../components/admin/TradeCenter';
 import ProxyStation from '../components/admin/ProxyStation';
 import SystemLogs from '../components/admin/SystemLogs';
+import PlanManager from '../components/admin/PlanManager';
 
 const AdminPage = () => {
   const [activeTab, setActiveTab] = useState('survivors');
@@ -48,6 +49,7 @@ const AdminPage = () => {
   const tabs = [
     { id: 'survivors', label: '幸存者大盘', icon: <FaUsers /> },
     { id: 'trade', label: '贸易清单', icon: <FaChartLine /> },
+    { id: 'plans', label: '套餐配置', icon: <FaBoxOpen /> },
     { id: 'proxy', label: '信号转发站', icon: <FaSatellite /> },
     { id: 'logs', label: '系统诊断', icon: <FaTerminal /> },
   ];
@@ -141,6 +143,7 @@ const AdminPage = () => {
           <div className="p-6">
             {activeTab === 'survivors' && <SurvivorRoster onNavigateToLogs={handleNavigateToLogs} />}
             {activeTab === 'trade' && <TradeCenter />}
+            {activeTab === 'plans' && <PlanManager />}
             {activeTab === 'proxy' && <ProxyStation />}
             {activeTab === 'logs' && <SystemLogs preselectedUserId={preselectedUserId} onUserSelected={() => setPreselectedUserId(null)} />}
           </div>

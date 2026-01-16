@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authApi } from '../services/auth';
-import { FaTerminal, FaShieldAlt, FaKey, FaArrowRight } from 'react-icons/fa';
+import { FaTerminal, FaShieldAlt, FaKey, FaArrowRight, FaArrowLeft, FaSignInAlt } from 'react-icons/fa';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -38,14 +38,24 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[#0d0e10] text-[#e0e0e0] font-sans flex items-center justify-center p-6 relative overflow-hidden">
       {/* 扫描线背景 */}
       <div className="fixed inset-0 pointer-events-none z-50 opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_4px,3px_100%]"></div>
-      
+
+      {/* 返回首页按钮 */}
+      <Link
+        to="/"
+        className="fixed top-6 left-6 z-50 flex items-center gap-2 text-gray-500 hover:text-white transition-colors group"
+      >
+        <FaArrowLeft className="group-hover:-translate-x-1 transition-transform" />
+        <span className="text-xs font-bold uppercase tracking-wider">返回首页</span>
+      </Link>
+
       <div className="max-w-md w-full relative z-10">
         <div className="text-center mb-10">
-          <div className="w-16 h-16 tactic-cut bg-[#cd5241] flex items-center justify-center mx-auto mb-6 shadow-lg shadow-[#cd5241]/20">
-            <FaTerminal className="text-white text-2xl" />
+          {/* 登录页特有的蓝色主题图标 */}
+          <div className="w-16 h-16 tactic-cut bg-blue-600 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-600/20">
+            <FaSignInAlt className="text-white text-2xl" />
           </div>
-          <h1 className="text-2xl font-black uppercase tracking-widest glow-text italic">基地指挥官登录</h1>
-          <p className="text-[10px] text-gray-600 uppercase tracking-[0.4em] mt-2 font-mono">Rust 远程中控系统 v2.0</p>
+          <h1 className="text-2xl font-black uppercase tracking-widest glow-text italic">指挥官身份验证</h1>
+          <p className="text-[10px] text-blue-400 uppercase tracking-[0.4em] mt-2 font-mono">// LOGIN_AUTHENTICATION //</p>
         </div>
 
         <div className="tactic-border tactic-cut p-1 bg-black/40 backdrop-blur-xl">
@@ -58,7 +68,7 @@ export default function LoginPage() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-[#cd5241] pl-2">
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-blue-600 pl-2">
                   指挥官识别码 (邮箱/用户名)
                 </label>
                 <div className="relative">
@@ -68,7 +78,7 @@ export default function LoginPage() {
                     value={formData.email}
                     onChange={handleChange}
                     required
-                    className="w-full pl-10 pr-4 py-3 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-800"
+                    className="w-full pl-10 pr-4 py-3 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-blue-600/50 outline-none transition-all placeholder-gray-800"
                     placeholder="请输入您的邮箱或用户名"
                   />
                   <FaShieldAlt className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
@@ -76,7 +86,7 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-[#cd5241] pl-2">
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-blue-600 pl-2">
                   安全访问密钥 (密码)
                 </label>
                 <div className="relative">
@@ -86,7 +96,7 @@ export default function LoginPage() {
                     value={formData.password}
                     onChange={handleChange}
                     required
-                    className="w-full pl-10 pr-4 py-3 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-800"
+                    className="w-full pl-10 pr-4 py-3 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-blue-600/50 outline-none transition-all placeholder-gray-800"
                     placeholder="••••••••"
                   />
                   <FaKey className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
@@ -96,7 +106,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full tactic-cut bg-[#cd5241] hover:bg-[#b04537] py-4 text-[11px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-2 group shadow-lg shadow-[#cd5241]/10"
+                className="w-full tactic-cut bg-blue-600 hover:bg-blue-700 py-4 text-[11px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-2 group shadow-lg shadow-blue-600/10"
               >
                 {loading ? '正在验证身份信息...' : (
                   <>启动控制终端 <FaArrowRight className="group-hover:translate-x-1 transition-transform" /></>
@@ -108,7 +118,7 @@ export default function LoginPage() {
               <p className="text-gray-600 text-[10px] uppercase tracking-widest">
                 尚未注册指挥官账号？{' '}
                 <Link to="/register" className="text-[#cd5241] hover:text-white transition-colors font-black">
-                  [ 申请部署授权 ]
+                  [ 立即注册 ]
                 </Link>
               </p>
             </div>
