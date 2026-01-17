@@ -100,11 +100,6 @@ function validateAfkTemplate(template) {
 
   const trimmed = template.trim();
 
-  // 长度限制
-  if (trimmed.length > 200) {
-    return { valid: false, error: 'AFK 模板长度不能超过 200 字符' };
-  }
-
   // 必须包含 {name} 变量
   if (!trimmed.includes('{name}')) {
     return { valid: false, error: 'AFK 模板必须包含 {name} 变量' };

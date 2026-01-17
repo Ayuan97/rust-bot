@@ -281,9 +281,6 @@ function NotificationSettings() {
                             </button>
                           ))}
                         </div>
-                        <div className="text-[10px] text-gray-600">
-                          必须包含 {'{name}'}，最多 200 字符
-                        </div>
                       </div>
                     </div>
                   )}
