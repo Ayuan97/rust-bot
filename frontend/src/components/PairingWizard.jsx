@@ -14,7 +14,7 @@ import socketService from '../services/socket';
 // 插件商店链接
 const STORE_LINKS = {
   chrome: 'https://chromewebstore.google.com/detail/rust-credentials-helper/YOUR_CHROME_EXTENSION_ID',
-  edge: 'https://microsoftedge.microsoft.com/addons/detail/rust-credentials-helper/YOUR_EDGE_EXTENSION_ID'
+  edge: 'https://microsoftedge.microsoft.com/addons/detail/rust-credentials-helper/cbfnmldjlldpknjbfcmmlgfbakofhcil'
 };
 
 // 检测浏览器类型
@@ -402,7 +402,8 @@ function Step1InstallPlugin({ browser, onNext, onSkip }) {
           选择你的浏览器安装插件
         </p>
 
-        <button
+        {/* Chrome 插件暂时隐藏，待上架后恢复 */}
+        {/* <button
           onClick={() => window.open(STORE_LINKS.chrome, '_blank')}
           className={`w-full p-4 tactic-cut flex items-center gap-4 transition-all border ${
             browser === 'chrome'
@@ -418,7 +419,7 @@ function Step1InstallPlugin({ browser, onNext, onSkip }) {
             <div className="text-[10px] text-gray-500">Chrome 网上应用店</div>
           </div>
           <FaExternalLinkAlt className="text-gray-600" />
-        </button>
+        </button> */}
 
         <button
           onClick={() => window.open(STORE_LINKS.edge, '_blank')}
