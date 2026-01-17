@@ -267,38 +267,45 @@ function App() {
       {/* 全局警报特效 */}
       {alertLevel === 'critical' && <div className="alert-pulse" />}
 
-      {/* 左侧导航轨 (Navigation Rail) */}
-      <nav className="w-20 h-full flex flex-col items-center py-6 bg-[#090a0c] border-r border-white/5 z-50 shrink-0">
-        <div className="mb-8">
-          <div className="w-12 h-12 p-1 bg-[#cd5241] tactic-cut flex items-center justify-center shadow-lg shadow-[#cd5241]/20">
-            <img src="/logo.svg" alt="Rust+ Logo" className="w-full h-full object-contain filter drop-shadow-md" />
+      {/* 左侧导航轨 (Navigation Rail) - 悬停展开 */}
+      <nav className="group/nav h-full flex flex-col py-6 bg-[#090a0c] border-r border-white/5 z-50 shrink-0 w-20 hover:w-52 transition-all duration-300 ease-out overflow-hidden">
+        <div className="mb-8 px-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 p-1 bg-[#cd5241] tactic-cut flex items-center justify-center shadow-lg shadow-[#cd5241]/20 shrink-0">
+              <img src="/logo.svg" alt="Rust+ Logo" className="w-full h-full object-contain filter drop-shadow-md" />
+            </div>
+            <span className="text-sm font-black uppercase italic text-white tracking-tight opacity-0 group-hover/nav:opacity-100 transition-opacity duration-300 whitespace-nowrap">
+              Rust+
+            </span>
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
+        <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-y-auto px-3">
           <NavIcon id="hud" icon={<FaTerminal />} active={activeView} onClick={setActiveView} label="基地概览" />
           <NavIcon id="team" icon={<FaUsers />} active={activeView} onClick={setActiveView} label="队友动态" />
           <NavIcon id="map" icon={<FaMapMarkedAlt />} active={activeView} onClick={setActiveView} label="实时地图" />
           <NavIcon id="devices" icon={<FaCogs />} active={activeView} onClick={setActiveView} label="智能中控" />
-          <div className="h-px w-8 bg-white/5 mx-auto my-1" />
+          <div className="h-px bg-white/5 my-2 mx-1" />
           <NavIcon id="settings" icon={<FaCog />} active={activeView} onClick={setActiveView} label="预警配置" />
           {user?.isAdmin && (
-            <NavIcon id="admin" icon={<FaTools />} active={activeView} onClick={setActiveView} label="领地柜总控" />
+            <NavIcon id="admin" icon={<FaTools />} active={activeView} onClick={setActiveView} label="管理后台" />
           )}
         </div>
 
-        <div className="mt-auto pt-4 flex flex-col gap-3 items-center shrink-0">
-          {/* 用户名 */}
-          <div className="text-[9px] text-gray-600 font-bold uppercase tracking-wider truncate max-w-[60px]" title={user?.username}>
-            {user?.username}
-          </div>
-          {/* 退出按钮 */}
+        <div className="mt-auto pt-4 px-3 shrink-0">
+          {/* 用户信息 + 退出 */}
           <button
             onClick={logout}
-            className="group w-10 h-10 tactic-cut bg-white/5 hover:bg-[#ef4444]/20 flex items-center justify-center transition-all"
+            className="w-full h-12 tactic-cut bg-white/5 hover:bg-[#ef4444]/20 flex items-center gap-3 px-3 transition-all group/logout"
             title="退出登录"
           >
-            <FaSignOutAlt className="text-gray-600 group-hover:text-[#ef4444] transition-colors" />
+            <div className="w-6 h-6 flex items-center justify-center shrink-0">
+              <FaSignOutAlt className="text-gray-600 group-hover/logout:text-[#ef4444] transition-colors" />
+            </div>
+            <div className="flex-1 text-left opacity-0 group-hover/nav:opacity-100 transition-opacity duration-300 overflow-hidden">
+              <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider truncate">{user?.username}</div>
+              <div className="text-[9px] text-gray-600 uppercase">退出登录</div>
+            </div>
           </button>
         </div>
       </nav>
@@ -387,15 +394,20 @@ function NavIcon({ id, icon, active, onClick, label }) {
   return (
     <button
       onClick={() => onClick(id)}
-      className={`group relative w-12 h-12 tactic-cut flex items-center justify-center transition-all duration-300 ${isActive ? 'bg-[#cd5241] text-white shadow-lg shadow-[#cd5241]/20 scale-110' : 'bg-white/5 text-gray-500 hover:bg-white/10 hover:text-gray-300'}`}
+      className={`relative w-full h-11 tactic-cut flex items-center gap-3 px-3 transition-all duration-200 ${isActive ? 'bg-[#cd5241] text-white shadow-lg shadow-[#cd5241]/20' : 'bg-white/[0.02] text-gray-500 hover:bg-white/5 hover:text-gray-300'}`}
     >
-      <span className="text-sm">{icon}</span>
-      <div className={`absolute left-0 w-1 bg-white transition-all duration-300 ${isActive ? 'h-6' : 'h-0'}`} />
+      {/* 左侧激活指示条 */}
+      <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 bg-white transition-all duration-300 ${isActive ? 'h-5' : 'h-0'}`} />
 
-      {/* Tooltip */}
-      <div className="absolute left-16 bg-black border border-white/10 px-3 py-1.5 tactic-cut opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-[60] shadow-2xl block">
-        <span className="text-[8px] font-black uppercase tracking-widest text-white">{label}</span>
+      {/* 图标 */}
+      <div className="w-6 h-6 flex items-center justify-center shrink-0">
+        <span className="text-sm">{icon}</span>
       </div>
+
+      {/* 文字标签 - 跟随父级 nav 的 hover 状态显示 */}
+      <span className="text-[11px] font-bold uppercase tracking-wide whitespace-nowrap opacity-0 group-hover/nav:opacity-100 transition-opacity duration-300">
+        {label}
+      </span>
     </button>
   );
 }
