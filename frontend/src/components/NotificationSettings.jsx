@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
-import { FaBell, FaUser, FaShip, FaHelicopter, FaOilCan, FaBox, FaSync, FaSun, FaMoon, FaCheck } from 'react-icons/fa';
+import { FaBell, FaUser, FaShip, FaHelicopter, FaOilCan, FaBox, FaSync, FaSun, FaMoon } from 'react-icons/fa';
 import { useToast } from './Toast';
 import api from '../services/api';
 
@@ -152,8 +152,8 @@ function NotificationSettings() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3">
-        <FaSync className="animate-spin text-[#cd5241] text-xl" />
-        <span className="text-[9px] uppercase font-black tracking-[0.3em] text-gray-600 italic">Loading_Notification_Config...</span>
+        <FaSync className="animate-spin text-[#cd5241] text-2xl" />
+        <span className="text-xs uppercase font-bold tracking-widest text-gray-500">加载配置中...</span>
       </div>
     );
   }
@@ -161,44 +161,44 @@ function NotificationSettings() {
   return (
     <div className="space-y-6 font-sans">
       {/* Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-white/5">
+      <div className="flex items-center justify-between pb-4 border-b border-white/10">
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 tactic-cut bg-[#cd5241]/20 border border-[#cd5241]/30 flex items-center justify-center">
-            <FaBell className="text-[#cd5241]" />
+          <div className="w-11 h-11 tactic-cut bg-[#cd5241]/20 border border-[#cd5241]/40 flex items-center justify-center">
+            <FaBell className="text-[#cd5241] text-lg" />
           </div>
           <div>
-            <h3 className="text-sm font-black uppercase tracking-widest italic text-white">通知控制台</h3>
-            <p className="text-[9px] text-gray-600 uppercase tracking-[0.2em] mt-0.5">Team_Chat_Broadcast_System</p>
+            <h3 className="text-base font-black uppercase tracking-wider text-white">通知控制台</h3>
+            <p className="text-xs text-gray-500 mt-0.5">队伍聊天广播系统</p>
           </div>
         </div>
         <button
           onClick={handleReset}
           disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 tactic-cut border border-white/10 text-[9px] font-black uppercase text-gray-500 hover:text-white hover:bg-white/5 transition-all disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 tactic-cut border border-white/10 text-xs font-bold uppercase text-gray-400 hover:text-white hover:bg-white/5 transition-all disabled:opacity-50"
         >
           <FaSync className={saving ? 'animate-spin' : ''} />
-          重置配置
+          重置
         </button>
       </div>
 
       {/* 通知分组网格 */}
       <div className="grid grid-cols-2 gap-4">
         {NOTIFICATION_GROUPS.map(group => (
-          <div key={group.id} className="tactic-cut border border-white/5 bg-white/[0.02] overflow-hidden">
+          <div key={group.id} className="tactic-cut border border-white/10 bg-white/[0.02] overflow-hidden">
             {/* 分组头部 */}
-            <div className="px-4 py-2.5 bg-black/40 border-b border-white/5 flex items-center gap-3">
-              <div className="w-6 h-6 tactic-cut bg-[#cd5241]/20 flex items-center justify-center">
-                <group.icon className="text-[#cd5241] text-[10px]" />
+            <div className="px-4 py-3 bg-black/40 border-b border-white/10 flex items-center gap-3">
+              <div className="w-7 h-7 tactic-cut bg-[#cd5241]/20 flex items-center justify-center">
+                <group.icon className="text-[#cd5241] text-xs" />
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-gray-300 italic">{group.label}</span>
+              <span className="text-xs font-black uppercase tracking-wide text-gray-200">{group.label}</span>
             </div>
 
             {/* 分组内容 */}
             <div className="p-3 space-y-1">
               {group.items.map(item => (
                 <div key={item.key}>
-                  <div className="flex items-center justify-between px-2 py-2 hover:bg-white/[0.03] transition-colors">
-                    <span className="text-[10px] text-gray-400 uppercase tracking-wide">{item.label}</span>
+                  <div className="flex items-center justify-between px-3 py-2.5 hover:bg-white/[0.03] transition-colors">
+                    <span className="text-xs text-gray-300">{item.label}</span>
                     <TacticToggle
                       checked={settings[item.key]}
                       onChange={(checked) => handleToggle(item.key, checked)}
@@ -208,10 +208,10 @@ function NotificationSettings() {
 
                   {/* AFK 扩展配置 */}
                   {item.key === 'player_afk' && settings.player_afk && (
-                    <div className="mx-2 mt-2 mb-3 p-3 bg-black/40 border border-white/5 tactic-cut space-y-3">
+                    <div className="mx-2 mt-2 mb-3 p-4 bg-black/40 border border-white/10 tactic-cut space-y-4">
                       {/* 触发时间 */}
                       <div className="flex items-center justify-between">
-                        <span className="text-[9px] text-gray-500 uppercase tracking-widest">触发阈值</span>
+                        <span className="text-xs text-gray-400">触发阈值</span>
                         <div className="flex items-center gap-2">
                           <TacticNumberInput
                             value={settings.player_afk_minutes}
@@ -220,15 +220,15 @@ function NotificationSettings() {
                             max={30}
                             disabled={saving}
                           />
-                          <span className="text-[9px] text-gray-600 uppercase">Min</span>
+                          <span className="text-xs text-gray-500">分钟</span>
                         </div>
                       </div>
 
                       {/* 消息模板 */}
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-[9px] text-gray-500 uppercase tracking-widest">消息模板</span>
-                          <span className="text-[8px] text-gray-700 uppercase">留空使用默认</span>
+                          <span className="text-xs text-gray-400">消息模板</span>
+                          <span className="text-[10px] text-gray-600">留空使用默认</span>
                         </div>
                         <TacticTextInput
                           ref={afkTemplateRef}
@@ -238,7 +238,7 @@ function NotificationSettings() {
                           disabled={saving}
                         />
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[8px] text-gray-600 uppercase">变量:</span>
+                          <span className="text-[10px] text-gray-500">点击插入:</span>
                           {[
                             { var: '{name}', label: '名字', required: true },
                             { var: '{position}', label: '坐标' },
@@ -249,10 +249,10 @@ function NotificationSettings() {
                               type="button"
                               onClick={() => afkTemplateRef.current?.insertText(v.var)}
                               disabled={saving}
-                              className={`px-2 py-0.5 text-[8px] tactic-cut transition-all ${
+                              className={`px-2 py-1 text-[10px] tactic-cut transition-all ${
                                 v.required
-                                  ? 'bg-[#cd5241]/20 text-[#cd5241] border border-[#cd5241]/30 hover:bg-[#cd5241]/30'
-                                  : 'bg-white/5 text-gray-500 border border-white/10 hover:text-gray-300 hover:bg-white/10'
+                                  ? 'bg-[#cd5241]/20 text-[#cd5241] border border-[#cd5241]/40 hover:bg-[#cd5241]/30'
+                                  : 'bg-white/5 text-gray-400 border border-white/10 hover:text-gray-200 hover:bg-white/10'
                               } disabled:opacity-50`}
                             >
                               {v.var}
@@ -270,14 +270,14 @@ function NotificationSettings() {
       </div>
 
       {/* 昼夜提醒模块 */}
-      <div className="tactic-cut border border-white/5 bg-gradient-to-r from-yellow-500/5 to-blue-500/5 overflow-hidden">
-        <div className="px-4 py-3 bg-black/40 border-b border-white/5 flex items-center justify-between">
+      <div className="tactic-cut border border-white/10 bg-gradient-to-r from-yellow-500/5 to-blue-500/5 overflow-hidden">
+        <div className="px-4 py-3 bg-black/40 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1">
-              <FaSun className="text-yellow-500 text-xs" />
-              <FaMoon className="text-blue-400 text-xs" />
+            <div className="flex items-center gap-1.5">
+              <FaSun className="text-yellow-500 text-sm" />
+              <FaMoon className="text-blue-400 text-sm" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-widest text-gray-300 italic">昼夜循环提醒</span>
+            <span className="text-xs font-black uppercase tracking-wide text-gray-200">昼夜循环提醒</span>
           </div>
           <TacticToggle
             checked={settings.day_night_enabled}
@@ -288,10 +288,10 @@ function NotificationSettings() {
 
         {settings.day_night_enabled && (
           <div className="p-4 grid grid-cols-2 gap-4">
-            <div className="flex items-center justify-between p-3 bg-black/40 border border-white/5 tactic-cut">
+            <div className="flex items-center justify-between p-3 bg-black/40 border border-white/10 tactic-cut">
               <div className="flex items-center gap-2">
-                <FaSun className="text-yellow-500 text-xs" />
-                <span className="text-[9px] text-gray-400 uppercase tracking-widest">天亮前</span>
+                <FaSun className="text-yellow-500 text-sm" />
+                <span className="text-xs text-gray-300">天亮前</span>
               </div>
               <div className="flex items-center gap-2">
                 <TacticNumberInput
@@ -301,13 +301,13 @@ function NotificationSettings() {
                   max={15}
                   disabled={saving}
                 />
-                <span className="text-[9px] text-gray-600 uppercase">Min</span>
+                <span className="text-xs text-gray-500">分钟</span>
               </div>
             </div>
-            <div className="flex items-center justify-between p-3 bg-black/40 border border-white/5 tactic-cut">
+            <div className="flex items-center justify-between p-3 bg-black/40 border border-white/10 tactic-cut">
               <div className="flex items-center gap-2">
-                <FaMoon className="text-blue-400 text-xs" />
-                <span className="text-[9px] text-gray-400 uppercase tracking-widest">天黑前</span>
+                <FaMoon className="text-blue-400 text-sm" />
+                <span className="text-xs text-gray-300">天黑前</span>
               </div>
               <div className="flex items-center gap-2">
                 <TacticNumberInput
@@ -317,7 +317,7 @@ function NotificationSettings() {
                   max={15}
                   disabled={saving}
                 />
-                <span className="text-[9px] text-gray-600 uppercase">Min</span>
+                <span className="text-xs text-gray-500">分钟</span>
               </div>
             </div>
           </div>
@@ -325,8 +325,8 @@ function NotificationSettings() {
       </div>
 
       {/* Footer */}
-      <div className="text-[8px] text-gray-700 text-center uppercase tracking-[0.3em]">
-        Notifications_Broadcast_To_Team_Chat
+      <div className="text-[10px] text-gray-600 text-center">
+        通知将发送到游戏内队伍聊天
       </div>
     </div>
   );
@@ -338,12 +338,12 @@ function TacticToggle({ checked, onChange, disabled }) {
     <button
       onClick={() => onChange(!checked)}
       disabled={disabled}
-      className={`w-8 h-4 tactic-cut flex items-center transition-all ${
+      className={`w-9 h-5 tactic-cut flex items-center transition-all ${
         checked ? 'bg-[#cd5241]' : 'bg-gray-800 border border-white/10'
       } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-90'}`}
     >
       <span
-        className={`w-3 h-3 tactic-cut bg-white transition-all ${
+        className={`w-3.5 h-3.5 tactic-cut bg-white transition-all ${
           checked ? 'ml-[18px]' : 'ml-0.5'
         }`}
       />
@@ -358,15 +358,15 @@ function TacticNumberInput({ value, onChange, min = 1, max = 15, disabled }) {
       <button
         onClick={() => value > min && onChange(value - 1)}
         disabled={disabled || value <= min}
-        className="w-5 h-5 flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-[10px] font-bold"
+        className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-xs font-bold"
       >
         -
       </button>
-      <span className="w-6 text-center text-[10px] font-mono font-bold text-white">{value}</span>
+      <span className="w-7 text-center text-xs font-mono font-bold text-white">{value}</span>
       <button
         onClick={() => value < max && onChange(value + 1)}
         disabled={disabled || value >= max}
-        className="w-5 h-5 flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-[10px] font-bold"
+        className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-xs font-bold"
       >
         +
       </button>
@@ -421,7 +421,7 @@ const TacticTextInput = forwardRef(({ value, onChange, placeholder, disabled }, 
       onBlur={handleBlur}
       placeholder={placeholder}
       disabled={disabled}
-      className={`w-full px-3 py-2 text-[10px] bg-black/60 border tactic-cut text-gray-200 placeholder-gray-700 outline-none transition-all ${
+      className={`w-full px-3 py-2.5 text-xs bg-black/60 border tactic-cut text-gray-200 placeholder-gray-600 outline-none transition-all ${
         isFocused ? 'border-[#cd5241]/50' : 'border-white/10'
       } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     />
