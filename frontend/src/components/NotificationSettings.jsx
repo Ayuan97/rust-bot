@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { FaBell, FaUser, FaShip, FaHelicopter, FaOilCan, FaBox, FaSync, FaSun, FaMoon, FaClock } from 'react-icons/fa';
 import { useToast } from './Toast';
 import api from '../services/api';
@@ -111,6 +111,7 @@ function NotificationSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+  const afkTemplateRef = useRef(null);
 
   useEffect(() => {
     fetchSettings();
@@ -246,20 +247,42 @@ function NotificationSettings() {
                         </div>
                       </div>
                       {/* 自定义消息模板 */}
-                      <div className="space-y-1">
+                      <div className="space-y-1.5">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[11px] text-gray-400">消息模板</span>
                           <span className="text-[10px] text-gray-600">(留空使用默认)</span>
                         </div>
                         <TextInput
+                          ref={afkTemplateRef}
                           value={settings.player_afk_template}
                           onChange={(val) => handleToggle('player_afk_template', val)}
                           placeholder="`{name}` 在 {position} 已挂机 {minutes} 分钟"
                           disabled={saving}
                         />
-                        <div className="text-[10px] text-gray-600 space-y-0.5">
-                          <div>变量: <span className="text-gray-400">{'{name}'}</span> 名字 | <span className="text-gray-400">{'{position}'}</span> 坐标 | <span className="text-gray-400">{'{minutes}'}</span> 分钟</div>
-                          <div className="text-gray-500">必须包含 {'{name}'}，最多 200 字符</div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] text-gray-500">点击插入:</span>
+                          {[
+                            { var: '{name}', label: '名字', required: true },
+                            { var: '{position}', label: '坐标' },
+                            { var: '{minutes}', label: '分钟' },
+                          ].map(item => (
+                            <button
+                              key={item.var}
+                              type="button"
+                              onClick={() => afkTemplateRef.current?.insertText(item.var)}
+                              disabled={saving}
+                              className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                                item.required
+                                  ? 'bg-rust-accent/20 text-rust-accent hover:bg-rust-accent/30'
+                                  : 'bg-dark-600 text-gray-400 hover:bg-dark-500 hover:text-gray-300'
+                              } disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                              {item.var} <span className="text-gray-500">{item.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="text-[10px] text-gray-600">
+                          必须包含 {'{name}'}，最多 200 字符
                         </div>
                       </div>
                     </div>
@@ -383,14 +406,37 @@ function NumberInput({ value, onChange, min = 1, max = 15, disabled }) {
   );
 }
 
-// 文本输入组件
-function TextInput({ value, onChange, placeholder, disabled }) {
+// 文本输入组件（支持通过 ref 插入文本）
+const TextInput = forwardRef(({ value, onChange, placeholder, disabled }, ref) => {
   const [localValue, setLocalValue] = useState(value || '');
   const [isFocused, setIsFocused] = useState(false);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     setLocalValue(value || '');
   }, [value]);
+
+  // 暴露插入文本的方法
+  useImperativeHandle(ref, () => ({
+    insertText: (text) => {
+      const input = inputRef.current;
+      if (!input) return;
+
+      const start = input.selectionStart || localValue.length;
+      const end = input.selectionEnd || localValue.length;
+      const newValue = localValue.slice(0, start) + text + localValue.slice(end);
+
+      setLocalValue(newValue);
+      onChange(newValue);
+
+      // 移动光标到插入文本之后
+      setTimeout(() => {
+        input.focus();
+        const newPos = start + text.length;
+        input.setSelectionRange(newPos, newPos);
+      }, 0);
+    }
+  }));
 
   const handleBlur = () => {
     setIsFocused(false);
@@ -401,6 +447,7 @@ function TextInput({ value, onChange, placeholder, disabled }) {
 
   return (
     <input
+      ref={inputRef}
       type="text"
       value={localValue}
       onChange={(e) => setLocalValue(e.target.value)}
@@ -413,6 +460,6 @@ function TextInput({ value, onChange, placeholder, disabled }) {
       } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     />
   );
-}
+});
 
 export default NotificationSettings;
