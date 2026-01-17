@@ -25,6 +25,8 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   player_online: true,
   player_offline: true,
   player_afk: true,
+  player_afk_minutes: 3,        // AFK 触发时间（分钟），默认 3 分钟
+  player_afk_message: '',       // AFK 自定义话术（空则使用默认）
   cargo_spawn: true,
   cargo_dock: true,
   cargo_egress: true,
@@ -1184,18 +1186,47 @@ class UserEventMonitor extends EventEmitter {
       }
 
       // 检测箱子来源
-      let crateSource = 'ch47'; // 默认是 CH47 投放
+      let crateSource = 'unknown';
 
-      // 检查是否在油井附近
-      const oilRigs = monuments.filter(m =>
-        m.token === 'oil_rig_small' || m.token === 'large_oil_rig'
-      );
-      for (const oilRig of oilRigs) {
-        const distance = getDistance(crate.x, crate.y, oilRig.x, oilRig.y);
-        if (distance <= EventTiming.OIL_RIG_CHINOOK_MAX_SPAWN_DISTANCE) {
-          crateSource = oilRig.token === 'oil_rig_small' ? 'small_oil_rig' : 'large_oil_rig';
-          break;
+      // 1. 优先检查是否有 CH47 投放记录（60秒内，200米内）
+      const dropInfo = eventData.ch47CrateDropInfo;
+      if (dropInfo) {
+        const timeSinceDrop = now - dropInfo.time;
+        const distanceToDrop = getDistance(crate.x, crate.y, dropInfo.x, dropInfo.y);
+
+        if (timeSinceDrop <= 60 * 1000 && distanceToDrop <= 200) {
+          crateSource = 'ch47';
+          // 使用后清除，避免重复匹配
+          eventData.ch47CrateDropInfo = null;
         }
+      }
+
+      // 2. 如果不是 CH47 投放，检查是否在油井附近（需要该油井最近被触发）
+      if (crateSource === 'unknown') {
+        const oilRigs = monuments.filter(m =>
+          m.token === 'oil_rig_small' || m.token === 'large_oil_rig'
+        );
+
+        for (const oilRig of oilRigs) {
+          const distance = getDistance(crate.x, crate.y, oilRig.x, oilRig.y);
+          if (distance <= EventTiming.OIL_RIG_CHINOOK_MAX_SPAWN_DISTANCE) {
+            // 检查该油井是否在 20 分钟内被触发过
+            const isSmallOil = oilRig.token === 'oil_rig_small';
+            const triggerTime = isSmallOil
+              ? eventData.lastEvents.smallOilRigTriggered
+              : eventData.lastEvents.largeOilRigTriggered;
+
+            if (triggerTime && (now - triggerTime) <= 20 * 60 * 1000) {
+              crateSource = isSmallOil ? 'small_oil_rig' : 'large_oil_rig';
+              break;
+            }
+          }
+        }
+      }
+
+      // 3. 仍然未知，默认为 CH47（可能是轮询错过了投放记录）
+      if (crateSource === 'unknown') {
+        crateSource = 'ch47';
       }
 
       eventData.lastEvents.lockedCrateSpawn = now;
@@ -1452,13 +1483,15 @@ class UserEventMonitor extends EventEmitter {
           oldState.lastOfflineTime = now;
         }
 
-        // 检测 AFK（玩家在线但位置不变超过5分钟）
+        // 检测 AFK（玩家在线但位置不变超过设定时间）
         if (member.isOnline) {
           const hasMoved = oldState.x !== member.x || oldState.y !== member.y;
+          const afkMinutes = this.notificationSettings?.player_afk_minutes || 3;
+          const afkThresholdSeconds = afkMinutes * 60;
 
           if (hasMoved) {
             // 如果之前是 AFK 状态，发送返回通知
-            if (oldState.afkSeconds >= 300) {
+            if (oldState.afkSeconds >= afkThresholdSeconds) {
               logger.server(serverId, `🏃 ${member.name} 已返回`);
 
               const payload = {
@@ -1482,9 +1515,9 @@ class UserEventMonitor extends EventEmitter {
             const timeSinceLastMove = Math.floor((now - oldState.lastMovement) / 1000);
             oldState.afkSeconds = timeSinceLastMove;
 
-            // 刚达到 5 分钟 AFK 阈值时发送通知
-            if (timeSinceLastMove >= 300 && timeSinceLastMove < 310) {
-              logger.server(serverId, `💤 ${member.name} 已挂机 5 分钟`);
+            // 刚达到 AFK 阈值时发送通知（在阈值后 10 秒内只触发一次）
+            if (timeSinceLastMove >= afkThresholdSeconds && timeSinceLastMove < afkThresholdSeconds + 10) {
+              logger.server(serverId, `💤 ${member.name} 已挂机 ${afkMinutes} 分钟`);
 
               const payload = {
                 userId: this.userId,
@@ -1501,10 +1534,17 @@ class UserEventMonitor extends EventEmitter {
 
               if (this.isNotificationEnabled('player_afk')) {
                 try {
-                  const msg = notify('player_afk', { name: member.name, minutes: 5 });
-                  if (msg) {
-                    await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-                  }
+                  // 固定格式：{name} 在 {position} [话术]
+                  const customText = this.notificationSettings?.player_afk_message;
+                  const defaultText = `已挂机 ${afkMinutes} 分钟`;
+
+                  // 用户自定义话术，支持 {minutes} 变量
+                  const text = (customText && customText.trim())
+                    ? customText.replace(/{minutes}/g, afkMinutes)
+                    : defaultText;
+
+                  const msg = `\`${member.name}\` 在 ${position} ${text}`;
+                  await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
                 } catch (e) {
                   logger.debug(`发送玩家挂机通知失败: ${e.message}`);
                 }

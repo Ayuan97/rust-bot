@@ -20,6 +20,8 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   player_online: true,
   player_offline: true,
   player_afk: true,
+  player_afk_minutes: 3,        // AFK 触发时间（分钟），默认 3 分钟
+  player_afk_message: '',       // AFK 自定义话术（空则使用默认）
 
   // 货船通知
   cargo_spawn: true,

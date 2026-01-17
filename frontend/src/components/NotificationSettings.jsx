@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FaBell, FaUser, FaShip, FaHelicopter, FaOilCan, FaBox, FaSync, FaSun, FaMoon } from 'react-icons/fa';
+import { FaBell, FaUser, FaShip, FaHelicopter, FaOilCan, FaBox, FaSync, FaSun, FaMoon, FaClock } from 'react-icons/fa';
 import { useToast } from './Toast';
 import api from '../services/api';
 
@@ -10,6 +10,8 @@ const DEFAULT_SETTINGS = {
   player_online: true,
   player_offline: true,
   player_afk: true,
+  player_afk_minutes: 3,        // AFK 触发时间（分钟）
+  player_afk_message: '',       // AFK 自定义话术
 
   // 货船通知
   cargo_spawn: true,
@@ -209,17 +211,54 @@ function NotificationSettings() {
             {/* 分组内容 */}
             <div className="p-2 space-y-1">
               {group.items.map(item => (
-                <div
-                  key={item.key}
-                  className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/5 transition-colors"
-                >
-                  <span className="text-xs text-gray-300">{item.label}</span>
-                  <ToggleSwitch
-                    checked={settings[item.key]}
-                    onChange={(checked) => handleToggle(item.key, checked)}
-                    disabled={saving}
-                    size="sm"
-                  />
+                <div key={item.key}>
+                  <div className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/5 transition-colors">
+                    <span className="text-xs text-gray-300">{item.label}</span>
+                    <ToggleSwitch
+                      checked={settings[item.key]}
+                      onChange={(checked) => handleToggle(item.key, checked)}
+                      disabled={saving}
+                      size="sm"
+                    />
+                  </div>
+                  {/* AFK 自定义设置 */}
+                  {item.key === 'player_afk' && settings.player_afk && (
+                    <div className="mx-2 mt-1 mb-2 p-2 bg-dark-700/50 rounded-md space-y-2">
+                      {/* 触发时间 */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <FaClock className="text-blue-400 text-[10px]" />
+                          <span className="text-[11px] text-gray-400">触发时间</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <NumberInput
+                            value={settings.player_afk_minutes}
+                            onChange={(val) => handleToggle('player_afk_minutes', val)}
+                            min={1}
+                            max={30}
+                            disabled={saving}
+                          />
+                          <span className="text-[10px] text-gray-500">分钟</span>
+                        </div>
+                      </div>
+                      {/* 自定义话术 */}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-gray-400">自定义话术</span>
+                          <span className="text-[10px] text-gray-600">(留空使用默认)</span>
+                        </div>
+                        <TextInput
+                          value={settings.player_afk_message}
+                          onChange={(val) => handleToggle('player_afk_message', val)}
+                          placeholder="已挂机 {minutes} 分钟"
+                          disabled={saving}
+                        />
+                        <div className="text-[10px] text-gray-600">
+                          格式: `名字` 在 坐标 <span className="text-gray-500">[你的话术]</span> | 变量: {'{minutes}'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -336,6 +375,38 @@ function NumberInput({ value, onChange, min = 1, max = 15, disabled }) {
         +
       </button>
     </div>
+  );
+}
+
+// 文本输入组件
+function TextInput({ value, onChange, placeholder, disabled }) {
+  const [localValue, setLocalValue] = useState(value || '');
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    setLocalValue(value || '');
+  }, [value]);
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    if (localValue !== value) {
+      onChange(localValue);
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      value={localValue}
+      onChange={(e) => setLocalValue(e.target.value)}
+      onFocus={() => setIsFocused(true)}
+      onBlur={handleBlur}
+      placeholder={placeholder}
+      disabled={disabled}
+      className={`w-full px-2 py-1.5 text-[11px] bg-dark-700 border rounded text-gray-200 placeholder-gray-600 outline-none transition-colors ${
+        isFocused ? 'border-rust-accent' : 'border-dark-600'
+      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+    />
   );
 }
 
