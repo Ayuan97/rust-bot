@@ -18,7 +18,7 @@ import {
 /**
  * FCM 配置组件 - 用于管理和诊断 FCM 凭证
  */
-function FCMSettings() {
+function FCMSettings({ onNavigateToPairing }) {
   const { isSubscriptionExpired } = useAuth();
   const [loading, setLoading] = useState(true);
   const [diagnosing, setDiagnosing] = useState(false);
@@ -302,7 +302,11 @@ function FCMSettings() {
                 toast.warning('订阅已过期，请先续费后再添加凭证');
                 return;
               }
-              setShowUpdateModal(true);
+              if (onNavigateToPairing) {
+                onNavigateToPairing();
+              } else {
+                setShowUpdateModal(true);
+              }
             }}
             className="btn btn-primary bg-rust-accent hover:bg-rust-accent/80"
           >

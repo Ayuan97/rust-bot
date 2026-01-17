@@ -1518,16 +1518,18 @@ class UserEventMonitor extends EventEmitter {
         const isDeathTimeChanged = oldState.deathTime !== member.deathTime;
 
         if (isAliveFlipToDead || isDeathTimeChanged) {
-          logger.server(serverId, `💀 ${member.name} 死亡 @ ${position}`);
+          // 使用 oldState 坐标（死亡前最后记录的位置），而不是 member 坐标（可能是复活后的位置）
+          const deathPosition = formatPosition(oldState.x, oldState.y, mapSize, true, false, monuments);
+          logger.server(serverId, `💀 ${member.name} 死亡 @ ${deathPosition}`);
 
           const payload = {
             userId: this.userId,
             serverId,
             steamId,
             name: member.name,
-            position,
-            x: member.x,
-            y: member.y,
+            position: deathPosition,
+            x: oldState.x,
+            y: oldState.y,
             deathTime: member.deathTime,
             time: now
           };
@@ -1537,7 +1539,7 @@ class UserEventMonitor extends EventEmitter {
 
           if (this.isNotificationEnabled('player_death')) {
             try {
-              const msg = notify('player_died', { name: member.name, position });
+              const msg = notify('player_died', { name: member.name, position: deathPosition });
               if (msg) {
                 await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
               }

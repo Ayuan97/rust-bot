@@ -6,6 +6,7 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma.js';
 import { authenticate } from '../middleware/auth.middleware.js';
+import globalManager from '../services/global-manager.service.js';
 
 const router = Router();
 
@@ -122,6 +123,20 @@ router.post('/notifications', async (req, res) => {
       ...(typeof notificationSettings.settings === 'object' ? notificationSettings.settings : {})
     };
 
+    // 刷新服务中的缓存（如果用户服务正在运行）
+    const userService = globalManager.getUserService(req.user.id);
+    if (userService) {
+      // 刷新事件监控服务的通知设置缓存
+      if (userService.eventMonitorService) {
+        await userService.eventMonitorService.loadNotificationSettings();
+      }
+      // 刷新昼夜提醒服务的设置缓存
+      if (userService.dayNightNotifier) {
+        await userService.dayNightNotifier.loadNotificationSettings();
+      }
+      console.log(`✅ 用户 ${req.user.id} 的通知设置缓存已刷新`);
+    }
+
     res.json({ success: true, settings });
   } catch (error) {
     console.error('❌ 更新通知设置失败:', error);
@@ -146,6 +161,18 @@ router.post('/notifications/reset', async (req, res) => {
         settings: DEFAULT_NOTIFICATION_SETTINGS
       }
     });
+
+    // 刷新服务中的缓存（如果用户服务正在运行）
+    const userService = globalManager.getUserService(req.user.id);
+    if (userService) {
+      if (userService.eventMonitorService) {
+        await userService.eventMonitorService.loadNotificationSettings();
+      }
+      if (userService.dayNightNotifier) {
+        await userService.dayNightNotifier.loadNotificationSettings();
+      }
+      console.log(`✅ 用户 ${req.user.id} 的通知设置已重置并刷新缓存`);
+    }
 
     res.json({ success: true, settings: DEFAULT_NOTIFICATION_SETTINGS });
   } catch (error) {

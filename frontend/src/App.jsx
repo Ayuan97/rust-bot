@@ -250,7 +250,7 @@ function App() {
       case 'devices':
         return <DeviceControl serverId={activeServer?.id} isReadOnly={isSubscriptionExpired} />;
       case 'settings':
-        return <ServerSettingsView server={activeServer} />;
+        return <ServerSettingsView server={activeServer} onNavigateToPairing={() => setActiveView('pairing')} />;
       case 'admin':
         return (
           <div className="h-full animate-fade-in">
@@ -400,7 +400,7 @@ function NavIcon({ id, icon, active, onClick, label }) {
   );
 }
 
-function ServerSettingsView({ server }) {
+function ServerSettingsView({ server, onNavigateToPairing }) {
   const isDemo = !server;
   const [activeTab, setActiveTab] = useState('fcm');
 
@@ -459,7 +459,7 @@ function ServerSettingsView({ server }) {
       <div className="flex-1 tactic-border tactic-cut p-1 bg-black/40 overflow-hidden">
         <div className="bg-black/40 h-full overflow-y-auto p-6">
           {/* FCM 配置 */}
-          {activeTab === 'fcm' && <FCMSettings />}
+          {activeTab === 'fcm' && <FCMSettings onNavigateToPairing={onNavigateToPairing} />}
 
           {/* 通知设置 */}
           {activeTab === 'notifications' && <NotificationSettingsEmbed />}
