@@ -13,6 +13,9 @@ const router = Router();
 // 所有路由都需要认证
 router.use(authenticate);
 
+// AFK 消息模板默认值
+const DEFAULT_AFK_TEMPLATE = '`{name}` 在 {position} 已挂机 {minutes} 分钟';
+
 // 默认通知设置
 const DEFAULT_NOTIFICATION_SETTINGS = {
   // 玩家通知
@@ -21,7 +24,7 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   player_offline: true,
   player_afk: true,
   player_afk_minutes: 3,        // AFK 触发时间（分钟），默认 3 分钟
-  player_afk_message: '',       // AFK 自定义话术（空则使用默认）
+  player_afk_template: '',      // AFK 消息模板（空则使用默认）
 
   // 货船通知
   cargo_spawn: true,
@@ -85,12 +88,69 @@ router.get('/notifications', async (req, res) => {
 });
 
 /**
+ * 验证 AFK 消息模板
+ * @param {string} template - 用户输入的模板
+ * @returns {{ valid: boolean, error?: string }} 验证结果
+ */
+function validateAfkTemplate(template) {
+  // 空字符串表示使用默认模板，合法
+  if (!template || !template.trim()) {
+    return { valid: true };
+  }
+
+  const trimmed = template.trim();
+
+  // 长度限制
+  if (trimmed.length > 200) {
+    return { valid: false, error: 'AFK 模板长度不能超过 200 字符' };
+  }
+
+  // 必须包含 {name} 变量
+  if (!trimmed.includes('{name}')) {
+    return { valid: false, error: 'AFK 模板必须包含 {name} 变量' };
+  }
+
+  // 检查是否只包含合法变量
+  const allowedVars = ['{name}', '{position}', '{minutes}'];
+  const varPattern = /\{[^}]+\}/g;
+  const foundVars = trimmed.match(varPattern) || [];
+
+  for (const v of foundVars) {
+    if (!allowedVars.includes(v)) {
+      return { valid: false, error: `不支持的变量: ${v}，仅支持 {name}, {position}, {minutes}` };
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
  * POST /api/settings/notifications
  * 更新当前用户的通知设置（部分更新）
  */
 router.post('/notifications', async (req, res) => {
   try {
     const partialSettings = req.body;
+
+    // 验证 AFK 模板（如果包含在请求中）
+    if ('player_afk_template' in partialSettings) {
+      const validation = validateAfkTemplate(partialSettings.player_afk_template);
+      if (!validation.valid) {
+        return res.status(400).json({ success: false, error: validation.error });
+      }
+      // 清理：去除首尾空格
+      if (partialSettings.player_afk_template) {
+        partialSettings.player_afk_template = partialSettings.player_afk_template.trim();
+      }
+    }
+
+    // 验证 AFK 分钟数
+    if ('player_afk_minutes' in partialSettings) {
+      const minutes = partialSettings.player_afk_minutes;
+      if (typeof minutes !== 'number' || minutes < 1 || minutes > 30) {
+        return res.status(400).json({ success: false, error: 'AFK 触发时间必须在 1-30 分钟之间' });
+      }
+    }
 
     // 查找或创建用户的通知设置
     let notificationSettings = await prisma.notification_settings.findUnique({

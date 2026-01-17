@@ -11,7 +11,7 @@ const DEFAULT_SETTINGS = {
   player_offline: true,
   player_afk: true,
   player_afk_minutes: 3,        // AFK 触发时间（分钟）
-  player_afk_message: '',       // AFK 自定义话术
+  player_afk_template: '',      // AFK 消息模板
 
   // 货船通知
   cargo_spawn: true,
@@ -140,10 +140,14 @@ function NotificationSettings() {
 
     try {
       setSaving(true);
-      await api.post('/settings/notifications', { [key]: value });
+      const response = await api.post('/settings/notifications', { [key]: value });
+      if (!response.data.success) {
+        throw new Error(response.data.error || '保存失败');
+      }
     } catch (error) {
       setSettings(prev => ({ ...prev, [key]: oldValue }));
-      toast.error('保存设置失败');
+      const errorMsg = error.response?.data?.error || error.message || '保存设置失败';
+      toast.error(errorMsg);
     } finally {
       setSaving(false);
     }
@@ -241,20 +245,21 @@ function NotificationSettings() {
                           <span className="text-[10px] text-gray-500">分钟</span>
                         </div>
                       </div>
-                      {/* 自定义话术 */}
+                      {/* 自定义消息模板 */}
                       <div className="space-y-1">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] text-gray-400">自定义话术</span>
+                          <span className="text-[11px] text-gray-400">消息模板</span>
                           <span className="text-[10px] text-gray-600">(留空使用默认)</span>
                         </div>
                         <TextInput
-                          value={settings.player_afk_message}
-                          onChange={(val) => handleToggle('player_afk_message', val)}
-                          placeholder="已挂机 {minutes} 分钟"
+                          value={settings.player_afk_template}
+                          onChange={(val) => handleToggle('player_afk_template', val)}
+                          placeholder="`{name}` 在 {position} 已挂机 {minutes} 分钟"
                           disabled={saving}
                         />
-                        <div className="text-[10px] text-gray-600">
-                          格式: `名字` 在 坐标 <span className="text-gray-500">[你的话术]</span> | 变量: {'{minutes}'}
+                        <div className="text-[10px] text-gray-600 space-y-0.5">
+                          <div>变量: <span className="text-gray-400">{'{name}'}</span> 名字 | <span className="text-gray-400">{'{position}'}</span> 坐标 | <span className="text-gray-400">{'{minutes}'}</span> 分钟</div>
+                          <div className="text-gray-500">必须包含 {'{name}'}，最多 200 字符</div>
                         </div>
                       </div>
                     </div>

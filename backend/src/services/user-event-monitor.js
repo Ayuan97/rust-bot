@@ -26,7 +26,7 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   player_offline: true,
   player_afk: true,
   player_afk_minutes: 3,        // AFK 触发时间（分钟），默认 3 分钟
-  player_afk_message: '',       // AFK 自定义话术（空则使用默认）
+  player_afk_template: '',      // AFK 消息模板（空则使用默认）
   cargo_spawn: true,
   cargo_dock: true,
   cargo_egress: true,
@@ -1534,16 +1534,16 @@ class UserEventMonitor extends EventEmitter {
 
               if (this.isNotificationEnabled('player_afk')) {
                 try {
-                  // 固定格式：{name} 在 {position} [话术]
-                  const customText = this.notificationSettings?.player_afk_message;
-                  const defaultText = `已挂机 ${afkMinutes} 分钟`;
+                  // 默认模板
+                  const defaultTemplate = '`{name}` 在 {position} 已挂机 {minutes} 分钟';
+                  const template = this.notificationSettings?.player_afk_template?.trim() || defaultTemplate;
 
-                  // 用户自定义话术，支持 {minutes} 变量
-                  const text = (customText && customText.trim())
-                    ? customText.replace(/{minutes}/g, afkMinutes)
-                    : defaultText;
+                  // 替换变量
+                  const msg = template
+                    .replace(/{name}/g, member.name)
+                    .replace(/{position}/g, position)
+                    .replace(/{minutes}/g, afkMinutes);
 
-                  const msg = `\`${member.name}\` 在 ${position} ${text}`;
                   await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
                 } catch (e) {
                   logger.debug(`发送玩家挂机通知失败: ${e.message}`);
