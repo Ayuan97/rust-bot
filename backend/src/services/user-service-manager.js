@@ -140,7 +140,7 @@ class UserServiceManager extends EventEmitter {
     try {
       // 查询用户基本信息和订阅
       const [userRows] = await db.query(
-        `SELECT u.*, s.id as subscriptionId, s.planId, s.startDate, s.endDate
+        `SELECT u.*, s.id as subscriptionId, s.planType, s.status as subscriptionStatus, s.startDate, s.endDate
          FROM users u
          LEFT JOIN subscriptions s ON u.id = s.userId
          WHERE u.id = ?`,
@@ -185,7 +185,8 @@ class UserServiceManager extends EventEmitter {
       if (this.user.subscriptionId) {
         this.user.subscriptions = {
           id: this.user.subscriptionId,
-          planId: this.user.planId,
+          planType: this.user.planType,
+          status: this.user.subscriptionStatus,
           startDate: this.user.startDate,
           endDate: this.user.endDate
         };

@@ -267,8 +267,8 @@ router.get('/users', async (req, res) => {
         isAdmin: !!user.isAdmin,
         subscriptions: user.subscriptionId ? {
           id: user.subscriptionId,
-          planId: user.planId,
           planType: user.planType,
+          status: user.subscriptionStatus,
           startDate: user.startDate,
           endDate: user.endDate
         } : null,
@@ -322,7 +322,7 @@ router.get('/users/:id', async (req, res) => {
 
     // 获取用户基本信息
     const [userRows] = await db.query(
-      `SELECT u.*, s.id as subscriptionId, s.planId, s.planType, s.startDate, s.endDate
+      `SELECT u.*, s.id as subscriptionId, s.planType, s.status as subscriptionStatus, s.startDate, s.endDate
        FROM users u
        LEFT JOIN subscriptions s ON u.id = s.userId
        WHERE u.id = ?`,
@@ -397,8 +397,8 @@ router.get('/users/:id', async (req, res) => {
       isAdmin: !!user.isAdmin,
       subscriptions: user.subscriptionId ? {
         id: user.subscriptionId,
-        planId: user.planId,
         planType: user.planType,
+        status: user.subscriptionStatus,
         startDate: user.startDate,
         endDate: user.endDate
       } : null,

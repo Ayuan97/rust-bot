@@ -652,9 +652,9 @@ class PaymentService {
         );
       } else {
         await conn.query(
-          `INSERT INTO subscriptions (id, userId, planId, planType, startDate, endDate, amount, paymentMethod, transactionId, createdAt, updatedAt)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-          [uuidv4(), order.userId, order.planId, order.planType || 'MONTHLY', now, newEndDate, order.amount, order.paymentMethod, tradeNo]
+          `INSERT INTO subscriptions (id, userId, planType, startDate, endDate, amount, paymentMethod, transactionId, createdAt, updatedAt)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+          [uuidv4(), order.userId, order.planType || 'MONTHLY', now, newEndDate, order.amount, order.paymentMethod, tradeNo]
         );
       }
 
