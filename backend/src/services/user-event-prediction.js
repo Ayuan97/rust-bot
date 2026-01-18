@@ -187,7 +187,7 @@ class UserEventPrediction extends EventEmitter {
       if (!pattern) {
         // 首次记录，创建新模式
         const [result] = await db.query(
-          `INSERT INTO event_spawn_patterns (serverAddress, eventType, sampleCount, recentIntervals, lastEventTime, createdAt, updatedAt)
+          `INSERT INTO event_spawn_patterns (serverAddress, eventType, sampleCount, recentIntervals, lastEventTime, createdAt, lastUpdated)
            VALUES (?, ?, 0, '[]', ?, NOW(), NOW())`,
           [serverAddress, eventType, eventTimeDate]
         );
@@ -211,7 +211,7 @@ class UserEventPrediction extends EventEmitter {
       // 计算与上次事件的间隔
       if (!pattern.lastEventTime) {
         await db.query(
-          'UPDATE event_spawn_patterns SET lastEventTime = ?, updatedAt = NOW() WHERE id = ?',
+          'UPDATE event_spawn_patterns SET lastEventTime = ?, lastUpdated = NOW() WHERE id = ?',
           [eventTimeDate, pattern.id]
         );
 
@@ -246,7 +246,7 @@ class UserEventPrediction extends EventEmitter {
         if (interval > threshold) {
           logger.debug(`物理服务器 ${serverAddress}: ${eventType} 间隔异常 (${interval}ms > ${threshold}ms)，可能是服务器重启`);
           await db.query(
-            'UPDATE event_spawn_patterns SET lastEventTime = ?, updatedAt = NOW() WHERE id = ?',
+            'UPDATE event_spawn_patterns SET lastEventTime = ?, lastUpdated = NOW() WHERE id = ?',
             [eventTimeDate, pattern.id]
           );
 
@@ -276,7 +276,7 @@ class UserEventPrediction extends EventEmitter {
           maxInterval = ?,
           recentIntervals = ?,
           lastEventTime = ?,
-          updatedAt = NOW()
+          lastUpdated = NOW()
         WHERE id = ?`,
         [
           pattern.sampleCount + 1,
