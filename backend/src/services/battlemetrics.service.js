@@ -6,6 +6,13 @@ class BattlemetricsService extends EventEmitter {
     super();
     this.servers = new Map(); // serverId -> battlemetrics data
     this.proxyAgent = null;
+    this.apiToken = process.env.BATTLEMETRICS_API_TOKEN || null;
+
+    if (this.apiToken) {
+      console.log('✅ Battlemetrics API Token 已配置 (300 请求/分钟)');
+    } else {
+      console.log('⚠️  Battlemetrics API Token 未配置 (限制 60 请求/分钟)');
+    }
   }
 
   /**
@@ -17,14 +24,25 @@ class BattlemetricsService extends EventEmitter {
   }
 
   /**
-   * 获取 axios 配置（带代理）
+   * 获取 axios 配置（带代理和认证）
    */
   _getAxiosConfig() {
-    const config = { timeout: 15000 };
+    const config = {
+      timeout: 15000,
+      headers: {}
+    };
+
+    // 添加认证 Token
+    if (this.apiToken) {
+      config.headers['Authorization'] = `Bearer ${this.apiToken}`;
+    }
+
+    // 添加代理
     if (this.proxyAgent) {
       config.httpsAgent = this.proxyAgent;
       config.httpAgent = this.proxyAgent;
     }
+
     return config;
   }
 

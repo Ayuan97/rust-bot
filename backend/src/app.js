@@ -16,6 +16,7 @@ validateEnv();
 // 新的多租户服务管理器
 import globalServiceManager from './services/global-manager.service.js';
 import websocketService from './services/websocket.service.js';
+import battlemetricsScheduler from './services/battlemetrics-scheduler.service.js';
 
 // 路由
 import serverRoutes from './routes/server.routes.js';
@@ -107,6 +108,10 @@ server.listen(PORT, async () => {
     console.log(`   成功: ${result.success} 个用户`);
     console.log(`   失败: ${result.failed} 个用户\n`);
 
+    // 启动 Battlemetrics 调度器
+    battlemetricsScheduler.setGlobalServiceManager(globalServiceManager);
+    battlemetricsScheduler.start();
+
     // 监听全局服务管理器事件
     globalServiceManager.on('subscription:expiring:soon', (data) => {
       console.log(`⚠️  用户 ${data.username} 的订阅将在 ${data.daysLeft} 天后过期`);
@@ -145,6 +150,9 @@ const gracefulShutdown = async (signal) => {
   }, 10000);
 
   try {
+    // 0. 停止 Battlemetrics 调度器
+    battlemetricsScheduler.stop();
+
     // 1. 停止所有用户服务（最重要的清理）
     try {
       console.log('\n🛑 停止所有用户服务...');

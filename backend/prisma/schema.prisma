@@ -309,6 +309,64 @@ enum subscriptions_status {
   CANCELLED
 }
 
+// ============================================================
+// 公共服务器信息 (Battlemetrics 数据缓存)
+// ============================================================
+model public_servers {
+  // 主键
+  battlemetricsId    String    @id @db.VarChar(50)
+
+  // 基础信息
+  name               String    @db.VarChar(255)
+  ip                 String?   @db.VarChar(45)
+  port               Int?                          // 游戏端口
+  address            String?   @db.VarChar(100)    // ip:port 组合
+  status             String    @default("online") @db.VarChar(20)
+
+  // 玩家信息
+  players            Int       @default(0)
+  maxPlayers         Int       @default(0)
+  queuedPlayers      Int       @default(0)
+
+  // 排名与性能
+  rank               Int?
+  fps                Int?
+  fpsAvg             Int?
+  uptime             Int?                          // 服务器运行时间(秒)
+  entityCount        Int?                          // 实体数量
+
+  // 地图信息
+  map                String?   @db.VarChar(100)
+  mapSize            Int?
+  seed               Int?
+
+  // 清档信息
+  wipeTime           DateTime?                     // 上次清档时间
+  wipeCycle          String?   @db.VarChar(20)     // WEEKLY/BIWEEKLY/MONTHLY
+  nextWipe           DateTime?                     // 预估下次清档
+
+  // 媒体资源
+  headerImage        String?   @db.Text
+  logoImage          String?   @db.Text
+  rustMapsUrl        String?   @db.VarChar(255)
+  rustMapsThumbnail  String?   @db.Text
+
+  // 服务器属性
+  country            String?   @db.VarChar(50)
+  official           Boolean   @default(false)
+  modded             Boolean   @default(false)
+  pve                Boolean   @default(false)
+  description        String?   @db.Text
+  url                String?   @db.VarChar(255)
+
+  // 时间戳
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([name])
+  @@index([updatedAt])
+}
+
 model subscription_plans {
   id          String   @id @default(uuid())
   code        String   @unique @db.VarChar(50)  // 套餐代码: WEEKLY, BIWEEKLY, MONTHLY 等

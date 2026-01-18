@@ -1493,7 +1493,7 @@ router.get('/:id/events', async (req, res) => {
 
 /**
  * GET /api/servers/:id/battlemetrics
- * 获取 Battlemetrics 详细信息
+ * 获取 Battlemetrics 详细信息（从 public_servers 缓存读取）
  */
 router.get('/:id/battlemetrics', async (req, res) => {
   try {
@@ -1511,7 +1511,7 @@ router.get('/:id/battlemetrics', async (req, res) => {
 
     let battlemetricsId = server.battlemetricsId;
 
-    // 如果没有保存的 Battlemetrics ID，尝试查找
+    // 如果没有保存的 Battlemetrics ID，尝试查找并保存
     if (!battlemetricsId) {
       battlemetricsId = await battlemetricsService.searchServerByAddress(
         server.ip,
@@ -1533,8 +1533,89 @@ router.get('/:id/battlemetrics', async (req, res) => {
       }
     }
 
-    // 获取详细信息
-    const bmInfo = await battlemetricsService.getServerInfo(battlemetricsId);
+    // 优先从 public_servers 缓存读取
+    let bmInfo = await prisma.public_servers.findUnique({
+      where: { battlemetricsId }
+    });
+
+    // 如果缓存不存在或数据太旧（超过 5 分钟），则实时获取
+    const CACHE_TTL = 5 * 60 * 1000; // 5 分钟
+    const isStale = !bmInfo || (Date.now() - bmInfo.updatedAt.getTime() > CACHE_TTL);
+
+    if (isStale) {
+      // 实时获取并更新缓存
+      const freshData = await battlemetricsService.getServerInfo(battlemetricsId);
+
+      if (freshData) {
+        // 更新或创建缓存
+        bmInfo = await prisma.public_servers.upsert({
+          where: { battlemetricsId },
+          create: {
+            battlemetricsId,
+            name: freshData.name || 'Unknown',
+            ip: freshData.ip,
+            port: freshData.port,
+            address: freshData.address,
+            status: freshData.status || 'online',
+            players: freshData.players || 0,
+            maxPlayers: freshData.maxPlayers || 0,
+            queuedPlayers: freshData.queuedPlayers || 0,
+            rank: freshData.rank,
+            fps: freshData.fps,
+            fpsAvg: freshData.fpsAvg,
+            uptime: freshData.uptime,
+            entityCount: freshData.entityCount,
+            map: freshData.map,
+            mapSize: freshData.mapSize,
+            seed: freshData.worldSeed,
+            wipeTime: freshData.lastWipe ? new Date(freshData.lastWipe) : null,
+            wipeCycle: freshData.wipeCycle,
+            nextWipe: freshData.nextWipe ? new Date(freshData.nextWipe) : null,
+            headerImage: freshData.headerImage,
+            logoImage: freshData.logoImage,
+            rustMapsUrl: freshData.rustMapsUrl,
+            rustMapsThumbnail: freshData.rustMapsThumbnail,
+            country: freshData.country,
+            official: freshData.official || false,
+            modded: freshData.modded || false,
+            pve: freshData.pve || false,
+            description: freshData.description,
+            url: freshData.url
+          },
+          update: {
+            name: freshData.name || 'Unknown',
+            ip: freshData.ip,
+            port: freshData.port,
+            address: freshData.address,
+            status: freshData.status || 'online',
+            players: freshData.players || 0,
+            maxPlayers: freshData.maxPlayers || 0,
+            queuedPlayers: freshData.queuedPlayers || 0,
+            rank: freshData.rank,
+            fps: freshData.fps,
+            fpsAvg: freshData.fpsAvg,
+            uptime: freshData.uptime,
+            entityCount: freshData.entityCount,
+            map: freshData.map,
+            mapSize: freshData.mapSize,
+            seed: freshData.worldSeed,
+            wipeTime: freshData.lastWipe ? new Date(freshData.lastWipe) : null,
+            wipeCycle: freshData.wipeCycle,
+            nextWipe: freshData.nextWipe ? new Date(freshData.nextWipe) : null,
+            headerImage: freshData.headerImage,
+            logoImage: freshData.logoImage,
+            rustMapsUrl: freshData.rustMapsUrl,
+            rustMapsThumbnail: freshData.rustMapsThumbnail,
+            country: freshData.country,
+            official: freshData.official || false,
+            modded: freshData.modded || false,
+            pve: freshData.pve || false,
+            description: freshData.description,
+            url: freshData.url
+          }
+        });
+      }
+    }
 
     if (!bmInfo) {
       return res.status(500).json({
@@ -1552,7 +1633,7 @@ router.get('/:id/battlemetrics', async (req, res) => {
 
 /**
  * GET /api/servers/:id/battlemetrics/top-players
- * 获取服务器玩家排行
+ * 获取服务器玩家排行（实时调用，不缓存）
  */
 router.get('/:id/battlemetrics/top-players', async (req, res) => {
   try {
