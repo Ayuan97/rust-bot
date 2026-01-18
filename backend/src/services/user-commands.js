@@ -4,7 +4,7 @@
  */
 
 import { EventEmitter } from 'events';
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import logger from '../utils/logger.js';
 import translate from 'translate';
 import { parseTimeString } from '../utils/timer.js';
@@ -272,16 +272,11 @@ class UserCommands extends EventEmitter {
    */
   async getDeviceCommands(serverId) {
     try {
-      const devices = await prisma.devices.findMany({
-        where: {
-          serverId,
-          userId: this.userId,
-          command: {
-            not: null
-          },
-          isActive: true
-        }
-      });
+      const [devices] = await db.query(
+        `SELECT * FROM devices
+         WHERE serverId = ? AND userId = ? AND command IS NOT NULL AND isActive = 1`,
+        [serverId, this.userId]
+      );
 
       return devices;
     } catch (error) {

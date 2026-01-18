@@ -1,6 +1,6 @@
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import globalServiceManager from './global-manager.service.js';
 import logger from '../utils/logger.js';
 
@@ -49,12 +49,15 @@ class WebSocketService {
       }
 
       // 3. 从数据库获取用户信息
-      const user = await prisma.users.findUnique({
-        where: { id: decoded.userId },
-        include: {
-          subscriptions: true
-        }
-      });
+      const [userRows] = await db.query(
+        `SELECT u.*, s.endDate as subscriptionEndDate
+         FROM users u
+         LEFT JOIN subscriptions s ON u.id = s.userId
+         WHERE u.id = ?`,
+        [decoded.userId]
+      );
+
+      const user = userRows[0];
 
       if (!user) {
         return next(new Error('用户不存在'));
@@ -66,7 +69,7 @@ class WebSocketService {
       }
 
       // 5. 计算订阅状态（不拦截，只标记）
-      const isSubscriptionExpired = !user.subscriptions || new Date() > user.subscriptions.endDate;
+      const isSubscriptionExpired = !user.subscriptionEndDate || new Date() > new Date(user.subscriptionEndDate);
 
       // 6. 将用户信息附加到 socket
       socket.userId = user.id;
@@ -143,12 +146,12 @@ class WebSocketService {
           }
 
           // 从数据库获取服务器配置，同时验证所有权
-          const server = await prisma.servers.findFirst({
-            where: {
-              id: serverId,
-              userId: socket.userId  // 确保服务器属于当前用户
-            }
-          });
+          const [serverRows] = await db.query(
+            'SELECT * FROM servers WHERE id = ? AND userId = ?',
+            [serverId, socket.userId]
+          );
+
+          const server = serverRows[0];
 
           if (!server) {
             return socket.emit('server:connect:error', { serverId, error: '服务器不存在或无权访问' });

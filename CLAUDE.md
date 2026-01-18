@@ -6,7 +6,7 @@
 
 **Rust+ Web Dashboard** - 多租户 SaaS Rust 游戏服务器管理面板
 
-**技术栈**: Node.js/Express/Prisma/MySQL/Socket.io | React/Vite/Tailwind | @liamcottle/rustplus.js
+**技术栈**: Node.js/Express/MySQL/Socket.io | React/Vite/Tailwind | @liamcottle/rustplus.js
 
 ## 核心架构
 
@@ -34,10 +34,11 @@ GlobalServiceManager (全局单例)
 ```
 backend/
 ├── src/app.js                    # 入口
+├── src/lib/db.js                 # 数据库连接池 (mysql2)
 ├── src/services/                 # 服务层 (global-manager, user-*, websocket, proxy, alipay)
 ├── src/routes/                   # API 路由 (/api/auth, /api/servers, /api/pairing...)
 ├── src/utils/                    # 工具 (coordinates, event-constants, messages, logger)
-└── prisma/schema.prisma          # 数据库 Schema
+└── sql/init.sql                  # 数据库初始化脚本
 
 frontend/src/
 ├── services/                     # API/Socket 客户端
@@ -51,8 +52,13 @@ frontend/src/
 **后端**:
 - ES6 模块语法
 - 服务继承 EventEmitter，事件驱动
-- Prisma 查询必须添加 userId 过滤
+- 数据库查询使用 mysql2，必须添加 userId 过滤
 - 日志不使用 Emoji
+
+**数据库变更** (严格遵守):
+- 使用 `backend/sql/init.sql` 定义表结构
+- 变更通过 SQL 脚本执行 (`backend/sql/migrations/`)
+- 禁止使用 ORM 迁移工具
 
 **前端**:
 - 函数式组件 + Hooks

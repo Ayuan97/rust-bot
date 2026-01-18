@@ -5,7 +5,7 @@
 
 import express from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import globalServiceManager from '../services/global-manager.service.js';
 import paymentService from '../services/payment.service.js';
 
@@ -25,42 +25,34 @@ router.put('/users/:id/adjust', async (req, res) => {
     const adminId = req.user.id;
 
     // 1. 获取当前状态
-    const user = await prisma.users.findUnique({
-      where: { id },
-      include: { subscriptions: true }
-    });
+    const [userRows] = await db.query(
+      'SELECT u.*, s.id as subscriptionId, s.endDate as subscriptionEndDate FROM users u LEFT JOIN subscriptions s ON u.id = s.userId WHERE u.id = ?',
+      [id]
+    );
+    const user = userRows[0];
 
     if (!user) {
       return res.status(404).json({ success: false, error: '用户不存在' });
     }
 
-    const updates = {};
     const logDetails = { reason, before: {}, after: {} };
 
     // 2. 调整余额
     if (balanceDelta !== undefined && balanceDelta !== 0) {
       const oldBalance = parseFloat(user.balance);
       const newBalance = Math.max(0, oldBalance + parseFloat(balanceDelta));
-      
-      await prisma.users.update({
-        where: { id },
-        data: { balance: newBalance }
-      });
 
-      // 记录贸易流水
-      await prisma.orders.create({
-        data: {
-          id: `ADJ_${Date.now()}`,
-          userId: id,
-          type: 'ADMIN_ADJUST',
-          amount: parseFloat(balanceDelta),
-          balanceBefore: oldBalance,
-          balanceAfter: newBalance,
-          status: 'PAID',
-          notes: `管理员手动调整: ${reason || '无备注'}`,
-          updatedAt: new Date()
-        }
-      });
+      await db.query(
+        'UPDATE users SET balance = ?, updatedAt = NOW() WHERE id = ?',
+        [newBalance, id]
+      );
+
+      // 记录交易流水
+      await db.query(
+        `INSERT INTO orders (id, userId, type, amount, balanceBefore, balanceAfter, status, notes, createdAt, updatedAt)
+         VALUES (?, ?, 'ADMIN_ADJUST', ?, ?, ?, 'PAID', ?, NOW(), NOW())`,
+        [`ADJ_${Date.now()}`, id, parseFloat(balanceDelta), oldBalance, newBalance, `管理员手动调整: ${reason || '无备注'}`]
+      );
 
       logDetails.before.balance = oldBalance;
       logDetails.after.balance = newBalance;
@@ -68,16 +60,17 @@ router.put('/users/:id/adjust', async (req, res) => {
 
     // 3. 调整服务时间
     if (daysDelta !== undefined && daysDelta !== 0) {
-      const sub = user.subscriptions;
-      let currentEndDate = sub && sub.endDate > new Date() ? sub.endDate : new Date();
+      let currentEndDate = user.subscriptionEndDate && new Date(user.subscriptionEndDate) > new Date()
+        ? new Date(user.subscriptionEndDate)
+        : new Date();
       const newEndDate = new Date(currentEndDate.getTime() + parseInt(daysDelta) * 24 * 60 * 60 * 1000);
 
-      await prisma.subscriptions.update({
-        where: { userId: id },
-        data: { endDate: newEndDate }
-      });
+      await db.query(
+        'UPDATE subscriptions SET endDate = ?, updatedAt = NOW() WHERE userId = ?',
+        [newEndDate, id]
+      );
 
-      logDetails.before.endDate = sub ? sub.endDate : null;
+      logDetails.before.endDate = user.subscriptionEndDate || null;
       logDetails.after.endDate = newEndDate;
 
       // 如果加了时间且服务没跑，启动它
@@ -87,15 +80,11 @@ router.put('/users/:id/adjust', async (req, res) => {
     }
 
     // 4. 记录管理员日志
-    await prisma.admin_logs.create({
-      data: {
-        id: `AL_${Date.now()}`,
-        adminId,
-        targetUserId: id,
-        action: 'ADJUST_ASSETS',
-        details: logDetails
-      }
-    });
+    await db.query(
+      `INSERT INTO admin_logs (id, adminId, targetUserId, action, details, createdAt)
+       VALUES (?, ?, ?, 'ADJUST_ASSETS', ?, NOW())`,
+      [`AL_${Date.now()}`, adminId, id, JSON.stringify(logDetails)]
+    );
 
     res.json({ success: true, message: '资产调整成功' });
   } catch (error) {
@@ -132,57 +121,49 @@ router.get('/orders/analytics', async (req, res) => {
     const todayStart = new Date(now.setHours(0, 0, 0, 0));
 
     // 1. 基础汇总
-    const stats = await prisma.orders.aggregate({
-      where: { status: 'PAID' },
-      _sum: { amount: true },
-      _count: { id: true }
-    });
+    const [statsRows] = await db.query(
+      'SELECT SUM(amount) as totalAmount, COUNT(*) as totalCount FROM orders WHERE status = ?',
+      ['PAID']
+    );
 
-    const todayStats = await prisma.orders.aggregate({
-      where: { 
-        status: 'PAID',
-        createdAt: { gte: todayStart }
-      },
-      _sum: { amount: true }
-    });
+    const [todayStatsRows] = await db.query(
+      'SELECT SUM(amount) as todayAmount FROM orders WHERE status = ? AND createdAt >= ?',
+      ['PAID', todayStart]
+    );
 
     // 2. 幸存者总余额 (系统负债)
-    const totalBalance = await prisma.users.aggregate({
-      _sum: { balance: true }
-    });
+    const [balanceRows] = await db.query(
+      'SELECT SUM(balance) as totalBalance FROM users'
+    );
 
     // 3. 按类型统计 (授权包分布)
-    const planDistribution = await prisma.orders.groupBy({
-      by: ['planType'],
-      where: { 
-        status: 'PAID',
-        type: 'AUTH_BUY'
-      },
-      _count: { id: true }
-    });
+    const [planDistribution] = await db.query(
+      `SELECT planType, COUNT(*) as count FROM orders
+       WHERE status = 'PAID' AND type = 'AUTH_BUY'
+       GROUP BY planType`
+    );
 
     // 4. 最近30天趋势
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    const dailyTrend = await prisma.orders.groupBy({
-      by: ['createdAt'],
-      where: {
-        status: 'PAID',
-        createdAt: { gte: thirtyDaysAgo }
-      },
-      _sum: { amount: true }
-    });
+
+    const [dailyTrend] = await db.query(
+      `SELECT DATE(createdAt) as date, SUM(amount) as amount FROM orders
+       WHERE status = 'PAID' AND createdAt >= ?
+       GROUP BY DATE(createdAt)
+       ORDER BY date ASC`,
+      [thirtyDaysAgo]
+    );
 
     res.json({
       success: true,
       data: {
-        totalRevenue: stats._sum.amount || 0,
-        totalOrders: stats._count.id,
-        todayRevenue: todayStats._sum.amount || 0,
-        systemDebt: totalBalance._sum.balance || 0,
-        planDistribution,
-        dailyTrend
+        totalRevenue: parseFloat(statsRows[0].totalAmount) || 0,
+        totalOrders: statsRows[0].totalCount || 0,
+        todayRevenue: parseFloat(todayStatsRows[0].todayAmount) || 0,
+        systemDebt: parseFloat(balanceRows[0].totalBalance) || 0,
+        planDistribution: planDistribution.map(p => ({ planType: p.planType, _count: { id: p.count } })),
+        dailyTrend: dailyTrend.map(d => ({ createdAt: d.date, _sum: { amount: parseFloat(d.amount) } }))
       }
     });
   } catch (error) {
@@ -205,65 +186,58 @@ router.get('/users', async (req, res) => {
       planType = '' // 'TRIAL', 'MONTHLY', 'QUARTERLY', 'YEARLY'
     } = req.query;
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     const take = parseInt(limit);
 
     // 构建查询条件
-    const where = {};
+    let whereClause = '1=1';
+    const params = [];
 
     // 搜索条件（用户名或邮箱）
     if (search) {
-      where.OR = [
-        { username: { contains: search } },
-        { email: { contains: search } }
-      ];
+      whereClause += ' AND (u.username LIKE ? OR u.email LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`);
     }
 
     // 状态筛选
     if (status === 'active') {
-      where.isActive = true;
+      whereClause += ' AND u.isActive = 1';
     } else if (status === 'inactive') {
-      where.isActive = false;
+      whereClause += ' AND u.isActive = 0';
     }
 
     // 订阅类型筛选
     if (planType) {
-      where.subscriptions = {
-        planType: planType
-      };
+      whereClause += ' AND s.planType = ?';
+      params.push(planType);
     }
 
-    // 过期用户筛选（包括未激活）
+    // 过期用户筛选
     if (status === 'expired' || status === 'not_activated') {
-      where.subscriptions = {
-        ...where.subscriptions,
-        endDate: {
-          lt: new Date()
-        }
-      };
+      whereClause += ' AND s.endDate < NOW()';
     }
 
     // 查询用户
-    const [users, total] = await Promise.all([
-      prisma.users.findMany({
-        where,
-        skip,
-        take,
-        include: {
-          subscriptions: true,
-          _count: {
-            select: {
-              servers: true,
-              orders: true
-            }
-          }
-        },
-        orderBy: {
-          createdAt: 'desc'
-        }
-      }),
-      prisma.users.count({ where })
-    ]);
+    const [users] = await db.query(
+      `SELECT u.*, s.id as subscriptionId, s.planId, s.planType, s.startDate, s.endDate,
+        (SELECT COUNT(*) FROM servers WHERE userId = u.id) as serverCount,
+        (SELECT COUNT(*) FROM orders WHERE userId = u.id) as orderCount
+       FROM users u
+       LEFT JOIN subscriptions s ON u.id = s.userId
+       WHERE ${whereClause}
+       ORDER BY u.createdAt DESC
+       LIMIT ? OFFSET ?`,
+      [...params, take, offset]
+    );
+
+    // 统计总数
+    const [countResult] = await db.query(
+      `SELECT COUNT(DISTINCT u.id) as total FROM users u
+       LEFT JOIN subscriptions s ON u.id = s.userId
+       WHERE ${whereClause}`,
+      params
+    );
+    const total = countResult[0].total;
 
     // 获取服务运行状态
     const usersWithStatus = users.map(user => {
@@ -282,17 +256,23 @@ router.get('/users', async (req, res) => {
         if (userService.fcmService) {
           serviceStatus.fcmListening = userService.fcmService.isListening;
         }
-        
+
         // 预估内存占用: 基础5MB + (服务器*2) + (FCM*1)
         serviceStatus.ramUsage = 5 + (serviceStatus.connectedServers.length * 2) + (serviceStatus.fcmListening ? 1 : 0);
       }
 
       return {
         ...user,
-        serverCount: user._count.servers,
-        orderCount: user._count.orders,
-        serviceStatus,
-        _count: undefined
+        isActive: !!user.isActive,
+        isAdmin: !!user.isAdmin,
+        subscriptions: user.subscriptionId ? {
+          id: user.subscriptionId,
+          planId: user.planId,
+          planType: user.planType,
+          startDate: user.startDate,
+          endDate: user.endDate
+        } : null,
+        serviceStatus
       };
     });
 
@@ -340,29 +320,15 @@ router.get('/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const user = await prisma.users.findUnique({
-      where: { id },
-      include: {
-        subscriptions: true,
-        servers: {
-          include: {
-            _count: {
-              select: { devices: true }
-            }
-          }
-        },
-        orders: {
-          orderBy: { createdAt: 'desc' },
-          take: 10
-        },
-        _count: {
-          select: {
-            servers: true,
-            orders: true
-          }
-        }
-      }
-    });
+    // 获取用户基本信息
+    const [userRows] = await db.query(
+      `SELECT u.*, s.id as subscriptionId, s.planId, s.planType, s.startDate, s.endDate
+       FROM users u
+       LEFT JOIN subscriptions s ON u.id = s.userId
+       WHERE u.id = ?`,
+      [id]
+    );
+    const user = userRows[0];
 
     if (!user) {
       return res.status(404).json({
@@ -371,24 +337,37 @@ router.get('/users/:id', async (req, res) => {
       });
     }
 
+    // 获取用户服务器列表
+    const [servers] = await db.query(
+      `SELECT s.*, (SELECT COUNT(*) FROM devices WHERE serverId = s.id) as deviceCount
+       FROM servers s WHERE s.userId = ?`,
+      [id]
+    );
+
+    // 获取最近10个订单
+    const [orders] = await db.query(
+      'SELECT * FROM orders WHERE userId = ? ORDER BY createdAt DESC LIMIT 10',
+      [id]
+    );
+
+    // 计算统计数据
+    const [serverCountResult] = await db.query(
+      'SELECT COUNT(*) as count FROM servers WHERE userId = ?',
+      [id]
+    );
+    const [orderCountResult] = await db.query(
+      'SELECT COUNT(*) as count FROM orders WHERE userId = ?',
+      [id]
+    );
+    const [eventCountResult] = await db.query(
+      'SELECT COUNT(*) as count FROM event_logs WHERE userId = ?',
+      [id]
+    );
+
     // 计算总消费
-    const totalSpent = user.orders
+    const totalSpent = orders
       .filter(order => order.status === 'PAID')
       .reduce((sum, order) => sum + parseFloat(order.amount), 0);
-
-    // 手动计算事件日志数量（通过用户的所有服务器）
-    const userServerIds = await prisma.servers.findMany({
-      where: { userId: id },
-      select: { id: true }
-    });
-
-    const eventCount = await prisma.event_logs.count({
-      where: {
-        serverId: {
-          in: userServerIds.map(s => s.id)
-        }
-      }
-    });
 
     // 获取服务状态
     const serviceStatus = {
@@ -411,14 +390,33 @@ router.get('/users/:id', async (req, res) => {
       }
     }
 
+    // 格式化用户数据
+    const formattedUser = {
+      ...user,
+      isActive: !!user.isActive,
+      isAdmin: !!user.isAdmin,
+      subscriptions: user.subscriptionId ? {
+        id: user.subscriptionId,
+        planId: user.planId,
+        planType: user.planType,
+        startDate: user.startDate,
+        endDate: user.endDate
+      } : null,
+      servers: servers.map(s => ({
+        ...s,
+        _count: { devices: s.deviceCount }
+      })),
+      orders
+    };
+
     res.json({
       success: true,
       data: {
-        user,
+        user: formattedUser,
         stats: {
-          serverCount: user._count.servers,
-          eventCount: eventCount,
-          orderCount: user._count.orders,
+          serverCount: serverCountResult[0].count,
+          eventCount: eventCountResult[0].count,
+          orderCount: orderCountResult[0].count,
           totalSpent
         },
         serviceStatus
@@ -449,11 +447,19 @@ router.put('/users/:id/status', async (req, res) => {
       });
     }
 
+    // 获取用户当前状态
+    const [userRows] = await db.query('SELECT * FROM users WHERE id = ?', [id]);
+    const user = userRows[0];
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: '用户不存在' });
+    }
+
     // 更新用户状态
-    const user = await prisma.users.update({
-      where: { id },
-      data: { isActive }
-    });
+    await db.query(
+      'UPDATE users SET isActive = ?, updatedAt = NOW() WHERE id = ?',
+      [isActive ? 1 : 0, id]
+    );
 
     // 如果禁用用户，停止其服务
     if (!isActive && globalServiceManager.userServices.has(id)) {
@@ -463,12 +469,10 @@ router.put('/users/:id/status', async (req, res) => {
 
     // 如果启用用户且订阅有效，创建服务
     if (isActive && !globalServiceManager.userServices.has(id)) {
-      const userWithSub = await prisma.users.findUnique({
-        where: { id },
-        include: { subscriptions: true }
-      });
+      const [subRows] = await db.query('SELECT * FROM subscriptions WHERE userId = ?', [id]);
+      const subscription = subRows[0];
 
-      if (userWithSub.subscriptions && new Date() < userWithSub.subscriptions.endDate) {
+      if (subscription && new Date() < new Date(subscription.endDate)) {
         await globalServiceManager.createUserService(id);
         console.log(`管理员启用用户 ${user.username}，已创建服务`);
       }
@@ -477,7 +481,7 @@ router.put('/users/:id/status', async (req, res) => {
     res.json({
       success: true,
       message: isActive ? '用户已启用' : '用户已禁用',
-      data: user
+      data: { ...user, isActive }
     });
   } catch (error) {
     console.error('更新用户状态失败:', error);
@@ -513,14 +517,16 @@ router.put('/users/:id/subscription', async (req, res) => {
     }
 
     // 更新订阅
-    const subscription = await prisma.subscriptions.update({
-      where: { userId: id },
-      data: { endDate: newEndDate }
-    });
+    await db.query(
+      'UPDATE subscriptions SET endDate = ?, updatedAt = NOW() WHERE userId = ?',
+      [newEndDate, id]
+    );
 
     // 如果订阅有效且服务未运行，创建服务
-    const user = await prisma.users.findUnique({ where: { id } });
-    if (user.isActive && new Date() < newEndDate && !globalServiceManager.userServices.has(id)) {
+    const [userRows] = await db.query('SELECT * FROM users WHERE id = ?', [id]);
+    const user = userRows[0];
+
+    if (user && user.isActive && new Date() < newEndDate && !globalServiceManager.userServices.has(id)) {
       await globalServiceManager.createUserService(id);
       console.log(`管理员延长用户 ${user.username} 订阅，已创建服务`);
     }
@@ -528,7 +534,7 @@ router.put('/users/:id/subscription', async (req, res) => {
     res.json({
       success: true,
       message: '订阅时间已更新',
-      data: subscription
+      data: { userId: id, endDate: newEndDate }
     });
   } catch (error) {
     console.error('更新订阅失败:', error);
@@ -549,13 +555,11 @@ router.delete('/users/:id', async (req, res) => {
     const adminId = req.user.id;
 
     // 1. 检查用户是否存在
-    const user = await prisma.users.findUnique({
-      where: { id },
-      include: {
-        subscriptions: true,
-        servers: true
-      }
-    });
+    const [userRows] = await db.query(
+      'SELECT * FROM users WHERE id = ?',
+      [id]
+    );
+    const user = userRows[0];
 
     if (!user) {
       return res.status(404).json({
@@ -589,28 +593,46 @@ router.delete('/users/:id', async (req, res) => {
       await globalServiceManager.removeUserService(id, '管理员删除用户');
     }
 
-    // 6. 删除数据库记录（Prisma 会自动级联删除关联数据）
-    await prisma.users.delete({
-      where: { id }
-    });
+    // 获取服务器数量
+    const [serverCountResult] = await db.query(
+      'SELECT COUNT(*) as count FROM servers WHERE userId = ?',
+      [id]
+    );
+
+    // 6. 删除数据库记录（手动级联删除）
+    // 先删除关联数据
+    const [serverIds] = await db.query('SELECT id FROM servers WHERE userId = ?', [id]);
+    if (serverIds.length > 0) {
+      const serverIdList = serverIds.map(s => s.id);
+      await db.query(`DELETE FROM devices WHERE serverId IN (?)`, [serverIdList]);
+      await db.query(`DELETE FROM event_logs WHERE serverId IN (?)`, [serverIdList]);
+    }
+    await db.query('DELETE FROM servers WHERE userId = ?', [id]);
+    await db.query('DELETE FROM orders WHERE userId = ?', [id]);
+    await db.query('DELETE FROM subscriptions WHERE userId = ?', [id]);
+    await db.query('DELETE FROM notification_settings WHERE userId = ?', [id]);
+    await db.query('DELETE FROM event_predictions WHERE userId = ?', [id]);
+    await db.query('DELETE FROM extended_teammates WHERE userId = ?', [id]);
+    await db.query('DELETE FROM users WHERE id = ?', [id]);
 
     // 7. 记录管理员操作日志
-    await prisma.admin_logs.create({
-      data: {
-        id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    await db.query(
+      `INSERT INTO admin_logs (id, adminId, targetUserId, action, details, createdAt)
+       VALUES (?, ?, ?, 'DELETE_USER', ?, NOW())`,
+      [
+        `log_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         adminId,
-        targetUserId: id,
-        action: 'DELETE_USER',
-        details: {
+        id,
+        JSON.stringify({
           username: user.username,
           email: user.email,
-          serversCount: user.servers.length,
+          serversCount: serverCountResult[0].count,
           reason: req.body.reason || '管理员操作'
-        }
-      }
-    });
+        })
+      ]
+    );
 
-    console.log(`🗑️ 管理员 ${req.user.username} 删除了用户 ${user.username}`);
+    console.log(`管理员 ${req.user.username} 删除了用户 ${user.username}`);
 
     res.json({
       success: true,
@@ -677,15 +699,13 @@ router.get('/users/:id/servers', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const servers = await prisma.servers.findMany({
-      where: { userId: id },
-      include: {
-        _count: {
-          select: { devices: true }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    const [servers] = await db.query(
+      `SELECT s.*, (SELECT COUNT(*) FROM devices WHERE serverId = s.id) as deviceCount
+       FROM servers s
+       WHERE s.userId = ?
+       ORDER BY s.createdAt DESC`,
+      [id]
+    );
 
     // 获取连接状态
     const serversWithStatus = servers.map(server => {
@@ -699,9 +719,7 @@ router.get('/users/:id/servers', async (req, res) => {
 
       return {
         ...server,
-        deviceCount: server._count.devices,
-        connected,
-        _count: undefined
+        connected
       };
     });
 
@@ -727,24 +745,24 @@ router.get('/users/:id/events', async (req, res) => {
     const { id } = req.params;
     const { page = 1, limit = 50 } = req.query;
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     const take = parseInt(limit);
 
-    const [events, total] = await Promise.all([
-      prisma.event_logs.findMany({
-        where: { userId: id },
-        skip,
-        take,
-        orderBy: { createdAt: 'desc' }
-      }),
-      prisma.event_logs.count({ where: { userId: id } })
-    ]);
+    const [events] = await db.query(
+      'SELECT * FROM event_logs WHERE userId = ? ORDER BY createdAt DESC LIMIT ? OFFSET ?',
+      [id, take, offset]
+    );
+
+    const [countResult] = await db.query(
+      'SELECT COUNT(*) as total FROM event_logs WHERE userId = ?',
+      [id]
+    );
 
     res.json({
       success: true,
       data: {
         events,
-        total,
+        total: countResult[0].total,
         page: parseInt(page),
         limit: parseInt(limit)
       }
@@ -771,36 +789,47 @@ router.get('/orders', async (req, res) => {
       userId = ''
     } = req.query;
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     const take = parseInt(limit);
 
-    const where = {};
-    if (status) where.status = status;
-    if (userId) where.userId = userId;
+    let whereClause = '1=1';
+    const params = [];
 
-    const [orders, total] = await Promise.all([
-      prisma.orders.findMany({
-        where,
-        skip,
-        take,
-        include: {
-          users: {
-            select: {
-              username: true,
-              email: true
-            }
-          }
-        },
-        orderBy: { createdAt: 'desc' }
-      }),
-      prisma.orders.count({ where })
-    ]);
+    if (status) {
+      whereClause += ' AND o.status = ?';
+      params.push(status);
+    }
+    if (userId) {
+      whereClause += ' AND o.userId = ?';
+      params.push(userId);
+    }
+
+    const [orders] = await db.query(
+      `SELECT o.*, u.username, u.email
+       FROM orders o
+       LEFT JOIN users u ON o.userId = u.id
+       WHERE ${whereClause}
+       ORDER BY o.createdAt DESC
+       LIMIT ? OFFSET ?`,
+      [...params, take, offset]
+    );
+
+    const [countResult] = await db.query(
+      `SELECT COUNT(*) as total FROM orders o WHERE ${whereClause}`,
+      params
+    );
+
+    // 格式化订单数据
+    const formattedOrders = orders.map(order => ({
+      ...order,
+      users: order.username ? { username: order.username, email: order.email } : null
+    }));
 
     res.json({
       success: true,
       data: {
-        orders,
-        total,
+        orders: formattedOrders,
+        total: countResult[0].total,
         page: parseInt(page),
         limit: parseInt(limit)
       }
@@ -825,78 +854,64 @@ router.get('/stats', async (req, res) => {
     const todayStart = new Date(now.setHours(0, 0, 0, 0));
 
     // 用户统计
-    const [
-      totalUsers,
-      activeUsers,
-      trialUsers,
-      bannedUsers,
-      expiringSoonUsers,
-      expiredUsers
-    ] = await Promise.all([
-      prisma.users.count(),
-      prisma.users.count({ where: { isActive: true } }),
-      prisma.users.count({
-        where: {
-          subscriptions: { planType: 'TRIAL' }
-        }
-      }),
-      prisma.users.count({ where: { isActive: false } }),
-      prisma.users.count({
-        where: {
-          subscriptions: {
-            endDate: {
-              gte: now,
-              lte: sevenDaysLater
-            }
-          }
-        }
-      }),
-      prisma.users.count({
-        where: {
-          subscriptions: {
-            endDate: { lt: now }
-          }
-        }
-      })
-    ]);
+    const [totalUsersResult] = await db.query('SELECT COUNT(*) as count FROM users');
+    const [activeUsersResult] = await db.query('SELECT COUNT(*) as count FROM users WHERE isActive = 1');
+    const [trialUsersResult] = await db.query(
+      `SELECT COUNT(DISTINCT u.id) as count FROM users u
+       INNER JOIN subscriptions s ON u.id = s.userId
+       WHERE s.planType = 'TRIAL'`
+    );
+    const [bannedUsersResult] = await db.query('SELECT COUNT(*) as count FROM users WHERE isActive = 0');
+    const [expiringSoonResult] = await db.query(
+      `SELECT COUNT(DISTINCT u.id) as count FROM users u
+       INNER JOIN subscriptions s ON u.id = s.userId
+       WHERE s.endDate >= ? AND s.endDate <= ?`,
+      [new Date(), sevenDaysLater]
+    );
+    const [expiredUsersResult] = await db.query(
+      `SELECT COUNT(DISTINCT u.id) as count FROM users u
+       INNER JOIN subscriptions s ON u.id = s.userId
+       WHERE s.endDate < ?`,
+      [new Date()]
+    );
 
+    const totalUsers = totalUsersResult[0].count;
+    const activeUsers = activeUsersResult[0].count;
+    const trialUsers = trialUsersResult[0].count;
+    const bannedUsers = bannedUsersResult[0].count;
+    const expiringSoonUsers = expiringSoonResult[0].count;
+    const expiredUsers = expiredUsersResult[0].count;
     const paidUsers = totalUsers - trialUsers;
 
     // 订单统计
-    const [
-      totalOrders,
-      pendingOrders,
-      successOrders,
-      todayOrders
-    ] = await Promise.all([
-      prisma.orders.count(),
-      prisma.orders.count({ where: { status: 'PENDING' } }),
-      prisma.orders.count({ where: { status: 'PAID' } }),
-      prisma.orders.count({
-        where: {
-          createdAt: { gte: todayStart }
-        }
-      })
-    ]);
+    const [totalOrdersResult] = await db.query('SELECT COUNT(*) as count FROM orders');
+    const [pendingOrdersResult] = await db.query("SELECT COUNT(*) as count FROM orders WHERE status = 'PENDING'");
+    const [successOrdersResult] = await db.query("SELECT COUNT(*) as count FROM orders WHERE status = 'PAID'");
+    const [todayOrdersResult] = await db.query(
+      'SELECT COUNT(*) as count FROM orders WHERE createdAt >= ?',
+      [todayStart]
+    );
 
     // 收入统计
-    const successOrdersData = await prisma.orders.findMany({
-      where: { status: 'PAID' },
-      select: { amount: true, createdAt: true }
-    });
+    const [revenueResult] = await db.query(
+      "SELECT SUM(amount) as total FROM orders WHERE status = 'PAID'"
+    );
+    const [todayRevenueResult] = await db.query(
+      "SELECT SUM(amount) as total FROM orders WHERE status = 'PAID' AND createdAt >= ?",
+      [todayStart]
+    );
 
-    const totalRevenue = successOrdersData.reduce((sum, order) => sum + parseFloat(order.amount), 0);
-    const todayRevenue = successOrdersData
-      .filter(order => order.createdAt >= todayStart)
-      .reduce((sum, order) => sum + parseFloat(order.amount), 0);
+    const totalRevenue = parseFloat(revenueResult[0].total) || 0;
+    const todayRevenue = parseFloat(todayRevenueResult[0].total) || 0;
 
     // Rust+ 业务统计
-    const [totalServers, totalDevices, todayEvents, totalEventLogs] = await Promise.all([
-      prisma.servers.count(),
-      prisma.devices.count(),
-      prisma.event_logs.count({ where: { createdAt: { gte: todayStart } } }),
-      prisma.event_logs.count()
-    ]);
+    const [totalServersResult] = await db.query('SELECT COUNT(*) as count FROM servers');
+    const [totalDevicesResult] = await db.query('SELECT COUNT(*) as count FROM devices');
+    const [todayEventsResult] = await db.query(
+      'SELECT COUNT(*) as count FROM event_logs WHERE createdAt >= ?',
+      [todayStart]
+    );
+    const [totalEventLogsResult] = await db.query('SELECT COUNT(*) as count FROM event_logs');
 
     // 连接状态统计
     let connectedServers = 0;
@@ -927,23 +942,23 @@ router.get('/stats', async (req, res) => {
         expiredUsers,
 
         // 订单统计
-        totalOrders,
-        pendingOrders,
-        successOrders,
+        totalOrders: totalOrdersResult[0].count,
+        pendingOrders: pendingOrdersResult[0].count,
+        successOrders: successOrdersResult[0].count,
         totalRevenue,
         todayRevenue,
-        todayOrders,
+        todayOrders: todayOrdersResult[0].count,
 
         // Rust+ 业务统计
-        totalServers,
+        totalServers: totalServersResult[0].count,
         connectedServers,
-        totalDevices,
+        totalDevices: totalDevicesResult[0].count,
         activeConnections,
         fcmActiveUsers,
 
         // 事件统计
-        todayEvents,
-        totalEventLogs
+        todayEvents: todayEventsResult[0].count,
+        totalEventLogs: totalEventLogsResult[0].count
       }
     });
   } catch (error) {

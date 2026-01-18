@@ -4,9 +4,10 @@
  */
 
 import express from 'express';
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import { authenticate, requireActiveSubscription } from '../middleware/auth.middleware.js';
 import globalServiceManager from '../services/global-manager.service.js';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
 
@@ -46,13 +47,12 @@ router.get('/status', async (req, res) => {
     }
 
     // 检查是否有保存的凭证（从数据库）
-    const servers = await prisma.servers.findMany({
-      where: {
-        userId: req.user.id,
-        fcmCredentials: { not: null }
-      },
-      take: 1
-    });
+    const [servers] = await db.query(
+      `SELECT fcmCredentials FROM servers
+       WHERE userId = ? AND fcmCredentials IS NOT NULL
+       LIMIT 1`,
+      [req.user.id]
+    );
 
     const hasStoredCredentials = servers.length > 0 && servers[0].fcmCredentials;
 
@@ -88,13 +88,12 @@ router.post('/start', requireActiveSubscription, async (req, res) => {
     }
 
     // 检查是否已有保存的凭证
-    const servers = await prisma.servers.findMany({
-      where: {
-        userId: req.user.id,
-        fcmCredentials: { not: null }
-      },
-      take: 1
-    });
+    const [servers] = await db.query(
+      `SELECT fcmCredentials FROM servers
+       WHERE userId = ? AND fcmCredentials IS NOT NULL
+       LIMIT 1`,
+      [req.user.id]
+    );
 
     if (servers.length === 0 || !servers[0].fcmCredentials) {
       return res.status(400).json({
@@ -103,7 +102,10 @@ router.post('/start', requireActiveSubscription, async (req, res) => {
       });
     }
 
-    const credentials = servers[0].fcmCredentials;
+    // 解析 JSON（如果是字符串）
+    const credentials = typeof servers[0].fcmCredentials === 'string'
+      ? JSON.parse(servers[0].fcmCredentials)
+      : servers[0].fcmCredentials;
 
     // 启动 FCM 监听
     await fcmService.start(credentials);
@@ -185,7 +187,7 @@ router.post('/register/simple', requireActiveSubscription, async (req, res) => {
       });
     }
 
-    console.log(`📝 用户 ${req.user.username} 配置 FCM 凭证:`);
+    console.log(`[Pairing] 用户 ${req.user.username} 配置 FCM 凭证:`);
     console.log('   Android ID:', params.gcm_android_id);
     console.log('   Steam ID:', params.steam_id || '未提供');
 
@@ -216,32 +218,26 @@ router.post('/register/simple', requireActiveSubscription, async (req, res) => {
     };
 
     // 保存凭证到数据库（存储在第一个服务器或创建临时占位符）
-    let server = await prisma.servers.findFirst({
-      where: { userId: req.user.id }
-    });
+    const [serverRows] = await db.query(
+      'SELECT id FROM servers WHERE userId = ? LIMIT 1',
+      [req.user.id]
+    );
 
-    if (!server) {
+    const now = new Date();
+    if (serverRows.length === 0) {
       // 如果用户还没有服务器，创建一个占位符用于存储 FCM 凭证
-      server = await prisma.servers.create({
-        data: {
-          id: `fcm-${req.user.id}`,
-          userId: req.user.id,
-          name: 'FCM 凭证占位符',
-          ip: '0.0.0.0',
-          port: '0',
-          playerId: '0',
-          playerToken: 'placeholder',
-          fcmCredentials: credentials,
-          isActive: false, // 标记为非活跃，仅用于存储凭证
-          updatedAt: new Date()
-        }
-      });
+      const serverId = `fcm-${req.user.id}`;
+      await db.query(
+        `INSERT INTO servers (id, userId, name, ip, port, playerId, playerToken, fcmCredentials, isActive, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [serverId, req.user.id, 'FCM 凭证占位符', '0.0.0.0', '0', '0', 'placeholder', JSON.stringify(credentials), 0, now, now]
+      );
     } else {
       // 更新现有服务器的凭证
-      await prisma.servers.update({
-        where: { id: server.id },
-        data: { fcmCredentials: credentials, updatedAt: new Date() }
-      });
+      await db.query(
+        'UPDATE servers SET fcmCredentials = ?, updatedAt = ? WHERE id = ?',
+        [JSON.stringify(credentials), now, serverRows[0].id]
+      );
     }
 
     // 启动 FCM 监听
@@ -250,7 +246,7 @@ router.post('/register/simple', requireActiveSubscription, async (req, res) => {
       await fcmService.start(credentials);
     }
 
-    console.log(`✅ 用户 ${req.user.username} FCM 凭证已保存并开始监听\n`);
+    console.log(`[Pairing] 用户 ${req.user.username} FCM 凭证已保存并开始监听`);
 
     res.json({
       success: true,
@@ -280,13 +276,12 @@ router.post('/register/simple', requireActiveSubscription, async (req, res) => {
 router.get('/credentials', async (req, res) => {
   try {
     // 从数据库获取凭证
-    const servers = await prisma.servers.findMany({
-      where: {
-        userId: req.user.id,
-        fcmCredentials: { not: null }
-      },
-      take: 1
-    });
+    const [servers] = await db.query(
+      `SELECT fcmCredentials FROM servers
+       WHERE userId = ? AND fcmCredentials IS NOT NULL
+       LIMIT 1`,
+      [req.user.id]
+    );
 
     if (servers.length === 0 || !servers[0].fcmCredentials) {
       return res.json({
@@ -296,7 +291,9 @@ router.get('/credentials', async (req, res) => {
       });
     }
 
-    const credentials = servers[0].fcmCredentials;
+    const credentials = typeof servers[0].fcmCredentials === 'string'
+      ? JSON.parse(servers[0].fcmCredentials)
+      : servers[0].fcmCredentials;
 
     res.json({
       success: true,
@@ -322,38 +319,36 @@ router.get('/credentials', async (req, res) => {
  */
 router.post('/reset', async (req, res) => {
   try {
-    console.log(`🔄 用户 ${req.user.username} 重置 FCM 凭证...`);
+    console.log(`[Pairing] 用户 ${req.user.username} 重置 FCM 凭证...`);
 
     // 1. 停止 FCM 监听
     const fcmService = getUserFCMService(req.user.id);
     if (fcmService) {
       await fcmService.stop();
-      console.log('   ✅ FCM 监听已停止');
+      console.log('   FCM 监听已停止');
     }
 
     // 2. 获取用户的 RustPlus 服务并断开所有连接
     const userService = globalServiceManager.getUserService(req.user.id);
     if (userService && userService.rustPlusService) {
       await userService.rustPlusService.disconnectAll();
-      console.log('   ✅ 所有服务器连接已断开');
+      console.log('   所有服务器连接已断开');
     }
 
     // 3. 从数据库删除 FCM 凭证（但保留服务器信息）
-    const servers = await prisma.servers.findMany({
-      where: {
-        userId: req.user.id,
-        fcmCredentials: { not: null }
-      }
-    });
+    const [servers] = await db.query(
+      `SELECT id FROM servers WHERE userId = ? AND fcmCredentials IS NOT NULL`,
+      [req.user.id]
+    );
 
     for (const server of servers) {
-      await prisma.servers.update({
-        where: { id: server.id },
-        data: { fcmCredentials: null, updatedAt: new Date() }
-      });
+      await db.query(
+        'UPDATE servers SET fcmCredentials = NULL, updatedAt = ? WHERE id = ?',
+        [new Date(), server.id]
+      );
     }
 
-    console.log(`   ✅ 已清除 ${servers.length} 个服务器的 FCM 凭证`);
+    console.log(`   已清除 ${servers.length} 个服务器的 FCM 凭证`);
 
     res.json({
       success: true,
@@ -376,13 +371,12 @@ router.post('/reset', async (req, res) => {
 router.get('/credentials/diagnose', async (req, res) => {
   try {
     // 从数据库获取凭证
-    const servers = await prisma.servers.findMany({
-      where: {
-        userId: req.user.id,
-        fcmCredentials: { not: null }
-      },
-      take: 1
-    });
+    const [servers] = await db.query(
+      `SELECT fcmCredentials FROM servers
+       WHERE userId = ? AND fcmCredentials IS NOT NULL
+       LIMIT 1`,
+      [req.user.id]
+    );
 
     const issues = [];
     const info = {};
@@ -403,7 +397,9 @@ router.get('/credentials/diagnose', async (req, res) => {
       });
     }
 
-    const creds = servers[0].fcmCredentials;
+    const creds = typeof servers[0].fcmCredentials === 'string'
+      ? JSON.parse(servers[0].fcmCredentials)
+      : servers[0].fcmCredentials;
 
     // 2. 检查凭证类型
     if (!creds.gcm) {
@@ -564,13 +560,12 @@ router.post('/credentials/verify', async (req, res) => {
     }
 
     // 从数据库获取凭证
-    const servers = await prisma.servers.findMany({
-      where: {
-        userId: req.user.id,
-        fcmCredentials: { not: null }
-      },
-      take: 1
-    });
+    const [servers] = await db.query(
+      `SELECT fcmCredentials FROM servers
+       WHERE userId = ? AND fcmCredentials IS NOT NULL
+       LIMIT 1`,
+      [req.user.id]
+    );
 
     if (servers.length === 0 || !servers[0].fcmCredentials) {
       return res.status(400).json({
@@ -579,7 +574,9 @@ router.post('/credentials/verify', async (req, res) => {
       });
     }
 
-    const credentials = servers[0].fcmCredentials;
+    const credentials = typeof servers[0].fcmCredentials === 'string'
+      ? JSON.parse(servers[0].fcmCredentials)
+      : servers[0].fcmCredentials;
 
     // 调用 active check
     await fcmService.testConnection(credentials);

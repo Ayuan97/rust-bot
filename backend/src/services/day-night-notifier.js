@@ -4,7 +4,7 @@
  * 天黑：从配置的分钟数开始，每分钟提醒直到天黑
  */
 
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import logger from '../utils/logger.js';
 
 // 默认通知设置
@@ -36,22 +36,29 @@ class DayNightNotifier {
    */
   async loadNotificationSettings() {
     try {
-      let settings = await prisma.notification_settings.findUnique({
-        where: { userId: this.userId }
-      });
+      const [rows] = await db.query(
+        'SELECT * FROM notification_settings WHERE userId = ?',
+        [this.userId]
+      );
+
+      let settings = rows[0];
 
       if (!settings) {
-        settings = await prisma.notification_settings.create({
-          data: {
-            userId: this.userId,
-            settings: DEFAULT_SETTINGS
-          }
-        });
+        await db.query(
+          'INSERT INTO notification_settings (userId, settings, createdAt, updatedAt) VALUES (?, ?, NOW(), NOW())',
+          [this.userId, JSON.stringify(DEFAULT_SETTINGS)]
+        );
+        settings = { settings: DEFAULT_SETTINGS };
       }
+
+      // 解析 JSON 字符串
+      const parsedSettings = typeof settings.settings === 'string'
+        ? JSON.parse(settings.settings)
+        : settings.settings;
 
       this.notificationSettings = {
         ...DEFAULT_SETTINGS,
-        ...(typeof settings.settings === 'object' ? settings.settings : {})
+        ...(typeof parsedSettings === 'object' ? parsedSettings : {})
       };
 
       logger.debug(`用户 ${this.userId} 的昼夜提醒设置已加载`);

@@ -1,5 +1,5 @@
 import express from 'express';
-import prisma from '../lib/prisma.js';
+import db, { getConnection } from '../lib/db.js';
 import bcrypt from 'bcrypt';
 import { authenticate } from '../middleware/auth.middleware.js';
 
@@ -13,9 +13,12 @@ router.get('/subscription', authenticate, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const subscription = await prisma.subscriptions.findUnique({
-      where: { userId },
-    });
+    const [rows] = await db.query(
+      'SELECT * FROM subscriptions WHERE userId = ?',
+      [userId]
+    );
+
+    const subscription = rows[0];
 
     if (!subscription) {
       return res.status(404).json({
@@ -33,6 +36,7 @@ router.get('/subscription', authenticate, async (req, res) => {
       success: true,
       subscriptions: {
         ...subscription,
+        autoRenew: !!subscription.autoRenew,
         status, // 添加动态计算的 status 字段
       },
     });
@@ -64,14 +68,12 @@ router.put('/profile', authenticate, async (req, res) => {
 
     // 检查邮箱是否已被使用
     if (email) {
-      const existingUser = await prisma.users.findFirst({
-        where: {
-          email,
-          NOT: { id: userId },
-        },
-      });
+      const [existingUsers] = await db.query(
+        'SELECT id FROM users WHERE email = ? AND id != ?',
+        [email, userId]
+      );
 
-      if (existingUser) {
+      if (existingUsers.length > 0) {
         return res.status(400).json({
           success: false,
           error: '该邮箱已被使用',
@@ -79,24 +81,43 @@ router.put('/profile', authenticate, async (req, res) => {
       }
     }
 
-    // 更新用户信息
-    const updatedUser = await prisma.users.update({
-      where: { id: userId },
-      data: {
-        ...(username && { username }),
-        ...(email && { email }),
-      },
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        createdAt: true,
-      },
-    });
+    // 构建更新语句
+    const updates = [];
+    const params = [];
+    if (username) {
+      updates.push('username = ?');
+      params.push(username);
+    }
+    if (email) {
+      updates.push('email = ?');
+      params.push(email);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: '没有提供更新内容',
+      });
+    }
+
+    updates.push('updatedAt = ?');
+    params.push(new Date());
+    params.push(userId);
+
+    await db.query(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    // 获取更新后的用户信息
+    const [userRows] = await db.query(
+      'SELECT id, username, email, createdAt FROM users WHERE id = ?',
+      [userId]
+    );
 
     return res.json({
       success: true,
-      user: updatedUser,
+      user: userRows[0],
     });
   } catch (error) {
     console.error('更新用户信息失败:', error);
@@ -132,9 +153,12 @@ router.post('/change-password', authenticate, async (req, res) => {
     }
 
     // 获取用户
-    const user = await prisma.users.findUnique({
-      where: { id: userId },
-    });
+    const [rows] = await db.query(
+      'SELECT id, password FROM users WHERE id = ?',
+      [userId]
+    );
+
+    const user = rows[0];
 
     if (!user) {
       return res.status(404).json({
@@ -156,10 +180,10 @@ router.post('/change-password', authenticate, async (req, res) => {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     // 更新密码
-    await prisma.users.update({
-      where: { id: userId },
-      data: { password: hashedPassword },
-    });
+    await db.query(
+      'UPDATE users SET password = ?, updatedAt = ? WHERE id = ?',
+      [hashedPassword, new Date(), userId]
+    );
 
     return res.json({
       success: true,
@@ -192,9 +216,12 @@ router.post('/delete-account', authenticate, async (req, res) => {
     }
 
     // 获取用户
-    const user = await prisma.users.findUnique({
-      where: { id: userId },
-    });
+    const [rows] = await db.query(
+      'SELECT id, password FROM users WHERE id = ?',
+      [userId]
+    );
+
+    const user = rows[0];
 
     if (!user) {
       return res.status(404).json({
@@ -212,10 +239,29 @@ router.post('/delete-account', authenticate, async (req, res) => {
       });
     }
 
-    // 删除用户（级联删除相关数据）
-    await prisma.users.delete({
-      where: { id: userId },
-    });
+    // 使用事务删除用户及关联数据（级联删除）
+    const conn = await getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // 按顺序删除关联数据
+      await conn.query('DELETE FROM devices WHERE userId = ?', [userId]);
+      await conn.query('DELETE FROM event_logs WHERE userId = ?', [userId]);
+      await conn.query('DELETE FROM extended_teammates WHERE userId = ?', [userId]);
+      await conn.query('DELETE FROM event_predictions WHERE userId = ?', [userId]);
+      await conn.query('DELETE FROM notification_settings WHERE userId = ?', [userId]);
+      await conn.query('DELETE FROM servers WHERE userId = ?', [userId]);
+      await conn.query('DELETE FROM orders WHERE userId = ?', [userId]);
+      await conn.query('DELETE FROM subscriptions WHERE userId = ?', [userId]);
+      await conn.query('DELETE FROM users WHERE id = ?', [userId]);
+
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
 
     return res.json({
       success: true,
@@ -248,16 +294,16 @@ router.put('/auto-renew', authenticate, async (req, res) => {
     }
 
     // 更新订阅的自动续费设置
-    const subscription = await prisma.subscriptions.update({
-      where: { userId },
-      data: { autoRenew },
-    });
+    await db.query(
+      'UPDATE subscriptions SET autoRenew = ?, updatedAt = ? WHERE userId = ?',
+      [autoRenew ? 1 : 0, new Date(), userId]
+    );
 
     return res.json({
       success: true,
       message: autoRenew ? '已开启自动续费' : '已关闭自动续费',
       data: {
-        autoRenew: subscription.autoRenew,
+        autoRenew,
       },
     });
   } catch (error) {

@@ -4,7 +4,7 @@
  */
 
 import jwt from 'jsonwebtoken';
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 
 /**
  * 验证 JWT Token
@@ -43,13 +43,18 @@ export const authenticate = async (req, res, next) => {
     // 验证 token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 从数据库获取用户信息
-    const user = await prisma.users.findUnique({
-      where: { id: decoded.userId },
-      include: {
-        subscriptions: true
-      }
-    });
+    // 从数据库获取用户信息（JOIN 订阅表）
+    const [rows] = await db.query(`
+      SELECT
+        u.id, u.username, u.email, u.isActive, u.isAdmin,
+        s.id as sub_id, s.planType as sub_planType, s.status as sub_status,
+        s.startDate as sub_startDate, s.endDate as sub_endDate, s.autoRenew as sub_autoRenew
+      FROM users u
+      LEFT JOIN subscriptions s ON u.id = s.userId
+      WHERE u.id = ?
+    `, [decoded.userId]);
+
+    const user = rows[0];
 
     if (!user) {
       return res.status(401).json({
@@ -66,16 +71,26 @@ export const authenticate = async (req, res, next) => {
       });
     }
 
+    // 构造订阅对象
+    const subscriptions = user.sub_id ? {
+      id: user.sub_id,
+      planType: user.sub_planType,
+      status: user.sub_status,
+      startDate: user.sub_startDate,
+      endDate: user.sub_endDate,
+      autoRenew: !!user.sub_autoRenew
+    } : null;
+
     // 计算订阅状态（不拦截，只标记）
-    const isSubscriptionExpired = !user.subscriptions || new Date() > user.subscriptions.endDate;
+    const isSubscriptionExpired = !subscriptions || new Date() > subscriptions.endDate;
 
     // 将用户信息附加到请求对象
     req.user = {
       id: user.id,
       username: user.username,
       email: user.email,
-      isAdmin: user.isAdmin,
-      subscriptions: user.subscriptions,
+      isAdmin: !!user.isAdmin,
+      subscriptions,
       isSubscriptionExpired  // 订阅过期标记
     };
 

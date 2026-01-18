@@ -9,7 +9,7 @@
  */
 
 import EventEmitter from 'events';
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import battlemetricsService from './battlemetrics.service.js';
 import logger from '../utils/logger.js';
 
@@ -118,16 +118,12 @@ class BattlemetricsScheduler extends EventEmitter {
 
         for (const serverId of connectedServerIds) {
           // 从数据库获取服务器信息
-          const server = await prisma.servers.findFirst({
-            where: { id: serverId },
-            select: {
-              id: true,
-              battlemetricsId: true,
-              ip: true,
-              port: true,
-              name: true
-            }
-          });
+          const [serverRows] = await db.query(
+            'SELECT id, battlemetricsId, ip, port, name FROM servers WHERE id = ?',
+            [serverId]
+          );
+
+          const server = serverRows[0];
 
           if (server?.battlemetricsId) {
             // 使用 Map 自动去重
@@ -179,11 +175,12 @@ class BattlemetricsScheduler extends EventEmitter {
       // 遍历并更新每个服务器
       for (const [bmId, serverInfo] of serverMap) {
         try {
+          logger.info(`📊 正在更新服务器: ${serverInfo.name} (bmId: ${bmId})`);
           await this.syncServer(bmId, serverInfo);
           successCount++;
         } catch (error) {
           errorCount++;
-          logger.error(`更新服务器 ${bmId} 失败:`, error.message);
+          logger.error(`📊 更新服务器 ${serverInfo.name} (${bmId}) 失败: ${error.message}`);
         }
 
         // 请求间隔，避免超过速率限制
@@ -219,18 +216,72 @@ class BattlemetricsScheduler extends EventEmitter {
    */
   async syncServer(bmId, serverInfo = {}) {
     // 从 Battlemetrics API 获取数据
+    logger.debug(`📊 请求 Battlemetrics API: ${bmId}`);
     const bmData = await battlemetricsService.getServerInfo(bmId);
 
     if (!bmData) {
-      throw new Error('Battlemetrics API 返回空数据');
+      throw new Error(`Battlemetrics API 返回空数据 (bmId: ${bmId})`);
     }
 
+    logger.debug(`📊 获取到数据: ${bmData.name}, 玩家: ${bmData.players}/${bmData.maxPlayers}`);
+
     // 更新或创建 public_servers 记录
-    await prisma.public_servers.upsert({
-      where: { battlemetricsId: bmId },
-      create: this.mapToDbRecord(bmId, bmData),
-      update: this.mapToDbRecord(bmId, bmData)
-    });
+    const dbRecord = this.mapToDbRecord(bmId, bmData);
+
+    // 检查是否存在
+    const [existingRows] = await db.query(
+      'SELECT id FROM public_servers WHERE battlemetricsId = ?',
+      [bmId]
+    );
+
+    if (existingRows[0]) {
+      // 更新
+      await db.query(
+        `UPDATE public_servers SET
+          name = ?, ip = ?, port = ?, address = ?, status = ?,
+          players = ?, maxPlayers = ?, queuedPlayers = ?,
+          \`rank\` = ?, fps = ?, fpsAvg = ?, uptime = ?, entityCount = ?,
+          map = ?, mapSize = ?, seed = ?,
+          wipeTime = ?, wipeCycle = ?, nextWipe = ?,
+          headerImage = ?, logoImage = ?, rustMapsUrl = ?, rustMapsThumbnail = ?,
+          country = ?, official = ?, modded = ?, pve = ?, description = ?, url = ?,
+          updatedAt = NOW()
+        WHERE battlemetricsId = ?`,
+        [
+          dbRecord.name, dbRecord.ip, dbRecord.port, dbRecord.address, dbRecord.status,
+          dbRecord.players, dbRecord.maxPlayers, dbRecord.queuedPlayers,
+          dbRecord.rank, dbRecord.fps, dbRecord.fpsAvg, dbRecord.uptime, dbRecord.entityCount,
+          dbRecord.map, dbRecord.mapSize, dbRecord.seed,
+          dbRecord.wipeTime, dbRecord.wipeCycle, dbRecord.nextWipe,
+          dbRecord.headerImage, dbRecord.logoImage, dbRecord.rustMapsUrl, dbRecord.rustMapsThumbnail,
+          dbRecord.country, dbRecord.official ? 1 : 0, dbRecord.modded ? 1 : 0, dbRecord.pve ? 1 : 0, dbRecord.description, dbRecord.url,
+          bmId
+        ]
+      );
+    } else {
+      // 创建
+      await db.query(
+        `INSERT INTO public_servers
+          (battlemetricsId, name, ip, port, address, status,
+           players, maxPlayers, queuedPlayers,
+           \`rank\`, fps, fpsAvg, uptime, entityCount,
+           map, mapSize, seed,
+           wipeTime, wipeCycle, nextWipe,
+           headerImage, logoImage, rustMapsUrl, rustMapsThumbnail,
+           country, official, modded, pve, description, url,
+           createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [
+          bmId, dbRecord.name, dbRecord.ip, dbRecord.port, dbRecord.address, dbRecord.status,
+          dbRecord.players, dbRecord.maxPlayers, dbRecord.queuedPlayers,
+          dbRecord.rank, dbRecord.fps, dbRecord.fpsAvg, dbRecord.uptime, dbRecord.entityCount,
+          dbRecord.map, dbRecord.mapSize, dbRecord.seed,
+          dbRecord.wipeTime, dbRecord.wipeCycle, dbRecord.nextWipe,
+          dbRecord.headerImage, dbRecord.logoImage, dbRecord.rustMapsUrl, dbRecord.rustMapsThumbnail,
+          dbRecord.country, dbRecord.official ? 1 : 0, dbRecord.modded ? 1 : 0, dbRecord.pve ? 1 : 0, dbRecord.description, dbRecord.url
+        ]
+      );
+    }
 
     logger.debug(`📊 已更新服务器: ${bmData.name || bmId}`);
   }

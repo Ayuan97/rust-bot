@@ -4,7 +4,7 @@
  */
 
 import { EventEmitter } from 'events';
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import UserRustPlusManager from './user-rustplus-manager.js';
 import UserFCMManager from './user-fcm-manager.js';
 import UserEventMonitor from './user-event-monitor.js';
@@ -138,25 +138,59 @@ class UserServiceManager extends EventEmitter {
    */
   async _loadUserData() {
     try {
-      this.user = await prisma.users.findUnique({
-        where: { id: this.userId },
-        include: {
-          subscriptions: true,
-          servers: {
-            include: {
-              devices: true
-            }
-          },
-          notification_settings: true
-        }
-      });
+      // 查询用户基本信息和订阅
+      const [userRows] = await db.query(
+        `SELECT u.*, s.id as subscriptionId, s.planId, s.startDate, s.endDate
+         FROM users u
+         LEFT JOIN subscriptions s ON u.id = s.userId
+         WHERE u.id = ?`,
+        [this.userId]
+      );
 
-      if (!this.user) {
+      if (!userRows[0]) {
         throw new Error('用户不存在');
       }
 
+      this.user = userRows[0];
+
       if (!this.user.isActive) {
         throw new Error('用户已被禁用');
+      }
+
+      // 查询服务器
+      const [servers] = await db.query(
+        'SELECT * FROM servers WHERE userId = ?',
+        [this.userId]
+      );
+
+      // 查询每个服务器的设备
+      for (const server of servers) {
+        const [devices] = await db.query(
+          'SELECT * FROM devices WHERE serverId = ?',
+          [server.id]
+        );
+        server.devices = devices;
+      }
+
+      this.user.servers = servers;
+
+      // 查询通知设置
+      const [settingsRows] = await db.query(
+        'SELECT * FROM notification_settings WHERE userId = ?',
+        [this.userId]
+      );
+      this.user.notification_settings = settingsRows[0] || null;
+
+      // 构建 subscriptions 对象以保持兼容性
+      if (this.user.subscriptionId) {
+        this.user.subscriptions = {
+          id: this.user.subscriptionId,
+          planId: this.user.planId,
+          startDate: this.user.startDate,
+          endDate: this.user.endDate
+        };
+      } else {
+        this.user.subscriptions = null;
       }
 
       console.log(`  📊 已加载用户数据: ${this.user.username}`);
@@ -175,7 +209,8 @@ class UserServiceManager extends EventEmitter {
       console.log(`  🔧 初始化子服务...`);
 
       // 1. 加载全局代理配置并应用
-      const proxyConfig = await prisma.proxy_config.findUnique({ where: { id: 1 } });
+      const [proxyRows] = await db.query('SELECT * FROM proxy_config WHERE id = 1');
+      const proxyConfig = proxyRows[0];
       if (proxyConfig && proxyConfig.subscriptionUrl) {
         // 如果代理服务正在运行，获取 Agent 和配置
         const proxyService = (await import('./proxy.service.js')).default;
@@ -266,12 +301,12 @@ class UserServiceManager extends EventEmitter {
         // 如果状态变为开启 (true)，检查是否是警报器需要触发逻辑
         if (data.value === true) {
           try {
-            const device = await prisma.devices.findFirst({
-              where: {
-                serverId: data.serverId,
-                entityId: parseInt(data.entityId)
-              }
-            });
+            const [deviceRows] = await db.query(
+              'SELECT * FROM devices WHERE serverId = ? AND entityId = ?',
+              [data.serverId, parseInt(data.entityId)]
+            );
+
+            const device = deviceRows[0];
 
             if (device && device.type === 'ALARM') {
               await this._handleAlarmTriggered({
@@ -294,9 +329,11 @@ class UserServiceManager extends EventEmitter {
         } else {
           // 状态变为关闭也记录日志
           try {
-            const device = await prisma.devices.findFirst({
-              where: { serverId: data.serverId, entityId: parseInt(data.entityId) }
-            });
+            const [deviceRows] = await db.query(
+              'SELECT * FROM devices WHERE serverId = ? AND entityId = ?',
+              [data.serverId, parseInt(data.entityId)]
+            );
+            const device = deviceRows[0];
             await this.eventMonitorService.saveEventLog(data.serverId, 'entity:changed', {
               entityId: data.entityId,
               name: device?.name || `设备 ${data.entityId}`,
@@ -519,10 +556,10 @@ class UserServiceManager extends EventEmitter {
             try {
               const bmId = await battlemetricsService.searchServerByAddress(server.ip, server.port, server.name);
               if (bmId) {
-                await prisma.servers.update({
-                  where: { id: server.id },
-                  data: { battlemetricsId: bmId }
-                });
+                await db.query(
+                  'UPDATE servers SET battlemetricsId = ?, updatedAt = NOW() WHERE id = ?',
+                  [bmId, server.id]
+                );
                 server.battlemetricsId = bmId;
                 console.log(`  🔗 已关联 Battlemetrics ID: ${bmId}`);
               }
@@ -727,13 +764,11 @@ class UserServiceManager extends EventEmitter {
       this.log('PAIRING', `正在处理服务器配对: ${data.name} (${data.ip}:${data.port})`);
 
       // 1. 检查用户现有的真实服务器（排除 FCM 占位符）
-      const existingServers = await prisma.servers.findMany({
-        where: {
-          userId: this.userId,
-          ip: { not: '0.0.0.0' },
-          NOT: { id: { startsWith: 'fcm-' } }
-        }
-      });
+      const [existingServers] = await db.query(
+        `SELECT * FROM servers
+         WHERE userId = ? AND ip != '0.0.0.0' AND id NOT LIKE 'fcm-%'`,
+        [this.userId]
+      );
 
       // 2. 检查是否是同一服务器的更新（IP:Port 相同）
       const isSameServer = existingServers.some(
@@ -825,10 +860,10 @@ class UserServiceManager extends EventEmitter {
       this.dayNightNotifier.stop(oldServer.id);
       this.predictionService.stop(oldServer.id);
 
-      // 3. 删除旧服务器（会级联删除 devices 和 event_logs）
-      await prisma.servers.delete({
-        where: { id: oldServer.id }
-      });
+      // 3. 删除旧服务器（先删除关联的设备和事件日志）
+      await db.query('DELETE FROM devices WHERE serverId = ?', [oldServer.id]);
+      await db.query('DELETE FROM event_logs WHERE serverId = ?', [oldServer.id]);
+      await db.query('DELETE FROM servers WHERE id = ?', [oldServer.id]);
       this.log('PAIRING', `已删除旧服务器: ${oldServer.name}`);
 
       // 4. 执行新服务器配对
@@ -863,24 +898,26 @@ class UserServiceManager extends EventEmitter {
     };
 
     // 使用 userId + ip + port 作为查找条件（多租户隔离）
-    const existing = await prisma.servers.findFirst({
-      where: {
-        userId: this.userId,
-        ip: data.ip,
-        port: String(data.port)
-      }
-    });
+    const [existingRows] = await db.query(
+      'SELECT * FROM servers WHERE userId = ? AND ip = ? AND port = ?',
+      [this.userId, data.ip, String(data.port)]
+    );
+
+    const existing = existingRows[0];
 
     if (existing) {
-      await prisma.servers.update({
-        where: { id: existing.id },
-        data: serverData
-      });
+      await db.query(
+        `UPDATE servers SET name = ?, playerId = ?, playerToken = ?, updatedAt = NOW()
+         WHERE id = ?`,
+        [serverData.name, serverData.playerId, serverData.playerToken, existing.id]
+      );
       this.log('PAIRING', `更新已存在的服务器信息: ${data.name}`);
     } else {
-      await prisma.servers.create({
-        data: serverData
-      });
+      await db.query(
+        `INSERT INTO servers (id, userId, name, ip, port, playerId, playerToken, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [serverData.id, serverData.userId, serverData.name, serverData.ip, serverData.port, serverData.playerId, serverData.playerToken]
+      );
       this.log('PAIRING', `保存新服务器信息: ${data.name}`);
     }
 
@@ -966,31 +1003,28 @@ class UserServiceManager extends EventEmitter {
       };
 
       // 检查设备是否已存在
-      const existing = await prisma.devices.findFirst({
-        where: {
-          serverId: data.serverId,
-          entityId: entityId
-        }
-      });
+      const [existingDevices] = await db.query(
+        'SELECT * FROM devices WHERE serverId = ? AND entityId = ?',
+        [data.serverId, entityId]
+      );
+
+      const existing = existingDevices[0];
 
       if (existing) {
         // 更新已存在的设备
-        await prisma.devices.update({
-          where: { id: existing.id },
-          data: {
-            name: deviceData.name,
-            type: deviceType,
-            isActive: true,
-            reachable: true,
-            updatedAt: new Date()
-          }
-        });
+        await db.query(
+          `UPDATE devices SET name = ?, type = ?, isActive = 1, reachable = 1, updatedAt = NOW()
+           WHERE id = ?`,
+          [deviceData.name, deviceType, existing.id]
+        );
         this.log('ENTITY_PAIRING', `更新已存在的设备: ${deviceData.name} (${deviceType})`);
       } else {
         // 创建新设备
-        await prisma.devices.create({
-          data: deviceData
-        });
+        await db.query(
+          `INSERT INTO devices (id, serverId, userId, entityId, name, type, isActive, reachable, createdAt, updatedAt)
+           VALUES (?, ?, ?, ?, ?, ?, 1, 1, NOW(), NOW())`,
+          [deviceId, data.serverId, this.userId, entityId, deviceData.name, deviceType]
+        );
         this.log('ENTITY_PAIRING', `保存新设备: ${deviceData.name} (${deviceType})`);
       }
 
@@ -1024,12 +1058,12 @@ class UserServiceManager extends EventEmitter {
       this.log('ALARM', `警报触发: serverId=${serverId}, entityId=${entityId}`);
 
       // 1. 从数据库查询设备信息
-      const device = await prisma.devices.findFirst({
-        where: {
-          serverId: serverId,
-          entityId: parseInt(entityId)
-        }
-      });
+      const [deviceRows] = await db.query(
+        'SELECT * FROM devices WHERE serverId = ? AND entityId = ?',
+        [serverId, parseInt(entityId)]
+      );
+
+      const device = deviceRows[0];
 
       if (!device || device.type !== 'ALARM') {
         if (!device) {
@@ -1048,10 +1082,10 @@ class UserServiceManager extends EventEmitter {
       }
 
       // 2. 更新 lastTrigger 时间
-      await prisma.devices.update({
-        where: { id: device.id },
-        data: { lastTrigger: new Date(time), updatedAt: new Date() }
-      });
+      await db.query(
+        'UPDATE devices SET lastTrigger = ?, updatedAt = NOW() WHERE id = ?',
+        [new Date(time), device.id]
+      );
 
       // 3. 构建警报消息
       const deviceName = device.name || `警报 ${entityId}`;

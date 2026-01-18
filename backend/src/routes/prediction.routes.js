@@ -6,7 +6,7 @@
 import express from 'express';
 import { authenticate, requireActiveSubscription } from '../middleware/auth.middleware.js';
 import globalServiceManager from '../services/global-manager.service.js';
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 
 const router = express.Router();
 
@@ -28,10 +28,11 @@ function getPredictionService(userId) {
  * 验证服务器归属
  */
 async function validateServer(serverId, userId) {
-  const server = await prisma.servers.findFirst({
-    where: { id: serverId, userId }
-  });
-  return server;
+  const [rows] = await db.query(
+    'SELECT id FROM servers WHERE id = ? AND userId = ?',
+    [serverId, userId]
+  );
+  return rows[0] || null;
 }
 
 // ============================================================
@@ -163,15 +164,13 @@ router.get('/:serverId/history', async (req, res) => {
     }
 
     // 获取历史预测（用户级别）
-    const predictions = await prisma.event_predictions.findMany({
-      where: {
-        serverId,
-        userId,
-        status: { in: ['OCCURRED', 'MISSED', 'NOTIFIED'] }
-      },
-      orderBy: { createdAt: 'desc' },
-      take: limit
-    });
+    const [predictions] = await db.query(
+      `SELECT * FROM event_predictions
+       WHERE serverId = ? AND userId = ? AND status IN ('OCCURRED', 'MISSED', 'NOTIFIED')
+       ORDER BY createdAt DESC
+       LIMIT ?`,
+      [serverId, userId, limit]
+    );
 
     // 计算统计数据
     const stats = {

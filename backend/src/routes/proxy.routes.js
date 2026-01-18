@@ -7,7 +7,7 @@
  */
 
 import express from 'express';
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
 import proxyService from '../services/proxy.service.js';
 import subscriptionService from '../services/subscription.service.js';
@@ -30,9 +30,8 @@ router.get('/status', async (req, res) => {
     const status = proxyService.getStatus();
 
     // 从数据库获取代理配置（全局配置）
-    const proxyConfig = await prisma.proxy_config.findUnique({
-      where: { id: 1 }
-    });
+    const [rows] = await db.query('SELECT * FROM proxy_config WHERE id = 1');
+    const proxyConfig = rows[0];
 
     res.json({
       success: true,
@@ -130,23 +129,22 @@ router.post('/config', requireAdmin, async (req, res) => {
     }
 
     // 保存配置到数据库（全局配置）
-    await prisma.proxy_config.upsert({
-      where: { id: 1 },
-      update: {
-        subscriptionUrl,
-        selectedNode: selectedNode || null,
-        proxyPort: proxyPort || 10808,
-        autoStart: autoStart !== false,
-        updatedAt: new Date()
-      },
-      create: {
-        id: 1,
-        subscriptionUrl,
-        selectedNode: selectedNode || null,
-        proxyPort: proxyPort || 10808,
-        autoStart: autoStart !== false
-      }
-    });
+    const [existingConfig] = await db.query('SELECT id FROM proxy_config WHERE id = 1');
+
+    if (existingConfig[0]) {
+      await db.query(
+        `UPDATE proxy_config SET
+          subscriptionUrl = ?, selectedNode = ?, proxyPort = ?, autoStart = ?, updatedAt = NOW()
+         WHERE id = 1`,
+        [subscriptionUrl, selectedNode || null, proxyPort || 10808, autoStart !== false ? 1 : 0]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO proxy_config (id, subscriptionUrl, selectedNode, proxyPort, autoStart, createdAt, updatedAt)
+         VALUES (1, ?, ?, ?, ?, NOW(), NOW())`,
+        [subscriptionUrl, selectedNode || null, proxyPort || 10808, autoStart !== false ? 1 : 0]
+      );
+    }
 
     logger.info(`✅ 管理员 ${req.user.username} 已保存代理配置`);
 
@@ -223,9 +221,8 @@ router.post('/start', requireAdmin, async (req, res) => {
     const { nodeName } = req.body;
 
     // 从数据库获取配置
-    const proxyConfig = await prisma.proxy_config.findUnique({
-      where: { id: 1 }
-    });
+    const [rows] = await db.query('SELECT * FROM proxy_config WHERE id = 1');
+    const proxyConfig = rows[0];
 
     if (!proxyConfig?.subscriptionUrl) {
       return res.status(400).json({ success: false, error: '请先配置订阅链接' });
@@ -254,10 +251,10 @@ router.post('/start', requireAdmin, async (req, res) => {
 
     // 更新选中的节点
     if (proxyService.currentNode) {
-      await prisma.proxy_config.update({
-        where: { id: 1 },
-        data: { selectedNode: proxyService.currentNode.name }
-      });
+      await db.query(
+        'UPDATE proxy_config SET selectedNode = ?, updatedAt = NOW() WHERE id = 1',
+        [proxyService.currentNode.name]
+      );
     }
 
     logger.info(`✅ 代理已启动，节点: ${proxyService.currentNode?.name}`);
@@ -340,10 +337,10 @@ router.post('/switch', requireAdmin, async (req, res) => {
     globalServiceManager.refreshAllUserProxySettings();
 
     // 更新数据库中的选中节点
-    await prisma.proxy_config.update({
-      where: { id: 1 },
-      data: { selectedNode: nodeName }
-    });
+    await db.query(
+      'UPDATE proxy_config SET selectedNode = ?, updatedAt = NOW() WHERE id = 1',
+      [nodeName]
+    );
 
     logger.info(`✅ 节点已切换到: ${nodeName}`);
 
@@ -373,9 +370,8 @@ router.post('/switch', requireAdmin, async (req, res) => {
 router.post('/refresh', requireAdmin, async (req, res) => {
   try {
     // 从数据库获取配置
-    const proxyConfig = await prisma.proxy_config.findUnique({
-      where: { id: 1 }
-    });
+    const [configRows] = await db.query('SELECT * FROM proxy_config WHERE id = 1');
+    const proxyConfig = configRows[0];
 
     if (!proxyConfig?.subscriptionUrl) {
       return res.status(400).json({ success: false, error: '请先配置订阅链接' });
@@ -422,9 +418,7 @@ router.delete('/config', requireAdmin, async (req, res) => {
     }
 
     // 删除配置
-    await prisma.proxy_config.deleteMany({
-      where: { id: 1 }
-    });
+    await db.query('DELETE FROM proxy_config WHERE id = 1');
 
     // 广播配置清除事件（发送给所有用户）
     websocketService.broadcast('proxy:config:deleted', {});

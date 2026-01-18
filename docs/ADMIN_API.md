@@ -201,10 +201,14 @@ GET /api/admin/system
 
 创建：
 ```bash
-node backend/prisma/seed-admin.js
+# 直接通过 SQL 创建管理员用户
+mysql -u root -p rustplus_db -e "
+INSERT INTO users (id, username, email, password, isAdmin, isActive, createdAt, updatedAt)
+VALUES (UUID(), 'admin', 'admin@localhost', '\$2b\$10\$...', 1, 1, NOW(), NOW());
+"
 ```
 
 默认凭证：
 - 邮箱: `admin@localhost`
-- 密码: `admin123456`（可通过 `ADMIN_DEFAULT_PASSWORD` 环境变量自定义）
+- 密码: `admin123456`（需手动用 bcrypt 加密）
 - 订阅: 永久订阅（至 2099-12-31）

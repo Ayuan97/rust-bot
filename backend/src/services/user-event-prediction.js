@@ -3,12 +3,12 @@
  * 通过分析历史数据学习事件刷新模式，提前通知用户
  *
  * 数据模型：
- * - event_spawn_patterns: 基于物理服务器（battlemetricsId），所有用户共享
+ * - event_spawn_patterns: 基于物理服务器（serverAddress ip:port），所有用户共享
  * - event_predictions: 基于用户，每个用户独立的预测和通知状态
  */
 
 import EventEmitter from 'events';
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import logger from '../utils/logger.js';
 import { notify } from '../utils/messages.js';
 
@@ -57,34 +57,36 @@ class UserEventPrediction extends EventEmitter {
     // 通知设置缓存
     this.notificationSettings = null;
 
-    // 服务器 battlemetricsId 缓存 Map<serverId, battlemetricsId>
-    this.serverBmIdCache = new Map();
+    // 服务器地址缓存 Map<serverId, serverAddress>
+    this.serverAddressCache = new Map();
   }
 
   /**
-   * 获取服务器的 battlemetricsId
+   * 获取服务器地址标识 (ip:port)
    * @private
    */
-  async _getBattlemetricsId(serverId) {
+  async _getServerAddress(serverId) {
     // 先检查缓存
-    if (this.serverBmIdCache.has(serverId)) {
-      return this.serverBmIdCache.get(serverId);
+    if (this.serverAddressCache.has(serverId)) {
+      return this.serverAddressCache.get(serverId);
     }
 
     try {
-      const server = await prisma.servers.findUnique({
-        where: { id: serverId },
-        select: { battlemetricsId: true }
-      });
+      const [rows] = await db.query(
+        'SELECT ip, port FROM servers WHERE id = ?',
+        [serverId]
+      );
+      const server = rows[0];
 
-      if (server && server.battlemetricsId) {
-        this.serverBmIdCache.set(serverId, server.battlemetricsId);
-        return server.battlemetricsId;
+      if (server && server.ip && server.port) {
+        const serverAddress = `${server.ip}:${server.port}`;
+        this.serverAddressCache.set(serverId, serverAddress);
+        return serverAddress;
       }
 
       return null;
     } catch (error) {
-      logger.error(`获取服务器 ${serverId} 的 battlemetricsId 失败:`, error);
+      logger.error(`获取服务器 ${serverId} 地址失败:`, error);
       return null;
     }
   }
@@ -94,12 +96,16 @@ class UserEventPrediction extends EventEmitter {
    */
   async loadNotificationSettings() {
     try {
-      const settings = await prisma.notification_settings.findUnique({
-        where: { userId: this.userId }
-      });
+      const [rows] = await db.query(
+        'SELECT * FROM notification_settings WHERE userId = ?',
+        [this.userId]
+      );
+      const settings = rows[0];
 
       if (settings && settings.settings) {
-        this.notificationSettings = settings.settings;
+        this.notificationSettings = typeof settings.settings === 'string'
+          ? JSON.parse(settings.settings)
+          : settings.settings;
       } else {
         this.notificationSettings = {};
       }
@@ -162,52 +168,54 @@ class UserEventPrediction extends EventEmitter {
         return;
       }
 
-      // 获取物理服务器的 battlemetricsId
-      const battlemetricsId = await this._getBattlemetricsId(serverId);
-      if (!battlemetricsId) {
-        logger.debug(`服务器 ${serverId} 没有关联 battlemetricsId，跳过预测记录`);
+      // 获取物理服务器的地址 (ip:port)
+      const serverAddress = await this._getServerAddress(serverId);
+      if (!serverAddress) {
+        logger.debug(`服务器 ${serverId} 无法获取地址，跳过预测记录`);
         return;
       }
 
       const eventTimeDate = new Date(eventTime);
 
-      // 获取现有模式数据（基于 battlemetricsId）
-      let pattern = await prisma.event_spawn_patterns.findUnique({
-        where: {
-          battlemetricsId_eventType: {
-            battlemetricsId,
-            eventType
-          }
-        }
-      });
+      // 获取现有模式数据（基于 serverAddress）
+      const [patternRows] = await db.query(
+        'SELECT * FROM event_spawn_patterns WHERE serverAddress = ? AND eventType = ?',
+        [serverAddress, eventType]
+      );
+      let pattern = patternRows[0];
 
       if (!pattern) {
         // 首次记录，创建新模式
-        pattern = await prisma.event_spawn_patterns.create({
-          data: {
-            battlemetricsId,
-            eventType,
-            sampleCount: 0,
-            recentIntervals: [],
-            lastEventTime: eventTimeDate
-          }
-        });
+        const [result] = await db.query(
+          `INSERT INTO event_spawn_patterns (serverAddress, eventType, sampleCount, recentIntervals, lastEventTime, createdAt, updatedAt)
+           VALUES (?, ?, 0, '[]', ?, NOW(), NOW())`,
+          [serverAddress, eventType, eventTimeDate]
+        );
 
-        logger.debug(`物理服务器 ${battlemetricsId}: 创建 ${eventType} 模式记录`);
+        pattern = {
+          id: result.insertId,
+          serverAddress,
+          eventType,
+          sampleCount: 0,
+          recentIntervals: [],
+          lastEventTime: eventTimeDate
+        };
+
+        logger.debug(`物理服务器 ${serverAddress}: 创建 ${eventType} 模式记录`);
 
         // 标记该用户的预测已发生
-        await this._markPredictionOccurred(serverId, battlemetricsId, eventType, eventTimeDate);
+        await this._markPredictionOccurred(serverId, serverAddress, eventType, eventTimeDate);
         return;
       }
 
       // 计算与上次事件的间隔
       if (!pattern.lastEventTime) {
-        await prisma.event_spawn_patterns.update({
-          where: { id: pattern.id },
-          data: { lastEventTime: eventTimeDate }
-        });
+        await db.query(
+          'UPDATE event_spawn_patterns SET lastEventTime = ?, updatedAt = NOW() WHERE id = ?',
+          [eventTimeDate, pattern.id]
+        );
 
-        await this._markPredictionOccurred(serverId, battlemetricsId, eventType, eventTimeDate);
+        await this._markPredictionOccurred(serverId, serverAddress, eventType, eventTimeDate);
         return;
       }
 
@@ -217,27 +225,32 @@ class UserEventPrediction extends EventEmitter {
       // 过滤异常值（太短的间隔可能是重复事件）
       const MIN_INTERVAL = 5 * 60 * 1000; // 最小5分钟
       if (interval < MIN_INTERVAL) {
-        logger.debug(`物理服务器 ${battlemetricsId}: ${eventType} 间隔过短 (${interval}ms)，跳过记录`);
+        logger.debug(`物理服务器 ${serverAddress}: ${eventType} 间隔过短 (${interval}ms)，跳过记录`);
         return;
       }
 
       // 获取最近间隔列表
       let recentIntervals = [];
-      if (pattern.recentIntervals && Array.isArray(pattern.recentIntervals)) {
-        recentIntervals = [...pattern.recentIntervals];
+      if (pattern.recentIntervals) {
+        const intervals = typeof pattern.recentIntervals === 'string'
+          ? JSON.parse(pattern.recentIntervals)
+          : pattern.recentIntervals;
+        if (Array.isArray(intervals)) {
+          recentIntervals = [...intervals];
+        }
       }
 
       // 如果已有足够数据，过滤异常值
       if (recentIntervals.length >= 3 && pattern.avgInterval) {
         const threshold = pattern.avgInterval * UserEventPrediction.OUTLIER_THRESHOLD;
         if (interval > threshold) {
-          logger.debug(`物理服务器 ${battlemetricsId}: ${eventType} 间隔异常 (${interval}ms > ${threshold}ms)，可能是服务器重启`);
-          await prisma.event_spawn_patterns.update({
-            where: { id: pattern.id },
-            data: { lastEventTime: eventTimeDate }
-          });
+          logger.debug(`物理服务器 ${serverAddress}: ${eventType} 间隔异常 (${interval}ms > ${threshold}ms)，可能是服务器重启`);
+          await db.query(
+            'UPDATE event_spawn_patterns SET lastEventTime = ?, updatedAt = NOW() WHERE id = ?',
+            [eventTimeDate, pattern.id]
+          );
 
-          await this._markPredictionOccurred(serverId, battlemetricsId, eventType, eventTimeDate);
+          await this._markPredictionOccurred(serverId, serverAddress, eventType, eventTimeDate);
           return;
         }
       }
@@ -254,27 +267,37 @@ class UserEventPrediction extends EventEmitter {
       const stats = this._calculateStats(recentIntervals);
 
       // 更新模式数据
-      await prisma.event_spawn_patterns.update({
-        where: { id: pattern.id },
-        data: {
-          sampleCount: pattern.sampleCount + 1,
-          avgInterval: stats.avg,
-          stdDeviation: stats.stdDev,
-          minInterval: stats.min,
-          maxInterval: stats.max,
-          recentIntervals: recentIntervals,
-          lastEventTime: eventTimeDate
-        }
-      });
+      await db.query(
+        `UPDATE event_spawn_patterns SET
+          sampleCount = ?,
+          avgInterval = ?,
+          stdDeviation = ?,
+          minInterval = ?,
+          maxInterval = ?,
+          recentIntervals = ?,
+          lastEventTime = ?,
+          updatedAt = NOW()
+        WHERE id = ?`,
+        [
+          pattern.sampleCount + 1,
+          stats.avg,
+          stats.stdDev,
+          stats.min,
+          stats.max,
+          JSON.stringify(recentIntervals),
+          eventTimeDate,
+          pattern.id
+        ]
+      );
 
-      logger.debug(`物理服务器 ${battlemetricsId}: ${eventType} 更新模式 (样本: ${pattern.sampleCount + 1}, 平均间隔: ${Math.round(stats.avg / 60000)}分钟)`);
+      logger.debug(`物理服务器 ${serverAddress}: ${eventType} 更新模式 (样本: ${pattern.sampleCount + 1}, 平均间隔: ${Math.round(stats.avg / 60000)}分钟)`);
 
       // 标记该用户的预测已发生
-      await this._markPredictionOccurred(serverId, battlemetricsId, eventType, eventTimeDate);
+      await this._markPredictionOccurred(serverId, serverAddress, eventType, eventTimeDate);
 
       // 为该用户生成新预测
       if (pattern.sampleCount + 1 >= UserEventPrediction.MIN_SAMPLES) {
-        await this._generatePrediction(serverId, battlemetricsId, eventType, eventTimeDate, stats);
+        await this._generatePrediction(serverId, serverAddress, eventType, eventTimeDate, stats);
       }
 
     } catch (error) {
@@ -319,7 +342,7 @@ class UserEventPrediction extends EventEmitter {
    * 生成新预测（用户级别）
    * @private
    */
-  async _generatePrediction(serverId, battlemetricsId, eventType, lastEventTime, stats) {
+  async _generatePrediction(serverId, serverAddress, eventType, lastEventTime, stats) {
     try {
       if (!this.notificationSettings) {
         await this.loadNotificationSettings();
@@ -348,17 +371,11 @@ class UserEventPrediction extends EventEmitter {
       }
 
       // 取消该用户之前的预测
-      await prisma.event_predictions.updateMany({
-        where: {
-          serverId,
-          userId: this.userId,
-          eventType,
-          status: 'PENDING'
-        },
-        data: {
-          status: 'CANCELLED'
-        }
-      });
+      await db.query(
+        `UPDATE event_predictions SET status = 'CANCELLED', updatedAt = NOW()
+         WHERE serverId = ? AND userId = ? AND eventType = ? AND status = 'PENDING'`,
+        [serverId, this.userId, eventType]
+      );
 
       // 清除之前的通知计时器
       const timerKey = `${serverId}_${eventType}`;
@@ -368,26 +385,32 @@ class UserEventPrediction extends EventEmitter {
       }
 
       // 创建新预测
-      const prediction = await prisma.event_predictions.create({
-        data: {
-          battlemetricsId,
-          serverId,
-          userId: this.userId,
-          eventType,
-          predictedTime,
-          confidenceLevel,
-          windowStart,
-          windowEnd,
-          status: 'PENDING'
-        }
-      });
+      const [result] = await db.query(
+        `INSERT INTO event_predictions
+          (serverAddress, serverId, userId, eventType, predictedTime, confidenceLevel, windowStart, windowEnd, status, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', NOW(), NOW())`,
+        [serverAddress, serverId, this.userId, eventType, predictedTime, confidenceLevel, windowStart, windowEnd]
+      );
+
+      const prediction = {
+        id: result.insertId,
+        serverAddress,
+        serverId,
+        userId: this.userId,
+        eventType,
+        predictedTime,
+        confidenceLevel,
+        windowStart,
+        windowEnd,
+        status: 'PENDING'
+      };
 
       logger.debug(`用户 ${this.userId}: 生成 ${eventType} 预测 (时间: ${predictedTime.toLocaleString()}, 置信度: ${(confidenceLevel * 100).toFixed(1)}%)`);
 
       this.emit('prediction:created', {
         userId: this.userId,
         serverId,
-        battlemetricsId,
+        serverAddress,
         eventType,
         eventTypeName: EVENT_TYPE_NAMES[eventType],
         prediction
@@ -435,9 +458,11 @@ class UserEventPrediction extends EventEmitter {
    */
   async _sendPredictionNotification(serverId, eventType, prediction, minutesAhead) {
     try {
-      const currentPrediction = await prisma.event_predictions.findUnique({
-        where: { id: prediction.id }
-      });
+      const [rows] = await db.query(
+        'SELECT * FROM event_predictions WHERE id = ?',
+        [prediction.id]
+      );
+      const currentPrediction = rows[0];
 
       if (!currentPrediction || currentPrediction.status !== 'PENDING') {
         logger.debug(`用户 ${this.userId}: ${eventType} 预测已取消或已发生，跳过通知`);
@@ -466,13 +491,11 @@ class UserEventPrediction extends EventEmitter {
 
       await this.rustPlusService.sendTeamMessage(serverId, message, { isBot: true });
 
-      await prisma.event_predictions.update({
-        where: { id: prediction.id },
-        data: {
-          status: 'NOTIFIED',
-          notifiedAt: new Date()
-        }
-      });
+      await db.query(
+        `UPDATE event_predictions SET status = 'NOTIFIED', notifiedAt = NOW(), updatedAt = NOW()
+         WHERE id = ?`,
+        [prediction.id]
+      );
 
       logger.debug(`用户 ${this.userId} 服务器 ${serverId}: 已发送 ${eventType} 预测通知`);
 
@@ -494,22 +517,15 @@ class UserEventPrediction extends EventEmitter {
    * 标记预测已发生（用户级别）
    * @private
    */
-  async _markPredictionOccurred(serverId, battlemetricsId, eventType, actualTime) {
+  async _markPredictionOccurred(serverId, serverAddress, eventType, actualTime) {
     try {
-      const result = await prisma.event_predictions.updateMany({
-        where: {
-          serverId,
-          userId: this.userId,
-          eventType,
-          status: { in: ['PENDING', 'NOTIFIED'] }
-        },
-        data: {
-          status: 'OCCURRED',
-          actualTime
-        }
-      });
+      const [result] = await db.query(
+        `UPDATE event_predictions SET status = 'OCCURRED', actualTime = ?, updatedAt = NOW()
+         WHERE serverId = ? AND userId = ? AND eventType = ? AND status IN ('PENDING', 'NOTIFIED')`,
+        [actualTime, serverId, this.userId, eventType]
+      );
 
-      if (result.count > 0) {
+      if (result.affectedRows > 0) {
         const timerKey = `${serverId}_${eventType}`;
         if (this.notificationTimers.has(timerKey)) {
           clearTimeout(this.notificationTimers.get(timerKey));
@@ -536,15 +552,12 @@ class UserEventPrediction extends EventEmitter {
    */
   async getActivePredictions(serverId) {
     try {
-      const predictions = await prisma.event_predictions.findMany({
-        where: {
-          serverId,
-          userId: this.userId,
-          status: { in: ['PENDING', 'NOTIFIED'] },
-          predictedTime: { gte: new Date() }
-        },
-        orderBy: { predictedTime: 'asc' }
-      });
+      const [predictions] = await db.query(
+        `SELECT * FROM event_predictions
+         WHERE serverId = ? AND userId = ? AND status IN ('PENDING', 'NOTIFIED') AND predictedTime >= NOW()
+         ORDER BY predictedTime ASC`,
+        [serverId, this.userId]
+      );
 
       return predictions.map(p => ({
         id: p.id,
@@ -568,30 +581,36 @@ class UserEventPrediction extends EventEmitter {
    */
   async getPatterns(serverId) {
     try {
-      const battlemetricsId = await this._getBattlemetricsId(serverId);
-      if (!battlemetricsId) {
+      const serverAddress = await this._getServerAddress(serverId);
+      if (!serverAddress) {
         return [];
       }
 
-      const patterns = await prisma.event_spawn_patterns.findMany({
-        where: {
-          battlemetricsId
-        }
-      });
+      const [patterns] = await db.query(
+        'SELECT * FROM event_spawn_patterns WHERE serverAddress = ?',
+        [serverAddress]
+      );
 
-      return patterns.map(p => ({
-        eventType: p.eventType,
-        eventTypeName: EVENT_TYPE_NAMES[p.eventType],
-        sampleCount: p.sampleCount,
-        avgInterval: p.avgInterval,
-        avgIntervalMinutes: p.avgInterval ? Math.round(p.avgInterval / 60000) : null,
-        stdDeviation: p.stdDeviation,
-        stdDeviationMinutes: p.stdDeviation ? Math.round(p.stdDeviation / 60000) : null,
-        minInterval: p.minInterval,
-        maxInterval: p.maxInterval,
-        lastEventTime: p.lastEventTime,
-        canPredict: p.sampleCount >= UserEventPrediction.MIN_SAMPLES
-      }));
+      return patterns.map(p => {
+        // Parse recentIntervals if it's a string
+        const recentIntervals = p.recentIntervals
+          ? (typeof p.recentIntervals === 'string' ? JSON.parse(p.recentIntervals) : p.recentIntervals)
+          : [];
+
+        return {
+          eventType: p.eventType,
+          eventTypeName: EVENT_TYPE_NAMES[p.eventType],
+          sampleCount: p.sampleCount,
+          avgInterval: p.avgInterval,
+          avgIntervalMinutes: p.avgInterval ? Math.round(p.avgInterval / 60000) : null,
+          stdDeviation: p.stdDeviation,
+          stdDeviationMinutes: p.stdDeviation ? Math.round(p.stdDeviation / 60000) : null,
+          minInterval: p.minInterval,
+          maxInterval: p.maxInterval,
+          lastEventTime: p.lastEventTime,
+          canPredict: p.sampleCount >= UserEventPrediction.MIN_SAMPLES
+        };
+      });
     } catch (error) {
       logger.error(`获取学习模式失败 (用户 ${this.userId}):`, error);
       return [];
@@ -604,29 +623,23 @@ class UserEventPrediction extends EventEmitter {
    */
   async resetPatterns(serverId) {
     try {
-      const battlemetricsId = await this._getBattlemetricsId(serverId);
-      if (!battlemetricsId) {
+      const serverAddress = await this._getServerAddress(serverId);
+      if (!serverAddress) {
         return false;
       }
 
       // 删除物理服务器的模式数据
-      await prisma.event_spawn_patterns.deleteMany({
-        where: {
-          battlemetricsId
-        }
-      });
+      await db.query(
+        'DELETE FROM event_spawn_patterns WHERE serverAddress = ?',
+        [serverAddress]
+      );
 
       // 取消该用户的活跃预测
-      await prisma.event_predictions.updateMany({
-        where: {
-          serverId,
-          userId: this.userId,
-          status: { in: ['PENDING', 'NOTIFIED'] }
-        },
-        data: {
-          status: 'CANCELLED'
-        }
-      });
+      await db.query(
+        `UPDATE event_predictions SET status = 'CANCELLED', updatedAt = NOW()
+         WHERE serverId = ? AND userId = ? AND status IN ('PENDING', 'NOTIFIED')`,
+        [serverId, this.userId]
+      );
 
       // 清除相关计时器
       for (const [key, timerId] of this.notificationTimers.entries()) {
@@ -636,12 +649,12 @@ class UserEventPrediction extends EventEmitter {
         }
       }
 
-      logger.info(`物理服务器 ${battlemetricsId}: 学习数据已重置 (操作者: 用户 ${this.userId})`);
+      logger.info(`物理服务器 ${serverAddress}: 学习数据已重置 (操作者: 用户 ${this.userId})`);
 
       this.emit('patterns:reset', {
         userId: this.userId,
         serverId,
-        battlemetricsId
+        serverAddress
       });
 
       return true;
@@ -657,19 +670,16 @@ class UserEventPrediction extends EventEmitter {
   async start(serverId) {
     await this.loadNotificationSettings();
 
-    // 预热 battlemetricsId 缓存
-    await this._getBattlemetricsId(serverId);
+    // 预热 serverAddress 缓存
+    await this._getServerAddress(serverId);
 
     // 恢复活跃预测的通知调度
     try {
-      const activePredictions = await prisma.event_predictions.findMany({
-        where: {
-          serverId,
-          userId: this.userId,
-          status: 'PENDING',
-          predictedTime: { gte: new Date() }
-        }
-      });
+      const [activePredictions] = await db.query(
+        `SELECT * FROM event_predictions
+         WHERE serverId = ? AND userId = ? AND status = 'PENDING' AND predictedTime >= NOW()`,
+        [serverId, this.userId]
+      );
 
       for (const prediction of activePredictions) {
         await this._scheduleNotification(serverId, prediction.eventType, prediction);
@@ -695,7 +705,7 @@ class UserEventPrediction extends EventEmitter {
     }
 
     // 清除缓存
-    this.serverBmIdCache.delete(serverId);
+    this.serverAddressCache.delete(serverId);
 
     logger.debug(`用户 ${this.userId} 服务器 ${serverId}: 预测服务已停止`);
   }
@@ -708,7 +718,7 @@ class UserEventPrediction extends EventEmitter {
       clearTimeout(timerId);
     }
     this.notificationTimers.clear();
-    this.serverBmIdCache.clear();
+    this.serverAddressCache.clear();
 
     logger.debug(`用户 ${this.userId}: 所有预测服务已停止`);
   }

@@ -4,7 +4,7 @@
  */
 
 import { EventEmitter } from 'events';
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import UserServiceManager from './user-service-manager.js';
 
 class GlobalServiceManager extends EventEmitter {
@@ -100,19 +100,12 @@ class GlobalServiceManager extends EventEmitter {
       console.log('\n🚀 开始初始化所有有效用户的服务...\n');
 
       // 查询所有活跃且订阅未过期的用户
-      const activeUsers = await prisma.users.findMany({
-        where: {
-          isActive: true,
-          subscriptions: {
-            endDate: {
-              gt: new Date() // 订阅未过期
-            }
-          }
-        },
-        include: {
-          subscriptions: true
-        }
-      });
+      const [activeUsers] = await db.query(
+        `SELECT u.*, s.endDate as subscriptionEndDate
+         FROM users u
+         INNER JOIN subscriptions s ON u.id = s.userId
+         WHERE u.isActive = 1 AND s.endDate > NOW()`
+      );
 
       console.log(`📊 找到 ${activeUsers.length} 个有效用户\n`);
 
@@ -126,7 +119,7 @@ class GlobalServiceManager extends EventEmitter {
           successCount++;
 
           const daysLeft = Math.ceil(
-            (user.subscriptions.endDate - new Date()) / (1000 * 60 * 60 * 24)
+            (new Date(user.subscriptionEndDate) - new Date()) / (1000 * 60 * 60 * 24)
           );
           console.log(`  ✅ ${user.username} (订阅剩余 ${daysLeft} 天)`);
         } catch (error) {
@@ -167,10 +160,15 @@ class GlobalServiceManager extends EventEmitter {
       }
 
       // 验证用户存在且订阅有效
-      const user = await prisma.users.findUnique({
-        where: { id: userId },
-        include: { subscriptions: true }
-      });
+      const [userRows] = await db.query(
+        `SELECT u.*, s.endDate as subscriptionEndDate
+         FROM users u
+         LEFT JOIN subscriptions s ON u.id = s.userId
+         WHERE u.id = ?`,
+        [userId]
+      );
+
+      const user = userRows[0];
 
       if (!user) {
         throw new Error('用户不存在');
@@ -180,7 +178,7 @@ class GlobalServiceManager extends EventEmitter {
         throw new Error('用户已被禁用');
       }
 
-      if (!user.subscriptions || new Date() > user.subscriptions.endDate) {
+      if (!user.subscriptionEndDate || new Date() > new Date(user.subscriptionEndDate)) {
         throw new Error('用户订阅已过期');
       }
 
@@ -313,20 +311,25 @@ class GlobalServiceManager extends EventEmitter {
       // 遍历所有活跃用户
       for (const userId of userIds) {
         try {
-          const user = await prisma.users.findUnique({
-            where: { id: userId },
-            include: { subscriptions: true }
-          });
+          const [userRows] = await db.query(
+            `SELECT u.*, s.endDate as subscriptionEndDate
+             FROM users u
+             LEFT JOIN subscriptions s ON u.id = s.userId
+             WHERE u.id = ?`,
+            [userId]
+          );
+
+          const user = userRows[0];
 
           // 检查用户是否仍然有效
-          if (!user || !user.isActive || !user.subscriptions) {
+          if (!user || !user.isActive || !user.subscriptionEndDate) {
             await this.removeUserService(userId, '用户无效或无订阅');
             expiredCount++;
             continue;
           }
 
           // 检查订阅是否过期
-          if (now > user.subscriptions.endDate) {
+          if (now > new Date(user.subscriptionEndDate)) {
             console.log(`  📅 用户 ${user.username} 的订阅已过期`);
             await this.removeUserService(userId, '订阅已过期');
             expiredCount++;
@@ -335,7 +338,7 @@ class GlobalServiceManager extends EventEmitter {
 
           // 如果订阅即将在 3 天内过期，发出警告
           const daysLeft = Math.ceil(
-            (user.subscriptions.endDate - now) / (1000 * 60 * 60 * 24)
+            (new Date(user.subscriptionEndDate) - now) / (1000 * 60 * 60 * 24)
           );
           if (daysLeft <= 3) {
             console.log(`  ⚠️  用户 ${user.username} 的订阅将在 ${daysLeft} 天后过期`);
@@ -577,7 +580,8 @@ class GlobalServiceManager extends EventEmitter {
     console.log('\n🌐 正在为所有活跃用户同步代理配置...');
     const proxyService = (await import('./proxy.service.js')).default;
 
-    const proxyConfig = await prisma.proxy_config.findUnique({ where: { id: 1 } });
+    const [proxyRows] = await db.query('SELECT * FROM proxy_config WHERE id = 1');
+    const proxyConfig = proxyRows[0];
     const isRunning = proxyService.isRunning;
     const proxyAgent = isRunning ? proxyService.getProxyAgent() : null;
     const socksConfig = isRunning ? { host: '127.0.0.1', port: proxyConfig?.proxyPort || 10808 } : null;

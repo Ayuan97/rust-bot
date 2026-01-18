@@ -6,16 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/app.js",
-    "dev": "nodemon src/app.js",
-    "db:init": "node prisma/init.js",
-    "db:migrate": "prisma migrate deploy",
-    "db:seed": "node prisma/seed.js",
-    "db:seed-admin": "node prisma/seed-admin.js",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:deploy": "prisma migrate deploy",
-    "prisma:studio": "prisma studio",
-    "prisma:seed": "node prisma/seed.js"
+    "dev": "nodemon src/app.js"
   },
   "keywords": [
     "rust",
@@ -26,7 +17,6 @@
   "license": "MIT",
   "dependencies": {
     "@liamcottle/rustplus.js": "file:./lib/rustplus",
-    "@prisma/client": "^5.8.0",
     "adm-zip": "^0.5.16",
     "alipay-sdk": "^3.4.0",
     "axios": "^1.6.0",
@@ -37,6 +27,7 @@
     "https-proxy-agent": "^7.0.6",
     "js-yaml": "^4.1.1",
     "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.16.0",
     "qrcode": "^1.5.3",
     "socket.io": "^4.6.1",
     "socket.io-client": "^4.8.3",
@@ -47,8 +38,6 @@
     "wechatpay-node-v3": "^2.2.1"
   },
   "devDependencies": {
-    "mysql2": "^3.16.0",
-    "nodemon": "^3.0.1",
-    "prisma": "^5.8.0"
+    "nodemon": "^3.0.1"
   }
 }

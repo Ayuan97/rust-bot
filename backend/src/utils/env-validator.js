@@ -8,7 +8,10 @@
  */
 const REQUIRED_ENV_VARS = [
   'JWT_SECRET',
-  'DATABASE_URL',
+  'DB_HOST',
+  'DB_USER',
+  'DB_PASSWORD',
+  'DB_NAME',
 ];
 
 /**

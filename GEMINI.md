@@ -6,7 +6,7 @@
 
 **Rust+ Web Dashboard** - 多租户 SaaS Rust 游戏服务器管理面板
 
-**技术栈**: Node.js/Express/Prisma/MySQL/Socket.io | React/Vite/Tailwind | @liamcottle/rustplus.js
+**技术栈**: Node.js/Express/MySQL/Socket.io | React/Vite/Tailwind | @liamcottle/rustplus.js
 
 ## 开发命令
 
@@ -18,11 +18,6 @@ npm start                           # 生产模式
 # 前端 (frontend/)
 npm run dev                         # http://localhost:5173
 npm run build                       # 构建
-
-# 数据库
-npx prisma migrate dev --name xxx   # 创建迁移
-npx prisma generate                 # 生成 Client
-npx prisma studio                   # 数据库 UI
 ```
 
 ## 核心架构
@@ -51,10 +46,11 @@ GlobalServiceManager (全局单例)
 ```
 backend/
 ├── src/app.js                    # 入口
+├── src/lib/db.js                 # 数据库连接池 (mysql2)
 ├── src/services/                 # 服务层 (global-manager, user-*, websocket, proxy, alipay)
 ├── src/routes/                   # API 路由 (/api/auth, /api/servers, /api/pairing...)
 ├── src/utils/                    # 工具 (coordinates, event-constants, messages, logger)
-└── prisma/schema.prisma          # 数据库 Schema
+└── sql/init.sql                  # 数据库初始化脚本
 
 frontend/src/
 ├── services/                     # API/Socket 客户端
@@ -67,7 +63,11 @@ frontend/src/
 
 ```env
 # backend/.env
-DATABASE_URL="mysql://user:pass@localhost:3306/rust_dashboard"
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=rustplus_db
 JWT_SECRET=your-secret-key
 PORT=3000
 FRONTEND_URL=http://localhost:5173
@@ -79,7 +79,7 @@ VITE_SOCKET_URL=http://localhost:3000
 
 ## 开发规范
 
-**后端**: ES6 模块 | EventEmitter 事件驱动 | Prisma 查询必须 userId 过滤 | 日志不用 Emoji
+**后端**: ES6 模块 | EventEmitter 事件驱动 | mysql2 查询必须 userId 过滤 | 日志不用 Emoji
 
 **前端**: 函数式组件 + Hooks | Tailwind CSS | 通过 services/ 调用 API
 

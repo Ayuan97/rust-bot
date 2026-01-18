@@ -1,17 +1,30 @@
 # 数据库结构
 
-本项目使用 **Prisma ORM + MySQL** 进行数据管理。
+本项目使用 **mysql2 + MySQL** 进行数据管理。
 
-## Schema 文件位置
+## 数据库配置
 
-`backend/prisma/schema.prisma`
+**环境变量** (`backend/.env`):
+```env
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=rustplus_db
+```
+
+**连接池**: `backend/src/lib/db.js`
+
+## 初始化脚本
+
+`backend/sql/init.sql` - 包含所有表的 CREATE TABLE 语句
 
 ## 多租户隔离
 
 所有业务表都包含 `userId` 字段，实现数据隔离：
-- 级联删除：删除用户时自动清理所有关联数据
+- 手动级联删除：删除用户时需按顺序清理关联数据
 - 索引优化：userId、serverId、createdAt 都建立了索引
-- 查询自动过滤：所有业务查询都需添加 `where: { userId }`
+- 查询自动过滤：所有业务查询都需添加 `WHERE userId = ?`
 
 ## 数据模型
 
@@ -19,14 +32,14 @@
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | String | 主键 (cuid) |
-| username | String | 用户名 (唯一) |
-| email | String | 邮箱 (唯一) |
-| password | String | 密码 (bcrypt) |
-| isAdmin | Boolean | 是否管理员 |
-| isActive | Boolean | 是否激活 |
-| createdAt | DateTime | 创建时间 |
-| lastLogin | DateTime? | 最后登录 |
+| id | VARCHAR(36) | 主键 (UUID) |
+| username | VARCHAR(50) | 用户名 (唯一) |
+| email | VARCHAR(100) | 邮箱 (唯一) |
+| password | VARCHAR(255) | 密码 (bcrypt) |
+| isAdmin | TINYINT(1) | 是否管理员 |
+| isActive | TINYINT(1) | 是否激活 |
+| createdAt | DATETIME | 创建时间 |
+| lastLogin | DATETIME | 最后登录 |
 
 **关联**: subscription, servers, devices, eventLogs, orders
 
@@ -34,40 +47,40 @@
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | String | 主键 |
-| userId | String | 用户ID (唯一) |
-| planType | Enum | TRIAL/MONTHLY/QUARTERLY/YEARLY |
-| startDate | DateTime | 开始时间 |
-| endDate | DateTime | 结束时间 |
-| status | Enum | ACTIVE/EXPIRED/CANCELLED |
+| id | VARCHAR(36) | 主键 |
+| userId | VARCHAR(36) | 用户ID (唯一) |
+| planType | ENUM | TRIAL/MONTHLY/QUARTERLY/YEARLY |
+| startDate | DATETIME | 开始时间 |
+| endDate | DATETIME | 结束时间 |
+| status | ENUM | ACTIVE/EXPIRED/CANCELLED |
 
 ### Order - 订单表
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | String | 主键 |
-| userId | String | 用户ID |
-| amount | Int | 金额（分） |
-| planType | Enum | 套餐类型 |
-| duration | Int | 时长（天） |
-| paymentMethod | Enum | ALIPAY/WECHAT |
-| status | Enum | PENDING/SUCCESS/FAILED/CANCELLED |
-| tradeNo | String? | 支付平台交易号 |
-| paidAt | DateTime? | 支付时间 |
+| id | VARCHAR(36) | 主键 |
+| userId | VARCHAR(36) | 用户ID |
+| amount | INT | 金额（分） |
+| planType | ENUM | 套餐类型 |
+| duration | INT | 时长（天） |
+| paymentMethod | ENUM | ALIPAY/WECHAT |
+| status | ENUM | PENDING/SUCCESS/FAILED/CANCELLED |
+| tradeNo | VARCHAR(100) | 支付平台交易号 |
+| paidAt | DATETIME | 支付时间 |
 
 ### Server - 游戏服务器
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | String | 主键 |
-| userId | String | 用户ID |
-| name | String | 服务器名称 |
-| ip | String | IP地址 |
-| port | String | 端口 |
-| playerId | String | 玩家ID |
-| playerToken | String | 玩家Token |
-| battlemetricsId | String? | BM ID |
-| img | String? | 地图图片 |
+| id | VARCHAR(36) | 主键 |
+| userId | VARCHAR(36) | 用户ID |
+| name | VARCHAR(255) | 服务器名称 |
+| ip | VARCHAR(100) | IP地址 |
+| port | VARCHAR(10) | 端口 |
+| playerId | VARCHAR(50) | 玩家ID |
+| playerToken | VARCHAR(100) | 玩家Token |
+| battlemetricsId | VARCHAR(50) | BM ID |
+| img | TEXT | 地图图片 |
 
 **关联**: devices, eventLogs
 
@@ -75,16 +88,16 @@
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | String | 主键 |
-| serverId | String | 服务器ID |
-| userId | String | 用户ID (冗余) |
-| entityId | Int | 游戏实体ID |
-| name | String | 设备名称 |
-| type | Enum? | SWITCH/ALARM/STORAGE_MONITOR |
-| command | String? | 自定义命令名 |
-| autoMode | Int | 自动化模式 (0-8) |
-| reachable | Boolean | 是否可达 |
-| lastTrigger | DateTime? | 最后触发时间 |
+| id | VARCHAR(36) | 主键 |
+| serverId | VARCHAR(36) | 服务器ID |
+| userId | VARCHAR(36) | 用户ID (冗余) |
+| entityId | INT | 游戏实体ID |
+| name | VARCHAR(255) | 设备名称 |
+| type | ENUM | SWITCH/ALARM/STORAGE_MONITOR |
+| command | VARCHAR(50) | 自定义命令名 |
+| autoMode | VARCHAR(20) | 自动化模式 |
+| reachable | TINYINT(1) | 是否可达 |
+| lastTrigger | DATETIME | 最后触发时间 |
 
 **唯一约束**: (serverId, entityId)
 
@@ -92,12 +105,12 @@
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | String | 主键 |
-| serverId | String | 服务器ID |
-| userId | String | 用户ID |
-| eventType | String | 事件类型 |
-| eventData | Json? | 事件数据 |
-| createdAt | DateTime | 创建时间 |
+| id | VARCHAR(36) | 主键 |
+| serverId | VARCHAR(36) | 服务器ID |
+| userId | VARCHAR(36) | 用户ID |
+| eventType | ENUM | 事件类型 |
+| eventData | TEXT | 事件数据 (JSON) |
+| createdAt | DATETIME | 创建时间 |
 
 ## 枚举类型
 
@@ -127,47 +140,54 @@
 - `ALARM` - 警报
 - `STORAGE_MONITOR` - 存储监控器
 
-## 常用命令
+## 数据库管理
 
+### 初始化数据库
 ```bash
-# 创建新迁移
-npx prisma migrate dev --name add_new_field
+mysql -u root -p < backend/sql/init.sql
+```
 
-# 应用迁移到生产
-npx prisma migrate deploy
-
-# 生成 Prisma Client
-npx prisma generate
-
-# 打开数据库 UI
-npx prisma studio
-
-# 重置数据库
-npx prisma migrate reset
+### 数据库变更
+将变更脚本放在 `backend/sql/migrations/` 目录，按日期命名：
+```
+2025-01-18_add_new_column.sql
 ```
 
 ## 查询示例
 
 ```javascript
+import db from '../lib/db.js';
+
 // 获取用户的所有服务器
-const servers = await prisma.server.findMany({
-  where: { userId: req.user.id }
-});
+const [servers] = await db.query(
+  'SELECT * FROM servers WHERE userId = ? ORDER BY createdAt DESC',
+  [userId]
+);
 
 // 获取服务器及其设备
-const server = await prisma.server.findUnique({
-  where: { id: serverId },
-  include: { devices: true }
-});
+const [serverRows] = await db.query('SELECT * FROM servers WHERE id = ?', [serverId]);
+const server = serverRows[0];
+const [devices] = await db.query('SELECT * FROM devices WHERE serverId = ?', [serverId]);
 
 // 创建订单
-const order = await prisma.order.create({
-  data: {
-    userId,
-    amount: 2900,
-    planType: 'MONTHLY',
-    duration: 30,
-    paymentMethod: 'ALIPAY'
-  }
-});
+const id = crypto.randomUUID();
+await db.query(
+  `INSERT INTO orders (id, userId, amount, planType, duration, paymentMethod, status, createdAt, updatedAt)
+   VALUES (?, ?, ?, ?, ?, ?, 'PENDING', NOW(), NOW())`,
+  [id, userId, 2900, 'MONTHLY', 30, 'ALIPAY']
+);
+
+// 事务处理
+const conn = await db.getConnection();
+try {
+  await conn.beginTransaction();
+  await conn.query('UPDATE users SET balance = ? WHERE id = ?', [newBalance, userId]);
+  await conn.query('INSERT INTO orders (...) VALUES (...)', [...]);
+  await conn.commit();
+} catch (err) {
+  await conn.rollback();
+  throw err;
+} finally {
+  conn.release();
+}
 ```

@@ -4,10 +4,10 @@
  */
 
 import { EventEmitter } from 'events';
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import logger from '../utils/logger.js';
 
-// 自动化模式定义（与 Prisma AutoMode 枚举对应）
+// 自动化模式定义
 export const AutoMode = {
   NONE: 'NONE',              // 0: 无自动化（手动控制）
   DAY_ON: 'DAY_ON',          // 1: 白天开启，夜晚关闭
@@ -92,22 +92,16 @@ class UserAutomation extends EventEmitter {
   }
 
   /**
-   * 获取服务器的自动化设备（用户级别，从 Prisma 查询）
+   * 获取服务器的自动化设备（用户级别）
    */
   async getDevicesWithAutoMode(serverId) {
     try {
-      const devices = await prisma.devices.findMany({
-        where: {
-          serverId,
-          servers: {
-            userId: this.userId
-          },
-          autoMode: {
-            not: AutoMode.NONE
-          },
-          isActive: true
-        }
-      });
+      const [devices] = await db.query(
+        `SELECT d.* FROM devices d
+         INNER JOIN servers s ON d.serverId = s.id
+         WHERE d.serverId = ? AND s.userId = ? AND d.autoMode != 'NONE' AND d.isActive = 1`,
+        [serverId, this.userId]
+      );
 
       return devices;
     } catch (error) {
@@ -121,18 +115,13 @@ class UserAutomation extends EventEmitter {
    */
   async updateDeviceReachable(serverId, entityId, reachable) {
     try {
-      await prisma.devices.updateMany({
-        where: {
-          serverId,
-          entityId,
-          servers: {
-            userId: this.userId
-          }
-        },
-        data: {
-          reachable
-        }
-      });
+      await db.query(
+        `UPDATE devices d
+         INNER JOIN servers s ON d.serverId = s.id
+         SET d.reachable = ?, d.updatedAt = NOW()
+         WHERE d.serverId = ? AND d.entityId = ? AND s.userId = ?`,
+        [reachable ? 1 : 0, serverId, entityId, this.userId]
+      );
     } catch (error) {
       logger.error(`更新设备可达状态失败:`, error);
     }

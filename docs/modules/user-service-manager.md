@@ -83,7 +83,7 @@ class UserServiceManager extends EventEmitter {
 sequenceDiagram
     participant GSM as GlobalServiceManager
     participant USM as UserServiceManager
-    participant DB as Prisma
+    participant DB as MySQL
     participant RP as RustPlusService
     participant FCM as FCMService
     participant EM as EventMonitor
@@ -151,7 +151,7 @@ graph TD
     USM --> EM[UserEventMonitor]
     USM --> AUTO[UserAutomation]
     USM --> CMD[UserCommands]
-    USM --> Prisma[(数据库)]
+    USM --> DB[(数据库)]
     
     EM --> RP
     AUTO --> RP

@@ -10,7 +10,7 @@
  * - 套餐配置管理
  */
 
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import { v4 as uuidv4 } from 'uuid';
 
 // 旧版套餐价格配置 (单位:元) - 用于向后兼容
@@ -39,17 +39,22 @@ class PaymentService {
    * @returns {Promise<Array>} 套餐列表
    */
   async getPlans(includeInactive = false) {
-    const where = includeInactive ? {} : { isActive: true };
+    let query = 'SELECT * FROM subscription_plans';
+    const params = [];
 
-    const plans = await prisma.subscription_plans.findMany({
-      where,
-      orderBy: { sortOrder: 'asc' },
-    });
+    if (!includeInactive) {
+      query += ' WHERE isActive = 1';
+    }
+    query += ' ORDER BY sortOrder ASC';
+
+    const [plans] = await db.query(query, params);
 
     return plans.map(plan => ({
       ...plan,
       price: parseFloat(plan.price),
-      features: plan.features || [],
+      features: plan.features ? (typeof plan.features === 'string' ? JSON.parse(plan.features) : plan.features) : [],
+      isActive: !!plan.isActive,
+      highlighted: !!plan.highlighted
     }));
   }
 
@@ -59,16 +64,20 @@ class PaymentService {
    * @returns {Promise<Object|null>} 套餐信息
    */
   async getPlanById(planId) {
-    const plan = await prisma.subscription_plans.findUnique({
-      where: { id: planId },
-    });
+    const [rows] = await db.query(
+      'SELECT * FROM subscription_plans WHERE id = ?',
+      [planId]
+    );
+    const plan = rows[0];
 
     if (!plan) return null;
 
     return {
       ...plan,
       price: parseFloat(plan.price),
-      features: plan.features || [],
+      features: plan.features ? (typeof plan.features === 'string' ? JSON.parse(plan.features) : plan.features) : [],
+      isActive: !!plan.isActive,
+      highlighted: !!plan.highlighted
     };
   }
 
@@ -78,16 +87,20 @@ class PaymentService {
    * @returns {Promise<Object|null>} 套餐信息
    */
   async getPlanByCode(code) {
-    const plan = await prisma.subscription_plans.findUnique({
-      where: { code },
-    });
+    const [rows] = await db.query(
+      'SELECT * FROM subscription_plans WHERE code = ?',
+      [code]
+    );
+    const plan = rows[0];
 
     if (!plan) return null;
 
     return {
       ...plan,
       price: parseFloat(plan.price),
-      features: plan.features || [],
+      features: plan.features ? (typeof plan.features === 'string' ? JSON.parse(plan.features) : plan.features) : [],
+      isActive: !!plan.isActive,
+      highlighted: !!plan.highlighted
     };
   }
 
@@ -97,24 +110,38 @@ class PaymentService {
    * @returns {Promise<Object>} 创建的套餐
    */
   async createPlan(data) {
-    const plan = await prisma.subscription_plans.create({
-      data: {
-        code: data.code,
-        name: data.name,
-        price: data.price,
-        duration: data.duration,
-        description: data.description || null,
-        features: data.features || [],
-        sortOrder: data.sortOrder || 0,
-        isActive: data.isActive !== false,
-        highlighted: data.highlighted || false,
-      },
-    });
+    const id = uuidv4();
+    const features = data.features || [];
+
+    await db.query(
+      `INSERT INTO subscription_plans
+        (id, code, name, price, duration, description, features, sortOrder, isActive, highlighted, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [
+        id,
+        data.code,
+        data.name,
+        data.price,
+        data.duration,
+        data.description || null,
+        JSON.stringify(features),
+        data.sortOrder || 0,
+        data.isActive !== false ? 1 : 0,
+        data.highlighted ? 1 : 0
+      ]
+    );
 
     return {
-      ...plan,
-      price: parseFloat(plan.price),
-      features: plan.features || [],
+      id,
+      code: data.code,
+      name: data.name,
+      price: parseFloat(data.price),
+      duration: data.duration,
+      description: data.description || null,
+      features,
+      sortOrder: data.sortOrder || 0,
+      isActive: data.isActive !== false,
+      highlighted: data.highlighted || false
     };
   }
 
@@ -125,28 +152,56 @@ class PaymentService {
    * @returns {Promise<Object>} 更新后的套餐
    */
   async updatePlan(planId, data) {
-    const updateData = {};
+    const updateFields = [];
+    const updateValues = [];
 
-    if (data.code !== undefined) updateData.code = data.code;
-    if (data.name !== undefined) updateData.name = data.name;
-    if (data.price !== undefined) updateData.price = data.price;
-    if (data.duration !== undefined) updateData.duration = data.duration;
-    if (data.description !== undefined) updateData.description = data.description;
-    if (data.features !== undefined) updateData.features = data.features;
-    if (data.sortOrder !== undefined) updateData.sortOrder = data.sortOrder;
-    if (data.isActive !== undefined) updateData.isActive = data.isActive;
-    if (data.highlighted !== undefined) updateData.highlighted = data.highlighted;
+    if (data.code !== undefined) {
+      updateFields.push('code = ?');
+      updateValues.push(data.code);
+    }
+    if (data.name !== undefined) {
+      updateFields.push('name = ?');
+      updateValues.push(data.name);
+    }
+    if (data.price !== undefined) {
+      updateFields.push('price = ?');
+      updateValues.push(data.price);
+    }
+    if (data.duration !== undefined) {
+      updateFields.push('duration = ?');
+      updateValues.push(data.duration);
+    }
+    if (data.description !== undefined) {
+      updateFields.push('description = ?');
+      updateValues.push(data.description);
+    }
+    if (data.features !== undefined) {
+      updateFields.push('features = ?');
+      updateValues.push(JSON.stringify(data.features));
+    }
+    if (data.sortOrder !== undefined) {
+      updateFields.push('sortOrder = ?');
+      updateValues.push(data.sortOrder);
+    }
+    if (data.isActive !== undefined) {
+      updateFields.push('isActive = ?');
+      updateValues.push(data.isActive ? 1 : 0);
+    }
+    if (data.highlighted !== undefined) {
+      updateFields.push('highlighted = ?');
+      updateValues.push(data.highlighted ? 1 : 0);
+    }
 
-    const plan = await prisma.subscription_plans.update({
-      where: { id: planId },
-      data: updateData,
-    });
+    updateFields.push('updatedAt = NOW()');
+    updateValues.push(planId);
 
-    return {
-      ...plan,
-      price: parseFloat(plan.price),
-      features: plan.features || [],
-    };
+    await db.query(
+      `UPDATE subscription_plans SET ${updateFields.join(', ')} WHERE id = ?`,
+      updateValues
+    );
+
+    // Return the updated plan
+    return this.getPlanById(planId);
   }
 
   /**
@@ -156,17 +211,20 @@ class PaymentService {
    */
   async deletePlan(planId) {
     // 检查是否有关联的订单
-    const orderCount = await prisma.orders.count({
-      where: { planId },
-    });
+    const [countResult] = await db.query(
+      'SELECT COUNT(*) as count FROM orders WHERE planId = ?',
+      [planId]
+    );
+    const orderCount = countResult[0].count;
 
     if (orderCount > 0) {
       throw new Error(`该套餐已有 ${orderCount} 个关联订单，无法删除。请先禁用该套餐。`);
     }
 
-    await prisma.subscription_plans.delete({
-      where: { id: planId },
-    });
+    await db.query(
+      'DELETE FROM subscription_plans WHERE id = ?',
+      [planId]
+    );
 
     return true;
   }
@@ -176,10 +234,11 @@ class PaymentService {
    * @returns {Promise<void>}
    */
   async initDefaultPlans() {
-    const existingPlans = await prisma.subscription_plans.count();
+    const [countResult] = await db.query('SELECT COUNT(*) as count FROM subscription_plans');
+    const existingPlans = countResult[0].count;
 
     if (existingPlans > 0) {
-      console.log('📦 套餐配置已存在，跳过初始化');
+      console.log('套餐配置已存在，跳过初始化');
       return;
     }
 
@@ -220,10 +279,26 @@ class PaymentService {
     ];
 
     for (const plan of defaultPlans) {
-      await prisma.subscription_plans.create({ data: plan });
+      await db.query(
+        `INSERT INTO subscription_plans
+          (id, code, name, price, duration, description, features, sortOrder, isActive, highlighted, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [
+          uuidv4(),
+          plan.code,
+          plan.name,
+          plan.price,
+          plan.duration,
+          plan.description,
+          JSON.stringify(plan.features),
+          plan.sortOrder,
+          plan.isActive ? 1 : 0,
+          plan.highlighted ? 1 : 0
+        ]
+      );
     }
 
-    console.log('📦 已初始化默认套餐配置');
+    console.log('已初始化默认套餐配置');
   }
 
   /**
@@ -240,10 +315,11 @@ class PaymentService {
     }
 
     // 验证用户是否存在
-    const user = await prisma.users.findUnique({
-      where: { id: userId },
-      include: { subscriptions: true },
-    });
+    const [userRows] = await db.query(
+      'SELECT u.*, s.id as subscriptionId, s.endDate as subscriptionEndDate FROM users u LEFT JOIN subscriptions s ON u.id = s.userId WHERE u.id = ?',
+      [userId]
+    );
+    const user = userRows[0];
 
     if (!user) {
       throw new Error('用户不存在');
@@ -264,25 +340,24 @@ class PaymentService {
     expireAt.setMinutes(expireAt.getMinutes() + ORDER_EXPIRE_MINUTES);
 
     // 创建订单
-    const order = await prisma.orders.create({
-      data: {
-        userId,
-        planId,
-        amount: plan.price,
-        paymentMethod,
-        status: 'PENDING',
-        expireAt,
-      },
-      include: {
-        plan: true,
-      },
-    });
+    const orderId = uuidv4();
+    await db.query(
+      `INSERT INTO orders (id, userId, planId, amount, paymentMethod, status, expireAt, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, 'PENDING', ?, NOW(), NOW())`,
+      [orderId, userId, planId, plan.price, paymentMethod, expireAt]
+    );
 
     return {
-      ...order,
-      amount: parseFloat(order.amount),
+      id: orderId,
+      userId,
+      planId,
+      amount: plan.price,
+      paymentMethod,
+      status: 'PENDING',
+      expireAt,
       duration: plan.duration,
       planName: plan.name,
+      plan
     };
   }
 
@@ -302,10 +377,11 @@ class PaymentService {
     }
 
     // 验证用户是否存在
-    const user = await prisma.users.findUnique({
-      where: { id: userId },
-      include: { subscriptions: true },
-    });
+    const [userRows] = await db.query(
+      'SELECT u.*, s.id as subscriptionId, s.endDate as subscriptionEndDate FROM users u LEFT JOIN subscriptions s ON u.id = s.userId WHERE u.id = ?',
+      [userId]
+    );
+    const user = userRows[0];
 
     if (!user) {
       throw new Error('用户不存在');
@@ -319,20 +395,22 @@ class PaymentService {
     expireAt.setMinutes(expireAt.getMinutes() + ORDER_EXPIRE_MINUTES);
 
     // 创建订单
-    const order = await prisma.orders.create({
-      data: {
-        userId,
-        planType,
-        amount,
-        paymentMethod,
-        status: 'PENDING',
-        expireAt,
-      },
-    });
+    const orderId = uuidv4();
+    await db.query(
+      `INSERT INTO orders (id, userId, planType, amount, paymentMethod, status, expireAt, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, 'PENDING', ?, NOW(), NOW())`,
+      [orderId, userId, planType, amount, paymentMethod, expireAt]
+    );
 
     return {
-      ...order,
-      duration: LEGACY_PLAN_DURATIONS[planType],
+      id: orderId,
+      userId,
+      planType,
+      amount,
+      paymentMethod,
+      status: 'PENDING',
+      expireAt,
+      duration: LEGACY_PLAN_DURATIONS[planType]
     };
   }
 
@@ -347,31 +425,39 @@ class PaymentService {
   async getUserOrders(userId, options = {}) {
     const { limit = 50, status } = options;
 
-    const where = { userId };
+    let query = `
+      SELECT o.*, p.name as planName, p.duration as planDuration, p.features as planFeatures
+      FROM orders o
+      LEFT JOIN subscription_plans p ON o.planId = p.id
+      WHERE o.userId = ?
+    `;
+    const params = [userId];
+
     if (status) {
-      where.status = status;
+      query += ' AND o.status = ?';
+      params.push(status);
     }
 
-    const orders = await prisma.orders.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      include: {
-        plan: true,
-      },
-    });
+    query += ' ORDER BY o.createdAt DESC LIMIT ?';
+    params.push(limit);
+
+    const [orders] = await db.query(query, params);
 
     return orders.map(order => {
       // 如果有关联套餐，使用套餐配置；否则使用旧版配置
-      const duration = order.plan
-        ? order.plan.duration
-        : (order.planType ? LEGACY_PLAN_DURATIONS[order.planType] : null);
+      const duration = order.planDuration || (order.planType ? LEGACY_PLAN_DURATIONS[order.planType] : null);
 
       return {
         ...order,
         amount: parseFloat(order.amount),
         duration,
-        planName: order.plan?.name || order.planType,
+        planName: order.planName || order.planType,
+        plan: order.planId ? {
+          id: order.planId,
+          name: order.planName,
+          duration: order.planDuration,
+          features: order.planFeatures ? (typeof order.planFeatures === 'string' ? JSON.parse(order.planFeatures) : order.planFeatures) : []
+        } : null
       };
     });
   }
@@ -382,33 +468,39 @@ class PaymentService {
    * @returns {Promise<Object|null>} 订单信息
    */
   async getOrderById(orderId) {
-    const order = await prisma.orders.findUnique({
-      where: { id: orderId },
-      include: {
-        users: {
-          select: {
-            id: true,
-            username: true,
-            email: true,
-          },
-        },
-        plan: true,
-      },
-    });
+    const [rows] = await db.query(
+      `SELECT o.*, p.name as planName, p.duration as planDuration, p.features as planFeatures,
+              u.id as usersId, u.username, u.email
+       FROM orders o
+       LEFT JOIN subscription_plans p ON o.planId = p.id
+       LEFT JOIN users u ON o.userId = u.id
+       WHERE o.id = ?`,
+      [orderId]
+    );
+    const order = rows[0];
 
     if (!order) {
       return null;
     }
 
-    const duration = order.plan
-      ? order.plan.duration
-      : (order.planType ? LEGACY_PLAN_DURATIONS[order.planType] : null);
+    const duration = order.planDuration || (order.planType ? LEGACY_PLAN_DURATIONS[order.planType] : null);
 
     return {
       ...order,
       amount: parseFloat(order.amount),
       duration,
-      planName: order.plan?.name || order.planType,
+      planName: order.planName || order.planType,
+      users: order.usersId ? {
+        id: order.usersId,
+        username: order.username,
+        email: order.email
+      } : null,
+      plan: order.planId ? {
+        id: order.planId,
+        name: order.planName,
+        duration: order.planDuration,
+        features: order.planFeatures ? (typeof order.planFeatures === 'string' ? JSON.parse(order.planFeatures) : order.planFeatures) : []
+      } : null
     };
   }
 
@@ -418,33 +510,39 @@ class PaymentService {
    * @returns {Promise<Object|null>} 订单信息
    */
   async getOrderByTradeNo(tradeNo) {
-    const order = await prisma.orders.findFirst({
-      where: { tradeNo },
-      include: {
-        users: {
-          select: {
-            id: true,
-            username: true,
-            email: true,
-          },
-        },
-        plan: true,
-      },
-    });
+    const [rows] = await db.query(
+      `SELECT o.*, p.name as planName, p.duration as planDuration, p.features as planFeatures,
+              u.id as usersId, u.username, u.email
+       FROM orders o
+       LEFT JOIN subscription_plans p ON o.planId = p.id
+       LEFT JOIN users u ON o.userId = u.id
+       WHERE o.tradeNo = ?`,
+      [tradeNo]
+    );
+    const order = rows[0];
 
     if (!order) {
       return null;
     }
 
-    const duration = order.plan
-      ? order.plan.duration
-      : (order.planType ? LEGACY_PLAN_DURATIONS[order.planType] : null);
+    const duration = order.planDuration || (order.planType ? LEGACY_PLAN_DURATIONS[order.planType] : null);
 
     return {
       ...order,
       amount: parseFloat(order.amount),
       duration,
-      planName: order.plan?.name || order.planType,
+      planName: order.planName || order.planType,
+      users: order.usersId ? {
+        id: order.usersId,
+        username: order.username,
+        email: order.email
+      } : null,
+      plan: order.planId ? {
+        id: order.planId,
+        name: order.planName,
+        duration: order.planDuration,
+        features: order.planFeatures ? (typeof order.planFeatures === 'string' ? JSON.parse(order.planFeatures) : order.planFeatures) : []
+      } : null
     };
   }
 
@@ -455,12 +553,23 @@ class PaymentService {
    * @returns {Promise<Object>} 更新后的订单
    */
   async updateOrder(orderId, updates) {
-    const order = await prisma.orders.update({
-      where: { id: orderId },
-      data: updates,
-    });
+    const updateFields = [];
+    const updateValues = [];
 
-    return order;
+    for (const [key, value] of Object.entries(updates)) {
+      updateFields.push(`${key} = ?`);
+      updateValues.push(value);
+    }
+
+    updateFields.push('updatedAt = NOW()');
+    updateValues.push(orderId);
+
+    await db.query(
+      `UPDATE orders SET ${updateFields.join(', ')} WHERE id = ?`,
+      updateValues
+    );
+
+    return this.getOrderById(orderId);
   }
 
   /**
@@ -471,17 +580,17 @@ class PaymentService {
    */
   async markOrderAsPaid(orderId, tradeNo) {
     // 获取订单
-    const order = await prisma.orders.findUnique({
-      where: { id: orderId },
-      include: {
-        users: {
-          include: {
-            subscriptions: true,
-          },
-        },
-        plan: true,
-      },
-    });
+    const [orderRows] = await db.query(
+      `SELECT o.*, p.duration as planDuration,
+              u.id as usersId, s.id as subscriptionId, s.endDate as subscriptionEndDate
+       FROM orders o
+       LEFT JOIN subscription_plans p ON o.planId = p.id
+       LEFT JOIN users u ON o.userId = u.id
+       LEFT JOIN subscriptions s ON u.id = s.userId
+       WHERE o.id = ?`,
+      [orderId]
+    );
+    const order = orderRows[0];
 
     if (!order) {
       throw new Error('订单不存在');
@@ -497,37 +606,35 @@ class PaymentService {
 
     // 检查订单是否过期
     if (order.expireAt && new Date() > order.expireAt) {
-      await prisma.orders.update({
-        where: { id: orderId },
-        data: { status: 'EXPIRED' },
-      });
+      await db.query(
+        `UPDATE orders SET status = 'EXPIRED', updatedAt = NOW() WHERE id = ?`,
+        [orderId]
+      );
       throw new Error('订单已过期');
     }
 
     // 获取套餐时长
-    const duration = order.plan
-      ? order.plan.duration
-      : (order.planType ? LEGACY_PLAN_DURATIONS[order.planType] : 30);
+    const duration = order.planDuration || (order.planType ? LEGACY_PLAN_DURATIONS[order.planType] : 30);
 
-    const result = await prisma.$transaction(async (tx) => {
+    // 开启事务
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+
       // 1. 更新订单状态
-      const updatedOrder = await tx.orders.update({
-        where: { id: orderId },
-        data: {
-          status: 'PAID',
-          tradeNo,
-          paidAt: new Date(),
-        },
-      });
+      await conn.query(
+        `UPDATE orders SET status = 'PAID', tradeNo = ?, paidAt = NOW(), updatedAt = NOW() WHERE id = ?`,
+        [tradeNo, orderId]
+      );
 
       // 2. 延长用户订阅时间
       const now = new Date();
 
       // 计算新的到期时间
       let newEndDate;
-      if (order.users.subscriptions && order.users.subscriptions.endDate > now) {
+      if (order.subscriptionEndDate && new Date(order.subscriptionEndDate) > now) {
         // 如果当前订阅未过期,在现有基础上延长
-        newEndDate = new Date(order.users.subscriptions.endDate);
+        newEndDate = new Date(order.subscriptionEndDate);
         newEndDate.setDate(newEndDate.getDate() + duration);
       } else {
         // 如果当前订阅已过期或不存在,从现在开始计算
@@ -536,33 +643,33 @@ class PaymentService {
       }
 
       // 更新或创建订阅
-      const subscription = await tx.subscriptions.upsert({
-        where: { userId: order.userId },
-        create: {
-          userId: order.userId,
-          planType: order.planType || 'MONTHLY',
-          startDate: now,
-          endDate: newEndDate,
-          amount: order.amount,
-          paymentMethod: order.paymentMethod,
-          transactionId: tradeNo,
-        },
-        update: {
-          planType: order.planType || 'MONTHLY',
-          endDate: newEndDate,
-          amount: order.amount,
-          paymentMethod: order.paymentMethod,
-          transactionId: tradeNo,
-        },
-      });
+      if (order.subscriptionId) {
+        await conn.query(
+          `UPDATE subscriptions SET
+            planType = ?, endDate = ?, amount = ?, paymentMethod = ?, transactionId = ?, updatedAt = NOW()
+           WHERE userId = ?`,
+          [order.planType || 'MONTHLY', newEndDate, order.amount, order.paymentMethod, tradeNo, order.userId]
+        );
+      } else {
+        await conn.query(
+          `INSERT INTO subscriptions (id, userId, planId, planType, startDate, endDate, amount, paymentMethod, transactionId, createdAt, updatedAt)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+          [uuidv4(), order.userId, order.planId, order.planType || 'MONTHLY', now, newEndDate, order.amount, order.paymentMethod, tradeNo]
+        );
+      }
+
+      await conn.commit();
 
       return {
-        order: updatedOrder,
-        subscription,
+        order: { id: orderId, status: 'PAID', tradeNo, paidAt: now },
+        subscription: { endDate: newEndDate }
       };
-    });
-
-    return result;
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
   }
 
   /**
@@ -572,13 +679,13 @@ class PaymentService {
    * @returns {Promise<Object>} 更新后的订单
    */
   async markOrderAsFailed(orderId, reason) {
-    const order = await prisma.orders.update({
-      where: { id: orderId },
-      data: { status: 'FAILED' },
-    });
+    await db.query(
+      `UPDATE orders SET status = 'FAILED', updatedAt = NOW() WHERE id = ?`,
+      [orderId]
+    );
 
     console.log(`订单 ${orderId} 支付失败: ${reason}`);
-    return order;
+    return this.getOrderById(orderId);
   }
 
   /**
@@ -588,9 +695,11 @@ class PaymentService {
    * @returns {Promise<Object>} 更新后的订单
    */
   async cancelOrder(orderId, userId) {
-    const order = await prisma.orders.findUnique({
-      where: { id: orderId },
-    });
+    const [rows] = await db.query(
+      'SELECT * FROM orders WHERE id = ?',
+      [orderId]
+    );
+    const order = rows[0];
 
     if (!order) {
       throw new Error('订单不存在');
@@ -604,12 +713,12 @@ class PaymentService {
       throw new Error(`订单状态为 ${order.status},无法取消`);
     }
 
-    const updatedOrder = await prisma.orders.update({
-      where: { id: orderId },
-      data: { status: 'CANCELLED' },
-    });
+    await db.query(
+      `UPDATE orders SET status = 'CANCELLED', updatedAt = NOW() WHERE id = ?`,
+      [orderId]
+    );
 
-    return updatedOrder;
+    return this.getOrderById(orderId);
   }
 
   /**
@@ -617,25 +726,16 @@ class PaymentService {
    * @returns {Promise<number>} 清理的订单数量
    */
   async cleanExpiredOrders() {
-    const now = new Date();
+    const [result] = await db.query(
+      `UPDATE orders SET status = 'EXPIRED', updatedAt = NOW()
+       WHERE status = 'PENDING' AND expireAt < NOW()`
+    );
 
-    const result = await prisma.orders.updateMany({
-      where: {
-        status: 'PENDING',
-        expireAt: {
-          lt: now,
-        },
-      },
-      data: {
-        status: 'EXPIRED',
-      },
-    });
-
-    if (result.count > 0) {
-      console.log(`清理了 ${result.count} 个过期订单`);
+    if (result.affectedRows > 0) {
+      console.log(`清理了 ${result.affectedRows} 个过期订单`);
     }
 
-    return result.count;
+    return result.affectedRows;
   }
 
   /**

@@ -20,16 +20,14 @@ mkdir -p backend/data
 
 **解决**:
 ```bash
-# 重新生成迁移
-npx prisma migrate dev
-
-# 或重置数据库（会丢失数据）
-npx prisma migrate reset
+# 检查 sql/init.sql 中的表结构
+# 手动执行 ALTER TABLE 添加缺失列
+mysql -u root -p rustplus_db < backend/sql/migrations/xxx.sql
 ```
 
 ---
 
-### P2002: Unique constraint failed
+### ER_DUP_ENTRY: Duplicate entry
 
 **原因**: 尝试插入重复的唯一字段值
 
@@ -164,7 +162,7 @@ curl http://localhost:3000/api/health
 curl http://localhost:3000/api/pairing/status
 
 # 检查数据库连接
-npx prisma studio
+mysql -u root -p -e "SELECT 1"
 ```
 
 ## 性能问题
@@ -188,5 +186,5 @@ npx prisma studio
 2. N+1 查询问题
 
 **解决**:
-1. 使用 Prisma 的 `include` 进行关联查询
+1. 优化 SQL 查询，使用 JOIN 减少查询次数
 2. 添加适当的数据库索引

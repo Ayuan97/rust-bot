@@ -4,9 +4,10 @@
  */
 
 import { Router } from 'express';
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import globalManager from '../services/global-manager.service.js';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
@@ -59,30 +60,40 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
  */
 router.get('/notifications', async (req, res) => {
   try {
-    // 查找或创建用户的通知设置
-    let notificationSettings = await prisma.notification_settings.findUnique({
-      where: { userId: req.user.id }
-    });
+    // 查找用户的通知设置
+    const [rows] = await db.query(
+      'SELECT * FROM notification_settings WHERE userId = ?',
+      [req.user.id]
+    );
+
+    let notificationSettings = rows[0];
 
     // 如果不存在，创建默认设置
     if (!notificationSettings) {
-      notificationSettings = await prisma.notification_settings.create({
-        data: {
-          userId: req.user.id,
-          settings: DEFAULT_NOTIFICATION_SETTINGS
-        }
-      });
+      const id = uuidv4();
+      const now = new Date();
+      await db.query(
+        `INSERT INTO notification_settings (id, userId, settings, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?)`,
+        [id, req.user.id, JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS), now, now]
+      );
+      notificationSettings = { settings: DEFAULT_NOTIFICATION_SETTINGS };
     }
+
+    // 解析 JSON settings
+    const savedSettings = typeof notificationSettings.settings === 'string'
+      ? JSON.parse(notificationSettings.settings)
+      : (notificationSettings.settings || {});
 
     // 合并默认设置和已保存的设置
     const settings = {
       ...DEFAULT_NOTIFICATION_SETTINGS,
-      ...(typeof notificationSettings.settings === 'object' ? notificationSettings.settings : {})
+      ...savedSettings
     };
 
     res.json({ success: true, settings });
   } catch (error) {
-    console.error('❌ 获取通知设置失败:', error);
+    console.error('获取通知设置失败:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -147,37 +158,49 @@ router.post('/notifications', async (req, res) => {
       }
     }
 
-    // 查找或创建用户的通知设置
-    let notificationSettings = await prisma.notification_settings.findUnique({
-      where: { userId: req.user.id }
-    });
+    // 查找用户的通知设置
+    const [rows] = await db.query(
+      'SELECT * FROM notification_settings WHERE userId = ?',
+      [req.user.id]
+    );
+
+    let notificationSettings = rows[0];
+    const now = new Date();
 
     if (!notificationSettings) {
       // 创建新设置
-      notificationSettings = await prisma.notification_settings.create({
-        data: {
-          userId: req.user.id,
-          settings: { ...DEFAULT_NOTIFICATION_SETTINGS, ...partialSettings }
-        }
-      });
+      const id = uuidv4();
+      const newSettings = { ...DEFAULT_NOTIFICATION_SETTINGS, ...partialSettings };
+      await db.query(
+        `INSERT INTO notification_settings (id, userId, settings, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?)`,
+        [id, req.user.id, JSON.stringify(newSettings), now, now]
+      );
+      notificationSettings = { settings: newSettings };
     } else {
       // 更新现有设置（合并）
-      const currentSettings = typeof notificationSettings.settings === 'object'
-        ? notificationSettings.settings
-        : {};
+      const currentSettings = typeof notificationSettings.settings === 'string'
+        ? JSON.parse(notificationSettings.settings)
+        : (notificationSettings.settings || {});
 
-      notificationSettings = await prisma.notification_settings.update({
-        where: { userId: req.user.id },
-        data: {
-          settings: { ...currentSettings, ...partialSettings }
-        }
-      });
+      const mergedSettings = { ...currentSettings, ...partialSettings };
+
+      await db.query(
+        'UPDATE notification_settings SET settings = ?, updatedAt = ? WHERE userId = ?',
+        [JSON.stringify(mergedSettings), now, req.user.id]
+      );
+      notificationSettings = { settings: mergedSettings };
     }
+
+    // 解析设置
+    const savedSettings = typeof notificationSettings.settings === 'string'
+      ? JSON.parse(notificationSettings.settings)
+      : notificationSettings.settings;
 
     // 合并默认设置
     const settings = {
       ...DEFAULT_NOTIFICATION_SETTINGS,
-      ...(typeof notificationSettings.settings === 'object' ? notificationSettings.settings : {})
+      ...savedSettings
     };
 
     // 刷新服务中的缓存（如果用户服务正在运行）
@@ -191,12 +214,12 @@ router.post('/notifications', async (req, res) => {
       if (userService.dayNightNotifier) {
         await userService.dayNightNotifier.loadNotificationSettings();
       }
-      console.log(`✅ 用户 ${req.user.id} 的通知设置缓存已刷新`);
+      console.log(`[Settings] 用户 ${req.user.id} 的通知设置缓存已刷新`);
     }
 
     res.json({ success: true, settings });
   } catch (error) {
-    console.error('❌ 更新通知设置失败:', error);
+    console.error('更新通知设置失败:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -207,17 +230,27 @@ router.post('/notifications', async (req, res) => {
  */
 router.post('/notifications/reset', async (req, res) => {
   try {
-    // 更新或创建默认设置
-    await prisma.notification_settings.upsert({
-      where: { userId: req.user.id },
-      update: {
-        settings: DEFAULT_NOTIFICATION_SETTINGS
-      },
-      create: {
-        userId: req.user.id,
-        settings: DEFAULT_NOTIFICATION_SETTINGS
-      }
-    });
+    const now = new Date();
+
+    // 使用 INSERT ON DUPLICATE KEY UPDATE 实现 upsert
+    const [existingRows] = await db.query(
+      'SELECT id FROM notification_settings WHERE userId = ?',
+      [req.user.id]
+    );
+
+    if (existingRows.length > 0) {
+      await db.query(
+        'UPDATE notification_settings SET settings = ?, updatedAt = ? WHERE userId = ?',
+        [JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS), now, req.user.id]
+      );
+    } else {
+      const id = uuidv4();
+      await db.query(
+        `INSERT INTO notification_settings (id, userId, settings, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?)`,
+        [id, req.user.id, JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS), now, now]
+      );
+    }
 
     // 刷新服务中的缓存（如果用户服务正在运行）
     const userService = globalManager.getUserService(req.user.id);
@@ -228,12 +261,12 @@ router.post('/notifications/reset', async (req, res) => {
       if (userService.dayNightNotifier) {
         await userService.dayNightNotifier.loadNotificationSettings();
       }
-      console.log(`✅ 用户 ${req.user.id} 的通知设置已重置并刷新缓存`);
+      console.log(`[Settings] 用户 ${req.user.id} 的通知设置已重置并刷新缓存`);
     }
 
     res.json({ success: true, settings: DEFAULT_NOTIFICATION_SETTINGS });
   } catch (error) {
-    console.error('❌ 重置通知设置失败:', error);
+    console.error('重置通知设置失败:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -245,17 +278,22 @@ router.post('/notifications/reset', async (req, res) => {
  */
 export async function getNotificationSettings(userId) {
   try {
-    const notificationSettings = await prisma.notification_settings.findUnique({
-      where: { userId }
-    });
+    const [rows] = await db.query(
+      'SELECT settings FROM notification_settings WHERE userId = ?',
+      [userId]
+    );
 
-    if (!notificationSettings) {
+    if (rows.length === 0) {
       return DEFAULT_NOTIFICATION_SETTINGS;
     }
 
+    const savedSettings = typeof rows[0].settings === 'string'
+      ? JSON.parse(rows[0].settings)
+      : (rows[0].settings || {});
+
     return {
       ...DEFAULT_NOTIFICATION_SETTINGS,
-      ...(typeof notificationSettings.settings === 'object' ? notificationSettings.settings : {})
+      ...savedSettings
     };
   } catch (error) {
     console.error('获取通知设置失败:', error);

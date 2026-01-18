@@ -6,7 +6,7 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import prisma from '../lib/prisma.js';
+import db, { getConnection } from '../lib/db.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -67,11 +67,12 @@ router.post('/register', async (req, res) => {
     }
 
     // 检查用户名是否已存在
-    const existingUserByUsername = await prisma.users.findUnique({
-      where: { username }
-    });
+    const [existingUsers] = await db.query(
+      'SELECT id FROM users WHERE username = ?',
+      [username]
+    );
 
-    if (existingUserByUsername) {
+    if (existingUsers.length > 0) {
       return res.status(409).json({
         success: false,
         error: '用户名已被占用'
@@ -81,66 +82,78 @@ router.post('/register', async (req, res) => {
     // 加密密码
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
-    // 创建用户（无有效订阅，需管理员审核后赠送时长）
-    const user = await prisma.users.create({
-      data: {
-        id: uuidv4(),
-        username,
-        password: hashedPassword,
-        subscriptions: {
-          create: {
-            id: uuidv4(),
-            planType: 'TRIAL',
-            endDate: new Date(), // 到期时间为当前，等待管理员审核
-            updatedAt: new Date()
-          }
-        },
-        notification_settings: {
-          create: {
-            id: uuidv4(),
-            settings: {
-              player_death: true,
-              player_online: true,
-              player_offline: true,
-              player_afk: true,
-              cargo_spawn: true,
-              heli_spawn: true,
-              oil_rig_triggered: true
+    // 使用事务创建用户、订阅和通知设置
+    const conn = await getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const userId = uuidv4();
+      const subscriptionId = uuidv4();
+      const notificationSettingsId = uuidv4();
+      const now = new Date();
+
+      // 创建用户
+      await conn.query(
+        `INSERT INTO users (id, username, password, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?)`,
+        [userId, username, hashedPassword, now, now]
+      );
+
+      // 创建订阅（到期时间为当前，等待管理员审核）
+      await conn.query(
+        `INSERT INTO subscriptions (id, userId, planType, endDate, createdAt, updatedAt)
+         VALUES (?, ?, 'TRIAL', ?, ?, ?)`,
+        [subscriptionId, userId, now, now, now]
+      );
+
+      // 创建通知设置
+      const defaultSettings = {
+        player_death: true,
+        player_online: true,
+        player_offline: true,
+        player_afk: true,
+        cargo_spawn: true,
+        heli_spawn: true,
+        oil_rig_triggered: true
+      };
+      await conn.query(
+        `INSERT INTO notification_settings (id, userId, settings, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?)`,
+        [notificationSettingsId, userId, JSON.stringify(defaultSettings), now, now]
+      );
+
+      await conn.commit();
+
+      // 生成 JWT token
+      const token = jwt.sign(
+        { userId },
+        process.env.JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN }
+      );
+
+      res.status(201).json({
+        success: true,
+        message: '注册成功',
+        data: {
+          token,
+          user: {
+            id: userId,
+            username,
+            isAdmin: false,
+            subscriptions: {
+              planType: 'TRIAL',
+              endDate: now
             },
-            updatedAt: new Date()
+            createdAt: now
           }
-        },
-        updatedAt: new Date()
-      },
-      include: {
-        subscriptions: true
-      }
-    });
-
-    // 生成 JWT token
-    const token = jwt.sign(
-      { userId: user.id },
-      process.env.JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
-    );
-
-    res.status(201).json({
-      success: true,
-      message: '注册成功',
-      data: {
-        token,
-        user: {
-          id: user.id,
-          username: user.username,
-          isAdmin: user.isAdmin,
-          subscriptions: {
-            planType: user.subscriptions.planType,
-            endDate: user.subscriptions.endDate
-          },
-          createdAt: user.createdAt
         }
-      }
-    });
+      });
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
   } catch (error) {
     console.error('注册错误:', error);
     res.status(500).json({
@@ -167,17 +180,16 @@ router.post('/login', async (req, res) => {
     }
 
     // 查找用户（支持用户名或邮箱登录）
-    const user = await prisma.users.findFirst({
-      where: {
-        OR: [
-          { username },
-          { email: username }
-        ]
-      },
-      include: {
-        subscriptions: true
-      }
-    });
+    const [rows] = await db.query(`
+      SELECT
+        u.id, u.username, u.email, u.password, u.isActive, u.isAdmin,
+        s.planType as sub_planType, s.endDate as sub_endDate
+      FROM users u
+      LEFT JOIN subscriptions s ON u.id = s.userId
+      WHERE u.username = ? OR u.email = ?
+    `, [username, username]);
+
+    const user = rows[0];
 
     if (!user) {
       return res.status(401).json({
@@ -205,10 +217,11 @@ router.post('/login', async (req, res) => {
     }
 
     // 更新最后登录时间
-    await prisma.users.update({
-      where: { id: user.id },
-      data: { lastLogin: new Date() }
-    });
+    const now = new Date();
+    await db.query(
+      'UPDATE users SET lastLogin = ? WHERE id = ?',
+      [now, user.id]
+    );
 
     // 生成 JWT token
     const token = jwt.sign(
@@ -226,13 +239,13 @@ router.post('/login', async (req, res) => {
           id: user.id,
           username: user.username,
           email: user.email,
-          isAdmin: user.isAdmin,
-          subscriptions: user.subscriptions ? {
-            planType: user.subscriptions.planType,
-            endDate: user.subscriptions.endDate,
-            isExpired: new Date() > user.subscriptions.endDate
+          isAdmin: !!user.isAdmin,
+          subscriptions: user.sub_planType ? {
+            planType: user.sub_planType,
+            endDate: user.sub_endDate,
+            isExpired: new Date() > user.sub_endDate
           } : null,
-          lastLogin: new Date()
+          lastLogin: now
         }
       }
     });
@@ -251,19 +264,17 @@ router.post('/login', async (req, res) => {
  */
 router.get('/me', authenticate, async (req, res) => {
   try {
-    const user = await prisma.users.findUnique({
-      where: { id: req.user.id },
-      include: {
-        subscriptions: true,
-        servers: {
-          select: {
-            id: true,
-            name: true,
-            createdAt: true
-          }
-        }
-      }
-    });
+    // 获取用户信息和订阅
+    const [userRows] = await db.query(`
+      SELECT
+        u.id, u.username, u.email, u.isAdmin, u.isActive, u.createdAt, u.lastLogin,
+        s.planType as sub_planType, s.startDate as sub_startDate, s.endDate as sub_endDate, s.autoRenew as sub_autoRenew
+      FROM users u
+      LEFT JOIN subscriptions s ON u.id = s.userId
+      WHERE u.id = ?
+    `, [req.user.id]);
+
+    const user = userRows[0];
 
     if (!user) {
       return res.status(404).json({
@@ -272,22 +283,28 @@ router.get('/me', authenticate, async (req, res) => {
       });
     }
 
+    // 获取服务器列表
+    const [servers] = await db.query(
+      'SELECT id, name, createdAt FROM servers WHERE userId = ?',
+      [req.user.id]
+    );
+
     res.json({
       success: true,
       data: {
         id: user.id,
         username: user.username,
         email: user.email,
-        isAdmin: user.isAdmin,
-        isActive: user.isActive,
-        subscriptions: user.subscriptions ? {
-          planType: user.subscriptions.planType,
-          startDate: user.subscriptions.startDate,
-          endDate: user.subscriptions.endDate,
-          isExpired: new Date() > user.subscriptions.endDate,
-          autoRenew: user.subscriptions.autoRenew
+        isAdmin: !!user.isAdmin,
+        isActive: !!user.isActive,
+        subscriptions: user.sub_planType ? {
+          planType: user.sub_planType,
+          startDate: user.sub_startDate,
+          endDate: user.sub_endDate,
+          isExpired: new Date() > user.sub_endDate,
+          autoRenew: !!user.sub_autoRenew
         } : null,
-        servers: user.servers,
+        servers,
         createdAt: user.createdAt,
         lastLogin: user.lastLogin
       }

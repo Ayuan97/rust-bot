@@ -42,7 +42,7 @@
 │  └─────────────────────────────────────────────────────┘ │
 │                     │                                    │
 │  ┌──────────────────┴─────────────────────────────────┐ │
-│  │         Prisma ORM → MySQL 数据库                   │ │
+│  │         mysql2 连接池 → MySQL 数据库                   │ │
 │  │  users │ subscriptions │ servers │ devices          │ │
 │  │  event_logs │ orders (所有表带userId外键)           │ │
 │  └─────────────────────────────────────────────────────┘ │
@@ -85,9 +85,7 @@ userFCMManager.handleFCMMessage()
     ↓
 // 2. UserServiceManager 监听
 userServiceManager.on('server:paired', async (serverInfo) => {
-    await prisma.server.create({
-        data: { ...serverInfo, userId: user.id }
-    });
+    await db.query('INSERT INTO servers ...', [...]);
     await userServiceManager.rustPlusService.connect(serverInfo.id);
 });
     ↓
@@ -159,7 +157,8 @@ socket.on('team:message', (msg) => { });      // 监听
 io.use(async (socket, next) => {
   const token = socket.handshake.auth.token;
   const decoded = jwt.verify(token, process.env.JWT_SECRET);
-  const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+  const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [decoded.userId]);
+  const user = rows[0];
 
   socket.userId = user.id;
   socket.join(`user:${user.id}`);  // 加入用户专属房间
@@ -191,7 +190,7 @@ io.to(`user:${userId}`).emit('server:connected', { serverId });
 ## 服务器启动流程
 
 1. 加载 `.env` 环境变量
-2. 初始化 Prisma Client 连接 MySQL
+2. 初始化 mysql2 连接池
 3. 初始化 Express + HTTP 服务器
 4. 配置 CORS
 5. 挂载路由

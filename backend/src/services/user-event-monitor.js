@@ -4,7 +4,7 @@
  */
 
 import EventEmitter from 'events';
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import { AppMarkerType, EventTiming, EventType } from '../utils/event-constants.js';
 import { formatPosition, getDistance } from '../utils/coordinates.js';
 import { notify, formatDuration } from '../utils/messages.js';
@@ -80,24 +80,29 @@ class UserEventMonitor extends EventEmitter {
    */
   async loadNotificationSettings() {
     try {
-      let settings = await prisma.notification_settings.findUnique({
-        where: { userId: this.userId }
-      });
+      const [rows] = await db.query(
+        'SELECT * FROM notification_settings WHERE userId = ?',
+        [this.userId]
+      );
+      let settings = rows[0];
 
       if (!settings) {
         // 创建默认设置
-        settings = await prisma.notification_settings.create({
-          data: {
-            userId: this.userId,
-            settings: DEFAULT_NOTIFICATION_SETTINGS
-          }
-        });
+        await db.query(
+          'INSERT INTO notification_settings (userId, settings, createdAt, updatedAt) VALUES (?, ?, NOW(), NOW())',
+          [this.userId, JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS)]
+        );
+        settings = { userId: this.userId, settings: DEFAULT_NOTIFICATION_SETTINGS };
       }
 
       // 合并默认设置
+      const settingsObj = settings.settings
+        ? (typeof settings.settings === 'string' ? JSON.parse(settings.settings) : settings.settings)
+        : {};
+
       this.notificationSettings = {
         ...DEFAULT_NOTIFICATION_SETTINGS,
-        ...(typeof settings.settings === 'object' ? settings.settings : {})
+        ...settingsObj
       };
 
       logger.debug(`用户 ${this.userId} 的通知设置已加载`);
@@ -122,7 +127,7 @@ class UserEventMonitor extends EventEmitter {
    * EventLog 通过 Server 关系关联用户，不直接包含 userId
    */
   async saveEventLog(serverId, eventType, eventData) {
-    // 映射内部事件类型到 Prisma Enum 类型 (event_logs_eventType)
+    // 映射内部事件类型到数据库 Enum 类型 (event_logs_eventType)
     const eventTypeMap = {
       'player:died': 'PLAYER_DEATH',
       'player:online': 'PLAYER_ONLINE',
@@ -146,24 +151,25 @@ class UserEventMonitor extends EventEmitter {
       'fcm:disconnected': 'FCM_DISCONNECTED'
     };
 
-    const prismaEventType = eventTypeMap[eventType];
+    const dbEventType = eventTypeMap[eventType];
 
-    // 如果不在映射表中，则不保存（防止 Prisma Enum 验证失败）
-    if (!prismaEventType) {
+    // 如果不在映射表中，则不保存
+    if (!dbEventType) {
       return;
     }
 
     try {
-      await prisma.event_logs.create({
-        data: {
-          id: uuidv4(),
+      await db.query(
+        `INSERT INTO event_logs (id, serverId, userId, eventType, eventData, createdAt)
+         VALUES (?, ?, ?, ?, ?, NOW())`,
+        [
+          uuidv4(),
           serverId,
-          userId: this.userId,
-          eventType: prismaEventType,
-          eventData: typeof eventData === 'string' ? eventData : JSON.stringify(eventData),
-          createdAt: new Date()
-        }
-      });
+          this.userId,
+          dbEventType,
+          typeof eventData === 'string' ? eventData : JSON.stringify(eventData)
+        ]
+      );
     } catch (error) {
       logger.error(`保存事件日志失败 (用户 ${this.userId}):`, error);
     }
@@ -1630,35 +1636,41 @@ class UserEventMonitor extends EventEmitter {
       if (!steamId) continue;
 
       try {
-        // Upsert: 存在则更新 lastSeenAt，不存在则创建
-        await prisma.extended_teammates.upsert({
-          where: {
-            userId_serverId_steamId: {
-              userId: this.userId,
-              serverId,
-              steamId
-            }
-          },
-          update: {
-            lastSeenAt: now
-          },
-          create: {
-            userId: this.userId,
-            serverId,
-            steamId,
-            lastSeenAt: now
-          }
-        });
+        // Upsert extended_teammates: 存在则更新 lastSeenAt，不存在则创建
+        const [existingRows] = await db.query(
+          'SELECT id FROM extended_teammates WHERE userId = ? AND serverId = ? AND steamId = ?',
+          [this.userId, serverId, steamId]
+        );
 
-        // 同步更新 player_profiles 中的名称
-        await prisma.player_profiles.upsert({
-          where: { steamId },
-          update: { name: member.name },
-          create: {
-            steamId,
-            name: member.name
-          }
-        });
+        if (existingRows[0]) {
+          await db.query(
+            'UPDATE extended_teammates SET lastSeenAt = ?, updatedAt = NOW() WHERE userId = ? AND serverId = ? AND steamId = ?',
+            [now, this.userId, serverId, steamId]
+          );
+        } else {
+          await db.query(
+            'INSERT INTO extended_teammates (userId, serverId, steamId, lastSeenAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, NOW(), NOW())',
+            [this.userId, serverId, steamId, now]
+          );
+        }
+
+        // Upsert player_profiles: 同步更新名称
+        const [profileRows] = await db.query(
+          'SELECT steamId FROM player_profiles WHERE steamId = ?',
+          [steamId]
+        );
+
+        if (profileRows[0]) {
+          await db.query(
+            'UPDATE player_profiles SET name = ?, updatedAt = NOW() WHERE steamId = ?',
+            [member.name, steamId]
+          );
+        } else {
+          await db.query(
+            'INSERT INTO player_profiles (steamId, name, createdAt, updatedAt) VALUES (?, ?, NOW(), NOW())',
+            [steamId, member.name]
+          );
+        }
       } catch (e) {
         logger.debug(`[扩展队友] 同步失败 ${steamId}: ${e.message}`);
       }
@@ -1719,21 +1731,21 @@ class UserEventMonitor extends EventEmitter {
       const currentTeamIds = eventData ? Array.from(eventData.teamMembers.keys()) : [];
 
       // 2. 获取扩展队友列表中的所有玩家
-      const extendedTeammates = await prisma.extended_teammates.findMany({
-        where: { userId: this.userId, serverId },
-        select: { steamId: true }
-      });
+      const [extendedTeammates] = await db.query(
+        'SELECT steamId FROM extended_teammates WHERE userId = ? AND serverId = ?',
+        [this.userId, serverId]
+      );
       const extendedIds = extendedTeammates.map(t => t.steamId);
 
       // 3. 合并去重
       const allSteamIds = [...new Set([...currentTeamIds, ...extendedIds])];
 
       if (allSteamIds.length === 0) {
-        console.log(`[Steam] ⚠️ 没有需要刷新的玩家 (用户 ${this.userId})`);
+        console.log(`[Steam] 没有需要刷新的玩家 (用户 ${this.userId})`);
         return;
       }
 
-      console.log(`[Steam] 🔄 开始刷新 ${allSteamIds.length} 名成员的资料（当前队伍: ${currentTeamIds.length}, 扩展列表: ${extendedIds.length}）`);
+      console.log(`[Steam] 开始刷新 ${allSteamIds.length} 名成员的资料（当前队伍: ${currentTeamIds.length}, 扩展列表: ${extendedIds.length}）`);
 
       const playersData = await steamService.getBatchPlayerData(allSteamIds);
 
@@ -1743,25 +1755,40 @@ class UserEventMonitor extends EventEmitter {
       for (const data of playersData) {
         if (!data.summary) continue;
 
-        await prisma.player_profiles.upsert({
-          where: { steamId: data.steamId },
-          update: {
-            name: data.summary.personaname,
-            avatar: data.summary.avatarfull,
-            playtime: data.playtime?.playtime_forever || 0,
-            vacBanned: data.ban?.VACBanned || false,
-            gameBans: data.ban?.NumberOfGameBans || 0,
-            lastUpdated: new Date()
-          },
-          create: {
-            steamId: data.steamId,
-            name: data.summary.personaname,
-            avatar: data.summary.avatarfull,
-            playtime: data.playtime?.playtime_forever || 0,
-            vacBanned: data.ban?.VACBanned || false,
-            gameBans: data.ban?.NumberOfGameBans || 0,
-          }
-        });
+        // Upsert player_profiles
+        const [profileRows] = await db.query(
+          'SELECT steamId FROM player_profiles WHERE steamId = ?',
+          [data.steamId]
+        );
+
+        if (profileRows[0]) {
+          await db.query(
+            `UPDATE player_profiles SET
+              name = ?, avatar = ?, playtime = ?, vacBanned = ?, gameBans = ?, lastUpdated = NOW(), updatedAt = NOW()
+             WHERE steamId = ?`,
+            [
+              data.summary.personaname,
+              data.summary.avatarfull,
+              data.playtime?.playtime_forever || 0,
+              data.ban?.VACBanned ? 1 : 0,
+              data.ban?.NumberOfGameBans || 0,
+              data.steamId
+            ]
+          );
+        } else {
+          await db.query(
+            `INSERT INTO player_profiles (steamId, name, avatar, playtime, vacBanned, gameBans, lastUpdated, createdAt, updatedAt)
+             VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())`,
+            [
+              data.steamId,
+              data.summary.personaname,
+              data.summary.avatarfull,
+              data.playtime?.playtime_forever || 0,
+              data.ban?.VACBanned ? 1 : 0,
+              data.ban?.NumberOfGameBans || 0
+            ]
+          );
+        }
         updatedCount++;
 
         // 如果有统计数据，保存并检查快照
@@ -1771,9 +1798,9 @@ class UserEventMonitor extends EventEmitter {
         }
       }
 
-      console.log(`[Steam] ✅ 刷新完成: ${updatedCount} 个资料, ${statsCount} 个统计数据`);
+      console.log(`[Steam] 刷新完成: ${updatedCount} 个资料, ${statsCount} 个统计数据`);
     } catch (error) {
-      console.error(`[Steam] ❌ 刷新玩家数据失败 (用户 ${this.userId}):`, error?.message || error);
+      console.error(`[Steam] 刷新玩家数据失败 (用户 ${this.userId}):`, error?.message || error);
     }
   }
 
@@ -1832,43 +1859,41 @@ class UserEventMonitor extends EventEmitter {
       todayEnd.setHours(23, 59, 59, 999);
 
       // 查找今日的基准快照（当天第一个快照）
-      let baselineSnapshot = await prisma.player_stats_snapshots.findFirst({
-        where: {
-          steamId,
-          statKey: internalKey,
-          snapshotDate: {
-            gte: todayStart,
-            lte: todayEnd
-          }
-        },
-        orderBy: { snapshotDate: 'asc' } // 取最早的一个作为基准
-      });
+      const [baselineRows] = await db.query(
+        `SELECT * FROM player_stats_snapshots
+         WHERE steamId = ? AND statKey = ? AND snapshotDate >= ? AND snapshotDate <= ?
+         ORDER BY snapshotDate ASC LIMIT 1`,
+        [steamId, internalKey, todayStart, todayEnd]
+      );
+      let baselineSnapshot = baselineRows[0];
 
       // 获取当前存储的值
-      const oldStat = await prisma.player_stats.findUnique({
-        where: { steamId_statKey: { steamId, statKey: internalKey } }
-      });
+      const [oldStatRows] = await db.query(
+        'SELECT * FROM player_stats WHERE steamId = ? AND statKey = ?',
+        [steamId, internalKey]
+      );
+      const oldStat = oldStatRows[0];
 
       // 如果没有基准快照，说明是今天第一次获取数据
       const isFirstFetchToday = !baselineSnapshot;
 
       if (isFirstFetchToday) {
         // 首次获取：创建基准快照，贡献从此刻开始计算
-        baselineSnapshot = await prisma.player_stats_snapshots.create({
-          data: {
-            steamId,
-            statKey: internalKey,
-            statValue: value,
-            snapshotDate: new Date() // 使用当前精确时间
-          }
-        });
-        console.log(`[Steam] 📸 ${playerName} 创建 ${internalKey} 今日基准快照: ${value}`);
+        await db.query(
+          'INSERT INTO player_stats_snapshots (steamId, statKey, statValue, snapshotDate, createdAt) VALUES (?, ?, ?, NOW(), NOW())',
+          [steamId, internalKey, value]
+        );
+        baselineSnapshot = { steamId, statKey: internalKey, statValue: value, snapshotDate: new Date() };
+        console.log(`[Steam] ${playerName} 创建 ${internalKey} 今日基准快照: ${value}`);
       } else {
         // 非首次获取：只有数值变化时才创建历史快照
-        const lastSnapshot = await prisma.player_stats_snapshots.findFirst({
-          where: { steamId, statKey: internalKey },
-          orderBy: { snapshotDate: 'desc' }
-        });
+        const [lastSnapshotRows] = await db.query(
+          `SELECT * FROM player_stats_snapshots
+           WHERE steamId = ? AND statKey = ?
+           ORDER BY snapshotDate DESC LIMIT 1`,
+          [steamId, internalKey]
+        );
+        const lastSnapshot = lastSnapshotRows[0];
 
         // 检查数值是否有变化
         const hasValueChanged = !lastSnapshot || lastSnapshot.statValue !== value;
@@ -1880,24 +1905,26 @@ class UserEventMonitor extends EventEmitter {
 
         // 只有数值变化且间隔足够时才创建快照
         if (hasValueChanged && hasEnoughInterval) {
-          await prisma.player_stats_snapshots.create({
-            data: {
-              steamId,
-              statKey: internalKey,
-              statValue: value,
-              snapshotDate: new Date()
-            }
-          });
-          console.log(`[Steam] 📸 ${playerName} 创建 ${internalKey} 快照: ${value}`);
+          await db.query(
+            'INSERT INTO player_stats_snapshots (steamId, statKey, statValue, snapshotDate, createdAt) VALUES (?, ?, ?, NOW(), NOW())',
+            [steamId, internalKey, value]
+          );
+          console.log(`[Steam] ${playerName} 创建 ${internalKey} 快照: ${value}`);
         }
       }
 
-      // 更新实时统计
-      await prisma.player_stats.upsert({
-        where: { steamId_statKey: { steamId, statKey: internalKey } },
-        update: { statValue: value, updatedAt: new Date() },
-        create: { steamId, statKey: internalKey, statValue: value }
-      });
+      // 更新实时统计 (Upsert)
+      if (oldStat) {
+        await db.query(
+          'UPDATE player_stats SET statValue = ?, updatedAt = NOW() WHERE steamId = ? AND statKey = ?',
+          [value, steamId, internalKey]
+        );
+      } else {
+        await db.query(
+          'INSERT INTO player_stats (steamId, statKey, statValue, createdAt, updatedAt) VALUES (?, ?, ?, NOW(), NOW())',
+          [steamId, internalKey, value]
+        );
+      }
 
       // 如果有旧值且增量达到阈值，触发事件（首次获取不触发）
       if (!isFirstFetchToday && oldStat && value > oldStat.statValue) {

@@ -110,7 +110,7 @@ export default new GlobalServiceManager(); // 单例导出
 ```mermaid
 graph TD
     GSM[GlobalServiceManager] --> USM[UserServiceManager]
-    GSM --> Prisma[(Prisma ORM)]
+    GSM --> DB[(MySQL)]
     GSM --> ProxyService[ProxyService]
     
     subgraph "每个用户"
