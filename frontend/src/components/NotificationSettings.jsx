@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
-import { FaBell, FaUser, FaShip, FaHelicopter, FaOilCan, FaBox, FaSync, FaSun, FaMoon } from 'react-icons/fa';
+import { FaBell, FaUser, FaShip, FaHelicopter, FaOilCan, FaBox, FaSync, FaSun, FaMoon, FaBrain } from 'react-icons/fa';
 import { useToast } from './Toast';
 import api from '../services/api';
 
@@ -27,6 +27,13 @@ const DEFAULT_SETTINGS = {
   day_night_enabled: true,
   day_notify_minutes: 5,
   night_notify_minutes: 8,
+  // 预测设置
+  prediction_enabled: false,
+  prediction_cargo_enabled: true,
+  prediction_heli_enabled: true,
+  prediction_oil_rig_enabled: true,
+  prediction_advance_minutes: 5,
+  prediction_min_confidence: 0.6,
 };
 
 // 通知分组配置
@@ -324,6 +331,103 @@ function NotificationSettings() {
         )}
       </div>
 
+      {/* AI 预测通知模块 */}
+      <div className="tactic-cut border border-white/10 bg-gradient-to-r from-purple-500/5 to-pink-500/5 overflow-hidden">
+        <div className="px-4 py-3 bg-black/40 border-b border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 tactic-cut bg-purple-500/20 flex items-center justify-center">
+              <FaBrain className="text-purple-400 text-sm" />
+            </div>
+            <div>
+              <span className="text-xs font-black uppercase tracking-wide text-gray-200">AI 事件预测</span>
+              <div className="text-[10px] text-gray-500">学习服务器刷新规律，提前通知</div>
+            </div>
+          </div>
+          <TacticToggle
+            checked={settings.prediction_enabled}
+            onChange={(checked) => handleToggle('prediction_enabled', checked)}
+            disabled={saving}
+          />
+        </div>
+
+        {settings.prediction_enabled && (
+          <div className="p-4 space-y-4">
+            {/* 预测类型开关 */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="flex items-center justify-between p-3 bg-black/40 border border-white/10 tactic-cut">
+                <div className="flex items-center gap-2">
+                  <FaShip className="text-blue-400 text-sm" />
+                  <span className="text-xs text-gray-300">货船</span>
+                </div>
+                <TacticToggle
+                  checked={settings.prediction_cargo_enabled}
+                  onChange={(checked) => handleToggle('prediction_cargo_enabled', checked)}
+                  disabled={saving}
+                />
+              </div>
+              <div className="flex items-center justify-between p-3 bg-black/40 border border-white/10 tactic-cut">
+                <div className="flex items-center gap-2">
+                  <FaHelicopter className="text-red-400 text-sm" />
+                  <span className="text-xs text-gray-300">直升机</span>
+                </div>
+                <TacticToggle
+                  checked={settings.prediction_heli_enabled}
+                  onChange={(checked) => handleToggle('prediction_heli_enabled', checked)}
+                  disabled={saving}
+                />
+              </div>
+              <div className="flex items-center justify-between p-3 bg-black/40 border border-white/10 tactic-cut">
+                <div className="flex items-center gap-2">
+                  <FaOilCan className="text-yellow-400 text-sm" />
+                  <span className="text-xs text-gray-300">油井</span>
+                </div>
+                <TacticToggle
+                  checked={settings.prediction_oil_rig_enabled}
+                  onChange={(checked) => handleToggle('prediction_oil_rig_enabled', checked)}
+                  disabled={saving}
+                />
+              </div>
+            </div>
+
+            {/* 提前通知时间 */}
+            <div className="flex items-center justify-between p-3 bg-black/40 border border-white/10 tactic-cut">
+              <span className="text-xs text-gray-300">提前通知</span>
+              <div className="flex items-center gap-2">
+                <TacticNumberInput
+                  value={settings.prediction_advance_minutes}
+                  onChange={(val) => handleToggle('prediction_advance_minutes', val)}
+                  min={1}
+                  max={30}
+                  disabled={saving}
+                />
+                <span className="text-xs text-gray-500">分钟</span>
+              </div>
+            </div>
+
+            {/* 最低置信度 */}
+            <div className="flex items-center justify-between p-3 bg-black/40 border border-white/10 tactic-cut">
+              <div>
+                <span className="text-xs text-gray-300">最低置信度</span>
+                <div className="text-[10px] text-gray-500">低于此值不发送通知</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <TacticSlider
+                  value={settings.prediction_min_confidence}
+                  onChange={(val) => handleToggle('prediction_min_confidence', val)}
+                  min={0.3}
+                  max={0.9}
+                  step={0.1}
+                  disabled={saving}
+                />
+                <span className="text-xs text-gray-400 w-10 text-right">
+                  {Math.round(settings.prediction_min_confidence * 100)}%
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Footer */}
       <div className="text-[10px] text-gray-600 text-center">
         通知将发送到游戏内队伍聊天
@@ -427,5 +531,25 @@ const TacticTextInput = forwardRef(({ value, onChange, placeholder, disabled }, 
     />
   );
 });
+
+// 战术风格滑块
+function TacticSlider({ value, onChange, min = 0, max = 1, step = 0.1, disabled }) {
+  const handleChange = (e) => {
+    onChange(parseFloat(e.target.value));
+  };
+
+  return (
+    <input
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={handleChange}
+      disabled={disabled}
+      className="w-24 h-1.5 bg-gray-800 rounded appearance-none cursor-pointer accent-[#cd5241] disabled:opacity-50 disabled:cursor-not-allowed"
+    />
+  );
+}
 
 export default NotificationSettings;

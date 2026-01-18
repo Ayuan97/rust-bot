@@ -1632,6 +1632,134 @@ router.get('/:id/battlemetrics', async (req, res) => {
 });
 
 /**
+ * GET /api/servers/:id/intelligence
+ * 聚合 API: 获取服务器综合情报（基础信息 + Battlemetrics + 预测数据）
+ */
+router.get('/:id/intelligence', async (req, res) => {
+  try {
+    const serverId = req.params.id;
+    const userId = req.user.id;
+
+    // 验证服务器属于当前用户
+    const server = await prisma.servers.findFirst({
+      where: {
+        id: serverId,
+        userId
+      }
+    });
+
+    if (!server) {
+      return res.status(404).json({ success: false, error: '服务器不存在' });
+    }
+
+    // 并行获取所有数据
+    const [bmInfo, patterns, predictions] = await Promise.all([
+      // 1. Battlemetrics 数据（从缓存读取）
+      server.battlemetricsId
+        ? prisma.public_servers.findUnique({
+            where: { battlemetricsId: server.battlemetricsId }
+          })
+        : null,
+
+      // 2. 学习模式数据
+      server.battlemetricsId
+        ? prisma.event_spawn_patterns.findMany({
+            where: { battlemetricsId: server.battlemetricsId }
+          })
+        : [],
+
+      // 3. 当前活跃预测
+      prisma.event_predictions.findMany({
+        where: {
+          serverId,
+          userId,
+          status: 'PENDING'
+        },
+        orderBy: { predictedTime: 'asc' }
+      })
+    ]);
+
+    // 获取连接状态
+    const rustPlusService = getUserRustPlusService(userId);
+    const connected = rustPlusService ? rustPlusService.isConnected(serverId) : false;
+
+    // 格式化模式数据
+    const MIN_SAMPLES = 5;
+    const formattedPatterns = patterns.map(p => ({
+      eventType: p.eventType,
+      sampleCount: p.sampleCount,
+      avgIntervalMinutes: p.avgInterval ? Math.round(p.avgInterval / 60000) : null,
+      stdDeviationMinutes: p.stdDeviation ? Math.round(p.stdDeviation / 60000) : null,
+      lastEventTime: p.lastEventTime,
+      canPredict: p.sampleCount >= MIN_SAMPLES && p.avgInterval !== null
+    }));
+
+    // 格式化预测数据
+    const formattedPredictions = predictions.map(p => ({
+      id: p.id,
+      eventType: p.eventType,
+      predictedTime: p.predictedTime,
+      confidenceLevel: p.confidenceLevel,
+      windowStart: p.windowStart,
+      windowEnd: p.windowEnd
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        // 基础信息
+        server: {
+          id: server.id,
+          name: server.name,
+          ip: server.ip,
+          port: server.port,
+          battlemetricsId: server.battlemetricsId,
+          connected
+        },
+
+        // Battlemetrics 数据
+        battlemetrics: bmInfo ? {
+          name: bmInfo.name,
+          status: bmInfo.status,
+          players: bmInfo.players,
+          maxPlayers: bmInfo.maxPlayers,
+          queuedPlayers: bmInfo.queuedPlayers,
+          rank: bmInfo.rank,
+          fps: bmInfo.fps,
+          fpsAvg: bmInfo.fpsAvg,
+          uptime: bmInfo.uptime,
+          entityCount: bmInfo.entityCount,
+          map: bmInfo.map,
+          mapSize: bmInfo.mapSize,
+          seed: bmInfo.seed,
+          wipeTime: bmInfo.wipeTime,
+          nextWipe: bmInfo.nextWipe,
+          wipeCycle: bmInfo.wipeCycle,
+          headerImage: bmInfo.headerImage,
+          rustMapsThumbnail: bmInfo.rustMapsThumbnail,
+          rustMapsUrl: bmInfo.rustMapsUrl,
+          country: bmInfo.country,
+          official: bmInfo.official,
+          modded: bmInfo.modded,
+          pve: bmInfo.pve,
+          updatedAt: bmInfo.updatedAt
+        } : null,
+
+        // 预测系统数据
+        prediction: {
+          patterns: formattedPatterns,
+          activePredictions: formattedPredictions,
+          minSamples: MIN_SAMPLES
+        }
+      }
+    });
+  } catch (error) {
+    console.error('获取服务器情报失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/servers/:id/battlemetrics/top-players
  * 获取服务器玩家排行（实时调用，不缓存）
  */

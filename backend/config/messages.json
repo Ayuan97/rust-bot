@@ -30,7 +30,11 @@
     "cargo_leave": "货船已离开地图",
     "ch47_crate_spawn": "CH47 出现 {direction} 坐标 {position} 投放上锁箱子",
     "ch47_spawn": "CH47出现 坐标 {position}",
-    "ch47_leave": "CH47已离开"
+    "ch47_leave": "CH47已离开",
+    "prediction_cargo": "[预测] 货船可能在 {time} 出现 (置信度 {confidence}%)",
+    "prediction_heli": "[预测] 武装直升机可能在 {time} 出现 (置信度 {confidence}%)",
+    "prediction_small_oil_ready": "[预测] 小油井将在 {time} 冷却完毕 (置信度 {confidence}%)",
+    "prediction_large_oil_ready": "[预测] 大油井将在 {time} 冷却完毕 (置信度 {confidence}%)"
   },
   "commands": {
     "help": {

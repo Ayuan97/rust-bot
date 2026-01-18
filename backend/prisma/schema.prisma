@@ -384,3 +384,64 @@ model subscription_plans {
 
   @@index([isActive, sortOrder])
 }
+
+// ============================================================
+// 事件预测系统
+// ============================================================
+
+// 存储学习到的事件刷新模式（基于物理服务器，使用 battlemetricsId）
+model event_spawn_patterns {
+  id              String                          @id @default(uuid())
+  battlemetricsId String                          @db.VarChar(50)       // 关联到 public_servers
+  eventType       event_spawn_patterns_eventType
+  sampleCount     Int                             @default(0)           // 样本数量
+  avgInterval     Float?                                                 // 平均间隔(ms)
+  stdDeviation    Float?                                                 // 标准差(ms)
+  minInterval     Float?
+  maxInterval     Float?
+  recentIntervals Json?                                                  // 最近20次间隔 JSON数组
+  lastEventTime   DateTime?
+  lastUpdated     DateTime                        @updatedAt
+  createdAt       DateTime                        @default(now())
+
+  @@unique([battlemetricsId, eventType])
+  @@index([battlemetricsId])
+}
+
+// 存储当前活跃的预测（用户级别，用于管理通知状态）
+model event_predictions {
+  id              String                          @id @default(uuid())
+  battlemetricsId String                          @db.VarChar(50)       // 关联到物理服务器
+  serverId        String                                                 // 关联到用户的 servers 表
+  userId          String
+  eventType       event_spawn_patterns_eventType
+  predictedTime   DateTime
+  confidenceLevel Float                           @default(0)
+  windowStart     DateTime
+  windowEnd       DateTime
+  status          event_predictions_status        @default(PENDING)
+  notifiedAt      DateTime?
+  actualTime      DateTime?
+  createdAt       DateTime                        @default(now())
+  updatedAt       DateTime                        @updatedAt
+
+  @@index([battlemetricsId, status])
+  @@index([serverId, status])
+  @@index([predictedTime])
+  @@index([userId])
+}
+
+enum event_spawn_patterns_eventType {
+  CARGO_SPAWN
+  HELI_SPAWN
+  SMALL_OIL_COOLDOWN
+  LARGE_OIL_COOLDOWN
+}
+
+enum event_predictions_status {
+  PENDING
+  NOTIFIED
+  OCCURRED
+  MISSED
+  CANCELLED
+}

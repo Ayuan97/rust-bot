@@ -11,6 +11,7 @@ import UserEventMonitor from './user-event-monitor.js';
 import UserAutomation from './user-automation.js';
 import UserCommands from './user-commands.js';
 import DayNightNotifier from './day-night-notifier.js';
+import UserEventPrediction from './user-event-prediction.js';
 
 class UserServiceManager extends EventEmitter {
   constructor(userId) {
@@ -36,6 +37,7 @@ class UserServiceManager extends EventEmitter {
     this.automationService = new UserAutomation(userId, this.rustPlusService);      // 设备自动化
     this.commandsService = new UserCommands(userId, this.rustPlusService, this.eventMonitorService);  // 游戏内命令
     this.dayNightNotifier = new DayNightNotifier(userId, this.rustPlusService);  // 昼夜提醒
+    this.predictionService = new UserEventPrediction(userId, this.rustPlusService, this.eventMonitorService);  // 事件预测
 
     // 待确认的服务器配对数据（单服务器限制）
     this.pendingServerPairing = null;
@@ -421,9 +423,63 @@ class UserServiceManager extends EventEmitter {
         this.emit('player:contribution', { ...data, userId: this.userId });
       });
 
+      // 转发事件到预测服务进行学习
+      this.eventMonitorService.on('cargo:spawn', async (data) => {
+        try {
+          await this.predictionService.recordEvent(data.serverId, 'CARGO_SPAWN', data.time);
+        } catch (e) {
+          this.log('PREDICTION', `记录货船事件失败: ${e.message}`, 'ERROR');
+        }
+      });
+
+      this.eventMonitorService.on('patrol_heli:spawn', async (data) => {
+        try {
+          await this.predictionService.recordEvent(data.serverId, 'HELI_SPAWN', data.time);
+        } catch (e) {
+          this.log('PREDICTION', `记录直升机事件失败: ${e.message}`, 'ERROR');
+        }
+      });
+
+      this.eventMonitorService.on('small_oil_rig:triggered', async (data) => {
+        try {
+          await this.predictionService.recordOilRigCooldown(data.serverId, 'small', data.time);
+        } catch (e) {
+          this.log('PREDICTION', `记录小油井事件失败: ${e.message}`, 'ERROR');
+        }
+      });
+
+      this.eventMonitorService.on('large_oil_rig:triggered', async (data) => {
+        try {
+          await this.predictionService.recordOilRigCooldown(data.serverId, 'large', data.time);
+        } catch (e) {
+          this.log('PREDICTION', `记录大油井事件失败: ${e.message}`, 'ERROR');
+        }
+      });
+
       // 5. 绑定 Automation 事件到 UserServiceManager
       this.automationService.on('automation:executed', (data) => {
         this.emit('automation:executed', { ...data, userId: this.userId });
+      });
+
+      // 6. 绑定 Prediction 事件到 UserServiceManager
+      this.predictionService.on('prediction:created', (data) => {
+        this.log('PREDICTION', `生成预测: ${data.eventTypeName} @ ${new Date(data.prediction.predictedTime).toLocaleString()}`);
+        this.emit('prediction:created', data);
+      });
+
+      this.predictionService.on('prediction:notified', (data) => {
+        this.log('PREDICTION', `预测通知已发送: ${data.eventTypeName}`);
+        this.emit('prediction:notified', data);
+      });
+
+      this.predictionService.on('prediction:occurred', (data) => {
+        this.log('PREDICTION', `预测事件已发生: ${data.eventTypeName}`);
+        this.emit('prediction:occurred', data);
+      });
+
+      this.predictionService.on('patterns:reset', (data) => {
+        this.log('PREDICTION', `学习数据已重置`);
+        this.emit('patterns:reset', data);
       });
 
       console.log(`  ✅ 子服务初始化完成`);
@@ -466,6 +522,9 @@ class UserServiceManager extends EventEmitter {
           }
           if (this.dayNightNotifier) {
             await this.dayNightNotifier.start(server.id);
+          }
+          if (this.predictionService) {
+            await this.predictionService.start(server.id);
           }
         } catch (error) {
           console.error(`  ❌ 连接服务器 ${server.name || server.id} 失败:`, error.message);
@@ -556,6 +615,15 @@ class UserServiceManager extends EventEmitter {
         }
       }
 
+      // 停止预测服务
+      if (this.predictionService) {
+        try {
+          this.predictionService.stopAll();
+        } catch (error) {
+          console.error(`  ⚠️  停止预测服务失败:`, error.message);
+        }
+      }
+
       // 清理所有子服务的事件监听器，防止内存泄漏
       if (this.rustPlusService) {
         this.rustPlusService.removeAllListeners();
@@ -568,6 +636,9 @@ class UserServiceManager extends EventEmitter {
       }
       if (this.automationService) {
         this.automationService.removeAllListeners();
+      }
+      if (this.predictionService) {
+        this.predictionService.removeAllListeners();
       }
 
       console.log(`  ✅ 子服务已停止`);
@@ -601,6 +672,9 @@ class UserServiceManager extends EventEmitter {
     const automationStatus = this.automationService ? {
       activeServers: Array.from(this.automationService.pollIntervals.keys())
     } : null;
+    const predictionStatus = this.predictionService ? {
+      activeTimers: this.predictionService.notificationTimers.size
+    } : null;
 
     return {
       userId: this.userId,
@@ -615,12 +689,14 @@ class UserServiceManager extends EventEmitter {
         eventMonitor: !!this.eventMonitorService,
         automation: !!this.automationService,
         commands: !!this.commandsService,
-        dayNight: !!this.dayNightNotifier
+        dayNight: !!this.dayNightNotifier,
+        prediction: !!this.predictionService
       },
       rustPlusStats,
       fcmStatus,
       eventMonitorStatus,
-      automationStatus
+      automationStatus,
+      predictionStatus
     };
   }
   /**
@@ -729,6 +805,7 @@ class UserServiceManager extends EventEmitter {
       this.eventMonitorService.stop(oldServer.id);
       this.automationService.stop(oldServer.id);
       this.dayNightNotifier.stop(oldServer.id);
+      this.predictionService.stop(oldServer.id);
 
       // 3. 删除旧服务器（会级联删除 devices 和 event_logs）
       await prisma.servers.delete({
@@ -814,6 +891,7 @@ class UserServiceManager extends EventEmitter {
       await this.eventMonitorService.start(userServerId);
       await this.automationService.start(userServerId);
       await this.dayNightNotifier.start(userServerId);
+      await this.predictionService.start(userServerId);
       this.log('PAIRING', `所有实时服务已就绪`);
     } catch (svcError) {
       this.log('PAIRING', `实时服务启动失败: ${svcError.message}`, 'WARN');
