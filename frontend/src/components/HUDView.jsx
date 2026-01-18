@@ -238,7 +238,7 @@ export default function HUDView({ server, teamData, isSubscriptionExpired, onPai
         </div>
       </div>
 
-      <div className={`flex flex-col gap-4 h-full min-h-0 ${isDemo ? 'opacity-30' : ''}`}>
+      <div className={`flex flex-col gap-4 h-full min-h-0 overflow-y-auto custom-scrollbar ${isDemo ? 'opacity-30' : ''}`}>
         <div className="tactic-border tactic-cut p-1 bg-black/40">
           <div className="bg-black/40 p-4">
             <div className="text-xs font-black text-gray-300 uppercase tracking-widest mb-4 flex justify-between items-center">
@@ -287,12 +287,12 @@ export default function HUDView({ server, teamData, isSubscriptionExpired, onPai
 
         {/* 事件预测面板 */}
         <div className="tactic-border tactic-cut p-1 bg-black/40">
-          <div className="bg-black/40 p-4">
+          <div className="bg-black/40 px-4 py-3">
             <EventPredictions serverId={server?.id} />
           </div>
         </div>
 
-        <div className="tactic-border tactic-cut p-1 bg-black/40 flex-1">
+        <div className="tactic-border tactic-cut p-1 bg-black/40 flex-1 min-h-[200px]">
           <div className="bg-black/40 p-6 h-full flex flex-col">
             <div className="text-xs font-black text-gray-300 uppercase tracking-widest mb-6 italic flex items-center gap-2">
               <FaStar className="text-[#cd5241]" /> 快捷设备控制
