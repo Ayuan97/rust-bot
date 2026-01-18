@@ -230,7 +230,7 @@ class BattlemetricsScheduler extends EventEmitter {
 
     // 检查是否存在
     const [existingRows] = await db.query(
-      'SELECT id FROM public_servers WHERE battlemetricsId = ?',
+      'SELECT 1 FROM public_servers WHERE battlemetricsId = ?',
       [bmId]
     );
 

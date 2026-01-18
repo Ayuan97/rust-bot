@@ -1662,12 +1662,12 @@ class UserEventMonitor extends EventEmitter {
 
         if (profileRows[0]) {
           await db.query(
-            'UPDATE player_profiles SET name = ?, updatedAt = NOW() WHERE steamId = ?',
+            'UPDATE player_profiles SET name = ?, lastUpdated = NOW() WHERE steamId = ?',
             [member.name, steamId]
           );
         } else {
           await db.query(
-            'INSERT INTO player_profiles (steamId, name, createdAt, updatedAt) VALUES (?, ?, NOW(), NOW())',
+            'INSERT INTO player_profiles (steamId, name, lastUpdated) VALUES (?, ?, NOW())',
             [steamId, member.name]
           );
         }
@@ -1764,7 +1764,7 @@ class UserEventMonitor extends EventEmitter {
         if (profileRows[0]) {
           await db.query(
             `UPDATE player_profiles SET
-              name = ?, avatar = ?, playtime = ?, vacBanned = ?, gameBans = ?, lastUpdated = NOW(), updatedAt = NOW()
+              name = ?, avatar = ?, playtime = ?, vacBanned = ?, gameBans = ?, lastUpdated = NOW()
              WHERE steamId = ?`,
             [
               data.summary.personaname,
@@ -1777,8 +1777,8 @@ class UserEventMonitor extends EventEmitter {
           );
         } else {
           await db.query(
-            `INSERT INTO player_profiles (steamId, name, avatar, playtime, vacBanned, gameBans, lastUpdated, createdAt, updatedAt)
-             VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())`,
+            `INSERT INTO player_profiles (steamId, name, avatar, playtime, vacBanned, gameBans, lastUpdated)
+             VALUES (?, ?, ?, ?, ?, ?, NOW())`,
             [
               data.steamId,
               data.summary.personaname,

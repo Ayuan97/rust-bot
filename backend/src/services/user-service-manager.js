@@ -521,7 +521,10 @@ class UserServiceManager extends EventEmitter {
         this.emit('patterns:reset', data);
       });
 
-      console.log(`  ✅ 子服务初始化完成`);
+      // 在子服务初始化完成后，立即加载预测通知设置
+      await this.predictionService.loadNotificationSettings();
+
+      console.log(`  [OK] 子服务初始化完成`);
     } catch (error) {
       throw new Error(`初始化子服务失败: ${error.message}`);
     }
@@ -865,6 +868,10 @@ class UserServiceManager extends EventEmitter {
       await db.query('DELETE FROM devices WHERE serverId = ?', [oldServer.id]);
       await db.query('DELETE FROM event_logs WHERE serverId = ?', [oldServer.id]);
       await db.query('DELETE FROM servers WHERE id = ?', [oldServer.id]);
+
+      // 清理预测服务的服务器地址缓存
+      this.predictionService.clearServerCache(oldServer.id);
+
       this.log('PAIRING', `已删除旧服务器: ${oldServer.name}`);
 
       // 4. 执行新服务器配对

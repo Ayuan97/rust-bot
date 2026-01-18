@@ -694,6 +694,16 @@ class UserEventPrediction extends EventEmitter {
   }
 
   /**
+   * 清理服务器地址缓存
+   */
+  clearServerCache(serverId) {
+    if (this.serverAddressCache.has(serverId)) {
+      this.serverAddressCache.delete(serverId);
+      logger.debug(`已清理服务器 ${serverId} 的地址缓存`);
+    }
+  }
+
+  /**
    * 停止服务器的预测服务
    */
   stop(serverId) {

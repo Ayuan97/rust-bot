@@ -178,8 +178,7 @@ class BattlemetricsService extends EventEmitter {
       const response = await axios.get(url, this._getAxiosConfig());
 
       if (response.status !== 200) {
-        console.error('❌ 获取 Battlemetrics 服务器信息失败');
-        return null;
+        throw new Error(`API 返回状态码 ${response.status}`);
       }
 
       const data = response.data;
@@ -271,8 +270,16 @@ class BattlemetricsService extends EventEmitter {
 
       return serverInfo;
     } catch (error) {
-      console.error('❌ 获取 Battlemetrics 服务器信息错误:', error.message);
-      return null;
+      // 构建详细的错误信息
+      let errorMessage = error.message;
+      if (error.response) {
+        errorMessage = `HTTP ${error.response.status}: ${error.response.statusText || '未知错误'}`;
+      } else if (error.code === 'ECONNABORTED') {
+        errorMessage = '请求超时 (15秒)';
+      } else if (error.code) {
+        errorMessage = `${error.code}: ${error.message}`;
+      }
+      throw new Error(errorMessage);
     }
   }
 
