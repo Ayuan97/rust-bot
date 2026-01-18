@@ -12,6 +12,7 @@ import UserAutomation from './user-automation.js';
 import UserCommands from './user-commands.js';
 import DayNightNotifier from './day-night-notifier.js';
 import UserEventPrediction from './user-event-prediction.js';
+import battlemetricsService from './battlemetrics.service.js';
 
 class UserServiceManager extends EventEmitter {
   constructor(userId) {
@@ -512,6 +513,23 @@ class UserServiceManager extends EventEmitter {
             playerToken: server.playerToken
           });
           console.log(`  ✅ 已连接到服务器: ${server.name || server.id}`);
+
+          // 自动查找并关联 Battlemetrics ID（如果尚未关联）
+          if (!server.battlemetricsId) {
+            try {
+              const bmId = await battlemetricsService.searchServerByAddress(server.ip, server.port, server.name);
+              if (bmId) {
+                await prisma.servers.update({
+                  where: { id: server.id },
+                  data: { battlemetricsId: bmId }
+                });
+                server.battlemetricsId = bmId;
+                console.log(`  🔗 已关联 Battlemetrics ID: ${bmId}`);
+              }
+            } catch (bmError) {
+              console.log(`  ⚠️  查找 Battlemetrics ID 失败: ${bmError.message}`);
+            }
+          }
 
           // 连接成功后启动事件监控和自动化
           if (this.eventMonitorService) {
