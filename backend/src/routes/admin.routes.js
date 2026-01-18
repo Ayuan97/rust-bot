@@ -219,7 +219,7 @@ router.get('/users', async (req, res) => {
 
     // 查询用户
     const [users] = await db.query(
-      `SELECT u.*, s.id as subscriptionId, s.planId, s.planType, s.startDate, s.endDate,
+      `SELECT u.*, s.id as subscriptionId, s.planType, s.status as subscriptionStatus, s.startDate, s.endDate,
         (SELECT COUNT(*) FROM servers WHERE userId = u.id) as serverCount,
         (SELECT COUNT(*) FROM orders WHERE userId = u.id) as orderCount
        FROM users u
