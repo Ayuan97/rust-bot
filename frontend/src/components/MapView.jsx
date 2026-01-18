@@ -67,7 +67,11 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
     markers: [],
     mapSize: 4500,
     monuments: [],
-    oceanMargin: 500,
+    // 图片尺寸（像素）
+    imageWidth: 2048,
+    imageHeight: 2048,
+    // 海洋边距（像素单位）
+    oceanMargin: 0,
     loading: true
   });
 
@@ -99,7 +103,9 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
         markers: DEMO_MARKERS,
         mapSize: 4500,
         monuments: DEMO_MONUMENTS,
-        oceanMargin: 500,
+        imageWidth: 2048,
+        imageHeight: 2048,
+        oceanMargin: 0,
         loading: false
       });
       return;
@@ -114,7 +120,9 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
           markers: data.markers?.markers || data.markers || [],
           mapSize: correctedSize,
           monuments: data.monuments || [],
-          oceanMargin: data.oceanMargin || 500,
+          imageWidth: data.imageWidth || 2048,
+          imageHeight: data.imageHeight || 2048,
+          oceanMargin: data.oceanMargin || 0,
           loading: false
         });
       } else {
@@ -198,14 +206,17 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
   useEffect(() => {
     if (focusTarget && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
-      const size = mapInfo.mapSize;
-      const margin = mapInfo.oceanMargin;
-      const totalSize = size + 2 * margin;
+      const { mapSize, imageWidth, imageHeight, oceanMargin } = mapInfo;
 
-      // 计算目标在地图上的百分比位置 (0-1)
+      // 正确的坐标转换：游戏坐标 -> 图片百分比
+      // 参考 rustplusplus 的公式
+      const scale = (imageWidth - 2 * oceanMargin) / mapSize;
+      const x_image = focusTarget.x * scale + oceanMargin;
+      const y_image = imageHeight - (focusTarget.y * scale + oceanMargin);
+
       const posPercent = {
-        x: (focusTarget.x + margin) / totalSize,
-        y: (size + margin - focusTarget.y) / totalSize
+        x: x_image / imageWidth,
+        y: y_image / imageHeight
       };
 
       // 目标缩放比例
@@ -219,19 +230,33 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
 
       setTransform({ scale: targetScale, x: newX, y: newY });
     }
-  }, [focusTarget, mapInfo.mapSize, mapInfo.oceanMargin]);
+  }, [focusTarget, mapInfo.mapSize, mapInfo.imageWidth, mapInfo.imageHeight, mapInfo.oceanMargin]);
 
   // ============================================================
   // 坐标转换
   // ============================================================
 
+  /**
+   * 游戏坐标转换为地图图片上的百分比位置
+   * 参考 rustplusplus 的坐标转换公式
+   *
+   * @param {number} x - 游戏 X 坐标 (0 ~ mapSize)
+   * @param {number} y - 游戏 Y 坐标 (0 ~ mapSize)
+   * @returns {{ left: string, top: string }} CSS 百分比位置
+   */
   const getPos = (x, y) => {
-    const size = mapInfo.mapSize;
-    const margin = mapInfo.oceanMargin;
-    const totalSize = size + 2 * margin;
+    const { mapSize, imageWidth, imageHeight, oceanMargin } = mapInfo;
 
-    const left = ((x + margin) / totalSize) * 100;
-    const top = ((size + margin - y) / totalSize) * 100;
+    // 缩放比例：可玩区域像素 / 世界大小
+    const scale = (imageWidth - 2 * oceanMargin) / mapSize;
+
+    // 游戏坐标 -> 图片像素坐标
+    const x_image = x * scale + oceanMargin;
+    const y_image = imageHeight - (y * scale + oceanMargin);
+
+    // 图片像素 -> 百分比
+    const left = (x_image / imageWidth) * 100;
+    const top = (y_image / imageHeight) * 100;
 
     return { left: `${left}%`, top: `${top}%` };
   };

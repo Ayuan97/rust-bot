@@ -11,6 +11,8 @@ const DEFAULT_SETTINGS = {
   player_afk: true,
   player_afk_minutes: 3,
   player_afk_template: '',
+  player_afk_return: true,
+  player_afk_return_template: '',
   cargo_spawn: true,
   cargo_dock: true,
   cargo_egress: true,
@@ -47,6 +49,7 @@ const NOTIFICATION_GROUPS = [
       { key: 'player_online', label: '上线通知' },
       { key: 'player_offline', label: '下线通知' },
       { key: 'player_afk', label: '挂机检测' },
+      { key: 'player_afk_return', label: '挂机返回通知' },
     ]
   },
   {
@@ -98,6 +101,7 @@ function NotificationSettings() {
   const [saving, setSaving] = useState(false);
   const toast = useToast();
   const afkTemplateRef = useRef(null);
+  const afkReturnTemplateRef = useRef(null);
 
   useEffect(() => {
     fetchSettings();
@@ -255,6 +259,47 @@ function NotificationSettings() {
                               key={v.var}
                               type="button"
                               onClick={() => afkTemplateRef.current?.insertText(v.var)}
+                              disabled={saving}
+                              className={`px-2 py-1 text-[10px] tactic-cut transition-all ${
+                                v.required
+                                  ? 'bg-[#cd5241]/20 text-[#cd5241] border border-[#cd5241]/40 hover:bg-[#cd5241]/30'
+                                  : 'bg-white/5 text-gray-400 border border-white/10 hover:text-gray-200 hover:bg-white/10'
+                              } disabled:opacity-50`}
+                            >
+                              {v.var}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* AFK 返回扩展配置 */}
+                  {item.key === 'player_afk_return' && settings.player_afk_return && (
+                    <div className="mx-2 mt-2 mb-3 p-4 bg-black/40 border border-white/10 tactic-cut space-y-4">
+                      {/* 消息模板 */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-gray-400">消息模板</span>
+                          <span className="text-[10px] text-gray-600">留空使用默认</span>
+                        </div>
+                        <TacticTextInput
+                          ref={afkReturnTemplateRef}
+                          value={settings.player_afk_return_template}
+                          onChange={(val) => handleToggle('player_afk_return_template', val)}
+                          placeholder="`{name}` 在离开 {minutes} 分钟后回来了"
+                          disabled={saving}
+                        />
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] text-gray-500">点击插入:</span>
+                          {[
+                            { var: '{name}', label: '名字', required: true },
+                            { var: '{minutes}', label: '分钟' },
+                          ].map(v => (
+                            <button
+                              key={v.var}
+                              type="button"
+                              onClick={() => afkReturnTemplateRef.current?.insertText(v.var)}
                               disabled={saving}
                               className={`px-2 py-1 text-[10px] tactic-cut transition-all ${
                                 v.required

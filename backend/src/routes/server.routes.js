@@ -856,14 +856,12 @@ router.get('/:id/map-info', async (req, res) => {
       return res.status(400).json({ success: false, error: '服务器未连接' });
     }
 
-    let oceanMargin = rustPlusService.getMapOceanMargin(req.params.id);
-    if (oceanMargin === 0) {
-      try {
-        const mapData = await rustPlusService.getMap(req.params.id);
-        oceanMargin = mapData?.oceanMargin || 0;
-      } catch (e) {
-        oceanMargin = 500;
-      }
+    // 获取地图数据（包含图片尺寸和海洋边距）
+    let mapData = null;
+    try {
+      mapData = await rustPlusService.getMap(req.params.id);
+    } catch (e) {
+      // 忽略错误，使用默认值
     }
 
     const [markers, info] = await Promise.all([
@@ -878,13 +876,21 @@ router.get('/:id/map-info', async (req, res) => {
     );
     const server = serverRows[0];
 
+    // 图片尺寸和海洋边距（像素单位）
+    const imageWidth = mapData?.width || 2048;
+    const imageHeight = mapData?.height || 2048;
+    const oceanMargin = mapData?.oceanMargin || 0;
+
     res.json({
       success: true,
       markers,
       mapSize: info?.mapSize || 4500,
       monuments: info?.monuments || [],
       img: server?.img || null,
-      oceanMargin
+      // 新增：图片尺寸（像素），用于正确的坐标转换
+      imageWidth,
+      imageHeight,
+      oceanMargin  // 注意：这是像素单位
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

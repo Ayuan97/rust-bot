@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+// Rust 游戏地图数据结构定义
+// 参考: https://wiki.facepunch.com/rust/Map_Data
+// 参考: https://github.com/Facepunch/Rust.World
+
+message VectorData {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+message MapData {
+  string name = 1;
+  bytes data = 2;
+}
+
+message PrefabData {
+  string category = 1;
+  uint32 id = 2;
+  VectorData position = 3;
+  VectorData rotation = 4;
+  VectorData scale = 5;
+}
+
+message PathData {
+  string name = 1;
+  bool spline = 2;
+  bool start = 3;
+  bool end = 4;
+  float width = 5;
+  float innerPadding = 6;
+  float outerPadding = 7;
+  float innerFade = 8;
+  float outerFade = 9;
+  float randomScale = 10;
+  float meshOffset = 11;
+  float terrainOffset = 12;
+  int32 splat = 13;
+  int32 topology = 14;
+  repeated VectorData nodes = 15;
+}
+
+message WorldData {
+  uint32 size = 1;
+  repeated MapData maps = 2;
+  repeated PrefabData prefabs = 3;
+  repeated PathData paths = 4;
+}

@@ -27,6 +27,8 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   player_afk: true,
   player_afk_minutes: 3,        // AFK 触发时间（分钟），默认 3 分钟
   player_afk_template: '',      // AFK 消息模板（空则使用默认）
+  player_afk_return: true,      // AFK 返回通知启用
+  player_afk_return_template: '', // AFK 返回消息模板
   cargo_spawn: true,
   cargo_dock: true,
   cargo_egress: true,
@@ -1534,7 +1536,22 @@ class UserEventMonitor extends EventEmitter {
 
               this.emit(EventType.PLAYER_AFK_RETURNED, payload);
 
-              // AFK 返回不发送游戏内通知，避免刷屏
+              // 发送 AFK 返回通知
+              if (this.isNotificationEnabled('player_afk_return')) {
+                try {
+                  const afkMinutes = Math.floor(oldState.afkSeconds / 60);
+                  const defaultTemplate = '`{name}` 在离开 {minutes} 分钟后回来了';
+                  const template = this.notificationSettings?.player_afk_return_template?.trim() || defaultTemplate;
+
+                  const msg = template
+                    .replace(/{name}/g, member.name)
+                    .replace(/{minutes}/g, afkMinutes);
+
+                  await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                } catch (e) {
+                  logger.debug(`发送玩家返回通知失败: ${e.message}`);
+                }
+              }
             }
 
             oldState.lastMovement = now;
@@ -1896,7 +1913,7 @@ class UserEventMonitor extends EventEmitter {
       if (isFirstFetchToday) {
         // 首次获取：创建基准快照，贡献从此刻开始计算
         await db.query(
-          'INSERT INTO player_stats_snapshots (steamId, statKey, statValue, snapshotDate, createdAt) VALUES (?, ?, ?, NOW(), NOW())',
+          'INSERT INTO player_stats_snapshots (id, steamId, statKey, statValue, snapshotDate) VALUES (UUID(), ?, ?, ?, NOW())',
           [steamId, internalKey, value]
         );
         baselineSnapshot = { steamId, statKey: internalKey, statValue: value, snapshotDate: new Date() };
@@ -1922,7 +1939,7 @@ class UserEventMonitor extends EventEmitter {
         // 只有数值变化且间隔足够时才创建快照
         if (hasValueChanged && hasEnoughInterval) {
           await db.query(
-            'INSERT INTO player_stats_snapshots (steamId, statKey, statValue, snapshotDate, createdAt) VALUES (?, ?, ?, NOW(), NOW())',
+            'INSERT INTO player_stats_snapshots (id, steamId, statKey, statValue, snapshotDate) VALUES (UUID(), ?, ?, ?, NOW())',
             [steamId, internalKey, value]
           );
           console.log(`[Steam] ${playerName} 创建 ${internalKey} 快照: ${value}`);
