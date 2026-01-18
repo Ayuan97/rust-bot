@@ -406,6 +406,14 @@ class UserEventMonitor extends EventEmitter {
     );
 
     for (const ship of newShips) {
+      // 首次轮询时跳过事件触发，避免服务重启时误判已存在的货船为新刷新
+      if (eventData.isFirstPoll) {
+        if (!eventData.cargoShipTracers.has(ship.id)) {
+          eventData.cargoShipTracers.set(ship.id, []);
+        }
+        continue;
+      }
+
       const mapSize = this.rustPlusService.getMapSize(serverId);
       const position = formatPosition(ship.x, ship.y, mapSize);
       const now = Date.now();
@@ -637,6 +645,14 @@ class UserEventMonitor extends EventEmitter {
     );
 
     for (const heli of newHelis) {
+      // 首次轮询时跳过事件触发，避免服务重启时误判已存在的直升机为新刷新
+      if (eventData.isFirstPoll) {
+        if (!eventData.patrolHeliTracers.has(heli.id)) {
+          eventData.patrolHeliTracers.set(heli.id, []);
+        }
+        continue;
+      }
+
       const position = formatPosition(heli.x, heli.y, mapSize);
       const direction = this.getMapDirection(heli.x, heli.y, mapSize);
       const now = Date.now();

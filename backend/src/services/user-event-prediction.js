@@ -8,6 +8,7 @@
  */
 
 import EventEmitter from 'events';
+import { v4 as uuidv4 } from 'uuid';
 import db from '../lib/db.js';
 import logger from '../utils/logger.js';
 import { notify } from '../utils/messages.js';
@@ -186,14 +187,15 @@ class UserEventPrediction extends EventEmitter {
 
       if (!pattern) {
         // 首次记录，创建新模式
-        const [result] = await db.query(
-          `INSERT INTO event_spawn_patterns (serverAddress, eventType, sampleCount, recentIntervals, lastEventTime, createdAt, lastUpdated)
-           VALUES (?, ?, 0, '[]', ?, NOW(), NOW())`,
-          [serverAddress, eventType, eventTimeDate]
+        const patternId = uuidv4();
+        await db.query(
+          `INSERT INTO event_spawn_patterns (id, serverAddress, eventType, sampleCount, recentIntervals, lastEventTime, createdAt, lastUpdated)
+           VALUES (?, ?, ?, 0, '[]', ?, NOW(), NOW())`,
+          [patternId, serverAddress, eventType, eventTimeDate]
         );
 
         pattern = {
-          id: result.insertId,
+          id: patternId,
           serverAddress,
           eventType,
           sampleCount: 0,
@@ -385,15 +387,16 @@ class UserEventPrediction extends EventEmitter {
       }
 
       // 创建新预测
-      const [result] = await db.query(
+      const predictionId = uuidv4();
+      await db.query(
         `INSERT INTO event_predictions
-          (serverAddress, serverId, userId, eventType, predictedTime, confidenceLevel, windowStart, windowEnd, status, createdAt, updatedAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', NOW(), NOW())`,
-        [serverAddress, serverId, this.userId, eventType, predictedTime, confidenceLevel, windowStart, windowEnd]
+          (id, serverAddress, serverId, userId, eventType, predictedTime, confidenceLevel, windowStart, windowEnd, status, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', NOW(), NOW())`,
+        [predictionId, serverAddress, serverId, this.userId, eventType, predictedTime, confidenceLevel, windowStart, windowEnd]
       );
 
       const prediction = {
-        id: result.insertId,
+        id: predictionId,
         serverAddress,
         serverId,
         userId: this.userId,

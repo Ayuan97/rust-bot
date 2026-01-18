@@ -891,7 +891,7 @@ class UserServiceManager extends EventEmitter {
    */
   async _executeServerPairing(data) {
     // 生成用户专属的服务器 ID（防止不同用户配对同一服务器时 ID 冲突）
-    const userServerId = `${this.userId}_${data.id}`;
+    let userServerId = `${this.userId}_${data.id}`;
 
     // 1. 保存/更新服务器信息到数据库
     const serverData = {
@@ -914,12 +914,38 @@ class UserServiceManager extends EventEmitter {
     const existing = existingRows[0];
 
     if (existing) {
-      await db.query(
-        `UPDATE servers SET name = ?, playerId = ?, playerToken = ?, updatedAt = NOW()
-         WHERE id = ?`,
-        [serverData.name, serverData.playerId, serverData.playerToken, existing.id]
-      );
-      this.log('PAIRING', `更新已存在的服务器信息: ${data.name}`);
+      // 检查是否需要更新：对比 playerId 和 playerToken
+      const needsUpdate = existing.playerId !== data.playerId ||
+                          existing.playerToken !== data.playerToken ||
+                          existing.name !== data.name;
+
+      // 检查是否已连接
+      const isConnected = this.rustPlusService.connections.has(existing.id);
+
+      // 如果信息未变更且已连接，跳过处理
+      if (!needsUpdate && isConnected) {
+        this.log('PAIRING', `服务器 ${data.name} 已存在且已连接，跳过重复配对`);
+        return;
+      }
+
+      // 如果需要更新，则更新数据库
+      if (needsUpdate) {
+        await db.query(
+          `UPDATE servers SET name = ?, playerId = ?, playerToken = ?, updatedAt = NOW()
+           WHERE id = ?`,
+          [serverData.name, serverData.playerId, serverData.playerToken, existing.id]
+        );
+        this.log('PAIRING', `更新服务器信息: ${data.name}`);
+
+        // 凭证已更新且已连接，需要断开旧连接再重连
+        if (isConnected) {
+          this.log('PAIRING', `凭证已更新，断开旧连接准备重连...`);
+          await this.rustPlusService.disconnect(existing.id);
+        }
+      }
+
+      // 更新 userServerId 为已存在的服务器 ID
+      userServerId = existing.id;
     } else {
       await db.query(
         `INSERT INTO servers (id, userId, name, ip, port, playerId, playerToken, createdAt, updatedAt)
@@ -932,14 +958,8 @@ class UserServiceManager extends EventEmitter {
     // 2. 更新内存中的用户数据
     await this._loadUserData();
 
-    // 3. 如果已有连接，先断开
-    if (this.rustPlusService.connections.has(userServerId)) {
-      this.log('PAIRING', `断开旧连接...`);
-      await this.rustPlusService.disconnect(userServerId);
-    }
-
-    // 4. 发起新连接
-    this.log('PAIRING', `正在连接到新服务器...`);
+    // 3. 发起新连接
+    this.log('PAIRING', `正在连接到服务器...`);
     await this.rustPlusService.connect({
       serverId: userServerId,
       ip: data.ip,
@@ -948,7 +968,7 @@ class UserServiceManager extends EventEmitter {
       playerToken: data.playerToken
     });
 
-    // 5. 启动相关子服务
+    // 4. 启动相关子服务
     this.log('PAIRING', `正在启动实时监控与自动化服务...`);
     try {
       await this.eventMonitorService.start(userServerId);
