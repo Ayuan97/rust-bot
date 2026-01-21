@@ -72,6 +72,7 @@ class UserEventMonitor extends EventEmitter {
     this.previousMarkers = new Map(); // serverId -> markers array
     this.eventData = new Map(); // serverId -> event-specific data
     this.monuments = new Map(); // serverId -> monuments array
+    this.lastMonumentsRetry = new Map(); // serverId -> timestamp (节流重试)
 
     // 缓存用户的通知设置
     this.notificationSettings = null;
@@ -281,6 +282,8 @@ class UserEventMonitor extends EventEmitter {
       this.pollIntervals.delete(serverId);
       this.previousMarkers.delete(serverId);
       this.eventData.delete(serverId);
+      this.monuments.delete(serverId);
+      this.lastMonumentsRetry.delete(serverId);
       EventTimerManager.stopAllTimers(serverId);
 
       // 清理玩家刷新定时器
@@ -314,27 +317,26 @@ class UserEventMonitor extends EventEmitter {
       const map = await this.rustPlusService.getMap(serverId);
       if (map && map.monuments) {
         this.monuments.set(serverId, map.monuments);
-        logger.server(serverId, `🗺️ 加载古迹: ${map.monuments.length} 个`);
+        logger.server(serverId, `加载古迹: ${map.monuments.length} 个`);
       }
     } catch (error) {
-      const errorStr = JSON.stringify(error) || String(error);
+      const errorMsg = error?.message || String(error);
 
-      if (errorStr.includes('not_found')) {
-        logger.server(serverId, `ℹ️ 跳过加载古迹（玩家未在服务器内）`);
+      if (errorMsg.includes('not_found')) {
+        // 玩家未在服务器内，静默跳过
         return;
       }
 
-      if (errorStr.includes('Timeout') && retryCount < MAX_RETRIES) {
+      if (errorMsg.includes('Timeout') && retryCount < MAX_RETRIES) {
         const delay = RETRY_DELAYS[retryCount] || 4000;
-        logger.server(serverId, `⏳ 加载古迹超时，${delay / 1000}秒后重试 (${retryCount + 1}/${MAX_RETRIES})`);
+        logger.server(serverId, `加载古迹超时，${delay / 1000}秒后重试 (${retryCount + 1}/${MAX_RETRIES})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         return this.loadMonuments(serverId, retryCount + 1);
       }
 
+      // 超过重试次数或其他错误，静默失败（由 checkMapMarkers 的节流机制处理下次重试）
       if (retryCount >= MAX_RETRIES) {
-        logger.server(serverId, `❌ 加载古迹失败（已重试${MAX_RETRIES}次）`);
-      } else {
-        console.error(`❌ 加载古迹位置失败:`, error);
+        logger.debug(`服务器 ${serverId} 加载古迹失败（已重试${MAX_RETRIES}次）`);
       }
     }
   }
@@ -346,6 +348,21 @@ class UserEventMonitor extends EventEmitter {
     const rustplus = this.rustPlusService.connections.get(serverId);
     if (!rustplus) {
       throw new Error('服务器未连接');
+    }
+
+    // 如果 monuments 为空，尝试重新加载（解决启动时玩家不在服务器导致加载失败的问题）
+    // 节流：每 60 秒最多尝试一次
+    if (!this.monuments.has(serverId) || this.monuments.get(serverId).length === 0) {
+      const lastRetry = this.lastMonumentsRetry.get(serverId) || 0;
+      const now = Date.now();
+      if (now - lastRetry > 60 * 1000) {
+        this.lastMonumentsRetry.set(serverId, now);
+        try {
+          await this.loadMonuments(serverId);
+        } catch (e) {
+          // 静默失败，下次轮询再尝试
+        }
+      }
     }
 
     // 清理过期的追踪路径
@@ -1954,7 +1971,7 @@ class UserEventMonitor extends EventEmitter {
         );
       } else {
         await db.query(
-          'INSERT INTO player_stats (steamId, statKey, statValue, createdAt, updatedAt) VALUES (?, ?, ?, NOW(), NOW())',
+          'INSERT INTO player_stats (id, steamId, statKey, statValue, updatedAt) VALUES (UUID(), ?, ?, ?, NOW())',
           [steamId, internalKey, value]
         );
       }
