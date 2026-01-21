@@ -479,21 +479,8 @@ class UserServiceManager extends EventEmitter {
         }
       });
 
-      this.eventMonitorService.on('small_oil_rig:triggered', async (data) => {
-        try {
-          await this.predictionService.recordOilRigCooldown(data.serverId, 'small', data.time);
-        } catch (e) {
-          this.log('PREDICTION', `记录小油井事件失败: ${e.message}`, 'ERROR');
-        }
-      });
-
-      this.eventMonitorService.on('large_oil_rig:triggered', async (data) => {
-        try {
-          await this.predictionService.recordOilRigCooldown(data.serverId, 'large', data.time);
-        } catch (e) {
-          this.log('PREDICTION', `记录大油井事件失败: ${e.message}`, 'ERROR');
-        }
-      });
+      // 注意: 油井事件不纳入预测系统，因为油井事件是玩家触发的（开始 hack 箱子后 CH47 才会来）
+      // 油井没有像货船/直升机那样的固定刷新间隔
 
       // 5. 绑定 Automation 事件到 UserServiceManager
       this.automationService.on('automation:executed', (data) => {

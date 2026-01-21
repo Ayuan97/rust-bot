@@ -5,7 +5,7 @@
 
 import EventEmitter from 'events';
 import db from '../lib/db.js';
-import { AppMarkerType, EventTiming, EventType } from '../utils/event-constants.js';
+import { AppMarkerType, EventTiming, EventType, MonumentTokens } from '../utils/event-constants.js';
 import { formatPosition, getDistance } from '../utils/coordinates.js';
 import { notify, formatDuration } from '../utils/messages.js';
 import EventTimerManager from '../utils/event-timer.js';
@@ -39,6 +39,11 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   oil_rig_triggered: true,
   oil_rig_warning: true,
   oil_rig_unlocked: true,
+  oil_rig_radiation_warning: true,  // 辐射警告提醒
+  oil_rig_reset: true,              // 油井重置提醒
+  bradley_destroyed: true,          // 坦克被摧毁提醒
+  bradley_crate: true,              // 坦克箱子可拾取提醒
+  bradley_respawn: true,            // 坦克重生提醒
   crate_spawn: false,
   ch47_spawn: false,
   vending_new: false,
@@ -46,10 +51,10 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   day_notify_minutes: 5,
   night_notify_minutes: 8,
   // 预测通知设置
+  // 注意: 油井事件不支持预测，因为油井是玩家触发的，没有固定刷新间隔
   prediction_enabled: false,           // 预测功能总开关（默认关闭，需用户主动开启）
   prediction_cargo_enabled: true,      // 货船预测
   prediction_heli_enabled: true,       // 直升机预测
-  prediction_oil_rig_enabled: true,    // 油井冷却预测
   prediction_advance_minutes: 5,       // 提前通知时间（分钟）
   prediction_min_confidence: 0.6,      // 最低置信度（0-1）
 };
@@ -207,6 +212,7 @@ class UserEventMonitor extends EventEmitter {
       ch47Types: new Map(),           // CH47 类型追踪: id -> 'oil_rig' | 'crate'
       ch47CrateDropInfo: null,        // CH47 投放箱子信息: { time, x, y, position }
       cargoShipDockedStatus: new Map(),
+      knownExplosions: new Map(),     // 已知爆炸标记: id -> { x, y, time }
       lastEvents: {
         cargoShipSpawn: null,
         cargoShipLeave: null,
@@ -219,7 +225,8 @@ class UserEventMonitor extends EventEmitter {
         patrolHeliLeave: null,
         ch47Spawn: null,
         ch47CrateDrop: null,          // CH47 投放箱子时间
-        lockedCrateSpawn: null
+        lockedCrateSpawn: null,
+        bradleyDestroyed: null        // 坦克被摧毁时间
       },
       knownVendingMachines: new Map(),
       isFirstPoll: true,
@@ -400,6 +407,7 @@ class UserEventMonitor extends EventEmitter {
     await this.checkCH47s(serverId, currentMarkers, previousMarkers);
     await this.checkLockedCrates(serverId, currentMarkers, previousMarkers);
     await this.checkVendingMachines(serverId, currentMarkers, previousMarkers);
+    await this.checkExplosions(serverId, currentMarkers, previousMarkers);
     await this.checkTeamInfo(serverId);
 
     // 更新缓存
@@ -730,16 +738,37 @@ class UserEventMonitor extends EventEmitter {
     for (const heli of leftHelis) {
       const tracer = eventData.patrolHeliTracers.get(heli.id) || [];
       const lastPos = tracer.length > 0 ? tracer[tracer.length - 1] : { x: heli.x, y: heli.y };
-      const position = formatPosition(lastPos.x, lastPos.y, mapSize);
-      const direction = this.getMapDirection(lastPos.x, lastPos.y, mapSize);
       const now = Date.now();
 
       // 判断是击落还是离开（不在地图边缘 = 击落）
       const isNearEdge = this.isNearMapEdge(lastPos.x, lastPos.y, mapSize);
 
       if (!isNearEdge) {
-        // 击落
-        logger.server(serverId, `🚁 武装直升机被击落 @ ${position} ${direction}`);
+        // 击落 - 尝试从爆炸标记获取更精确的坠毁位置
+        let crashPos = lastPos;
+
+        // 检查是否有新的爆炸标记在直升机最后位置附近
+        const currentExplosions = currentMarkers.filter(m => m.type === AppMarkerType.Explosion);
+        const previousExplosions = previousMarkers.filter(m => m.type === AppMarkerType.Explosion);
+        const newExplosions = currentExplosions.filter(c =>
+          !previousExplosions.some(p => p.id === c.id)
+        );
+
+        // 在直升机最后位置 500 米范围内寻找爆炸标记
+        for (const explosion of newExplosions) {
+          const distance = getDistance(lastPos.x, lastPos.y, explosion.x, explosion.y);
+          if (distance <= 500) {
+            // 使用爆炸标记位置作为更精确的坠毁位置
+            crashPos = { x: explosion.x, y: explosion.y };
+            logger.debug(`直升机坠毁位置已更正: 从追踪位置到爆炸标记 (距离 ${Math.round(distance)}m)`);
+            break;
+          }
+        }
+
+        const position = formatPosition(crashPos.x, crashPos.y, mapSize);
+        const direction = this.getMapDirection(crashPos.x, crashPos.y, mapSize);
+
+        logger.server(serverId, `武装直升机被击落 @ ${position} ${direction}`);
 
         eventData.lastEvents.patrolHeliDowned = now;
 
@@ -747,8 +776,8 @@ class UserEventMonitor extends EventEmitter {
           userId: this.userId,
           serverId,
           markerId: heli.id,
-          x: lastPos.x,
-          y: lastPos.y,
+          x: crashPos.x,
+          y: crashPos.y,
           position,
           direction,
           time: now
@@ -768,17 +797,19 @@ class UserEventMonitor extends EventEmitter {
           }
         }
 
-        // 启动箱子解锁计时器（约15分钟）
+        // 启动火焰消散计时器（约3分钟后箱子可拾取）
+        // 注意: 直升机残骸箱子没有锁定时间，可以立即打开，但火焰会阻止玩家靠近
         EventTimerManager.stopTimer(`heli_crate_${heli.id}`, serverId);
+        EventTimerManager.stopTimer(`heli_debris_${heli.id}`, serverId);
 
-        const crateTimer = EventTimerManager.startTimer(
+        EventTimerManager.startTimer(
           `heli_crate_${heli.id}`,
           serverId,
-          EventTiming.HELI_CRATE_UNLOCK_TIME || 15 * 60 * 1000,
+          EventTiming.HELI_CRATE_FIRE_DURATION,
           async () => {
-            logger.server(serverId, `🚁 直升机残骸箱子已解锁 @ ${position}`);
+            logger.server(serverId, `直升机残骸火焰已消散，箱子可拾取 @ ${position}`);
 
-            this.emit('patrol_heli:crate_unlocked', {
+            this.emit('patrol_heli:crate_available', {
               userId: this.userId,
               serverId,
               position,
@@ -787,30 +818,40 @@ class UserEventMonitor extends EventEmitter {
 
             if (this.isNotificationEnabled('heli_downed')) {
               try {
-                const msg = `直升机残骸箱子已解锁 @ ${position}`;
+                const msg = `直升机残骸火焰已消散，箱子可拾取 @ ${position}`;
                 await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
               } catch (e) {
-                logger.debug(`发送直升机箱子解锁通知失败: ${e.message}`);
+                logger.debug(`发送直升机箱子可拾取通知失败: ${e.message}`);
               }
             }
           }
         );
 
-        // 添加警告（解锁前3分钟）
-        crateTimer.addWarning(3 * 60 * 1000, async (timeLeft) => {
-          const minutesLeft = Math.floor(timeLeft / 60000);
+        // 启动机身冷却计时器（约8分钟后可采集金属）
+        EventTimerManager.startTimer(
+          `heli_debris_${heli.id}`,
+          serverId,
+          EventTiming.HELI_DEBRIS_COOLING_TIME,
+          async () => {
+            logger.server(serverId, `直升机残骸已冷却，可采集金属 @ ${position}`);
 
-          logger.server(serverId, `🚁 直升机残骸箱子 ${minutesLeft} 分钟后解锁`);
+            this.emit('patrol_heli:debris_cooled', {
+              userId: this.userId,
+              serverId,
+              position,
+              time: Date.now()
+            });
 
-          if (this.isNotificationEnabled('heli_downed')) {
-            try {
-              const msg = `直升机残骸箱子 ${minutesLeft} 分钟后解锁 @ ${position}`;
-              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-            } catch (e) {
-              logger.debug(`发送直升机箱子警告通知失败: ${e.message}`);
+            if (this.isNotificationEnabled('heli_downed')) {
+              try {
+                const msg = `直升机残骸已冷却，可采集金属 @ ${position}`;
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              } catch (e) {
+                logger.debug(`发送直升机残骸可采集通知失败: ${e.message}`);
+              }
             }
           }
-        });
+        );
 
       } else {
         // 离开
@@ -993,6 +1034,62 @@ class UserEventMonitor extends EventEmitter {
             }
           });
 
+          // 启动辐射警告计时器（42分钟 = 45分钟 - 3分钟提前）
+          EventTimerManager.stopTimer('small_oil_radiation_warning', serverId);
+          EventTimerManager.startTimer(
+            'small_oil_radiation_warning',
+            serverId,
+            EventTiming.OIL_RIG_RADIATION_START_TIME - EventTiming.OIL_RIG_RADIATION_WARNING_TIME,
+            async () => {
+              logger.server(serverId, `小油井辐射即将开启，请尽快离开`);
+
+              this.emit('small_oil_rig:radiation_warning', {
+                userId: this.userId,
+                serverId,
+                time: Date.now()
+              });
+
+              if (this.isNotificationEnabled('oil_rig_radiation_warning')) {
+                try {
+                  const msg = notify('small_oil_radiation_warning', {});
+                  if (msg) {
+                    await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                  }
+                } catch (e) {
+                  logger.debug(`发送小油井辐射警告失败: ${e.message}`);
+                }
+              }
+            }
+          );
+
+          // 启动油井重置警告计时器（47分钟 = 50分钟 - 3分钟提前）
+          EventTimerManager.stopTimer('small_oil_reset', serverId);
+          EventTimerManager.startTimer(
+            'small_oil_reset',
+            serverId,
+            EventTiming.OIL_RIG_RESET_TIME - EventTiming.OIL_RIG_RESET_WARNING_TIME,
+            async () => {
+              logger.server(serverId, `小油井 3 分钟后重置，可以准备再次前往`);
+
+              this.emit('small_oil_rig:reset_warning', {
+                userId: this.userId,
+                serverId,
+                time: Date.now()
+              });
+
+              if (this.isNotificationEnabled('oil_rig_reset')) {
+                try {
+                  const msg = notify('small_oil_reset_warning', {});
+                  if (msg) {
+                    await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                  }
+                } catch (e) {
+                  logger.debug(`发送小油井重置警告失败: ${e.message}`);
+                }
+              }
+            }
+          );
+
           // 标记 CH47 类型为油井
           eventData.ch47Types.set(ch47.id, 'oil_rig');
 
@@ -1102,6 +1199,62 @@ class UserEventMonitor extends EventEmitter {
                 }
               }
             });
+
+            // 启动辐射警告计时器（42分钟 = 45分钟 - 3分钟提前）
+            EventTimerManager.stopTimer('large_oil_radiation_warning', serverId);
+            EventTimerManager.startTimer(
+              'large_oil_radiation_warning',
+              serverId,
+              EventTiming.OIL_RIG_RADIATION_START_TIME - EventTiming.OIL_RIG_RADIATION_WARNING_TIME,
+              async () => {
+                logger.server(serverId, `大油井辐射即将开启，请尽快离开`);
+
+                this.emit('large_oil_rig:radiation_warning', {
+                  userId: this.userId,
+                  serverId,
+                  time: Date.now()
+                });
+
+                if (this.isNotificationEnabled('oil_rig_radiation_warning')) {
+                  try {
+                    const msg = notify('large_oil_radiation_warning', {});
+                    if (msg) {
+                      await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                    }
+                  } catch (e) {
+                    logger.debug(`发送大油井辐射警告失败: ${e.message}`);
+                  }
+                }
+              }
+            );
+
+            // 启动油井重置警告计时器（47分钟 = 50分钟 - 3分钟提前）
+            EventTimerManager.stopTimer('large_oil_reset', serverId);
+            EventTimerManager.startTimer(
+              'large_oil_reset',
+              serverId,
+              EventTiming.OIL_RIG_RESET_TIME - EventTiming.OIL_RIG_RESET_WARNING_TIME,
+              async () => {
+                logger.server(serverId, `大油井 3 分钟后重置，可以准备再次前往`);
+
+                this.emit('large_oil_rig:reset_warning', {
+                  userId: this.userId,
+                  serverId,
+                  time: Date.now()
+                });
+
+                if (this.isNotificationEnabled('oil_rig_reset')) {
+                  try {
+                    const msg = notify('large_oil_reset_warning', {});
+                    if (msg) {
+                      await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                    }
+                  } catch (e) {
+                    logger.debug(`发送大油井重置警告失败: ${e.message}`);
+                  }
+                }
+              }
+            );
 
             // 标记 CH47 类型为油井
             eventData.ch47Types.set(ch47.id, 'oil_rig');
@@ -1358,6 +1511,160 @@ class UserEventMonitor extends EventEmitter {
         sellOrders: vending.sellOrders || [],
         time: Date.now()
       });
+    }
+  }
+
+  /**
+   * 检测爆炸事件（坦克被摧毁）
+   * 通过检测发射场附近的爆炸标记来判断坦克是否被摧毁
+   */
+  async checkExplosions(serverId, currentMarkers, previousMarkers) {
+    const currentExplosions = currentMarkers.filter(m => m.type === AppMarkerType.Explosion);
+    const previousExplosions = previousMarkers.filter(m => m.type === AppMarkerType.Explosion);
+    const eventData = this.eventData.get(serverId);
+    const monuments = this.monuments.get(serverId) || [];
+    const mapSize = this.rustPlusService.getMapSize(serverId);
+
+    // 获取发射场位置
+    const launchSites = monuments.filter(m => m.token === MonumentTokens.LAUNCH_SITE);
+
+    // 新出现的爆炸标记
+    const newExplosions = currentExplosions.filter(c =>
+      !previousExplosions.some(p => p.id === c.id)
+    );
+
+    for (const explosion of newExplosions) {
+      const now = Date.now();
+
+      // 首次轮询跳过
+      if (eventData.isFirstPoll) {
+        eventData.knownExplosions.set(explosion.id, { x: explosion.x, y: explosion.y, time: now });
+        continue;
+      }
+
+      // 检查是否在发射场附近（坦克被摧毁）
+      for (const launchSite of launchSites) {
+        const distance = getDistance(explosion.x, explosion.y, launchSite.x, launchSite.y);
+
+        if (distance <= EventTiming.BRADLEY_DETECTION_RADIUS) {
+          // 防止短时间内重复触发（10分钟内只触发一次）
+          const lastBradleyDestroyed = eventData.lastEvents.bradleyDestroyed;
+          if (lastBradleyDestroyed && (now - lastBradleyDestroyed) < 10 * 60 * 1000) {
+            continue;
+          }
+
+          const position = formatPosition(explosion.x, explosion.y, mapSize);
+
+          logger.server(serverId, `坦克已被摧毁 @ 发射场`);
+
+          eventData.lastEvents.bradleyDestroyed = now;
+
+          const payload = {
+            userId: this.userId,
+            serverId,
+            markerId: explosion.id,
+            x: explosion.x,
+            y: explosion.y,
+            position,
+            time: now
+          };
+
+          this.emit(EventType.BRADLEY_DESTROYED, payload);
+
+          // 发送坦克被摧毁通知
+          if (this.isNotificationEnabled('bradley_destroyed')) {
+            try {
+              const msg = notify('bradley_destroyed', {});
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {
+              logger.debug(`发送坦克被摧毁通知失败: ${e.message}`);
+            }
+          }
+
+          // 停止旧计时器（如果存在）
+          EventTimerManager.stopTimer('bradley_crate', serverId);
+          EventTimerManager.stopTimer('bradley_respawn_warning', serverId);
+          EventTimerManager.stopTimer('bradley_respawn', serverId);
+
+          // 启动箱子火焰消散计时器（5分钟）
+          EventTimerManager.startTimer(
+            'bradley_crate',
+            serverId,
+            EventTiming.BRADLEY_CRATE_FIRE_DURATION,
+            async () => {
+              logger.server(serverId, `坦克箱子火焰已消散，可以拾取`);
+
+              this.emit(EventType.BRADLEY_CRATE_AVAILABLE, {
+                userId: this.userId,
+                serverId,
+                time: Date.now()
+              });
+
+              if (this.isNotificationEnabled('bradley_crate')) {
+                try {
+                  const msg = notify('bradley_crate_available', {});
+                  if (msg) {
+                    await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                  }
+                } catch (e) {
+                  logger.debug(`发送坦克箱子可拾取通知失败: ${e.message}`);
+                }
+              }
+            }
+          );
+
+          // 启动重生计时器（60分钟）
+          const respawnTimer = EventTimerManager.startTimer(
+            'bradley_respawn',
+            serverId,
+            EventTiming.BRADLEY_RESPAWN_TIME,
+            () => {
+              // 重生时不发送通知，只记录日志
+              logger.server(serverId, `坦克已重生`);
+            }
+          );
+
+          // 添加重生前5分钟警告
+          respawnTimer.addWarning(EventTiming.BRADLEY_RESPAWN_WARNING_TIME, async (timeLeft) => {
+            const minutesLeft = Math.floor(timeLeft / 60000);
+
+            logger.server(serverId, `坦克将在 ${minutesLeft} 分钟后重生`);
+
+            this.emit(EventType.BRADLEY_RESPAWN_WARNING, {
+              userId: this.userId,
+              serverId,
+              minutesLeft,
+              time: Date.now()
+            });
+
+            if (this.isNotificationEnabled('bradley_respawn')) {
+              try {
+                const msg = notify('bradley_respawn_warning', {});
+                if (msg) {
+                  await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+                }
+              } catch (e) {
+                logger.debug(`发送坦克重生警告失败: ${e.message}`);
+              }
+            }
+          });
+
+          break;
+        }
+      }
+
+      // 记录已知爆炸标记
+      eventData.knownExplosions.set(explosion.id, { x: explosion.x, y: explosion.y, time: now });
+    }
+
+    // 清理过期的爆炸标记记录（超过2小时）
+    const expiryTime = Date.now() - 2 * 60 * 60 * 1000;
+    for (const [id, data] of eventData.knownExplosions.entries()) {
+      if (data.time < expiryTime) {
+        eventData.knownExplosions.delete(id);
+      }
     }
   }
 

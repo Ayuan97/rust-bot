@@ -14,19 +14,17 @@ import logger from '../utils/logger.js';
 import { notify } from '../utils/messages.js';
 
 // 事件类型映射
+// 注意: 油井没有冷却预测，因为油井事件是玩家触发的（开始 hack 箱子后 CH47 才会来）
+// 油井不像货船/直升机那样有固定的刷新间隔
 const EVENT_TYPES = {
   CARGO_SPAWN: 'CARGO_SPAWN',
-  HELI_SPAWN: 'HELI_SPAWN',
-  SMALL_OIL_COOLDOWN: 'SMALL_OIL_COOLDOWN',
-  LARGE_OIL_COOLDOWN: 'LARGE_OIL_COOLDOWN'
+  HELI_SPAWN: 'HELI_SPAWN'
 };
 
 // 事件类型显示名称
 const EVENT_TYPE_NAMES = {
   CARGO_SPAWN: '货船',
-  HELI_SPAWN: '武装直升机',
-  SMALL_OIL_COOLDOWN: '小油井冷却',
-  LARGE_OIL_COOLDOWN: '大油井冷却'
+  HELI_SPAWN: '武装直升机'
 };
 
 class UserEventPrediction extends EventEmitter {
@@ -132,9 +130,7 @@ class UserEventPrediction extends EventEmitter {
     // 分类开关
     const eventTypeToSetting = {
       CARGO_SPAWN: 'prediction_cargo_enabled',
-      HELI_SPAWN: 'prediction_heli_enabled',
-      SMALL_OIL_COOLDOWN: 'prediction_oil_rig_enabled',
-      LARGE_OIL_COOLDOWN: 'prediction_oil_rig_enabled'
+      HELI_SPAWN: 'prediction_heli_enabled'
     };
 
     const settingKey = eventTypeToSetting[eventType];
@@ -308,14 +304,6 @@ class UserEventPrediction extends EventEmitter {
   }
 
   /**
-   * 记录油井冷却开始
-   */
-  async recordOilRigCooldown(serverId, oilRigType, triggerTime) {
-    const eventType = oilRigType === 'small' ? EVENT_TYPES.SMALL_OIL_COOLDOWN : EVENT_TYPES.LARGE_OIL_COOLDOWN;
-    await this.recordEvent(serverId, eventType, triggerTime);
-  }
-
-  /**
    * 计算统计数据
    * @private
    */
@@ -482,9 +470,7 @@ class UserEventPrediction extends EventEmitter {
 
       const messageKey = {
         CARGO_SPAWN: 'prediction_cargo',
-        HELI_SPAWN: 'prediction_heli',
-        SMALL_OIL_COOLDOWN: 'prediction_small_oil_ready',
-        LARGE_OIL_COOLDOWN: 'prediction_large_oil_ready'
+        HELI_SPAWN: 'prediction_heli'
       }[eventType];
 
       let message = notify(messageKey, { time: timeStr, confidence: confidenceStr });
