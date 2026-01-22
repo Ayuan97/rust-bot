@@ -8,6 +8,7 @@ import {
 import { useAuth } from './context/AuthContext';
 import api, { getServers, connectServer, getMapInfo, getTeamInfo } from './services/api';
 import { useToast } from './components/Toast';
+import { useConfirm } from './components/ConfirmModal';
 import socketService from './services/socket';
 import { getCorrectedMapSize } from './utils/coordinates';
 import HUDView from './components/HUDView';
@@ -24,6 +25,7 @@ import MapView from './components/MapView';
 function App() {
   const { user, logout, isSubscriptionExpired } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
 
   const [servers, setServers] = useState([]);
   const [activeServer, setActiveServer] = useState(null);
@@ -42,6 +44,37 @@ function App() {
     const timer = setInterval(() => setWipeCountdownTick(t => t + 1), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // 全局监听服务器替换确认事件
+  useEffect(() => {
+    const handleServerReplaceConfirm = async (data) => {
+      const { oldServer, newServer } = data;
+
+      const confirmed = await confirm({
+        type: 'warning',
+        title: '切换服务器',
+        message: `检测到您正在配对新服务器:\n\n当前: ${oldServer.name} (${oldServer.ip}:${oldServer.port})\n新的: ${newServer.name} (${newServer.ip}:${newServer.port})\n\n确定要替换吗？旧服务器的设备配置和事件记录将被删除。`,
+        confirmText: '确认替换',
+        cancelText: '保留当前'
+      });
+
+      try {
+        await socketService.sendServerReplaceResponse(confirmed);
+        if (confirmed) {
+          toast.success('服务器替换成功');
+          fetchServers();
+        }
+      } catch (error) {
+        toast.error('服务器替换失败: ' + error.message);
+      }
+    };
+
+    socketService.on('server:replace:confirm', handleServerReplaceConfirm);
+
+    return () => {
+      socketService.off('server:replace:confirm', handleServerReplaceConfirm);
+    };
+  }, [confirm, toast]);
 
   useEffect(() => {
     fetchServers();

@@ -1,5 +1,5 @@
 # GEMINI.md
-
+永远使用中文回答
 为 Gemini CLI 提供项目指导。
 
 ## 项目概述
