@@ -106,6 +106,8 @@ export const getPredictionPatterns = (serverId) => api.get(`/predictions/${serve
 
 export const resetPredictionPatterns = (serverId) => api.post(`/predictions/${serverId}/patterns/reset`);
 
+export const getActiveTimers = (serverId) => api.get(`/servers/${serverId}/timers`);
+
 // ========== Battlemetrics ==========
 
 export const getBattlemetricsInfo = (serverId) => api.get(`/servers/${serverId}/battlemetrics`);

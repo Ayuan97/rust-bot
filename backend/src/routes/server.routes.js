@@ -9,6 +9,7 @@ import { authenticate, requireActiveSubscription } from '../middleware/auth.midd
 import globalServiceManager from '../services/global-manager.service.js';
 import battlemetricsService from '../services/battlemetrics.service.js';
 import { v4 as uuidv4 } from 'uuid';
+import EventTimerManager from '../utils/event-timer.js';
 
 const router = express.Router();
 
@@ -109,6 +110,27 @@ router.get('/:id', async (req, res) => {
     });
   } catch (error) {
     console.error('获取服务器详情失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/servers/:id/timers
+ * 获取服务器当前活跃的事件倒计时（如油井、箱子解锁等）
+ */
+router.get('/:id/timers', async (req, res) => {
+  try {
+    const serverId = req.params.id;
+    // 验证服务器是否存在
+    const [rows] = await db.query('SELECT id FROM servers WHERE id = ? AND userId = ?', [serverId, req.user.id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: '服务器不存在' });
+    }
+
+    const timers = EventTimerManager.getActiveTimers(serverId);
+    res.json({ success: true, timers });
+  } catch (error) {
+    console.error('获取计时器失败:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
