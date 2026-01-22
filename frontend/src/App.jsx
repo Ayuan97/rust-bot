@@ -45,8 +45,14 @@ function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // 全局监听服务器替换确认事件
   useEffect(() => {
+    fetchServers();
+    fetchFCMStatus();
+
+    // 初始化 Socket 连接
+    const socket = socketService.connect();
+
+    // 全局监听服务器替换确认事件
     const handleServerReplaceConfirm = async (data) => {
       const { oldServer, newServer } = data;
 
@@ -69,20 +75,9 @@ function App() {
       }
     };
 
-    socketService.on('server:replace:confirm', handleServerReplaceConfirm);
-
-    return () => {
-      socketService.off('server:replace:confirm', handleServerReplaceConfirm);
-    };
-  }, [confirm, toast]);
-
-  useEffect(() => {
-    fetchServers();
-    fetchFCMStatus();
-
-    // 初始化 Socket 连接
-    const socket = socketService.connect();
     if (socket) {
+      socketService.on('server:replace:confirm', handleServerReplaceConfirm);
+
       socketService.on('team_info', (data) => {
         if (data.serverId === activeServer?.id) {
           setTeamData(data);
@@ -103,6 +98,7 @@ function App() {
     const fcmInterval = setInterval(fetchFCMStatus, 30000);
 
     return () => {
+      socketService.off('server:replace:confirm', handleServerReplaceConfirm);
       socketService.off('team_info');
       socketService.off('event_log');
       clearInterval(fcmInterval);
