@@ -526,7 +526,6 @@ function DeviceControl({ serverId, isReadOnly = false }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
             {filteredDevices.map((device) => {
               const commonProps = {
-                key: device.id,
                 device,
                 isReadOnly,
                 onEdit: () => setEditingDevice(device),
@@ -537,12 +536,12 @@ function DeviceControl({ serverId, isReadOnly = false }) {
               };
 
               if (device.type === 'ALARM') {
-                return <SmartAlarmCard {...commonProps} />;
+                return <SmartAlarmCard key={device.id} {...commonProps} />;
               }
               if (device.type === 'STORAGE') {
-                return <StorageMonitorCard {...commonProps} />;
+                return <StorageMonitorCard key={device.id} {...commonProps} />;
               }
-              return <SmartSwitchCard {...commonProps} onToggle={handleToggleDevice} />;
+              return <SmartSwitchCard key={device.id} {...commonProps} onToggle={handleToggleDevice} />;
             })}
           </div>
         )}
