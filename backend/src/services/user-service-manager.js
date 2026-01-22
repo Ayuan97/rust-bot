@@ -766,44 +766,18 @@ class UserServiceManager extends EventEmitter {
         s => s.ip === data.ip && s.port === String(data.port)
       );
 
-      // 3. 如果已有不同服务器，需要用户确认替换
+      // 3. 如果已有不同服务器，直接执行替换
       if (existingServers.length > 0 && !isSameServer) {
         const oldServer = existingServers[0];
 
         this.log('PAIRING', `检测到需要替换服务器: ${oldServer.name} -> ${data.name}`);
 
-        // 暂存新服务器数据
-        this.pendingServerPairing = {
-          newServer: data,
-          oldServer: {
-            id: oldServer.id,
-            name: oldServer.name,
-            ip: oldServer.ip,
-            port: oldServer.port
-          },
-          timestamp: Date.now()
-        };
-
-        // 发送确认请求到前端
-        this.emit('server:replace:confirm', {
-          userId: this.userId,
-          oldServer: {
-            id: oldServer.id,
-            name: oldServer.name,
-            ip: oldServer.ip,
-            port: oldServer.port
-          },
-          newServer: {
-            name: data.name,
-            ip: data.ip,
-            port: data.port
-          }
-        });
-
-        return; // 等待用户确认
+        // 直接执行替换
+        await this._executeServerReplace(oldServer, data);
+        return;
       }
 
-      // 4. 无需确认，直接执行配对
+      // 4. 无需替换，直接执行配对
       await this._executeServerPairing(data);
 
     } catch (error) {
@@ -813,32 +787,12 @@ class UserServiceManager extends EventEmitter {
   }
 
   /**
-   * 处理用户确认替换的响应
-   * @param {boolean} confirmed - 用户是否确认替换
+   * 执行服务器替换（删除旧服务器，配对新服务器）
+   * @private
    */
-  async handleServerReplaceResponse(confirmed) {
-    if (!this.pendingServerPairing) {
-      this.log('PAIRING', '没有待确认的配对请求', 'WARN');
-      return;
-    }
-
-    const { newServer, oldServer, timestamp } = this.pendingServerPairing;
-
-    // 检查是否超时（5分钟）
-    if (Date.now() - timestamp > 5 * 60 * 1000) {
-      this.log('PAIRING', '配对确认已超时', 'WARN');
-      this.pendingServerPairing = null;
-      return;
-    }
-
-    if (!confirmed) {
-      this.log('PAIRING', `用户取消了服务器替换: ${newServer.name}`);
-      this.pendingServerPairing = null;
-      return;
-    }
-
+  async _executeServerReplace(oldServer, newServer) {
     try {
-      this.log('PAIRING', `用户确认替换服务器: ${oldServer.name} -> ${newServer.name}`);
+      this.log('PAIRING', `正在替换服务器: ${oldServer.name} -> ${newServer.name}`);
 
       // 1. 断开旧服务器连接
       if (this.rustPlusService.isConnected(oldServer.id)) {
@@ -867,8 +821,6 @@ class UserServiceManager extends EventEmitter {
     } catch (error) {
       this.log('PAIRING', `替换服务器失败: ${error.message}`, 'ERROR');
       console.error(error);
-    } finally {
-      this.pendingServerPairing = null;
     }
   }
 

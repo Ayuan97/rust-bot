@@ -192,24 +192,6 @@ class WebSocketService {
         }
       });
 
-      // 处理服务器替换确认响应
-      socket.on('server:replace:response', async ({ confirmed } = {}) => {
-        try {
-          const userService = getUserService();
-
-          if (typeof confirmed !== 'boolean') {
-            return socket.emit('server:replace:response:error', {
-              error: 'confirmed 必须是布尔值'
-            });
-          }
-
-          await userService.handleServerReplaceResponse(confirmed);
-          socket.emit('server:replace:response:success', { confirmed });
-        } catch (error) {
-          socket.emit('server:replace:response:error', { error: error.message });
-        }
-      });
-
       // 发送队伍消息（需要有效订阅）
       socket.on('message:send', async ({ serverId, message } = {}) => {
         try {
@@ -639,10 +621,6 @@ class WebSocketService {
 
     addListener('server:paired', (data) => {
       this.io.to(`user:${data.userId}`).emit('server:paired', data);
-    });
-
-    addListener('server:replace:confirm', (data) => {
-      this.io.to(`user:${data.userId}`).emit('server:replace:confirm', data);
     });
 
     addListener('entity:paired', (data) => {

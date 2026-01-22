@@ -155,31 +155,6 @@ class SocketService {
     });
   }
 
-  sendServerReplaceResponse(confirmed) {
-    return new Promise((resolve, reject) => {
-      if (!this.socket) {
-        return reject(new Error('Socket 未连接'));
-      }
-
-      const timeout = setTimeout(() => {
-        this.socket?.off('server:replace:response:success');
-        this.socket?.off('server:replace:response:error');
-        reject(new Error('发送替换确认超时'));
-      }, 10000);
-
-      this.socket.emit('server:replace:response', { confirmed });
-
-      this.socket.once('server:replace:response:success', (data) => {
-        clearTimeout(timeout);
-        resolve(data);
-      });
-      this.socket.once('server:replace:response:error', (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-    });
-  }
-
   getServerInfo(serverId) {
     return new Promise((resolve, reject) => {
       if (!this.socket) {
