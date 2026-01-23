@@ -382,7 +382,6 @@ class UserEventMonitor extends EventEmitter {
     }
 
     // 清理过期的追踪路径
-    const eventData = this.eventData.get(serverId);
     if (eventData) {
       const expiryTime = Date.now() - 2 * 60 * 60 * 1000;
       for (const [id, tracer] of eventData.cargoShipTracers.entries()) {
