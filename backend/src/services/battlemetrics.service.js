@@ -93,70 +93,73 @@ class BattlemetricsService extends EventEmitter {
       const axiosConfig = this._getAxiosConfig();
 
       // 方法1: 优先通过 IP 搜索 (Battlemetrics 搜索 IP 会返回该 IP 下的所有服务器)
-      console.log(`\n🔍 开始搜索 Battlemetrics...`);
-      // 注意: filter[search] 搜索 IP 时通常比较准，但有时也会返回无关结果
-      let url = `https://api.battlemetrics.com/servers?filter[search]=${ip}&filter[game]=rust`;
+      // 方法1: 优先通过 IP 搜索 (Battlemetrics 搜索 IP 会返回该 IP 下的所有服务器)
+      console.log(`\n🔍 [1/2] 尝试通过 IP 搜索...`);
+      // 增加 page[size] 防止目标服务器因排序问题被挤出前10
+      let url = `https://api.battlemetrics.com/servers?filter[search]=${ip}&filter[game]=rust&page[size]=20`;
       let response = await axios.get(url, axiosConfig);
 
-      console.log(`📊 搜索结果: ${response.data.data.length} 个`);
+      if (response.data.data.length > 0) {
+        console.log(`📊 IP 搜索结果: ${response.data.data.length} 个`);
 
-      if (response.data.data.length === 0) {
-        // 如果 IP 搜不到，尝试通过名称搜 (作为备选方案)
-        if (serverName) {
-          console.log(`⚠️  IP 搜索无结果，尝试通过名称搜索...`);
-          const encodedName = encodeURI(serverName).replace('#', '*');
-          url = `https://api.battlemetrics.com/servers?filter[search]=${encodedName}&filter[game]=rust`;
-          response = await axios.get(url, axiosConfig);
-          console.log(`📊 名称搜索结果: ${response.data.data.length} 个`);
-        } else {
-          console.log(`❌ 未找到匹配的服务器`);
-          return null;
+        // 遍历结果寻找精确匹配
+        for (const server of response.data.data) {
+          const serverIp = server.attributes.ip;
+          const serverPort = server.attributes.port;
+
+          if (serverIp === ip && serverPort === targetPort) {
+            console.log(`✅ 找到完美匹配 (IP + Port)!`);
+            console.log(`   服务器: ${server.attributes.name}`);
+            console.log(`   ID: ${server.id}`);
+            return server.id;
+          }
         }
+
+        // 如果有一个结果且 IP 匹配 (端口可能有偏差/映射)，尝试自动认领
+        const sameIpServers = response.data.data.filter(s => s.attributes.ip === ip);
+        if (sameIpServers.length === 1) {
+          console.log(`✅ 找到唯一 IP 匹配 (端口不完全匹配，但 IP 唯一)`);
+          console.log(`   服务器: ${sameIpServers[0].attributes.name}`);
+          console.log(`   ID: ${sameIpServers[0].id}`);
+          return sameIpServers[0].id;
+        }
+
+        console.log(`⚠️  IP 搜索结果中未找到匹配项 (可能是无关结果)`);
+      } else {
+        console.log(`⚠️  IP 搜索无结果`);
       }
 
-      // 遍历所有搜索结果，寻找 IP 和 Port 完全匹配的
-      const targetPort = parseInt(port);
-      for (const server of response.data.data) {
-        const serverIp = server.attributes.ip;
-        const serverPort = server.attributes.port;
-
-        // 调试日志：显示找到的候选项
-        // console.log(`   检查候选项: ${server.attributes.name} (${serverIp}:${serverPort})`);
-
-        if (serverIp === ip && serverPort === targetPort) {
-          console.log(`✅ ✅ 找到完美匹配 (IP + Port)!`);
-          console.log(`   服务器: ${server.attributes.name}`);
-          console.log(`   ID: ${server.id}`);
-          return server.id;
-        }
-      }
-
-      console.log(`⚠️  未找到 IP:Port 完全匹配的服务器，尝试模糊匹配...`);
-
-      // 如果没有完全匹配 (可能是端口映射问题，或者 Battlemetrics 显示的端口和 Rust+ 端口不一致)
-      // 尝试通过名称精确匹配
+      // ---------------------------------------------------------
+      // 步骤 2: 如果 IP 搜不到 (或搜出来的不对)，尝试通过 名称 搜索
+      // ---------------------------------------------------------
       if (serverName) {
-        const serverByName = response.data.data.find(s => s.attributes.name === serverName);
-        if (serverByName) {
-          console.log(`✅ 通过名称精确匹配成功!`);
-          console.log(`   服务器: ${serverByName.attributes.name}`);
-          console.log(`   ID: ${serverByName.id}`);
-          return serverByName.id;
+        console.log(`\n🔍 [2/2] 尝试通过名称搜索...`);
+        const encodedName = encodeURI(serverName).replace('#', '*');
+        url = `https://api.battlemetrics.com/servers?filter[search]=${encodedName}&filter[game]=rust&page[size]=20`;
+        response = await axios.get(url, axiosConfig);
+
+        console.log(`📊 名称搜索结果: ${response.data.data.length} 个`);
+
+        if (response.data.data.length > 0) {
+          // 2.1 优先找名称完全一致的
+          const exactNameMatch = response.data.data.find(s => s.attributes.name === serverName);
+          if (exactNameMatch) {
+            console.log(`✅ 通过名称精确匹配成功!`);
+            console.log(`   ID: ${exactNameMatch.id}`);
+            return exactNameMatch.id;
+          }
+
+          // 2.2 其次找 IP 匹配的 (虽然前面搜 IP 没搜到，但可能在这里搜到了)
+          const ipMatch = response.data.data.find(s => s.attributes.ip === ip);
+          if (ipMatch) {
+            console.log(`✅ 通过名称搜索找到 IP 匹配项!`);
+            console.log(`   ID: ${ipMatch.id}`);
+            return ipMatch.id;
+          }
         }
       }
 
-      // 如果搜索结果中，所有结果的 IP 都匹配当前 IP (共享宿主)，且找不到端口匹配
-      // 这里的逻辑比较危险，因为可能是同一 IP 下的不同服。
-      // 所以我们只在 "结果只有一个 且 IP 匹配" 时才敢自动认领
-      const sameIpServers = response.data.data.filter(s => s.attributes.ip === ip);
-      if (sameIpServers.length === 1) {
-        console.log(`✅ 该 IP 只有一个服务器，自动选择 (端口不匹配但 IP 唯一)`);
-        console.log(`   服务器: ${sameIpServers[0].attributes.name}`);
-        console.log(`   Battlemetrics Port: ${sameIpServers[0].attributes.port} (目标: ${port})`);
-        return sameIpServers[0].id;
-      }
-
-      console.log(`❌ 无法自动匹配服务器。找到 ${response.data.data.length} 个结果，但无一匹配 IP:Port 或名称。`);
+      console.log(`❌ 最终匹配失败。无法找到对应的 Battlemetrics 服务器。`);
       // 显示候选项供调试
       response.data.data.forEach(server => {
         console.log(`  - [${server.id}] ${server.attributes.name} (${server.attributes.ip}:${server.attributes.port})`);
