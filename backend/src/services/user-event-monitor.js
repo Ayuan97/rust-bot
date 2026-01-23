@@ -187,7 +187,11 @@ class UserEventMonitor extends EventEmitter {
    * 启动某个服务器的事件监控
    */
   async start(serverId) {
+    // DEBUG: 记录 start 调用
+    logger.debug(`[START-DEBUG] start() called for serverId=${serverId}, has=${this.pollIntervals.has(serverId)}`);
+
     if (this.pollIntervals.has(serverId)) {
+      logger.debug(`[START-DEBUG] Skipping - already running for serverId=${serverId}`);
       return;
     }
 
@@ -357,6 +361,11 @@ class UserEventMonitor extends EventEmitter {
       throw new Error('服务器未连接');
     }
 
+    // DEBUG: 记录轮询时间
+    const pollTime = new Date().toISOString();
+    const eventData = this.eventData.get(serverId);
+    logger.debug(`[POLL-DEBUG] checkMapMarkers called at ${pollTime} (isFirstPoll=${eventData?.isFirstPoll})`);
+
     // 如果 monuments 为空，尝试重新加载（解决启动时玩家不在服务器导致加载失败的问题）
     // 节流：每 60 秒最多尝试一次
     if (!this.monuments.has(serverId) || this.monuments.get(serverId).length === 0) {
@@ -411,6 +420,10 @@ class UserEventMonitor extends EventEmitter {
     await this.checkTeamInfo(serverId);
 
     // 更新缓存
+    const markerCount = currentMarkers.length;
+    const heliCount = currentMarkers.filter(m => m.type === AppMarkerType.PatrolHelicopter).length;
+    const cargoCount = currentMarkers.filter(m => m.type === AppMarkerType.CargoShip).length;
+    logger.debug(`[POLL-DEBUG] Updating previousMarkers: total=${markerCount} helis=${heliCount} cargo=${cargoCount}`);
     this.previousMarkers.set(serverId, currentMarkers);
 
     // 标记首次轮询已完成
@@ -427,10 +440,23 @@ class UserEventMonitor extends EventEmitter {
     const previousShips = previousMarkers.filter(m => m.type === AppMarkerType.CargoShip);
     const eventData = this.eventData.get(serverId);
 
+    // DEBUG: 记录当前和上次的货船标记
+    if (currentShips.length > 0 || previousShips.length > 0) {
+      const currentIds = currentShips.map(s => `${s.id}@(${Math.round(s.x)},${Math.round(s.y)})`).join(',');
+      const previousIds = previousShips.map(s => `${s.id}@(${Math.round(s.x)},${Math.round(s.y)})`).join(',');
+      logger.debug(`[CARGO-DEBUG] current=[${currentIds}] previous=[${previousIds}]`);
+    }
+
     // 新刷新的货船
     const newShips = currentShips.filter(c =>
       !previousShips.some(p => p.id === c.id)
     );
+
+    // DEBUG: 记录检测到的新货船
+    if (newShips.length > 0) {
+      const newIds = newShips.map(s => `${s.id}@(${Math.round(s.x)},${Math.round(s.y)})`).join(',');
+      logger.debug(`[CARGO-DEBUG] NEW ships detected: [${newIds}] (isFirstPoll=${eventData?.isFirstPoll})`);
+    }
 
     for (const ship of newShips) {
       // 首次轮询时跳过事件触发，避免服务重启时误判已存在的货船为新刷新
@@ -666,10 +692,23 @@ class UserEventMonitor extends EventEmitter {
     const eventData = this.eventData.get(serverId);
     const mapSize = this.rustPlusService.getMapSize(serverId);
 
+    // DEBUG: 记录当前和上次的直升机标记
+    if (currentHelis.length > 0 || previousHelis.length > 0) {
+      const currentIds = currentHelis.map(h => `${h.id}@(${Math.round(h.x)},${Math.round(h.y)})`).join(',');
+      const previousIds = previousHelis.map(h => `${h.id}@(${Math.round(h.x)},${Math.round(h.y)})`).join(',');
+      logger.debug(`[HELI-DEBUG] current=[${currentIds}] previous=[${previousIds}]`);
+    }
+
     // 新刷新的直升机
     const newHelis = currentHelis.filter(c =>
       !previousHelis.some(p => p.id === c.id)
     );
+
+    // DEBUG: 记录检测到的新直升机
+    if (newHelis.length > 0) {
+      const newIds = newHelis.map(h => `${h.id}@(${Math.round(h.x)},${Math.round(h.y)})`).join(',');
+      logger.debug(`[HELI-DEBUG] NEW helis detected: [${newIds}] (isFirstPoll=${eventData?.isFirstPoll})`);
+    }
 
     for (const heli of newHelis) {
       // 首次轮询时跳过事件触发，避免服务重启时误判已存在的直升机为新刷新

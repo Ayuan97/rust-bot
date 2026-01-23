@@ -67,8 +67,16 @@ class EventTimer {
 
   /**
    * 添加警告回调（在剩余时间 <= warningTime 时触发）
+   * 防止重复添加相同时间的警告
    */
   addWarning(warningTime, callback) {
+    // 检查是否已存在相同时间的警告
+    const existingWarning = this.warningCallbacks.find(w => w.time === warningTime);
+    if (existingWarning) {
+      console.log(`⚠️  计时器 ${this.name} 已存在 ${Math.floor(warningTime / 60000)} 分钟警告，跳过重复添加`);
+      return;
+    }
+
     this.warningCallbacks.push({
       time: warningTime,
       callback: callback,
