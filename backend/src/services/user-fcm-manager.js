@@ -38,6 +38,7 @@ class UserFCMManager extends EventEmitter {
     this.proxyConfig = null; // SOCKS5 代理配置 (用于 FCM 连接)
     this._manualStop = false;
     this.lastError = null; // 最近一次错误信息
+    this.isConnecting = false; // 防止并发连接
 
     logger.debug(`👤 UserFCMManager 已创建 (userId: ${userId})`);
   }
@@ -137,6 +138,11 @@ class UserFCMManager extends EventEmitter {
       return;
     }
 
+    if (this.isConnecting) {
+      logger.debug(`[FCM] 用户 ${this.userId} 正在连接中，跳过本次请求`);
+      return;
+    }
+
     // 如果提供了新凭证，使用新凭证
     if (credentials) {
       this.credentials = credentials;
@@ -150,95 +156,98 @@ class UserFCMManager extends EventEmitter {
       throw new Error(`用户 ${this.userId} 凭证格式错误：需要 GCM 格式的凭证 (gcm.androidId, gcm.securityToken)`);
     }
 
-    // 重置手动停止标志
-    this._manualStop = false;
+    this.isConnecting = true;
 
-    logger.info(`👂 用户 ${this.userId} 开始监听 FCM 推送消息...`);
-    logger.debug('📋 凭证信息:');
-    const maskStr = (str) => str ? `${String(str).substring(0, 6)}****` : 'N/A';
-    logger.debug(`   - Android ID: ${maskStr(this.credentials.gcm.androidId)}`);
-    logger.debug(`   - Security Token: ${maskStr(this.credentials.gcm.securityToken)}`);
-
-    // 创建 PushReceiverClient 监听器
-    // 注意：androidId 和 securityToken 必须是字符串
-    const androidId = String(this.credentials.gcm.androidId);
-    const securityToken = String(this.credentials.gcm.securityToken);
-
-    this.fcmListener = new PushReceiverClient(androidId, securityToken, []);
-
-    // 监听数据接收事件（未加密的推送消息）
-    this.fcmListener.on('ON_DATA_RECEIVED', (data) => {
-      logger.debug(`📩 用户 ${this.userId} 收到未加密推送 (ON_DATA_RECEIVED)`);
-      this.handleFCMMessage(data);
-    });
-
-    // 监听通知接收事件（加密后解密的推送消息）
-    this.fcmListener.on('ON_NOTIFICATION_RECEIVED', (data) => {
-      logger.debug(`📩 用户 ${this.userId} 收到加密推送 (ON_NOTIFICATION_RECEIVED)`);
-      this.handleFCMMessage(data.notification || data);
-    });
-
-    // 添加连接成功事件监听
-    this.fcmListener.on('connect', () => {
-      logger.info(`🔗 用户 ${this.userId} FCM 连接已建立`);
-      logger.info(`📡 用户 ${this.userId} 开始接收推送通知...`);
-      this.lastError = null; // 连接成功，清除错误
-
-      // 设置 TCP keepalive 防止连接被中间设备断开
-      if (this.fcmListener._socket) {
-        this.fcmListener._socket.setKeepAlive(true, 30000); // 每 30 秒发送 keepalive
-        logger.debug(`✅ 用户 ${this.userId} FCM TCP keepalive 已启用`);
-      }
-    });
-
-    // 添加断开连接事件监听
-    this.fcmListener.on('disconnect', () => {
-      const now = Date.now();
-
-      // 如果是手动停止，不输出日志也不重连
-      if (this._manualStop) {
-        logger.debug(`用户 ${this.userId} FCM disconnect 事件触发（手动停止，忽略）`);
-        return;
-      }
-
-      // 防止重复日志（1分钟内只输出一次）
-      if (!this.lastDisconnectTime || (now - this.lastDisconnectTime) > 60000) {
-        logger.warn(`⚠️  用户 ${this.userId} FCM 连接已断开`);
-        logger.info(`💡 提示：FCM 断开不影响游戏内事件（死亡、聊天等）`);
-        logger.info(`   → 游戏内事件通过 Rust+ WebSocket 接收`);
-        logger.info(`   → FCM 仅用于接收配对推送（在游戏中点击 Pair）`);
-        logger.info(`   → 将在 30 秒后尝试重连`);
-        this.lastDisconnectTime = now;
-      }
-
-      this.isListening = false;
-
-      // 清除之前的重连定时器
-      if (this.reconnectTimer) {
-        clearTimeout(this.reconnectTimer);
-      }
-
-      // 30 秒后重连（缩短间隔以便快速恢复配对功能）
-      this.reconnectTimer = setTimeout(async () => {
-        if (!this.isListening && this.credentials && !this._manualStop) {
-          try {
-            logger.info(`🔄 用户 ${this.userId} 尝试重新连接 FCM...`);
-            await this.start();
-          } catch (error) {
-            logger.error(`❌ 用户 ${this.userId} FCM 重连失败:`, error.message);
-          }
-        }
-      }, 30000); // 30 秒
-    });
-
-    // 监听错误
-    this.fcmListener.on('error', (error) => {
-      logger.error(`❌ 用户 ${this.userId} FCM 错误事件触发`);
-      this.handleFCMError(error);
-    });
-
-    // 连接到 FCM - 如果配置了代理则通过代理连接
     try {
+      // 重置手动停止标志
+      this._manualStop = false;
+
+      logger.info(`👂 用户 ${this.userId} 开始监听 FCM 推送消息...`);
+      logger.debug('📋 凭证信息:');
+      const maskStr = (str) => str ? `${String(str).substring(0, 6)}****` : 'N/A';
+      logger.debug(`   - Android ID: ${maskStr(this.credentials.gcm.androidId)}`);
+      logger.debug(`   - Security Token: ${maskStr(this.credentials.gcm.securityToken)}`);
+
+      // 创建 PushReceiverClient 监听器
+      // 注意：androidId 和 securityToken 必须是字符串
+      const androidId = String(this.credentials.gcm.androidId);
+      const securityToken = String(this.credentials.gcm.securityToken);
+
+      this.fcmListener = new PushReceiverClient(androidId, securityToken, []);
+
+      // 监听数据接收事件（未加密的推送消息）
+      this.fcmListener.on('ON_DATA_RECEIVED', (data) => {
+        logger.debug(`📩 用户 ${this.userId} 收到未加密推送 (ON_DATA_RECEIVED)`);
+        this.handleFCMMessage(data);
+      });
+
+      // 监听通知接收事件（加密后解密的推送消息）
+      this.fcmListener.on('ON_NOTIFICATION_RECEIVED', (data) => {
+        logger.debug(`📩 用户 ${this.userId} 收到加密推送 (ON_NOTIFICATION_RECEIVED)`);
+        this.handleFCMMessage(data.notification || data);
+      });
+
+      // 添加连接成功事件监听
+      this.fcmListener.on('connect', () => {
+        logger.info(`🔗 用户 ${this.userId} FCM 连接已建立`);
+        logger.info(`📡 用户 ${this.userId} 开始接收推送通知...`);
+        this.lastError = null; // 连接成功，清除错误
+
+        // 设置 TCP keepalive 防止连接被中间设备断开
+        if (this.fcmListener._socket) {
+          this.fcmListener._socket.setKeepAlive(true, 30000); // 每 30 秒发送 keepalive
+          logger.debug(`✅ 用户 ${this.userId} FCM TCP keepalive 已启用`);
+        }
+      });
+
+      // 添加断开连接事件监听
+      this.fcmListener.on('disconnect', () => {
+        const now = Date.now();
+
+        // 如果是手动停止，不输出日志也不重连
+        if (this._manualStop) {
+          logger.debug(`用户 ${this.userId} FCM disconnect 事件触发（手动停止，忽略）`);
+          return;
+        }
+
+        // 防止重复日志（1分钟内只输出一次）
+        if (!this.lastDisconnectTime || (now - this.lastDisconnectTime) > 60000) {
+          logger.warn(`⚠️  用户 ${this.userId} FCM 连接已断开`);
+          logger.info(`💡 提示：FCM 断开不影响游戏内事件（死亡、聊天等）`);
+          logger.info(`   → 游戏内事件通过 Rust+ WebSocket 接收`);
+          logger.info(`   → FCM 仅用于接收配对推送（在游戏中点击 Pair）`);
+          logger.info(`   → 将在 30 秒后尝试重连`);
+          this.lastDisconnectTime = now;
+        }
+
+        this.isListening = false;
+
+        // 清除之前的重连定时器
+        if (this.reconnectTimer) {
+          clearTimeout(this.reconnectTimer);
+        }
+
+        // 30 秒后重连（缩短间隔以便快速恢复配对功能）
+        this.reconnectTimer = setTimeout(async () => {
+          if (!this.isListening && this.credentials && !this._manualStop) {
+            try {
+              logger.info(`🔄 用户 ${this.userId} 尝试重新连接 FCM...`);
+              await this.start();
+            } catch (error) {
+              logger.error(`❌ 用户 ${this.userId} FCM 重连失败:`, error.message);
+            }
+          }
+        }, 30000); // 30 秒
+      });
+
+      // 监听错误
+      this.fcmListener.on('error', (error) => {
+        logger.error(`❌ 用户 ${this.userId} FCM 错误事件触发`);
+        this.handleFCMError(error);
+      });
+
+      // 连接到 FCM - 如果配置了代理则通过代理连接
+
       logger.info(`🔌 用户 ${this.userId} 正在连接到 FCM 服务器...`);
 
       const CONNECT_TIMEOUT = 15000; // 15秒连接超时
@@ -269,6 +278,8 @@ class UserFCMManager extends EventEmitter {
       }
 
       throw error;
+    } finally {
+      this.isConnecting = false;
     }
   }
 
