@@ -8,7 +8,20 @@ import MONUMENT_INFO from './monument-info.js';
 const GRID_DIAMETER = 146.25; // 每个网格的大小
 const SUB_GRID_SIZE = 3; // 子网格分割数量（3x3 = 9个子格）
 
-const ALIGN_THRESHOLD = 120; // 网格对齐阈值（参考 rustplusplus）
+const ALIGN_THRESHOLD = 73.125;
+/**
+ * 关于 ALIGN_THRESHOLD (73.125) 的深度解析：
+ * Rust 的网格直径约为 146.25 (1024/7)。
+ * 我们采用"四舍五入"的逻辑，即半个网格的大小 (146.25 / 2 = 73.125)。
+ *
+ * - 如果剩余部分 (remainder) < 73.125，说明更接近上一条网格线，向下取整。
+ * - 如果剩余部分 >= 73.125，说明更接近下一条网格线，向上取整。
+ *
+ * 验证案例:
+ * - Map 2000: Remainder ~98.75 > 73.125 -> 向上取整 -> 14 Grids (正确, 120阈值会得到13)
+ * - Map 4500: Remainder ~112.5 > 73.125 -> 向上取整 -> 31 Grids (AD-AE, 正确)
+ * - Map 3000: Remainder 75.0 > 73.125 -> 向上取整 -> 21 Grids (正确)
+ */
 const CENTER_RATIO = 1 / 6; // 用于 getDirection 中的中心判定
 /**
  * 将数字转换为字母（1=A, 2=B, ..., 27=AA）
