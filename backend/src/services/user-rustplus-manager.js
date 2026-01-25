@@ -354,8 +354,8 @@ class UserRustPlusManager extends EventEmitter {
     const rustplus = this.connections.get(serverId);
     if (!rustplus) throw new Error('服务器未连接');
 
-    // 地图数据量大，使用更长的超时时间（30秒）
-    const res = await rustplus.sendRequestAsync({ getMap: {} }, 30000);
+    // 地图数据量大，使用更长的超时时间（60秒）
+    const res = await rustplus.sendRequestAsync({ getMap: {} }, 60000);
     // 注意：AppMap.width/height 是地图图像尺寸（像素），并非世界尺寸。
     // 这里不写入 width/height 到缓存，避免错误覆盖世界尺寸。
     // 如果已经有缓存，则仅更新 lastUpdate。
@@ -415,7 +415,7 @@ class UserRustPlusManager extends EventEmitter {
     // 直接请求 AppMap 获取 oceanMargin（超时时间更长，因为数据量大）
     let oceanMargin = 0;
     try {
-      const mapRes = await rustplus.sendRequestAsync({ getMap: {} }, 30000);
+      const mapRes = await rustplus.sendRequestAsync({ getMap: {} }, 60000);
       if (typeof mapRes?.map?.oceanMargin === 'number') {
         oceanMargin = mapRes.map.oceanMargin;
       }

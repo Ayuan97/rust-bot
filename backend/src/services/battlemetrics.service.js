@@ -91,72 +91,106 @@ class BattlemetricsService extends EventEmitter {
       }
 
       const axiosConfig = this._getAxiosConfig();
+      const targetPort = parseInt(port);
+      const candidates = new Map(); // id -> server object
 
-      // 方法1: 优先通过服务器名称搜索（最可靠）
+      // 定义搜索任务
+      const tasks = [];
+
+      // 任务 1: IP 搜索 (扩大范围到 50 条)
+      tasks.push((async () => {
+        try {
+          console.log(`🔍 [1/2] 正在通过 IP 搜索...`);
+          const url = `https://api.battlemetrics.com/servers?filter[search]=${ip}&filter[game]=rust&page[size]=50`;
+          const response = await axios.get(url, axiosConfig);
+          console.log(`   📈 IP 搜索返回 ${response.data.data.length} 个结果`);
+          return response.data.data;
+        } catch (e) {
+          console.error(`   ❌ IP 搜索失败: ${e.message}`);
+          return [];
+        }
+      })());
+
+      // 任务 2: 名称搜索 (如果有)
       if (serverName) {
-        console.log(`\n🎯 方法1: 通过服务器名称搜索`);
-        const encodedName = encodeURI(serverName).replace('#', '*');
-        let url = `https://api.battlemetrics.com/servers?filter[search]=${encodedName}&filter[game]=rust`;
-        let response = await axios.get(url, axiosConfig);
+        tasks.push((async () => {
+          try {
+            console.log(`🔍 [2/2] 正在通过名称搜索...`);
+            // 去除冒号后的部分(有时是端口)，去除特殊符号，只搜核心名称
+            // 但为了保险，还是搜完整名称，依赖 BM 的搜索引擎
+            const encodedName = encodeURI(serverName).replace('#', '*');
+            const url = `https://api.battlemetrics.com/servers?filter[search]=${encodedName}&filter[game]=rust&page[size]=50`;
+            const response = await axios.get(url, axiosConfig);
+            console.log(`   📈 名称 搜索返回 ${response.data.data.length} 个结果`);
+            return response.data.data;
+          } catch (e) {
+            console.error(`   ❌ 名称搜索失败: ${e.message}`);
+            return [];
+          }
+        })());
+      }
 
-        console.log(`📊 名称搜索结果: ${response.data.data.length} 个`);
+      // 并行执行搜索
+      const results = await Promise.all(tasks);
 
-        // 精确匹配服务器名称
-        for (const server of response.data.data) {
-          if (server.attributes.name === serverName) {
-            console.log(`✅ 通过名称精确匹配成功!`);
-            console.log(`   服务器: ${server.attributes.name}`);
-            console.log(`   IP: ${server.attributes.ip}:${server.attributes.port}`);
-            console.log(`   Battlemetrics ID: ${server.id}`);
+      // 合并结果
+      results.flat().forEach(server => {
+        if (!candidates.has(server.id)) {
+          candidates.set(server.id, server);
+        }
+      });
+
+      console.log(`📊 合并后共找到 ${candidates.size} 个唯一候选服务器`);
+
+      // ---------------------------------------------------------
+      // 匹配逻辑
+      // ---------------------------------------------------------
+
+      // 1. 尝试寻找 IP 和 Port 完美匹配
+      for (const server of candidates.values()) {
+        const serverIp = server.attributes.ip;
+        const serverPort = server.attributes.port;
+        if (serverIp === ip && serverPort === targetPort) {
+          console.log(`✅ ✅ 找到完美匹配 (IP + Port)!`);
+          console.log(`   服务器: ${server.attributes.name}`);
+          console.log(`   ID: ${server.id}`);
+          return server.id;
+        }
+      }
+
+      // 2. 尝试寻找 名称 完美匹配 (且 IP 相同)
+      if (serverName) {
+        for (const server of candidates.values()) {
+          if (server.attributes.name === serverName && server.attributes.ip === ip) {
+            console.log(`✅ 通过 名称+IP 匹配成功!`);
+            console.log(`   ID: ${server.id}`);
             return server.id;
           }
         }
-
-        console.log(`⚠️  名称精确匹配失败，尝试其他方法...`);
-      }
-
-      // 方法2: 通过 IP 搜索，然后根据名称或端口匹配
-      console.log(`\n🔍 方法2: 通过 IP 搜索`);
-      let url = `https://api.battlemetrics.com/servers?filter[search]=${ip}&filter[game]=rust`;
-      let response = await axios.get(url, axiosConfig);
-
-      console.log(`📊 IP 搜索结果: ${response.data.data.length} 个`);
-
-      if (response.data.data.length === 0) {
-        console.log(`❌ 未找到匹配的服务器`);
-        return null;
-      }
-
-      // 显示所有找到的服务器
-      response.data.data.forEach(server => {
-        console.log(`  - ${server.attributes.name}`);
-        console.log(`    IP:Port = ${server.attributes.ip}:${server.attributes.port}`);
-        console.log(`    玩家: ${server.attributes.players}/${server.attributes.maxPlayers}`);
-      });
-
-      // 2.1 如果有服务器名称，优先通过名称匹配
-      if (serverName) {
-        const serverByName = response.data.data.find(s => s.attributes.name === serverName);
-        if (serverByName) {
-          console.log(`\n✅ 通过 IP + 名称匹配成功!`);
-          console.log(`   服务器: ${serverByName.attributes.name}`);
-          console.log(`   Battlemetrics ID: ${serverByName.id}`);
-          return serverByName.id;
+        // 放宽一点，只匹配名称
+        for (const server of candidates.values()) {
+          if (server.attributes.name === serverName) {
+            console.log(`✅ 通过 名称精确匹配成功!`);
+            console.log(`   ID: ${server.id}`);
+            return server.id;
+          }
         }
       }
 
-      // 2.2 如果只有一个服务器，直接返回
-      const sameIpServers = response.data.data.filter(s => s.attributes.ip === ip);
-      if (sameIpServers.length === 1) {
-        console.log(`\n✅ 该 IP 只有一个服务器，自动选择`);
-        console.log(`   服务器: ${sameIpServers[0].attributes.name}`);
-        console.log(`   Battlemetrics ID: ${sameIpServers[0].id}`);
-        return sameIpServers[0].id;
+      // 3. 如果通过 IP 搜到了唯一结果 (忽略端口)
+      const ipMatches = Array.from(candidates.values()).filter(s => s.attributes.ip === ip);
+      if (ipMatches.length === 1) {
+        console.log(`✅ 找到唯一 IP 匹配 (端口不匹配: ${ipMatches[0].attributes.port} vs ${targetPort})`);
+        console.log(`   自动认领: ${ipMatches[0].attributes.name}`);
+        return ipMatches[0].id;
       }
 
-      // 2.3 多个服务器且无法确定
-      console.log(`\n❌ 该 IP 有 ${sameIpServers.length} 个服务器，无法自动确定`);
-      console.log(`   提示: 需要服务器名称来精确匹配`);
+      console.log(`❌ 无法自动匹配服务器。无法从 ${candidates.size} 个候选中确定目标。`);
+      // 显示部分候选项
+      Array.from(candidates.values()).slice(0, 10).forEach(server => {
+        console.log(`  - [${server.id}] ${server.attributes.name} (${server.attributes.ip}:${server.attributes.port})`);
+      });
+
       return null;
     } catch (error) {
       console.error('❌ Battlemetrics 搜索错误:', error.message);

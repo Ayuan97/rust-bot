@@ -21,7 +21,7 @@ class BattlemetricsScheduler extends EventEmitter {
     this.globalServiceManager = null;
 
     // 更新间隔（毫秒）
-    this.updateInterval = 30 * 1000; // 30 秒
+    this.updateInterval = 60 * 1000; // 60 秒
 
     // 请求间隔（毫秒）- 控制 API 调用频率
     this.requestDelay = 200; // 200ms = 5 请求/秒
@@ -167,7 +167,7 @@ class BattlemetricsScheduler extends EventEmitter {
         return;
       }
 
-      logger.info(`📊 开始更新 ${serverMap.size} 个在线服务器的 Battlemetrics 数据`);
+      logger.debug(`📊 开始更新 ${serverMap.size} 个在线服务器的 Battlemetrics 数据`);
 
       let successCount = 0;
       let errorCount = 0;
@@ -175,7 +175,7 @@ class BattlemetricsScheduler extends EventEmitter {
       // 遍历并更新每个服务器
       for (const [bmId, serverInfo] of serverMap) {
         try {
-          logger.info(`📊 正在更新服务器: ${serverInfo.name} (bmId: ${bmId})`);
+          logger.debug(`📊 正在更新服务器: ${serverInfo.name} (bmId: ${bmId})`);
           await this.syncServer(bmId, serverInfo);
           successCount++;
         } catch (error) {
@@ -193,7 +193,7 @@ class BattlemetricsScheduler extends EventEmitter {
       this.stats.totalUpdates += successCount;
       this.stats.errors += errorCount;
 
-      logger.info(`📊 Battlemetrics 更新完成: ${successCount} 成功, ${errorCount} 失败`);
+      logger.debug(`📊 Battlemetrics 更新完成: ${successCount} 成功, ${errorCount} 失败`);
 
       this.emit('update:complete', {
         total: serverMap.size,

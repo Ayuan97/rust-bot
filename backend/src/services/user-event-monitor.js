@@ -78,6 +78,7 @@ class UserEventMonitor extends EventEmitter {
     this.eventData = new Map(); // serverId -> event-specific data
     this.monuments = new Map(); // serverId -> monuments array
     this.lastMonumentsRetry = new Map(); // serverId -> timestamp (节流重试)
+    this.isPolling = new Map(); // serverId -> boolean
 
     // 缓存用户的通知设置
     this.notificationSettings = null;
@@ -243,6 +244,12 @@ class UserEventMonitor extends EventEmitter {
 
     // 启动轮询
     const interval = setInterval(async () => {
+      // 防止重入：如果上一次轮询还在进行中，则跳过本次
+      if (this.isPolling.get(serverId)) {
+        return;
+      }
+
+      this.isPolling.set(serverId, true);
       try {
         await this.checkMapMarkers(serverId);
       } catch (error) {
@@ -258,6 +265,8 @@ class UserEventMonitor extends EventEmitter {
         }
 
         console.error(`❌ 事件监控检查失败 ${serverId} (用户 ${this.userId}):`, error);
+      } finally {
+        this.isPolling.set(serverId, false);
       }
     }, EventTiming.MAP_MARKERS_POLL_INTERVAL);
 
@@ -893,6 +902,7 @@ class UserEventMonitor extends EventEmitter {
 
       } else {
         // 离开
+        const direction = this.getMapDirection(lastPos.x, lastPos.y, mapSize);
         logger.server(serverId, `🚁 武装直升机离开 ${direction}`);
 
         eventData.lastEvents.patrolHeliLeave = now;
