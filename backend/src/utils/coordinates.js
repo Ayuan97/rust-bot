@@ -8,6 +8,8 @@ import MONUMENT_INFO from './monument-info.js';
 const GRID_DIAMETER = 146.25; // 每个网格的大小
 const SUB_GRID_SIZE = 3; // 子网格分割数量（3x3 = 9个子格）
 
+const ALIGN_THRESHOLD = GRID_DIAMETER / 2; // 替代硬编码 120
+const CENTER_RATIO = 1 / 6; // 用于 getDirection 中的中心判定
 /**
  * 将数字转换为字母（1=A, 2=B, ..., 27=AA）
  */
@@ -24,14 +26,16 @@ function numberToLetters(num) {
 function getCorrectedMapSize(mapSize) {
   const remainder = mapSize % GRID_DIAMETER;
   const offset = GRID_DIAMETER - remainder;
-  return (remainder < 120) ? mapSize - remainder : mapSize + offset;
+  // 使用基于网格直径的阈值，适配任意地图大小
+  return (remainder < ALIGN_THRESHOLD) ? mapSize - remainder : mapSize + offset;
 }
 
 /**
  * 检查坐标是否在网格系统外
  */
 function isOutsideGridSystem(x, y, correctedMapSize) {
-  return x < 0 || x > correctedMapSize || y < 0 || y > correctedMapSize;
+  // 使用 >= 保持左闭右开的边界一致性
+  return x < 0 || x >= correctedMapSize || y < 0 || y >= correctedMapSize;
 }
 
 /**
@@ -41,11 +45,14 @@ function isOutsideGridSystem(x, y, correctedMapSize) {
 function getGridPosLettersX(x, mapSize) {
   let counter = 1;
   for (let startGrid = 0; startGrid < mapSize; startGrid += GRID_DIAMETER) {
-    if (x >= startGrid && x <= (startGrid + GRID_DIAMETER)) {
+    // 左闭右开区间，确保右边界归属到下一个网格
+    if (x >= startGrid && x < startGrid + GRID_DIAMETER) {
       return numberToLetters(counter);
     }
     counter++;
   }
+  // 处理恰好位于最右侧的坐标
+  if (x === mapSize) return numberToLetters(counter - 1);
   return null;
 }
 
@@ -58,12 +65,14 @@ function getGridPosNumberY(y, mapSize) {
 
   let counter = 1;
   for (let startGrid = 0; startGrid < mapSize; startGrid += GRID_DIAMETER) {
-    if (y >= startGrid && y <= (startGrid + GRID_DIAMETER)) {
+    // 左闭右开区间，确保上边界归属到下一个行号
+    if (y >= startGrid && y < startGrid + GRID_DIAMETER) {
       return numberOfGrids - counter;
     }
     counter++;
   }
-
+  // 处理恰好位于最上侧的坐标（mapSize）
+  if (y === mapSize) return 1;
   return null;
 }
 
@@ -165,8 +174,8 @@ function getDirection(x, y, mapSize) {
   // 距离中心的距离
   const distance = Math.sqrt(dx * dx + dy * dy);
 
-  // 如果距离很近（小于地图1/6），认为是中心
-  if (distance < mapSize / 6) {
+  // 如果距离很近（小于地图 1/6），使用 CENTER_RATIO 判定中心
+  if (distance < mapSize * CENTER_RATIO) {
     return '中心';
   }
 
@@ -253,15 +262,11 @@ function getNearestMonument(x, y, monuments) {
  * @returns {string} 格式化的坐标字符串
  */
 function formatPosition(x, y, mapSize, includeSubGrid = true, includeCoords = false, monuments = null, oceanMargin = 0) {
-  // 按 rustplusplus 约定，队伍坐标以世界坐标为基准（0..mapSize）
-  // oceanMargin 仅用于地图图像边缘显示，不参与队伍坐标换算
-  const playableSize = mapSize;
+  // 直接使用原始 mapSize，内部 getGridPos 会进行一次校正
+  const adjX = Math.max(0, Math.min(x, mapSize));
+  const adjY = Math.max(0, Math.min(y, mapSize));
 
-  // 钳制坐标到地图边界（防止超出边界时显示"未知位置"）
-  const adjX = Math.max(0, Math.min(x, playableSize));
-  const adjY = Math.max(0, Math.min(y, playableSize));
-
-  const grid = getGridPos(adjX, adjY, playableSize, includeSubGrid);
+  const grid = getGridPos(adjX, adjY, mapSize, includeSubGrid);
 
   // 检查是否在古迹附近（使用原始坐标）
   let monumentName = null;
