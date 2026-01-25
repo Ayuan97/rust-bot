@@ -99,8 +99,10 @@ function getSubGridNumber(x, y, mapSize) {
     const clampedX = Math.min(subGridX, SUB_GRID_SIZE - 1);
     const clampedY = Math.min(subGridY, SUB_GRID_SIZE - 1);
 
-    // 转换为 1-9 的编号
-    const subGridNumber = (SUB_GRID_SIZE - 1 - clampedY) * SUB_GRID_SIZE + clampedX + 1;
+    // 转换为 1-9 的编号（与后端一致）
+    // 布局：7 8 9 / 4 5 6 / 1 2 3
+    // subGridY 越大越靠上，所以 row = subGridY
+    const subGridNumber = clampedY * SUB_GRID_SIZE + clampedX + 1;
 
     return subGridNumber;
 }

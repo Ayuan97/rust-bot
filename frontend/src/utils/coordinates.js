@@ -3,7 +3,7 @@
  * Rust 游戏坐标转换工具 (Frontend)
  */
 
-export const GRID_DIAMETER = 146.28571428571428;
+export const GRID_DIAMETER = 146.25;
 
 /**
  * 修正地图大小（对齐到网格）

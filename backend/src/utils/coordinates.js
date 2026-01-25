@@ -8,7 +8,7 @@ import MONUMENT_INFO from './monument-info.js';
 const GRID_DIAMETER = 146.25; // 每个网格的大小
 const SUB_GRID_SIZE = 3; // 子网格分割数量（3x3 = 9个子格）
 
-const ALIGN_THRESHOLD = GRID_DIAMETER / 2; // 替代硬编码 120
+const ALIGN_THRESHOLD = 120; // 网格对齐阈值（参考 rustplusplus）
 const CENTER_RATIO = 1 / 6; // 用于 getDirection 中的中心判定
 /**
  * 将数字转换为字母（1=A, 2=B, ..., 27=AA）
