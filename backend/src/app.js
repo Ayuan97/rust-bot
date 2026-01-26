@@ -205,10 +205,17 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // 监听未捕获的异常（但不要在启动阶段触发优雅关闭）
 process.on('uncaughtException', (error) => {
-  console.error('❌ 未捕获的异常:', error);
+  // 详细记录错误信息，确保能看到完整堆栈
+  console.error('========================================');
+  console.error('[FATAL] 未捕获的异常:');
+  console.error('  消息:', error?.message || error);
+  console.error('  类型:', error?.name || typeof error);
+  console.error('  堆栈:', error?.stack || '无堆栈信息');
+  console.error('========================================');
+
   // 如果是端口占用错误且服务器还没启动，直接退出让 nodemon 重试
   if (error.code === 'EADDRINUSE' && !serverStarted) {
-    console.error('⚠️  端口被占用，等待重试...');
+    console.error('端口被占用，等待重试...');
     process.exit(1);
   } else if (serverStarted) {
     gracefulShutdown('uncaughtException');
@@ -218,7 +225,11 @@ process.on('uncaughtException', (error) => {
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ 未处理的 Promise rejection:', reason);
+  console.error('========================================');
+  console.error('[FATAL] 未处理的 Promise rejection:');
+  console.error('  原因:', reason?.message || reason);
+  console.error('  堆栈:', reason?.stack || '无堆栈信息');
+  console.error('========================================');
   if (serverStarted) {
     gracefulShutdown('unhandledRejection');
   }

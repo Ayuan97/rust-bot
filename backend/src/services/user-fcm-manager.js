@@ -194,9 +194,13 @@ class UserFCMManager extends EventEmitter {
         this.lastError = null; // 连接成功，清除错误
 
         // 设置 TCP keepalive 防止连接被中间设备断开
-        if (this.fcmListener._socket) {
-          this.fcmListener._socket.setKeepAlive(true, 30000); // 每 30 秒发送 keepalive
-          logger.debug(`✅ 用户 ${this.userId} FCM TCP keepalive 已启用`);
+        try {
+          if (this.fcmListener._socket && typeof this.fcmListener._socket.setKeepAlive === 'function') {
+            this.fcmListener._socket.setKeepAlive(true, 30000); // 每 30 秒发送 keepalive
+            logger.debug(`[FCM] 用户 ${this.userId} TCP keepalive 已启用`);
+          }
+        } catch (err) {
+          logger.warn(`[FCM] 用户 ${this.userId} 设置 keepalive 失败: ${err.message}`);
         }
       });
 
