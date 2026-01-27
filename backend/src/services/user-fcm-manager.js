@@ -10,6 +10,10 @@ import PushReceiverClient from '@liamcottle/push-receiver/src/client.js';
 import { SocksClient } from 'socks';
 import logger from '../utils/logger.js';
 
+// FCM 心跳常量
+const kHeartbeatPingTag = 0;
+const HEARTBEAT_INTERVAL = 4 * 60 * 1000; // 4 分钟发送一次心跳（Google 建议 5 分钟内）
+
 // Rust Companion App 公开参数（来自官方 CLI）
 const FCM_CONFIG = {
   apiKey: "AIzaSyB5y2y-Tzqb4-I4Qnlsh_9naYv_TD8pCvY",
@@ -39,6 +43,7 @@ class UserFCMManager extends EventEmitter {
     this._manualStop = false;
     this.lastError = null; // 最近一次错误信息
     this.isConnecting = false; // 防止并发连接
+    this.heartbeatTimer = null; // 心跳定时器
 
     logger.debug(`👤 UserFCMManager 已创建 (userId: ${userId})`);
   }
@@ -189,8 +194,8 @@ class UserFCMManager extends EventEmitter {
 
       // 添加连接成功事件监听
       this.fcmListener.on('connect', () => {
-        logger.info(`🔗 用户 ${this.userId} FCM 连接已建立`);
-        logger.info(`📡 用户 ${this.userId} 开始接收推送通知...`);
+        logger.info(`[FCM] 用户 ${this.userId} FCM 连接已建立`);
+        logger.info(`[FCM] 用户 ${this.userId} 开始接收推送通知...`);
         this.lastError = null; // 连接成功，清除错误
 
         // 设置 TCP keepalive 防止连接被中间设备断开
@@ -202,11 +207,17 @@ class UserFCMManager extends EventEmitter {
         } catch (err) {
           logger.warn(`[FCM] 用户 ${this.userId} 设置 keepalive 失败: ${err.message}`);
         }
+
+        // 启动应用层心跳
+        this._startHeartbeat();
       });
 
       // 添加断开连接事件监听
       this.fcmListener.on('disconnect', () => {
         const now = Date.now();
+
+        // 停止心跳
+        this._stopHeartbeat();
 
         // 如果是手动停止，不输出日志也不重连
         if (this._manualStop) {
@@ -216,11 +227,7 @@ class UserFCMManager extends EventEmitter {
 
         // 防止重复日志（1分钟内只输出一次）
         if (!this.lastDisconnectTime || (now - this.lastDisconnectTime) > 60000) {
-          logger.warn(`⚠️  用户 ${this.userId} FCM 连接已断开`);
-          logger.info(`💡 提示：FCM 断开不影响游戏内事件（死亡、聊天等）`);
-          logger.info(`   → 游戏内事件通过 Rust+ WebSocket 接收`);
-          logger.info(`   → FCM 仅用于接收配对推送（在游戏中点击 Pair）`);
-          logger.info(`   → 将在 30 秒后尝试重连`);
+          logger.warn(`[FCM] 用户 ${this.userId} FCM 连接已断开，30 秒后重连`);
           this.lastDisconnectTime = now;
         }
 
@@ -235,10 +242,10 @@ class UserFCMManager extends EventEmitter {
         this.reconnectTimer = setTimeout(async () => {
           if (!this.isListening && this.credentials && !this._manualStop) {
             try {
-              logger.info(`🔄 用户 ${this.userId} 尝试重新连接 FCM...`);
+              logger.info(`[FCM] 用户 ${this.userId} 尝试重新连接...`);
               await this.start();
             } catch (error) {
-              logger.error(`❌ 用户 ${this.userId} FCM 重连失败:`, error.message);
+              logger.error(`[FCM] 用户 ${this.userId} 重连失败:`, error.message);
             }
           }
         }, 30000); // 30 秒
@@ -246,13 +253,18 @@ class UserFCMManager extends EventEmitter {
 
       // 监听错误
       this.fcmListener.on('error', (error) => {
-        logger.error(`❌ 用户 ${this.userId} FCM 错误事件触发`);
+        logger.error(`[FCM] 用户 ${this.userId} 错误事件触发`);
         this.handleFCMError(error);
       });
 
+      // 禁用库内部的自动重连，统一由我们自己管理重连逻辑
+      this.fcmListener._retry = () => {
+        logger.debug(`[FCM] 用户 ${this.userId} 库内部重连已被禁用（由 UserFCMManager 管理）`);
+      };
+
       // 连接到 FCM - 如果配置了代理则通过代理连接
 
-      logger.info(`🔌 用户 ${this.userId} 正在连接到 FCM 服务器...`);
+      logger.info(`[FCM] 用户 ${this.userId} 正在连接到 FCM 服务器...`);
 
       const CONNECT_TIMEOUT = 15000; // 15秒连接超时
 
@@ -267,12 +279,11 @@ class UserFCMManager extends EventEmitter {
       ]);
 
       this.isListening = true;
-      logger.info(`✅ 用户 ${this.userId} FCM 连接流程已启动`);
-      logger.info(`📡 用户 ${this.userId} 等待 connect 事件确认连接...`);
+      logger.debug(`[FCM] 用户 ${this.userId} FCM 连接流程已启动，等待确认...`);
 
       this.emit('listening', { userId: this.userId });
     } catch (error) {
-      logger.error(`❌ 用户 ${this.userId} FCM 连接失败:`, error.message);
+      logger.error(`[FCM] 用户 ${this.userId} FCM 连接失败:`, error.message);
       this.handleFCMError(error);
 
       // 如果连接失败，清理监听器防止后台无限重试导致的黑屏挂起
@@ -407,12 +418,7 @@ class UserFCMManager extends EventEmitter {
           this.fcmListener._parser.on('message', this.fcmListener._onMessage);
           this.fcmListener._parser.on('error', this.fcmListener._onParserError);
 
-          // 禁用库内部重连
-          this.fcmListener._retry = () => {
-            logger.debug(`🚫 用户 ${this.userId} 库内部重连已被禁用`);
-          };
-
-          logger.info(`✅ 用户 ${this.userId} FCM 代理连接完成`);
+          logger.info(`[FCM] 用户 ${this.userId} FCM 代理连接完成`);
           this.fcmListener.emit('connect');
           done();
           resolve();
@@ -462,6 +468,9 @@ class UserFCMManager extends EventEmitter {
         clearTimeout(this.fcmListener._retryTimeout);
         this.fcmListener._retryTimeout = null;
       }
+
+      // 停止心跳
+      this._stopHeartbeat();
 
       // 移除事件监听器，避免 destroy 触发 disconnect 事件
       this.fcmListener.removeAllListeners('disconnect');
@@ -858,6 +867,64 @@ class UserFCMManager extends EventEmitter {
       token: token,
       lastError: this.lastError
     };
+  }
+
+  /**
+   * 启动心跳定时器
+   * FCM 需要应用层心跳来保持连接（Google 建议 5 分钟内发送一次）
+   * @private
+   */
+  _startHeartbeat() {
+    this._stopHeartbeat(); // 先清除已有的定时器
+
+    logger.debug(`[FCM] 用户 ${this.userId} 启动心跳定时器 (间隔: ${HEARTBEAT_INTERVAL / 1000}s)`);
+
+    this.heartbeatTimer = setInterval(() => {
+      this._sendHeartbeat();
+    }, HEARTBEAT_INTERVAL);
+
+    // 立即发送一次心跳
+    this._sendHeartbeat();
+  }
+
+  /**
+   * 停止心跳定时器
+   * @private
+   */
+  _stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+      logger.debug(`[FCM] 用户 ${this.userId} 心跳定时器已停止`);
+    }
+  }
+
+  /**
+   * 发送心跳包
+   * @private
+   */
+  _sendHeartbeat() {
+    try {
+      if (!this.fcmListener || !this.fcmListener._socket || this.fcmListener._socket.destroyed) {
+        logger.debug(`[FCM] 用户 ${this.userId} Socket 不可用，跳过心跳`);
+        return;
+      }
+
+      // 构建 HeartbeatPing 消息
+      // 格式: [tag] + [varint length] + [protobuf data]
+      // HeartbeatPing 是空消息，长度为 0
+      const heartbeatBuffer = Buffer.from([kHeartbeatPingTag, 0]);
+
+      this.fcmListener._socket.write(heartbeatBuffer, (err) => {
+        if (err) {
+          logger.warn(`[FCM] 用户 ${this.userId} 发送心跳失败: ${err.message}`);
+        } else {
+          logger.debug(`[FCM] 用户 ${this.userId} 心跳已发送`);
+        }
+      });
+    } catch (error) {
+      logger.warn(`[FCM] 用户 ${this.userId} 心跳发送异常: ${error.message}`);
+    }
   }
 }
 

@@ -102,7 +102,7 @@ class DayNightNotifier {
       } catch (error) {
         const errorMessage = error?.message || JSON.stringify(error) || String(error);
         if (!errorMessage.includes('服务器未连接') && !errorMessage.includes('Timeout')) {
-          logger.error(`❌ 昼夜提醒检查失败 ${serverId} (用户 ${this.userId}):`, error.message);
+          logger.error(`[昼夜提醒] 检查失败 ${serverId} (用户 ${this.userId}): ${errorMessage}`);
         }
       }
     }, this.checkInterval);
