@@ -24,6 +24,8 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   player_death: true,
   player_online: true,
   player_offline: true,
+  player_joined_team: true,
+  player_left_team: true,
   player_afk: true,
   player_afk_minutes: 3,        // AFK 触发时间（分钟），默认 3 分钟
   player_afk_template: '',      // AFK 消息模板（空则使用默认）
@@ -1790,7 +1792,7 @@ class UserEventMonitor extends EventEmitter {
 
         // 新成员加入队伍 - 动态添加到 teamMembers
         if (!oldState) {
-          logger.server(serverId, `👥 新成员加入队伍: ${member.name}`);
+          logger.server(serverId, `新成员加入队伍: ${member.name}`);
           eventData.teamMembers.set(steamId, {
             name: member.name,
             x: member.x,
@@ -1804,6 +1806,29 @@ class UserEventMonitor extends EventEmitter {
             lastOnlineTime: member.isOnline ? now : null,
             lastOfflineTime: member.isOnline ? null : now
           });
+
+          // 触发加入队伍事件
+          const payload = {
+            userId: this.userId,
+            serverId,
+            steamId,
+            name: member.name,
+            time: now
+          };
+          this.emit(EventType.PLAYER_JOINED_TEAM, payload);
+
+          // 发送加入队伍通知
+          if (this.isNotificationEnabled('player_joined_team')) {
+            try {
+              const msg = notify('player_joined_team', { name: member.name });
+              if (msg) {
+                await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+              }
+            } catch (e) {
+              logger.debug(`发送玩家加入队伍通知失败: ${e.message}`);
+            }
+          }
+
           continue;
         }
 
@@ -2015,6 +2040,51 @@ class UserEventMonitor extends EventEmitter {
         oldState.isAlive = member.isAlive;
         oldState.deathTime = member.deathTime;
         oldState.spawnTime = member.spawnTime;
+      }
+
+      // 检测离开队伍的成员
+      const currentSteamIds = new Set(
+        teamInfo.members
+          .map(m => m.steamId?.toString())
+          .filter(Boolean)
+      );
+
+      // 先收集要删除的成员，避免在迭代中修改 Map
+      const leftMembers = [];
+      for (const [steamId, oldState] of eventData.teamMembers) {
+        if (!currentSteamIds.has(steamId)) {
+          leftMembers.push({ steamId, name: oldState.name });
+        }
+      }
+
+      // 处理离开的成员
+      for (const { steamId, name } of leftMembers) {
+        logger.server(serverId, `成员离开队伍: ${name}`);
+
+        // 触发离开队伍事件
+        const payload = {
+          userId: this.userId,
+          serverId,
+          steamId,
+          name,
+          time: now
+        };
+        this.emit(EventType.PLAYER_LEFT_TEAM, payload);
+
+        // 发送离开队伍通知
+        if (this.isNotificationEnabled('player_left_team')) {
+          try {
+            const msg = notify('player_left_team', { name });
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            }
+          } catch (e) {
+            logger.debug(`发送玩家离开队伍通知失败: ${e.message}`);
+          }
+        }
+
+        // 从 teamMembers 中移除
+        eventData.teamMembers.delete(steamId);
       }
 
       // 同步到扩展队友列表（只添加不删除）

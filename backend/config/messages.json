@@ -8,6 +8,8 @@
     "player_offline_with_duration": "`{name}` 在游玩了 {duration} 后下线了",
     "player_afk": "`{name}` 已离开 {minutes} 分钟",
     "player_afk_returned": "`{name}` 在挂机 {duration} 后回来了",
+    "player_joined_team": "`{name}` 加入了队伍",
+    "player_left_team": "`{name}` 离开了队伍",
     "small_oil_triggered": " 小油井已触发 {direction} 重型科学家正在赶来",
     "small_oil_warning": "小油井箱子还有 {minutes} 分钟解锁",
     "small_oil_unlocked": "小油井箱子已解锁！",
