@@ -3,7 +3,7 @@ import {
   FaTerminal, FaUsers, FaCogs, FaMapMarkedAlt, FaCog,
   FaSignOutAlt, FaPlus, FaClock, FaSatellite, FaShieldAlt,
   FaTimes, FaExpandArrowsAlt, FaPlay, FaRobot, FaBolt, FaLightbulb, FaCrosshairs, FaDoorOpen, FaChartLine,
-  FaGlobe, FaTools, FaBell
+  FaGlobe, FaTools, FaBell, FaServer
 } from 'react-icons/fa';
 import { useAuth } from './context/AuthContext';
 import api, { getServers, connectServer, getMapInfo, getTeamInfo } from './services/api';
@@ -20,6 +20,7 @@ import FCMSettings from './components/FCMSettings';
 import NotificationSettings from './components/NotificationSettings';
 import AdminPage from './pages/AdminPage';
 import MapView from './components/MapView';
+import ServerInfoView from './components/ServerInfoView';
 
 function App() {
   const { user, logout, isSubscriptionExpired } = useAuth();
@@ -250,6 +251,13 @@ function App() {
         );
       case 'devices':
         return <DeviceControl serverId={activeServer?.id} isReadOnly={isSubscriptionExpired} />;
+      case 'serverinfo':
+        return (
+          <ServerInfoView
+            server={activeServer}
+            onBack={() => setActiveView('hud')}
+          />
+        );
       case 'settings':
         return <ServerSettingsView server={activeServer} onNavigateToPairing={() => setActiveView('pairing')} />;
       case 'admin':
@@ -286,6 +294,7 @@ function App() {
           <NavIcon id="team" icon={<FaUsers />} active={activeView} onClick={setActiveView} label="队友动态" />
           <NavIcon id="map" icon={<FaMapMarkedAlt />} active={activeView} onClick={setActiveView} label="实时地图" />
           <NavIcon id="devices" icon={<FaCogs />} active={activeView} onClick={setActiveView} label="智能中控" />
+          <NavIcon id="serverinfo" icon={<FaServer />} active={activeView} onClick={setActiveView} label="服务器信息" />
           <div className="h-px bg-white/5 my-2 mx-1" />
           <NavIcon id="settings" icon={<FaCog />} active={activeView} onClick={setActiveView} label="预警配置" />
           {user?.isAdmin && (

@@ -388,6 +388,316 @@ class BattlemetricsService extends EventEmitter {
       this.servers.clear();
     }
   }
+
+  // ============================================================
+  // 玩家追踪相关接口
+  // ============================================================
+
+  /**
+   * 通过 Steam ID 查找 Battlemetrics 玩家 ID
+   * @param {string} steamId - Steam 64位 ID
+   * @returns {Promise<{playerId: string, playerName: string} | null>}
+   */
+  async matchPlayerBySteamId(steamId) {
+    try {
+      const url = 'https://api.battlemetrics.com/players/match';
+      const response = await axios.post(url, {
+        data: [
+          {
+            type: 'identifier',
+            attributes: {
+              type: 'steamID',
+              identifier: steamId
+            }
+          }
+        ]
+      }, this._getAxiosConfig());
+
+      if (response.status !== 200 || !response.data.data || response.data.data.length === 0) {
+        return null;
+      }
+
+      const player = response.data.data[0];
+      return {
+        playerId: player.id,
+        playerName: player.attributes?.name || 'Unknown'
+      };
+    } catch (error) {
+      // 404 表示玩家未找到，不是错误
+      if (error.response?.status === 404) {
+        return null;
+      }
+      console.error('matchPlayerBySteamId 错误:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * 获取玩家详细信息
+   * @param {string} playerId - Battlemetrics 玩家 ID
+   * @returns {Promise<object | null>}
+   */
+  async getPlayerInfo(playerId) {
+    try {
+      const url = `https://api.battlemetrics.com/players/${playerId}`;
+      const response = await axios.get(url, this._getAxiosConfig());
+
+      if (response.status !== 200) {
+        return null;
+      }
+
+      const data = response.data.data;
+      const attrs = data.attributes;
+
+      return {
+        id: data.id,
+        name: attrs.name,
+        positiveMatch: attrs.positiveMatch,
+        private: attrs.private,
+        createdAt: attrs.createdAt,
+        updatedAt: attrs.updatedAt
+      };
+    } catch (error) {
+      console.error('getPlayerInfo 错误:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * 获取玩家资料（包含历史名称）
+   * 对应 rustplusplus 的 GET_PROFILE_DATA_API_CALL
+   * @param {string} playerId - Battlemetrics 玩家 ID
+   * @returns {Promise<object | null>}
+   */
+  async getPlayerProfile(playerId) {
+    try {
+      const url = `https://api.battlemetrics.com/players/${playerId}?include=identifier`;
+      const response = await axios.get(url, this._getAxiosConfig());
+
+      if (response.status !== 200) {
+        return null;
+      }
+
+      const data = response.data.data;
+      const attrs = data.attributes;
+
+      // 解析玩家基本信息
+      const profile = {
+        id: data.id,
+        name: attrs.name,
+        positiveMatch: attrs.positiveMatch,
+        private: attrs.private,
+        createdAt: attrs.createdAt,
+        updatedAt: attrs.updatedAt,
+        nameHistory: [],
+        identifiers: []
+      };
+
+      // 解析 identifiers (历史名称、Steam ID 等)
+      if (response.data.included) {
+        for (const item of response.data.included) {
+          if (item.type !== 'identifier') continue;
+          if (!item.attributes) continue;
+
+          const identAttr = item.attributes;
+
+          // 记录所有 identifier
+          profile.identifiers.push({
+            type: identAttr.type,
+            identifier: identAttr.identifier,
+            lastSeen: identAttr.lastSeen,
+            private: identAttr.private,
+            metadata: identAttr.metadata
+          });
+
+          // 单独提取历史名称
+          if (identAttr.type === 'name') {
+            profile.nameHistory.push({
+              name: identAttr.identifier,
+              lastSeen: identAttr.lastSeen
+            });
+          }
+        }
+
+        // 按最后出现时间排序名称历史
+        profile.nameHistory.sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen));
+      }
+
+      return profile;
+    } catch (error) {
+      console.error('getPlayerProfile 错误:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * 获取玩家历史名称列表
+   * @param {string} playerId - Battlemetrics 玩家 ID
+   * @returns {Promise<Array<{name: string, lastSeen: string}>>}
+   */
+  async getPlayerNameHistory(playerId) {
+    try {
+      const profile = await this.getPlayerProfile(playerId);
+      return profile?.nameHistory || [];
+    } catch (error) {
+      console.error('getPlayerNameHistory 错误:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * 从玩家资料中提取 Steam ID
+   * @param {string} playerId - Battlemetrics 玩家 ID
+   * @returns {Promise<string | null>}
+   */
+  async getPlayerSteamId(playerId) {
+    try {
+      const profile = await this.getPlayerProfile(playerId);
+      if (!profile?.identifiers) return null;
+
+      const steamIdent = profile.identifiers.find(i => i.type === 'steamID');
+      return steamIdent?.identifier || null;
+    } catch (error) {
+      console.error('getPlayerSteamId 错误:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * 获取玩家会话历史（上下线记录）
+   * @param {string} playerId - Battlemetrics 玩家 ID
+   * @param {object} options - 可选参数
+   * @param {string} options.serverId - 过滤特定服务器
+   * @param {number} options.pageSize - 每页数量 (默认 20, 最大 100)
+   * @returns {Promise<Array>}
+   */
+  async getPlayerSessions(playerId, options = {}) {
+    try {
+      const { serverId, pageSize = 20 } = options;
+
+      let url = `https://api.battlemetrics.com/players/${playerId}/relationships/sessions?page[size]=${pageSize}&include=server`;
+
+      if (serverId) {
+        url += `&filter[servers]=${serverId}`;
+      }
+
+      const response = await axios.get(url, this._getAxiosConfig());
+
+      if (response.status !== 200) {
+        return [];
+      }
+
+      // 构建服务器 ID -> 名称的映射
+      const serverMap = new Map();
+      if (response.data.included) {
+        for (const item of response.data.included) {
+          if (item.type === 'server') {
+            serverMap.set(item.id, {
+              id: item.id,
+              name: item.attributes?.name || 'Unknown',
+              ip: item.attributes?.ip,
+              port: item.attributes?.port
+            });
+          }
+        }
+      }
+
+      const sessions = [];
+      for (const session of response.data.data) {
+        const attrs = session.attributes;
+        const serverRelation = session.relationships?.server?.data;
+        const serverInfo = serverRelation ? serverMap.get(serverRelation.id) : null;
+
+        sessions.push({
+          id: session.id,
+          start: attrs.start,
+          stop: attrs.stop,  // null 表示当前在线
+          firstTime: attrs.firstTime,
+          name: attrs.name,  // 会话期间使用的名称
+          server: serverInfo
+        });
+      }
+
+      return sessions;
+    } catch (error) {
+      console.error('getPlayerSessions 错误:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * 获取玩家当前在线状态和所在服务器
+   * @param {string} playerId - Battlemetrics 玩家 ID
+   * @returns {Promise<{online: boolean, server: object | null, session: object | null}>}
+   */
+  async getPlayerOnlineStatus(playerId) {
+    try {
+      // 获取最近的会话，如果 stop 为 null 则表示在线
+      const sessions = await this.getPlayerSessions(playerId, { pageSize: 1 });
+
+      if (sessions.length === 0) {
+        return { online: false, server: null, session: null };
+      }
+
+      const latestSession = sessions[0];
+      const isOnline = latestSession.stop === null;
+
+      return {
+        online: isOnline,
+        server: isOnline ? latestSession.server : null,
+        session: latestSession
+      };
+    } catch (error) {
+      console.error('getPlayerOnlineStatus 错误:', error.message);
+      return { online: false, server: null, session: null };
+    }
+  }
+
+  /**
+   * 获取服务器当前在线玩家列表
+   * 注意: 这是 getServerInfo 的简化版，只返回在线玩家
+   * @param {string} serverId - Battlemetrics 服务器 ID
+   * @returns {Promise<Array>}
+   */
+  async getServerOnlinePlayers(serverId) {
+    try {
+      const serverInfo = await this.getServerInfo(serverId);
+      return serverInfo?.onlinePlayers || [];
+    } catch (error) {
+      console.error('getServerOnlinePlayers 错误:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * 通过 Steam ID 获取玩家完整信息（组合接口）
+   * @param {string} steamId - Steam 64位 ID
+   * @returns {Promise<object | null>}
+   */
+  async getPlayerBySteamId(steamId) {
+    try {
+      // 1. 先匹配获取 playerId
+      const matchResult = await this.matchPlayerBySteamId(steamId);
+      if (!matchResult) {
+        return null;
+      }
+
+      // 2. 获取玩家详细信息
+      const playerInfo = await this.getPlayerInfo(matchResult.playerId);
+
+      // 3. 获取在线状态
+      const onlineStatus = await this.getPlayerOnlineStatus(matchResult.playerId);
+
+      return {
+        ...playerInfo,
+        steamId,
+        ...onlineStatus
+      };
+    } catch (error) {
+      console.error('getPlayerBySteamId 错误:', error.message);
+      return null;
+    }
+  }
 }
 
 export default new BattlemetricsService();
