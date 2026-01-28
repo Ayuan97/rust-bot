@@ -13,24 +13,49 @@ const router = Router();
 router.use(authenticate);
 
 /**
+ * 获取或创建用户的追踪服务
+ * @param {string} userId - 用户 ID
+ * @returns {Promise<object | null>} trackingService 或 null
+ */
+async function getTrackingService(userId) {
+  let userService = globalServiceManager.getUserService(userId);
+
+  // 如果用户服务不存在，尝试创建
+  if (!userService) {
+    try {
+      userService = await globalServiceManager.createUserService(userId);
+    } catch (error) {
+      console.error(`创建用户服务失败: ${error.message}`);
+      return null;
+    }
+  }
+
+  if (!userService || !userService.trackingService) {
+    return null;
+  }
+
+  return userService.trackingService;
+}
+
+/**
  * 获取追踪玩家列表
  * GET /api/tracking
  */
 router.get('/', async (req, res) => {
   try {
-    const userService = globalServiceManager.getUserService(req.userId);
-    if (!userService || !userService.trackingService) {
-      return res.status(503).json({ success: false, error: '追踪服务未初始化' });
+    const trackingService = await getTrackingService(req.userId);
+    if (!trackingService) {
+      return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
     }
 
-    const players = await userService.trackingService.getTrackedPlayers();
-    const groups = await userService.trackingService.getGroups();
+    const players = await trackingService.getTrackedPlayers();
+    const groups = await trackingService.getGroups();
 
     res.json({
       success: true,
       players,
       groups,
-      status: userService.trackingService.getStatus()
+      status: trackingService.getStatus()
     });
   } catch (error) {
     console.error('获取追踪列表失败:', error);
@@ -56,12 +81,12 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Steam ID 格式无效 (应为17位数字)' });
     }
 
-    const userService = globalServiceManager.getUserService(req.userId);
-    if (!userService || !userService.trackingService) {
-      return res.status(503).json({ success: false, error: '追踪服务未初始化' });
+    const trackingService = await getTrackingService(req.userId);
+    if (!trackingService) {
+      return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
     }
 
-    const result = await userService.trackingService.addTrackedPlayer(steamId, {
+    const result = await trackingService.addTrackedPlayer(steamId, {
       groupName,
       notes,
       priority
@@ -81,12 +106,12 @@ router.post('/', async (req, res) => {
  */
 router.get('/groups', async (req, res) => {
   try {
-    const userService = globalServiceManager.getUserService(req.userId);
-    if (!userService || !userService.trackingService) {
-      return res.status(503).json({ success: false, error: '追踪服务未初始化' });
+    const trackingService = await getTrackingService(req.userId);
+    if (!trackingService) {
+      return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
     }
 
-    const groups = await userService.trackingService.getGroups();
+    const groups = await trackingService.getGroups();
 
     res.json({ success: true, groups });
   } catch (error) {
@@ -148,12 +173,12 @@ router.get('/:steamId/history', async (req, res) => {
     const { steamId } = req.params;
     const limit = parseInt(req.query.limit) || 50;
 
-    const userService = globalServiceManager.getUserService(req.userId);
-    if (!userService || !userService.trackingService) {
-      return res.status(503).json({ success: false, error: '追踪服务未初始化' });
+    const trackingService = await getTrackingService(req.userId);
+    if (!trackingService) {
+      return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
     }
 
-    const history = await userService.trackingService.getPlayerHistory(steamId, limit);
+    const history = await trackingService.getPlayerHistory(steamId, limit);
 
     res.json({ success: true, history });
   } catch (error) {
@@ -170,12 +195,12 @@ router.get('/:steamId/profile', async (req, res) => {
   try {
     const { steamId } = req.params;
 
-    const userService = globalServiceManager.getUserService(req.userId);
-    if (!userService || !userService.trackingService) {
-      return res.status(503).json({ success: false, error: '追踪服务未初始化' });
+    const trackingService = await getTrackingService(req.userId);
+    if (!trackingService) {
+      return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
     }
 
-    const player = await userService.trackingService.getTrackedPlayer(steamId);
+    const player = await trackingService.getTrackedPlayer(steamId);
     if (!player) {
       return res.status(404).json({ success: false, error: '玩家不在追踪列表中' });
     }
@@ -197,12 +222,12 @@ router.put('/:steamId', async (req, res) => {
     const { steamId } = req.params;
     const { groupName, notes, priority, isActive } = req.body;
 
-    const userService = globalServiceManager.getUserService(req.userId);
-    if (!userService || !userService.trackingService) {
-      return res.status(503).json({ success: false, error: '追踪服务未初始化' });
+    const trackingService = await getTrackingService(req.userId);
+    if (!trackingService) {
+      return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
     }
 
-    const result = await userService.trackingService.updateTrackedPlayer(steamId, {
+    const result = await trackingService.updateTrackedPlayer(steamId, {
       groupName,
       notes,
       priority,
@@ -224,12 +249,12 @@ router.delete('/:steamId', async (req, res) => {
   try {
     const { steamId } = req.params;
 
-    const userService = globalServiceManager.getUserService(req.userId);
-    if (!userService || !userService.trackingService) {
-      return res.status(503).json({ success: false, error: '追踪服务未初始化' });
+    const trackingService = await getTrackingService(req.userId);
+    if (!trackingService) {
+      return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
     }
 
-    await userService.trackingService.removeTrackedPlayer(steamId);
+    await trackingService.removeTrackedPlayer(steamId);
 
     res.json({ success: true });
   } catch (error) {
