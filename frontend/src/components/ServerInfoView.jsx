@@ -3,9 +3,10 @@ import {
   FaServer, FaUsers, FaClock, FaMapMarkedAlt, FaTrophy, FaTachometerAlt,
   FaCubes, FaCalendarAlt, FaSyncAlt, FaChartLine, FaGlobe, FaGamepad,
   FaSeedling, FaExternalLinkAlt, FaUserClock, FaSignal, FaHourglassHalf,
-  FaCheckCircle, FaExclamationTriangle, FaInfoCircle, FaCrosshairs
+  FaCheckCircle, FaExclamationTriangle, FaInfoCircle, FaCrosshairs, FaTimes,
+  FaSpinner, FaPlus
 } from 'react-icons/fa';
-import { getBattlemetricsInfo, getTopPlayers } from '../services/api';
+import { getBattlemetricsInfo, getTopPlayers, trackPlayerByBmId } from '../services/api';
 import { formatTimeAgo } from '../utils/time';
 import { useToast } from './Toast';
 
@@ -95,12 +96,31 @@ function ServerInfoView({ server, onBack }) {
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [cooldown, setCooldown] = useState(0);
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [tracking, setTracking] = useState(false);
 
   // 追踪玩家
-  const handleTrackPlayer = async (player) => {
-    // Battlemetrics 玩家 ID 不是 Steam ID，需要先获取
-    // 这里暂时提示用户需要手动输入 Steam ID
-    toast.info(`请在"玩家追踪"页面使用 Steam ID 添加追踪`);
+  const handleTrackPlayer = async () => {
+    if (!selectedPlayer) return;
+
+    setTracking(true);
+    try {
+      const res = await trackPlayerByBmId({
+        bmPlayerId: selectedPlayer.id,
+        playerName: selectedPlayer.name
+      });
+
+      if (res.data.success) {
+        toast.success(`已添加追踪: ${selectedPlayer.name}`);
+        setSelectedPlayer(null);
+      } else {
+        toast.error(res.data.error || '追踪失败');
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.error || '追踪失败');
+    } finally {
+      setTracking(false);
+    }
   };
 
   // 加载数据
@@ -495,17 +515,12 @@ function ServerInfoView({ server, onBack }) {
                 {bmInfo.onlinePlayers.slice(0, 50).map((player, index) => (
                   <div
                     key={player.id || index}
-                    className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-white/5 transition-colors group"
+                    onClick={() => setSelectedPlayer(player)}
+                    className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-white/5 transition-colors group cursor-pointer"
                   >
                     <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                     <span className="text-sm text-white truncate flex-1">{player.name}</span>
-                    <button
-                      onClick={() => handleTrackPlayer(player)}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-[#cd5241]/20 rounded transition-all"
-                      title="追踪此玩家"
-                    >
-                      <FaCrosshairs className="text-xs text-[#cd5241]" />
-                    </button>
+                    <FaCrosshairs className="text-xs text-gray-600 group-hover:text-[#cd5241] transition-colors" />
                   </div>
                 ))}
                 {bmInfo.onlinePlayers.length > 50 && (
@@ -563,6 +578,77 @@ function ServerInfoView({ server, onBack }) {
           <span>数据来源: Battlemetrics (每60秒自动更新)</span>
         </div>
       </div>
+
+      {/* 玩家详情弹窗 */}
+      {selectedPlayer && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-dark-900 border border-white/10 rounded-2xl w-full max-w-sm mx-4 shadow-2xl">
+            {/* 头部 */}
+            <div className="flex items-center justify-between p-5 border-b border-white/5">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
+                玩家信息
+              </h3>
+              <button
+                onClick={() => setSelectedPlayer(null)}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <FaTimes className="text-gray-400" />
+              </button>
+            </div>
+
+            {/* 内容 */}
+            <div className="p-5 space-y-4">
+              <div className="text-center">
+                <h4 className="text-xl font-bold text-white mb-1">{selectedPlayer.name}</h4>
+                <p className="text-xs text-gray-500 font-mono">BM ID: {selectedPlayer.id}</p>
+              </div>
+
+              <div className="bg-white/5 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">状态</span>
+                  <span className="text-green-400 font-medium">在线</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">服务器</span>
+                  <span className="text-white truncate ml-4 max-w-[180px]">{server?.name || bmInfo?.name}</span>
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-500 text-center">
+                点击下方按钮将此玩家添加到追踪列表，当他上线/下线时会收到通知
+              </p>
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="flex gap-3 p-5 border-t border-white/5">
+              <button
+                onClick={() => setSelectedPlayer(null)}
+                className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleTrackPlayer}
+                disabled={tracking}
+                className="flex-1 py-3 bg-[#cd5241] hover:bg-[#b04537] rounded-lg font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {tracking ? (
+                  <>
+                    <FaSpinner className="animate-spin" />
+                    追踪中...
+                  </>
+                ) : (
+                  <>
+                    <FaPlus />
+                    追踪此玩家
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

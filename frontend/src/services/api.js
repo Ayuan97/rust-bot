@@ -136,4 +136,6 @@ export const getTrackingGroups = () => api.get('/tracking/groups');
 
 export const previewPlayer = (steamId) => api.get(`/tracking/preview/${steamId}`);
 
+export const trackPlayerByBmId = (data) => api.post('/tracking/by-bmid', data);
+
 export default api;

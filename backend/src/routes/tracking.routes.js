@@ -121,6 +121,48 @@ router.get('/groups', async (req, res) => {
 });
 
 /**
+ * 通过 Battlemetrics 玩家 ID 添加追踪
+ * POST /api/tracking/by-bmid
+ * Body: { bmPlayerId, playerName?, groupName?, notes?, priority? }
+ * 注意: 必须在 /:steamId 路由之前定义
+ */
+router.post('/by-bmid', async (req, res) => {
+  try {
+    const { bmPlayerId, playerName, groupName, notes, priority } = req.body;
+
+    if (!bmPlayerId) {
+      return res.status(400).json({ success: false, error: '缺少 bmPlayerId' });
+    }
+
+    // 通过 BM 玩家 ID 获取 Steam ID
+    const steamId = await battlemetricsService.getPlayerSteamId(bmPlayerId);
+
+    if (!steamId) {
+      return res.status(404).json({
+        success: false,
+        error: '无法获取该玩家的 Steam ID，可能是隐私设置限制'
+      });
+    }
+
+    const trackingService = await getTrackingService(req.user.id);
+    if (!trackingService) {
+      return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
+    }
+
+    const result = await trackingService.addTrackedPlayer(steamId, {
+      groupName,
+      notes: notes || (playerName ? `从在线列表添加: ${playerName}` : null),
+      priority
+    });
+
+    res.json({ success: true, player: result });
+  } catch (error) {
+    console.error('通过 BM ID 添加追踪失败:', error);
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * 通过 Steam ID 预览玩家信息 (不添加追踪)
  * GET /api/tracking/preview/:steamId
  * 注意: 必须在 /:steamId 路由之前定义，否则会被拦截
