@@ -134,14 +134,13 @@ router.post('/by-bmid', async (req, res) => {
       return res.status(400).json({ success: false, error: '缺少 bmPlayerId' });
     }
 
-    // 通过 BM 玩家 ID 获取 Steam ID
-    const steamId = await battlemetricsService.getPlayerSteamId(bmPlayerId);
+    // 尝试获取 Steam ID，如果获取不到就用 BM ID 作为标识
+    let steamId = await battlemetricsService.getPlayerSteamId(bmPlayerId);
 
     if (!steamId) {
-      return res.status(404).json({
-        success: false,
-        error: '无法获取该玩家的 Steam ID，可能是隐私设置限制'
-      });
+      // 用 BM_ 前缀 + BM玩家ID 作为标识
+      steamId = `BM_${bmPlayerId}`;
+      console.log(`[TRACKING] 无法获取玩家 ${bmPlayerId} 的 Steam ID，使用 BM ID 作为标识: ${steamId}`);
     }
 
     const trackingService = await getTrackingService(req.user.id);
@@ -152,7 +151,9 @@ router.post('/by-bmid', async (req, res) => {
     const result = await trackingService.addTrackedPlayer(steamId, {
       groupName,
       notes: notes || (playerName ? `从在线列表添加: ${playerName}` : null),
-      priority
+      priority,
+      battlemetricsId: bmPlayerId,  // 直接传入 BM ID
+      playerName  // 传入玩家名称
     });
 
     res.json({ success: true, player: result });

@@ -181,11 +181,11 @@ class UserTrackingService extends EventEmitter {
     // 获取 Battlemetrics 玩家 ID
     let bmPlayerId = player.battlemetricsId;
 
-    // 如果没有 BM ID，尝试匹配
+    // 如果没有 BM ID，尝试获取
     if (!bmPlayerId) {
-      const matchResult = await battlemetricsService.matchPlayerBySteamId(steamId);
-      if (matchResult) {
-        bmPlayerId = matchResult.playerId;
+      // 如果 steamId 是 BM_ 开头的，直接提取 BM ID
+      if (steamId.startsWith('BM_')) {
+        bmPlayerId = steamId.substring(3);
         // 更新数据库
         await db.query(
           'UPDATE tracked_players SET battlemetricsId = ?, updatedAt = NOW() WHERE id = ?',
@@ -193,8 +193,20 @@ class UserTrackingService extends EventEmitter {
         );
         player.battlemetricsId = bmPlayerId;
       } else {
-        // 无法匹配，跳过
-        return;
+        // 尝试通过 Steam ID 匹配
+        const matchResult = await battlemetricsService.matchPlayerBySteamId(steamId);
+        if (matchResult) {
+          bmPlayerId = matchResult.playerId;
+          // 更新数据库
+          await db.query(
+            'UPDATE tracked_players SET battlemetricsId = ?, updatedAt = NOW() WHERE id = ?',
+            [bmPlayerId, player.id]
+          );
+          player.battlemetricsId = bmPlayerId;
+        } else {
+          // 无法匹配，跳过
+          return;
+        }
       }
     }
 
@@ -417,21 +429,35 @@ class UserTrackingService extends EventEmitter {
    * 添加追踪玩家
    */
   async addTrackedPlayer(steamId, options = {}) {
-    const { groupName = '默认', notes = null, priority = 'NORMAL' } = options;
+    const {
+      groupName = '默认',
+      notes = null,
+      priority = 'NORMAL',
+      battlemetricsId = null,  // 可选：直接传入 BM ID
+      playerName = null         // 可选：直接传入玩家名称
+    } = options;
 
     // 检查是否已存在
     if (this.trackedPlayers.has(steamId)) {
       throw new Error('该玩家已在追踪列表中');
     }
 
-    // 尝试获取 Battlemetrics 玩家信息
-    let bmPlayerId = null;
-    let playerName = null;
+    // 获取 Battlemetrics 玩家信息
+    let bmPlayerId = battlemetricsId;
+    let name = playerName;
 
-    const matchResult = await battlemetricsService.matchPlayerBySteamId(steamId);
-    if (matchResult) {
-      bmPlayerId = matchResult.playerId;
-      playerName = matchResult.playerName;
+    // 如果没有直接传入 BM ID，尝试通过 Steam ID 匹配
+    if (!bmPlayerId && !steamId.startsWith('BM_')) {
+      const matchResult = await battlemetricsService.matchPlayerBySteamId(steamId);
+      if (matchResult) {
+        bmPlayerId = matchResult.playerId;
+        name = name || matchResult.playerName;
+      }
+    }
+
+    // 如果 steamId 是 BM_ 开头的，提取 BM ID
+    if (steamId.startsWith('BM_') && !bmPlayerId) {
+      bmPlayerId = steamId.substring(3);
     }
 
     // 插入数据库
@@ -452,7 +478,7 @@ class UserTrackingService extends EventEmitter {
       notes,
       priority,
       isActive: 1,
-      currentName: playerName,
+      currentName: name,
       cachedOnline: false,
       cachedServerBmId: null,
       cachedServerName: null
@@ -465,13 +491,13 @@ class UserTrackingService extends EventEmitter {
       this._startPolling();
     }
 
-    console.log(`[TRACKING] 添加追踪玩家: ${steamId} (${playerName || '未知名称'})`);
+    console.log(`[TRACKING] 添加追踪玩家: ${steamId} (${name || '未知名称'}), BM ID: ${bmPlayerId}`);
 
     return {
       id,
       steamId,
       battlemetricsId: bmPlayerId,
-      currentName: playerName,  // 与 getTrackedPlayers 返回格式保持一致
+      currentName: name,
       groupName,
       notes,
       priority,
