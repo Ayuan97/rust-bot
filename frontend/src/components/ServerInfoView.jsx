@@ -3,10 +3,11 @@ import {
   FaServer, FaUsers, FaClock, FaMapMarkedAlt, FaTrophy, FaTachometerAlt,
   FaCubes, FaCalendarAlt, FaSyncAlt, FaChartLine, FaGlobe, FaGamepad,
   FaSeedling, FaExternalLinkAlt, FaUserClock, FaSignal, FaHourglassHalf,
-  FaCheckCircle, FaExclamationTriangle, FaInfoCircle
+  FaCheckCircle, FaExclamationTriangle, FaInfoCircle, FaCrosshairs
 } from 'react-icons/fa';
 import { getBattlemetricsInfo, getTopPlayers } from '../services/api';
 import { formatTimeAgo } from '../utils/time';
+import { useToast } from './Toast';
 
 // 状态卡片组件
 function StatCard({ icon: Icon, label, value, subValue, color = 'rust-orange', loading }) {
@@ -87,12 +88,20 @@ function InfoPanel({ title, icon: Icon, children, className = '' }) {
 }
 
 function ServerInfoView({ server, onBack }) {
+  const toast = useToast();
   const [bmInfo, setBmInfo] = useState(null);
   const [topPlayers, setTopPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [cooldown, setCooldown] = useState(0);
+
+  // 追踪玩家
+  const handleTrackPlayer = async (player) => {
+    // Battlemetrics 玩家 ID 不是 Steam ID，需要先获取
+    // 这里暂时提示用户需要手动输入 Steam ID
+    toast.info(`请在"玩家追踪"页面使用 Steam ID 添加追踪`);
+  };
 
   // 加载数据
   const loadData = useCallback(async (isRefresh = false) => {
@@ -486,10 +495,17 @@ function ServerInfoView({ server, onBack }) {
                 {bmInfo.onlinePlayers.slice(0, 50).map((player, index) => (
                   <div
                     key={player.id || index}
-                    className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-white/5 transition-colors"
+                    className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-white/5 transition-colors group"
                   >
                     <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                     <span className="text-sm text-white truncate flex-1">{player.name}</span>
+                    <button
+                      onClick={() => handleTrackPlayer(player)}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-[#cd5241]/20 rounded transition-all"
+                      title="追踪此玩家"
+                    >
+                      <FaCrosshairs className="text-xs text-[#cd5241]" />
+                    </button>
                   </div>
                 ))}
                 {bmInfo.onlinePlayers.length > 50 && (

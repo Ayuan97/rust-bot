@@ -12,6 +12,7 @@ import UserAutomation from './user-automation.js';
 import UserCommands from './user-commands.js';
 import DayNightNotifier from './day-night-notifier.js';
 import UserEventPrediction from './user-event-prediction.js';
+import UserTrackingService from './user-tracking.service.js';
 import battlemetricsService from './battlemetrics.service.js';
 
 class UserServiceManager extends EventEmitter {
@@ -39,6 +40,7 @@ class UserServiceManager extends EventEmitter {
     this.commandsService = new UserCommands(userId, this.rustPlusService, this.eventMonitorService);  // 游戏内命令
     this.dayNightNotifier = new DayNightNotifier(userId, this.rustPlusService);  // 昼夜提醒
     this.predictionService = new UserEventPrediction(userId, this.rustPlusService, this.eventMonitorService);  // 事件预测
+    this.trackingService = new UserTrackingService(userId);  // 玩家追踪
 
     // 待确认的服务器配对数据（单服务器限制）
     this.pendingServerPairing = null;
@@ -511,6 +513,22 @@ class UserServiceManager extends EventEmitter {
       // 在子服务初始化完成后，立即加载预测通知设置
       await this.predictionService.loadNotificationSettings();
 
+      // 7. 绑定 Tracking 事件到 UserServiceManager
+      this.trackingService.on('tracking:online', (data) => {
+        this.log('TRACKING', `玩家上线: ${data.playerName} @ ${data.serverName || '未知服务器'}`);
+        this.emit('tracking:online', data);
+      });
+
+      this.trackingService.on('tracking:offline', (data) => {
+        this.log('TRACKING', `玩家下线: ${data.playerName}`);
+        this.emit('tracking:offline', data);
+      });
+
+      this.trackingService.on('tracking:server_change', (data) => {
+        this.log('TRACKING', `玩家换服: ${data.playerName} ${data.fromServerName} -> ${data.toServerName}`);
+        this.emit('tracking:server_change', data);
+      });
+
       console.log(`  [OK] 子服务初始化完成`);
     } catch (error) {
       throw new Error(`初始化子服务失败: ${error.message}`);
@@ -582,9 +600,18 @@ class UserServiceManager extends EventEmitter {
       await Promise.allSettled(connectionPromises);
 
       const connectedCount = this.rustPlusService.getConnectedServers().length;
-      console.log(`  ✅ 服务器连接完成: ${connectedCount}/${this.user.servers.length} 个成功`);
+      console.log(`  [OK] 服务器连接完成: ${connectedCount}/${this.user.servers.length} 个成功`);
+
+      // 启动玩家追踪服务
+      if (this.trackingService) {
+        try {
+          await this.trackingService.start();
+        } catch (error) {
+          console.error(`  [WARN] 启动追踪服务失败:`, error.message);
+        }
+      }
     } catch (error) {
-      console.error(`  ⚠️  连接服务器失败: ${error.message}`);
+      console.error(`  [WARN]  连接服务器失败: ${error.message}`);
       // 不抛出错误，允许部分失败
     }
   }
@@ -666,7 +693,16 @@ class UserServiceManager extends EventEmitter {
         try {
           this.predictionService.stopAll();
         } catch (error) {
-          console.error(`  ⚠️  停止预测服务失败:`, error.message);
+          console.error(`  [WARN] 停止预测服务失败:`, error.message);
+        }
+      }
+
+      // 停止追踪服务
+      if (this.trackingService) {
+        try {
+          this.trackingService.stop();
+        } catch (error) {
+          console.error(`  [WARN] 停止追踪服务失败:`, error.message);
         }
       }
 
@@ -686,8 +722,11 @@ class UserServiceManager extends EventEmitter {
       if (this.predictionService) {
         this.predictionService.removeAllListeners();
       }
+      if (this.trackingService) {
+        this.trackingService.removeAllListeners();
+      }
 
-      console.log(`  ✅ 子服务已停止`);
+      console.log(`  [OK] 子服务已停止`);
     } catch (error) {
       console.error(`  ⚠️  停止子服务失败: ${error.message}`);
     }
@@ -721,6 +760,7 @@ class UserServiceManager extends EventEmitter {
     const predictionStatus = this.predictionService ? {
       activeTimers: this.predictionService.notificationTimers.size
     } : null;
+    const trackingStatus = this.trackingService ? this.trackingService.getStatus() : null;
 
     return {
       userId: this.userId,
@@ -736,13 +776,15 @@ class UserServiceManager extends EventEmitter {
         automation: !!this.automationService,
         commands: !!this.commandsService,
         dayNight: !!this.dayNightNotifier,
-        prediction: !!this.predictionService
+        prediction: !!this.predictionService,
+        tracking: !!this.trackingService
       },
       rustPlusStats,
       fcmStatus,
       eventMonitorStatus,
       automationStatus,
-      predictionStatus
+      predictionStatus,
+      trackingStatus
     };
   }
   /**

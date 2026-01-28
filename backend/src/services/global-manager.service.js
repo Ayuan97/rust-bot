@@ -538,6 +538,20 @@ class GlobalServiceManager extends EventEmitter {
     userService.on('automation:executed', (data) => {
       this.emit('automation:executed', data);
     });
+
+    // === Tracking 玩家追踪事件 ===
+
+    userService.on('tracking:online', (data) => {
+      this.emit('tracking:online', data);
+    });
+
+    userService.on('tracking:offline', (data) => {
+      this.emit('tracking:offline', data);
+    });
+
+    userService.on('tracking:server_change', (data) => {
+      this.emit('tracking:server_change', data);
+    });
   }
 
   /**

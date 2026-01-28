@@ -29,6 +29,7 @@ import userRoutes from './routes/user.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import fcmRoutes from './routes/fcm.routes.js';
 import predictionRoutes from './routes/prediction.routes.js';
+import trackingRoutes from './routes/tracking.routes.js';
 
 // 中间件
 import { apiLimiter, authLimiter } from './middleware/rate-limiter.js';
@@ -70,6 +71,7 @@ app.use('/api/proxy', proxyRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/fcm', fcmRoutes);
 app.use('/api/predictions', predictionRoutes);
+app.use('/api/tracking', trackingRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {

@@ -645,6 +645,20 @@ class WebSocketService {
       this.io.to(`user:${data.userId}`).emit('rust:message', data);
     });
 
+    // === 玩家追踪事件 ===
+
+    addListener('tracking:online', (data) => {
+      this.io.to(`user:${data.userId}`).emit('tracking:online', data);
+    });
+
+    addListener('tracking:offline', (data) => {
+      this.io.to(`user:${data.userId}`).emit('tracking:offline', data);
+    });
+
+    addListener('tracking:server_change', (data) => {
+      this.io.to(`user:${data.userId}`).emit('tracking:server_change', data);
+    });
+
     logger.info('✅ GlobalServiceManager 事件监听器已设置（房间隔离模式）');
   }
 

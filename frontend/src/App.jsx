@@ -21,6 +21,7 @@ import NotificationSettings from './components/NotificationSettings';
 import AdminPage from './pages/AdminPage';
 import MapView from './components/MapView';
 import ServerInfoView from './components/ServerInfoView';
+import TrackingView from './components/TrackingView';
 
 function App() {
   const { user, logout, isSubscriptionExpired } = useAuth();
@@ -251,6 +252,8 @@ function App() {
         );
       case 'devices':
         return <DeviceControl serverId={activeServer?.id} isReadOnly={isSubscriptionExpired} />;
+      case 'tracking':
+        return <TrackingView />;
       case 'serverinfo':
         return (
           <ServerInfoView
@@ -294,6 +297,7 @@ function App() {
           <NavIcon id="team" icon={<FaUsers />} active={activeView} onClick={setActiveView} label="队友动态" />
           <NavIcon id="map" icon={<FaMapMarkedAlt />} active={activeView} onClick={setActiveView} label="实时地图" />
           <NavIcon id="devices" icon={<FaCogs />} active={activeView} onClick={setActiveView} label="智能中控" />
+          <NavIcon id="tracking" icon={<FaCrosshairs />} active={activeView} onClick={setActiveView} label="玩家追踪" />
           <NavIcon id="serverinfo" icon={<FaServer />} active={activeView} onClick={setActiveView} label="服务器信息" />
           <div className="h-px bg-white/5 my-2 mx-1" />
           <NavIcon id="settings" icon={<FaCog />} active={activeView} onClick={setActiveView} label="预警配置" />

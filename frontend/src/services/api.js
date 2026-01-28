@@ -118,4 +118,22 @@ export const getTopPlayers = (serverId, days = 30) => api.get(`/servers/${server
 
 export const healthCheck = () => api.get('/health');
 
+// ========== 玩家追踪 ==========
+
+export const getTrackedPlayers = () => api.get('/tracking');
+
+export const addTrackedPlayer = (data) => api.post('/tracking', data);
+
+export const updateTrackedPlayer = (steamId, data) => api.put(`/tracking/${steamId}`, data);
+
+export const deleteTrackedPlayer = (steamId) => api.delete(`/tracking/${steamId}`);
+
+export const getPlayerHistory = (steamId, limit = 50) => api.get(`/tracking/${steamId}/history`, { params: { limit } });
+
+export const getTrackedPlayerProfile = (steamId) => api.get(`/tracking/${steamId}/profile`);
+
+export const getTrackingGroups = () => api.get('/tracking/groups');
+
+export const previewPlayer = (steamId) => api.get(`/tracking/preview/${steamId}`);
+
 export default api;
