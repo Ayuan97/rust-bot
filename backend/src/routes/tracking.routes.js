@@ -43,7 +43,7 @@ async function getTrackingService(userId) {
  */
 router.get('/', async (req, res) => {
   try {
-    const trackingService = await getTrackingService(req.userId);
+    const trackingService = await getTrackingService(req.user.id);
     if (!trackingService) {
       return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
     }
@@ -81,7 +81,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Steam ID 格式无效 (应为17位数字)' });
     }
 
-    const trackingService = await getTrackingService(req.userId);
+    const trackingService = await getTrackingService(req.user.id);
     if (!trackingService) {
       return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
     }
@@ -106,7 +106,7 @@ router.post('/', async (req, res) => {
  */
 router.get('/groups', async (req, res) => {
   try {
-    const trackingService = await getTrackingService(req.userId);
+    const trackingService = await getTrackingService(req.user.id);
     if (!trackingService) {
       return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
     }
@@ -173,7 +173,7 @@ router.get('/:steamId/history', async (req, res) => {
     const { steamId } = req.params;
     const limit = parseInt(req.query.limit) || 50;
 
-    const trackingService = await getTrackingService(req.userId);
+    const trackingService = await getTrackingService(req.user.id);
     if (!trackingService) {
       return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
     }
@@ -195,7 +195,7 @@ router.get('/:steamId/profile', async (req, res) => {
   try {
     const { steamId } = req.params;
 
-    const trackingService = await getTrackingService(req.userId);
+    const trackingService = await getTrackingService(req.user.id);
     if (!trackingService) {
       return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
     }
@@ -222,7 +222,7 @@ router.put('/:steamId', async (req, res) => {
     const { steamId } = req.params;
     const { groupName, notes, priority, isActive } = req.body;
 
-    const trackingService = await getTrackingService(req.userId);
+    const trackingService = await getTrackingService(req.user.id);
     if (!trackingService) {
       return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
     }
@@ -249,7 +249,7 @@ router.delete('/:steamId', async (req, res) => {
   try {
     const { steamId } = req.params;
 
-    const trackingService = await getTrackingService(req.userId);
+    const trackingService = await getTrackingService(req.user.id);
     if (!trackingService) {
       return res.status(503).json({ success: false, error: '追踪服务未初始化，请检查订阅状态' });
     }
