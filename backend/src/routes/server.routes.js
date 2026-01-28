@@ -1471,8 +1471,13 @@ router.get('/:id/battlemetrics', async (req, res) => {
     const CACHE_TTL = 5 * 60 * 1000;
     const isStale = !bmInfo || (Date.now() - new Date(bmInfo.updatedAt).getTime() > CACHE_TTL);
 
+    // 在线玩家列表变化频繁，每次都获取最新数据
+    let onlinePlayers = [];
+
     if (isStale) {
+      // 缓存过期，获取完整数据并更新缓存
       const freshData = await battlemetricsService.getServerInfo(battlemetricsId);
+      onlinePlayers = freshData?.onlinePlayers || [];
 
       if (freshData) {
         const now = new Date();
@@ -1533,6 +1538,10 @@ router.get('/:id/battlemetrics', async (req, res) => {
         );
         bmInfo = newBmRows[0];
       }
+    } else {
+      // 缓存未过期，但在线玩家列表仍需实时获取
+      const freshData = await battlemetricsService.getServerInfo(battlemetricsId);
+      onlinePlayers = freshData?.onlinePlayers || [];
     }
 
     if (!bmInfo) {
@@ -1546,6 +1555,9 @@ router.get('/:id/battlemetrics', async (req, res) => {
     bmInfo.official = !!bmInfo.official;
     bmInfo.modded = !!bmInfo.modded;
     bmInfo.pve = !!bmInfo.pve;
+
+    // 附加在线玩家列表（不存储在数据库中）
+    bmInfo.onlinePlayers = onlinePlayers;
 
     res.json({ success: true, data: bmInfo });
   } catch (error) {
