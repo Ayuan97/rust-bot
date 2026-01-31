@@ -207,15 +207,17 @@ class BattlemetricsService extends EventEmitter {
    */
   async getServerInfo(battlemetricsId) {
     try {
-      const url = `https://api.battlemetrics.com/servers/${battlemetricsId}?include=player`;
+      // 并行请求：服务器基本信息 + 在线会话列表
+      const [serverResponse, sessionsResponse] = await Promise.all([
+        axios.get(`https://api.battlemetrics.com/servers/${battlemetricsId}`, this._getAxiosConfig()),
+        this._getServerActiveSessions(battlemetricsId)
+      ]);
 
-      const response = await axios.get(url, this._getAxiosConfig());
-
-      if (response.status !== 200) {
-        throw new Error(`API 返回状态码 ${response.status}`);
+      if (serverResponse.status !== 200) {
+        throw new Error(`API 返回状态码 ${serverResponse.status}`);
       }
 
-      const data = response.data;
+      const data = serverResponse.data;
       const attributes = data.data.attributes;
       const details = attributes.details;
 
@@ -268,21 +270,8 @@ class BattlemetricsService extends EventEmitter {
         updatedAt: attributes.updatedAt,
       };
 
-      // 解析在线玩家
-      const players = [];
-      if (data.included) {
-        for (const entity of data.included) {
-          if (entity.type === 'player') {
-            players.push({
-              id: entity.id,
-              name: entity.attributes.name,
-              updatedAt: entity.attributes.updatedAt,
-            });
-          }
-        }
-      }
-
-      serverInfo.onlinePlayers = players;
+      // 使用活动会话获取完整的在线玩家列表
+      serverInfo.onlinePlayers = sessionsResponse;
 
       // 预估清档周期 (基于服务器名称和历史)
       serverInfo.wipeCycle = this._estimateWipeCycle(attributes.name, details.rust_description);
@@ -314,6 +303,75 @@ class BattlemetricsService extends EventEmitter {
         errorMessage = `${error.code}: ${error.message}`;
       }
       throw new Error(errorMessage);
+    }
+  }
+
+  /**
+   * 获取服务器当前活动会话（在线玩家完整列表）
+   * 使用分页获取所有在线玩家
+   * @param {string} serverId - Battlemetrics 服务器 ID
+   * @returns {Promise<Array>} 在线玩家数组
+   * @private
+   */
+  async _getServerActiveSessions(serverId) {
+    try {
+      const players = [];
+      let nextUrl = `https://api.battlemetrics.com/servers/${serverId}/relationships/sessions?filter[online]=true&page[size]=100&include=player`;
+
+      // 分页获取所有在线玩家（最多 5 页，500 人）
+      let pageCount = 0;
+      const maxPages = 5;
+
+      while (nextUrl && pageCount < maxPages) {
+        const response = await axios.get(nextUrl, this._getAxiosConfig());
+
+        if (response.status !== 200) {
+          break;
+        }
+
+        // 构建玩家 ID -> 名称的映射（从 included 中获取完整玩家信息）
+        const playerMap = new Map();
+        if (response.data.included) {
+          for (const item of response.data.included) {
+            if (item.type === 'player') {
+              playerMap.set(item.id, {
+                id: item.id,
+                name: item.attributes?.name || 'Unknown',
+                updatedAt: item.attributes?.updatedAt
+              });
+            }
+          }
+        }
+
+        // 从会话数据中提取玩家
+        for (const session of response.data.data) {
+          if (session.type === 'session') {
+            const playerRelation = session.relationships?.player?.data;
+            if (playerRelation) {
+              const playerInfo = playerMap.get(playerRelation.id);
+              if (playerInfo) {
+                players.push(playerInfo);
+              } else {
+                // 如果 included 中没有，使用会话中的名称
+                players.push({
+                  id: playerRelation.id,
+                  name: session.attributes?.name || 'Unknown',
+                  updatedAt: session.attributes?.start
+                });
+              }
+            }
+          }
+        }
+
+        // 检查是否有下一页
+        nextUrl = response.data.links?.next || null;
+        pageCount++;
+      }
+
+      return players;
+    } catch (error) {
+      console.error('[BATTLEMETRICS] 获取服务器活动会话失败:', error.message);
+      return [];
     }
   }
 
