@@ -501,55 +501,60 @@ class UserCommands extends EventEmitter {
   }
 
   /**
-   * !time - 游戏时间（使用缓存减少 API 请求）
+   * !time - 游戏时间
+   * Rust 默认时间机制：
+   * - 整个周期 dayLengthMinutes (默认 60 分钟)
+   * - 白天占 75% 真实时间 (默认 45 分钟)
+   * - 黑夜占 25% 真实时间 (默认 15 分钟)
    */
   async handleTime(serverId, args, context) {
     try {
-      const now = Date.now();
-      let cache = this.timeCache.get(serverId);
+      // 直接获取最新时间
+      const timeInfo = await this.rustPlusService.getTime(serverId);
 
-      // 缓存过期或不存在，从 API 获取
-      if (!cache || (now - cache.lastFetchTime) > this.TIME_CACHE_TTL) {
-        const timeInfo = await this.rustPlusService.getTime(serverId);
-        cache = {
-          dayLengthMinutes: timeInfo.dayLengthMinutes || 60,
-          sunrise: timeInfo.sunrise || 6.5,
-          sunset: timeInfo.sunset || 18.5,
-          lastTime: timeInfo.time || 0,
-          lastFetchTime: now
-        };
-        this.timeCache.set(serverId, cache);
-      }
+      const currentTime = timeInfo.time || 0;
+      const sunrise = timeInfo.sunrise || 7;
+      const sunset = timeInfo.sunset || 20;
+      const dayLengthMinutes = timeInfo.dayLengthMinutes || 60;
 
-      const { dayLengthMinutes, sunrise, sunset, lastTime, lastFetchTime } = cache;
-
-      // 根据时间流逝本地推算当前游戏时间
-      // 1 真实分钟 = 24 / dayLengthMinutes 游戏小时
-      const elapsedRealMinutes = (now - lastFetchTime) / 1000 / 60;
-      const gameHoursPerRealMinute = 24 / dayLengthMinutes;
-      const elapsedGameHours = elapsedRealMinutes * gameHoursPerRealMinute;
-      const currentTime = (lastTime + elapsedGameHours) % 24;
-
-      const isDay = currentTime >= sunrise && currentTime < sunset;
+      // 格式化时间 HH:MM
       const hours = Math.floor(currentTime);
       const mins = Math.floor((currentTime - hours) * 60);
       const timeStr = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 
+      // 判断白天/黑夜
+      const isDay = currentTime >= sunrise && currentTime < sunset;
+
       // 计算游戏内时间差（小时）
       let gameHoursUntil;
       if (isDay) {
+        // 白天 -> 计算到日落的游戏小时
         gameHoursUntil = sunset - currentTime;
       } else {
-        if (currentTime < sunrise) {
-          gameHoursUntil = sunrise - currentTime;
-        } else {
+        // 黑夜 -> 计算到日出的游戏小时
+        if (currentTime >= sunset) {
           gameHoursUntil = (24 - currentTime) + sunrise;
+        } else {
+          gameHoursUntil = sunrise - currentTime;
         }
       }
 
-      // 转换为真实时间（分钟）
-      const realMinutesPerGameHour = dayLengthMinutes / 24;
-      const minutesUntil = Math.floor(gameHoursUntil * realMinutesPerGameHour);
+      // Rust 默认时间比例：白天 75%，黑夜 25%
+      // 参考: https://gamerant.com/rust-day-night-cycle-length-detailed-explained/
+      const dayGameHours = sunset - sunrise;       // 白天游戏小时 (默认约 13h)
+      const nightGameHours = 24 - dayGameHours;    // 黑夜游戏小时 (默认约 11h)
+
+      const dayRealMinutes = dayLengthMinutes * 0.75;   // 白天真实分钟
+      const nightRealMinutes = dayLengthMinutes * 0.25; // 黑夜真实分钟
+
+      let minutesUntil;
+      if (isDay) {
+        const realMinutesPerDayHour = dayRealMinutes / dayGameHours;
+        minutesUntil = Math.floor(gameHoursUntil * realMinutesPerDayHour);
+      } else {
+        const realMinutesPerNightHour = nightRealMinutes / nightGameHours;
+        minutesUntil = Math.floor(gameHoursUntil * realMinutesPerNightHour);
+      }
 
       // 使用模板: msg_night = 距离天黑, msg_day = 距离天亮
       if (isDay) {

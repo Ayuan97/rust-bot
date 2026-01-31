@@ -437,8 +437,22 @@ class UserTrackingService extends EventEmitter {
       playerName = null         // 可选：直接传入玩家名称
     } = options;
 
-    // 检查是否已存在
+    // 如果服务未启动，先加载已有的追踪玩家列表
+    if (!this.isRunning) {
+      await this._loadTrackedPlayers();
+    }
+
+    // 检查内存缓存是否已存在
     if (this.trackedPlayers.has(steamId)) {
+      throw new Error('该玩家已在追踪列表中');
+    }
+
+    // 双重检查：查询数据库确认不存在（防止并发问题）
+    const [existingRows] = await db.query(
+      'SELECT id FROM tracked_players WHERE userId = ? AND steamId = ?',
+      [this.userId, steamId]
+    );
+    if (existingRows.length > 0) {
       throw new Error('该玩家已在追踪列表中');
     }
 
@@ -486,8 +500,8 @@ class UserTrackingService extends EventEmitter {
 
     this.trackedPlayers.set(steamId, newPlayer);
 
-    // 如果是第一个追踪的玩家，启动轮询
-    if (this.trackedPlayers.size === 1 && this.isRunning) {
+    // 如果是第一个追踪的玩家且服务已运行，启动轮询
+    if (this.trackedPlayers.size === 1 && this.isRunning && !this.pollInterval) {
       this._startPolling();
     }
 
@@ -511,6 +525,11 @@ class UserTrackingService extends EventEmitter {
    * 移除追踪玩家
    */
   async removeTrackedPlayer(steamId) {
+    // 如果服务未启动，先加载玩家列表
+    if (!this.isRunning && this.trackedPlayers.size === 0) {
+      await this._loadTrackedPlayers();
+    }
+
     const player = this.trackedPlayers.get(steamId);
     if (!player) {
       throw new Error('该玩家不在追踪列表中');
@@ -539,6 +558,11 @@ class UserTrackingService extends EventEmitter {
    * 更新追踪玩家信息
    */
   async updateTrackedPlayer(steamId, updates) {
+    // 如果服务未启动，先加载玩家列表
+    if (!this.isRunning && this.trackedPlayers.size === 0) {
+      await this._loadTrackedPlayers();
+    }
+
     const player = this.trackedPlayers.get(steamId);
     if (!player) {
       throw new Error('该玩家不在追踪列表中');
@@ -592,6 +616,11 @@ class UserTrackingService extends EventEmitter {
    * 获取追踪玩家列表
    */
   async getTrackedPlayers() {
+    // 如果服务未启动，先加载玩家列表
+    if (!this.isRunning && this.trackedPlayers.size === 0) {
+      await this._loadTrackedPlayers();
+    }
+
     const players = [];
 
     for (const [steamId, player] of this.trackedPlayers) {
@@ -616,6 +645,11 @@ class UserTrackingService extends EventEmitter {
    * 获取单个追踪玩家详情
    */
   async getTrackedPlayer(steamId) {
+    // 如果服务未启动，先加载玩家列表
+    if (!this.isRunning && this.trackedPlayers.size === 0) {
+      await this._loadTrackedPlayers();
+    }
+
     const player = this.trackedPlayers.get(steamId);
     if (!player) {
       return null;
@@ -661,6 +695,11 @@ class UserTrackingService extends EventEmitter {
    * 获取所有分组
    */
   async getGroups() {
+    // 如果服务未启动，先加载玩家列表
+    if (!this.isRunning && this.trackedPlayers.size === 0) {
+      await this._loadTrackedPlayers();
+    }
+
     const groups = new Set();
     for (const player of this.trackedPlayers.values()) {
       groups.add(player.groupName);
