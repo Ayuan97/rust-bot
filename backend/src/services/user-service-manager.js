@@ -972,9 +972,63 @@ class UserServiceManager extends EventEmitter {
       this.log('ENTITY_PAIRING', `正在处理设备配对: entityId=${data.entityId}, type=${data.entityType}`);
 
       // 验证必要字段
-      if (!data.entityId || !data.serverId) {
-        this.log('ENTITY_PAIRING', `设备配对数据不完整: entityId=${data.entityId}, serverId=${data.serverId}`, 'WARN');
+      if (!data.entityId || !data.originalServerId) {
+        this.log('ENTITY_PAIRING', `设备配对数据不完整: entityId=${data.entityId}, originalServerId=${data.originalServerId}`, 'WARN');
         return;
+      }
+
+      // 生成用户专属的服务器 ID（与服务器配对保持一致）
+      const userServerId = `${this.userId}_${data.originalServerId}`;
+
+      // 检查服务器是否存在
+      const [serverRows] = await db.query(
+        'SELECT id FROM servers WHERE id = ? AND userId = ?',
+        [userServerId, this.userId]
+      );
+
+      // 如果服务器不存在，尝试自动创建
+      if (serverRows.length === 0) {
+        if (data.serverInfo && data.serverInfo.ip && data.serverInfo.port) {
+          this.log('ENTITY_PAIRING', `服务器不存在，正在自动创建: ${data.serverInfo.name}`);
+
+          // 检查是否已有相同 IP:Port 的服务器
+          const [existingByIp] = await db.query(
+            'SELECT id FROM servers WHERE userId = ? AND ip = ? AND port = ?',
+            [this.userId, data.serverInfo.ip, String(data.serverInfo.port)]
+          );
+
+          if (existingByIp.length > 0) {
+            // 使用已存在的服务器 ID
+            const existingServerId = existingByIp[0].id;
+            this.log('ENTITY_PAIRING', `找到已存在的服务器 (IP:Port匹配): ${existingServerId}`);
+            data.serverId = existingServerId;
+          } else {
+            // 创建新服务器
+            await db.query(
+              `INSERT INTO servers (id, userId, name, ip, port, playerId, playerToken, img, url, description, isActive, createdAt, updatedAt)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+              [
+                userServerId,
+                this.userId,
+                data.serverInfo.name,
+                data.serverInfo.ip,
+                String(data.serverInfo.port),
+                data.serverInfo.playerId || '',
+                data.serverInfo.playerToken || '',
+                data.serverInfo.img || null,
+                data.serverInfo.url || null,
+                data.serverInfo.desc || null
+              ]
+            );
+            this.log('ENTITY_PAIRING', `已自动创建服务器: ${data.serverInfo.name}`);
+            data.serverId = userServerId;
+          }
+        } else {
+          this.log('ENTITY_PAIRING', `服务器不存在且缺少创建所需信息，无法保存设备`, 'WARN');
+          return;
+        }
+      } else {
+        data.serverId = userServerId;
       }
 
       // 确定设备类型
