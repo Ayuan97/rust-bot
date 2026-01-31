@@ -393,6 +393,14 @@ class UserRustPlusManager extends EventEmitter {
   }
 
   /**
+   * 获取连接的 playerId（机器人自己的 Steam ID）
+   */
+  getPlayerId(serverId) {
+    const rustplus = this.connections.get(serverId);
+    return rustplus?.playerId || null;
+  }
+
+  /**
    * 直接实时获取世界尺寸与海洋边距（不使用缓存）
    * @returns {Promise<{mapSize:number,oceanMargin:number}>}
    */

@@ -164,6 +164,15 @@ class UserCommands extends EventEmitter {
         return this.handleTranslateFromTo(serverId, args, context);
       }
     });
+
+    // 移交队长命令
+    this.registerCommand('leader', {
+      description: '移交队长权限',
+      usage: '!leader 或 !leader <名字>',
+      handler: async (serverId, args, context) => {
+        return this.handleLeader(serverId, args, context);
+      }
+    });
   }
 
   /**
@@ -454,6 +463,7 @@ class UserCommands extends EventEmitter {
     lines.push('  !team - 队伍统计');
     lines.push('  !online - 在线队友');
     lines.push('  !afk - 挂机队友');
+    lines.push('  !leader [名字] - 移交队长');
     lines.push('  !shop <物品> - 搜索售货机');
 
     // 事件命令
@@ -965,6 +975,81 @@ class UserCommands extends EventEmitter {
         return `[翻译] 不支持的语言: ${match[1]}`;
       }
       return '[翻译] 翻译失败，请稍后重试';
+    }
+  }
+
+  /**
+   * !leader - 移交队长权限
+   * 用法: !leader - 移交给发送命令的玩家
+   *       !leader <名字> - 移交给指定队友
+   */
+  async handleLeader(serverId, args, context) {
+    try {
+      // 获取队伍信息
+      const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
+      if (!teamInfo || !teamInfo.members) {
+        return cmd('leader', 'error') || '[错误] 获取队伍信息失败';
+      }
+
+      const members = teamInfo.members;
+      if (members.length === 0) {
+        return cmd('leader', 'error') || '[错误] 队伍为空';
+      }
+
+      const leaderSteamId = teamInfo.leaderSteamId?.toString();
+      const botSteamId = this.rustPlusService.getPlayerId(serverId);
+
+      // 检查当前机器人账号是否是队长
+      if (leaderSteamId !== botSteamId?.toString()) {
+        return cmd('leader', 'not_leader') || '[错误] 移交失败: 当前账号不是队长';
+      }
+
+      let targetPlayer;
+
+      if (args.length === 0) {
+        // !leader 无参数：移交给发送命令的玩家自己
+        const callerSteamId = context.steamId?.toString();
+        if (!callerSteamId) {
+          return cmd('leader', 'error') || '[错误] 无法获取发送者信息';
+        }
+
+        // 检查发送者是否已经是队长
+        if (leaderSteamId === callerSteamId) {
+          return '[队长] 你已经是队长了';
+        }
+
+        // 在队伍中查找发送者
+        targetPlayer = members.find(m => m.steamId?.toString() === callerSteamId);
+        if (!targetPlayer) {
+          return cmd('leader', 'error') || '[错误] 你不在队伍中';
+        }
+      } else {
+        // !leader <name>：移交给指定名字的队友
+        const targetName = args.join(' ');
+
+        // 查找匹配的队友（支持部分匹配）
+        targetPlayer = members.find(m =>
+          m.name.toLowerCase().includes(targetName.toLowerCase())
+        );
+
+        if (!targetPlayer) {
+          return cmd('leader', 'not_found', { name: targetName }) || `[错误] 找不到玩家: ${targetName}`;
+        }
+
+        // 检查是否已经是队长
+        if (leaderSteamId === targetPlayer.steamId?.toString()) {
+          return cmd('leader', 'already', { name: targetPlayer.name }) || `[队长] ${targetPlayer.name} 已经是队长了`;
+        }
+      }
+
+      // 移交队长权限
+      await this.rustPlusService.promoteToLeader(serverId, targetPlayer.steamId);
+
+      return cmd('leader', 'msg', { name: targetPlayer.name }) || `[队长] 已将队长移交给 ${targetPlayer.name}`;
+
+    } catch (error) {
+      logger.error('移交队长失败:', error);
+      return cmd('leader', 'error') || '[错误] 移交队长失败';
     }
   }
 
