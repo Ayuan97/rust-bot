@@ -7,21 +7,6 @@ import MONUMENT_INFO from './monument-info.js';
 
 const GRID_DIAMETER = 146.25; // 每个网格的大小
 const SUB_GRID_SIZE = 3; // 子网格分割数量（3x3 = 9个子格）
-
-const ALIGN_THRESHOLD = 73.125;
-/**
- * 关于 ALIGN_THRESHOLD (73.125) 的深度解析：
- * Rust 的网格直径约为 146.25 (1024/7)。
- * 我们采用"四舍五入"的逻辑，即半个网格的大小 (146.25 / 2 = 73.125)。
- *
- * - 如果剩余部分 (remainder) < 73.125，说明更接近上一条网格线，向下取整。
- * - 如果剩余部分 >= 73.125，说明更接近下一条网格线，向上取整。
- *
- * 验证案例:
- * - Map 2000: Remainder ~98.75 > 73.125 -> 向上取整 -> 14 Grids (正确, 120阈值会得到13)
- * - Map 4500: Remainder ~112.5 > 73.125 -> 向上取整 -> 31 Grids (AD-AE, 正确)
- * - Map 3000: Remainder 75.0 > 73.125 -> 向上取整 -> 21 Grids (正确)
- */
 const CENTER_RATIO = 1 / 6; // 用于 getDirection 中的中心判定
 /**
  * 将数字转换为字母（1=A, 2=B, ..., 27=AA）
@@ -38,54 +23,44 @@ function numberToLetters(num) {
  */
 function getCorrectedMapSize(mapSize) {
   const remainder = mapSize % GRID_DIAMETER;
-  const offset = GRID_DIAMETER - remainder;
-  // 使用基于网格直径的阈值，适配任意地图大小
-  return (remainder < ALIGN_THRESHOLD) ? mapSize - remainder : mapSize + offset;
+  const gridOffset = GRID_DIAMETER - remainder;
+  return (remainder < 120) ? mapSize - remainder : mapSize + gridOffset;
 }
 
 /**
  * 检查坐标是否在网格系统外
  */
-function isOutsideGridSystem(x, y, correctedMapSize) {
-  // 使用 >= 保持左闭右开的边界一致性
-  return x < 0 || x >= correctedMapSize || y < 0 || y >= correctedMapSize;
+function isOutsideGridSystem(x, y, correctedMapSize, offset = 0) {
+  return x < 0 - offset || x > correctedMapSize + offset || y < 0 - offset || y > correctedMapSize + offset;
 }
 
 /**
  * 获取 X 坐标对应的网格字母（A, B, C, ...）
- * 完全按照 rustplusplus 实现
  */
 function getGridPosLettersX(x, mapSize) {
   let counter = 1;
   for (let startGrid = 0; startGrid < mapSize; startGrid += GRID_DIAMETER) {
-    // 左闭右开区间，确保右边界归属到下一个网格
-    if (x >= startGrid && x < startGrid + GRID_DIAMETER) {
+    if (x >= startGrid && x <= (startGrid + GRID_DIAMETER)) {
       return numberToLetters(counter);
     }
     counter++;
   }
-  // 处理恰好位于最右侧的坐标
-  if (x === mapSize) return numberToLetters(counter - 1);
   return null;
 }
 
 /**
  * 获取 Y 坐标对应的网格数字（0-29）
- * 参考 rustplusplus 实现，使用循环遍历确保边界处理一致
  */
 function getGridPosNumberY(y, mapSize) {
   const numberOfGrids = Math.floor(mapSize / GRID_DIAMETER);
 
   let counter = 1;
   for (let startGrid = 0; startGrid < mapSize; startGrid += GRID_DIAMETER) {
-    // 左闭右开区间，确保上边界归属到下一个行号
-    if (y >= startGrid && y < startGrid + GRID_DIAMETER) {
+    if (y >= startGrid && y <= (startGrid + GRID_DIAMETER)) {
       return numberOfGrids - counter;
     }
     counter++;
   }
-  // 处理恰好位于最上侧的坐标（mapSize）
-  if (y === mapSize) return 1;
   return null;
 }
 
@@ -216,11 +191,11 @@ function getDirection(x, y, mapSize) {
 }
 
 /**
- * 计算两点之间的角度（度数）
+ * 计算两点之间的角度（罗盘方位角：0=北, 90=东, 180=南, 270=西）
  */
 function getAngleBetweenPoints(x1, y1, x2, y2) {
   const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
-  return angle < 0 ? angle + 360 : angle;
+  return Math.floor((Math.abs(angle - 360) + 90) % 360);
 }
 
 /**

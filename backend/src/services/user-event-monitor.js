@@ -6,7 +6,8 @@
 import EventEmitter from 'events';
 import db from '../lib/db.js';
 import { AppMarkerType, EventTiming, EventType, MonumentTokens } from '../utils/event-constants.js';
-import { formatPosition, getDistance } from '../utils/coordinates.js';
+import { formatPosition, getDistance, getDirection } from '../utils/coordinates.js';
+import MONUMENT_INFO from '../utils/monument-info.js';
 import { notify, formatDuration } from '../utils/messages.js';
 import EventTimerManager from '../utils/event-timer.js';
 import { getItemName, isImportantItem } from '../utils/item-info.js';
@@ -18,6 +19,23 @@ import globalManager from './global-manager.service.js';
 // 刷新间隔
 const PLAYER_DATA_REFRESH_INTERVAL = 10 * 60 * 1000; // 10分钟刷新一次 Steam 数据
 const PLAYER_STATS_SNAPSHOT_INTERVAL = 24 * 60 * 60 * 1000; // 每天 00:00 快照（逻辑上在 checkPlayerStats 中处理）
+
+// 直升机可访问纪念碑 token 列表
+const HELI_ACCESSIBLE_MONUMENTS = [
+  'launchsite',           // 发射场
+  'airfield_display_name', // 机场
+  'power_plant_display_name', // 电厂
+  'military_tunnels_display_name', // 军事隧道
+  'train_yard_display_name', // 火车站
+  'water_treatment_plant_display_name', // 污水处理厂
+  'excavator',            // 巨型挖掘机
+  'dome_monument_name',   // 大铁球
+  'satellite_dish_display_name', // 雷达残骸
+  'junkyard_display_name', // 垃圾场
+  'sewer_display_name',   // 下水道
+  'harbor_display_name',  // 港口
+  'harbor_2_display_name' // 港口2
+];
 
 // 默认通知设置
 const DEFAULT_NOTIFICATION_SETTINGS = {
@@ -238,7 +256,8 @@ class UserEventMonitor extends EventEmitter {
       knownVendingMachines: new Map(),
       isFirstPoll: true,
       teamMembers: new Map(),
-      isFirstTeamPoll: true
+      isFirstTeamPoll: true,
+      teamLeaderSteamId: null
     });
 
     // 获取古迹位置
@@ -480,7 +499,7 @@ class UserEventMonitor extends EventEmitter {
       const mapSize = this.rustPlusService.getMapSize(serverId);
       const position = formatPosition(ship.x, ship.y, mapSize);
       const now = Date.now();
-      const direction = this.getMapDirection(ship.x, ship.y, mapSize);
+      const direction = getDirection(ship.x, ship.y, mapSize);
 
       logger.server(serverId, `🚢 货船刷新 @ ${position} ${direction}`);
 
@@ -730,16 +749,19 @@ class UserEventMonitor extends EventEmitter {
       }
 
       const position = formatPosition(heli.x, heli.y, mapSize);
-      const direction = this.getMapDirection(heli.x, heli.y, mapSize);
+      const direction = getDirection(heli.x, heli.y, mapSize);
       const now = Date.now();
 
+      // 预测直升机目的地纪念碑
+      let predictedMonument = null;
       let predictedPosition = null;
       if (typeof heli.rotation === 'number') {
-        const theta = heli.rotation * Math.PI / 180;
-        const STEP = 500;
-        const px = Math.min(Math.max(heli.x + Math.cos(theta) * STEP, 0), mapSize);
-        const py = Math.min(Math.max(heli.y + Math.sin(theta) * STEP, 0), mapSize);
-        predictedPosition = formatPosition(px, py, mapSize);
+        const monuments = this.monuments.get(serverId) || [];
+        const prediction = this.predictHeliDestination(heli, monuments, mapSize);
+        if (prediction) {
+          predictedMonument = prediction.monument;
+          predictedPosition = prediction.position;
+        }
       }
 
       logger.server(serverId, `🚁 武装直升机刷新 @ ${position} ${direction}`);
@@ -754,6 +776,7 @@ class UserEventMonitor extends EventEmitter {
         y: heli.y,
         position,
         direction,
+        predictedMonument,
         predictedPosition,
         time: now
       };
@@ -763,8 +786,8 @@ class UserEventMonitor extends EventEmitter {
 
       if (this.isNotificationEnabled('heli_spawn')) {
         try {
-          const message = predictedPosition
-            ? notify('heli_spawn_predicted', { position, direction, predicted: predictedPosition })
+          const message = predictedMonument
+            ? notify('heli_spawn_predicted', { position, direction, predictedMonument, predictedPosition })
             : notify('heli_spawn', { position, direction });
           if (message) {
             await this.rustPlusService.sendTeamMessage(serverId, message, { isBot: true });
@@ -815,7 +838,7 @@ class UserEventMonitor extends EventEmitter {
         }
 
         const position = formatPosition(crashPos.x, crashPos.y, mapSize);
-        const direction = this.getMapDirection(crashPos.x, crashPos.y, mapSize);
+        const direction = getDirection(crashPos.x, crashPos.y, mapSize);
 
         logger.server(serverId, `武装直升机被击落 @ ${position} ${direction}`);
 
@@ -904,7 +927,7 @@ class UserEventMonitor extends EventEmitter {
 
       } else {
         // 离开
-        const direction = this.getMapDirection(lastPos.x, lastPos.y, mapSize);
+        const direction = getDirection(lastPos.x, lastPos.y, mapSize);
         logger.server(serverId, `🚁 武装直升机离开 ${direction}`);
 
         eventData.lastEvents.patrolHeliLeave = now;
@@ -988,7 +1011,7 @@ class UserEventMonitor extends EventEmitter {
         if (distance <= EventTiming.OIL_RIG_CHINOOK_MAX_SPAWN_DISTANCE) {
           foundOilRig = true;
           const oilRigPosition = formatPosition(oilRig.x, oilRig.y, mapSize);
-          const direction = this.getMapDirection(oilRig.x, oilRig.y, mapSize);
+          const direction = getDirection(oilRig.x, oilRig.y, mapSize);
 
           logger.server(serverId, `🛢️ 小油井已触发 @ ${oilRigPosition} ${direction}`);
 
@@ -1154,7 +1177,7 @@ class UserEventMonitor extends EventEmitter {
           if (distance <= EventTiming.OIL_RIG_CHINOOK_MAX_SPAWN_DISTANCE) {
             foundOilRig = true;
             const oilRigPosition = formatPosition(oilRig.x, oilRig.y, mapSize);
-            const direction = this.getMapDirection(oilRig.x, oilRig.y, mapSize);
+            const direction = getDirection(oilRig.x, oilRig.y, mapSize);
 
             logger.server(serverId, `🛢️ 大油井已触发 @ ${oilRigPosition} ${direction}`);
 
@@ -1316,7 +1339,7 @@ class UserEventMonitor extends EventEmitter {
 
       // 不在油井附近，是普通 CH47 刷新（投放箱子）
       if (!foundOilRig) {
-        const direction = this.getMapDirection(ch47.x, ch47.y, mapSize);
+        const direction = getDirection(ch47.x, ch47.y, mapSize);
 
         logger.server(serverId, `🚁 CH47 出现 @ ${position} ${direction} (投放上锁箱子)`);
 
@@ -1776,12 +1799,63 @@ class UserEventMonitor extends EventEmitter {
             lastOfflineTime: member.isOnline ? null : now
           });
         }
+        eventData.teamLeaderSteamId = teamInfo.leaderSteamId?.toString() || null;
         eventData.isFirstTeamPoll = false;
         return;
       }
 
       // 检测成员变化（完整实现类似原 EventMonitorService）
       // 这里简化实现，重点是添加 userId 到所有事件
+
+      // 队伍切换检测: 队长变化 + 同时有成员离开和加入 = 切换了队伍
+      const currentLeaderSteamId = teamInfo.leaderSteamId?.toString() || null;
+      const oldLeaderSteamId = eventData.teamLeaderSteamId;
+
+      if (oldLeaderSteamId && currentLeaderSteamId && oldLeaderSteamId !== currentLeaderSteamId) {
+        const currentSteamIdSet = new Set(
+          teamInfo.members.map(m => m.steamId?.toString()).filter(Boolean)
+        );
+        const oldSteamIds = new Set(eventData.teamMembers.keys());
+
+        let leftCount = 0;
+        for (const id of oldSteamIds) {
+          if (!currentSteamIdSet.has(id)) leftCount++;
+        }
+        let newCount = 0;
+        for (const id of currentSteamIdSet) {
+          if (!oldSteamIds.has(id)) newCount++;
+        }
+
+        if (leftCount > 0 && newCount > 0) {
+          logger.server(serverId, `检测到队伍切换 (队长: ${oldLeaderSteamId} -> ${currentLeaderSteamId}, 离开: ${leftCount}, 新增: ${newCount}), 重置队伍数据`);
+
+          eventData.teamMembers.clear();
+          for (const member of teamInfo.members) {
+            const steamId = member.steamId?.toString();
+            if (!steamId) continue;
+            eventData.teamMembers.set(steamId, {
+              name: member.name,
+              x: member.x,
+              y: member.y,
+              isOnline: member.isOnline,
+              isAlive: member.isAlive,
+              deathTime: member.deathTime,
+              spawnTime: member.spawnTime,
+              lastMovement: now,
+              afkSeconds: 0,
+              lastOnlineTime: member.isOnline ? now : null,
+              lastOfflineTime: member.isOnline ? null : now
+            });
+          }
+          eventData.teamLeaderSteamId = currentLeaderSteamId;
+
+          // 同步扩展队友列表
+          await this.syncExtendedTeammates(serverId, teamInfo);
+          return;
+        }
+      }
+
+      eventData.teamLeaderSteamId = currentLeaderSteamId;
 
       // 检测玩家状态变化
       for (const member of teamInfo.members) {
@@ -1956,10 +2030,12 @@ class UserEventMonitor extends EventEmitter {
           } else {
             // 位置没变，累计 AFK 时间
             const timeSinceLastMove = Math.floor((now - oldState.lastMovement) / 1000);
+            // 状态转换检测：之前不是 AFK，现在刚达到阈值
+            const wasAfk = oldState.afkSeconds >= afkThresholdSeconds;
+            const isGoneAfk = !wasAfk && timeSinceLastMove >= afkThresholdSeconds;
             oldState.afkSeconds = timeSinceLastMove;
 
-            // 刚达到 AFK 阈值时发送通知（在阈值后 10 秒内只触发一次）
-            if (timeSinceLastMove >= afkThresholdSeconds && timeSinceLastMove < afkThresholdSeconds + 10) {
+            if (isGoneAfk) {
               logger.server(serverId, `💤 ${member.name} 已挂机 ${afkMinutes} 分钟`);
 
               const payload = {
@@ -2163,36 +2239,6 @@ class UserEventMonitor extends EventEmitter {
       x > mapSize - threshold ||
       y > mapSize - threshold
     );
-  }
-
-  /**
-   * 获取坐标在地图上的方向
-   */
-  getMapDirection(x, y, mapSize) {
-    const centerX = mapSize / 2;
-    const centerY = mapSize / 2;
-    const dx = x - centerX;
-    const dy = y - centerY;
-
-    let ns = '';
-    let ew = '';
-
-    if (dy > mapSize * 0.1) {
-      ns = '北';
-    } else if (dy < -mapSize * 0.1) {
-      ns = '南';
-    }
-
-    if (dx > mapSize * 0.1) {
-      ew = '东';
-    } else if (dx < -mapSize * 0.1) {
-      ew = '西';
-    }
-
-    if (ew && ns) {
-      return ew + ns;
-    }
-    return ew || ns || '中部';
   }
 
   /**
@@ -2421,6 +2467,87 @@ class UserEventMonitor extends EventEmitter {
         }
       }
     }
+  }
+
+  /**
+   * 预测直升机目的地纪念碑
+   * @param {Object} heli - 直升机对象 (x, y, rotation)
+   * @param {Array} monuments - 地图上的纪念碑列表
+   * @param {number} mapSize - 地图大小
+   * @returns {Object|null} { monument: 纪念碑名称, position: 网格坐标 } 或 null
+   */
+  predictHeliDestination(heli, monuments, mapSize) {
+    if (!monuments || monuments.length === 0) {
+      return null;
+    }
+
+    // 筛选出可访问的纪念碑
+    const accessibleMonuments = monuments.filter(m => {
+      return HELI_ACCESSIBLE_MONUMENTS.includes(m.token) && MONUMENT_INFO[m.token];
+    });
+
+    if (accessibleMonuments.length === 0) {
+      return null;
+    }
+
+    // 直升机朝向（弧度）
+    const heliRotation = (heli.rotation || 0) * Math.PI / 180;
+    const heliDirX = Math.cos(heliRotation);
+    const heliDirY = Math.sin(heliRotation);
+
+    let bestMonument = null;
+    let bestScore = -Infinity;
+
+    for (const monument of accessibleMonuments) {
+      // 计算从直升机到纪念碑的向量
+      const dx = monument.x - heli.x;
+      const dy = monument.y - heli.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance < 100) {
+        // 距离太近，跳过（可能已经在该纪念碑上空）
+        continue;
+      }
+
+      // 归一化向量
+      const normX = dx / distance;
+      const normY = dy / distance;
+
+      // 计算方向一致性（点积）：1 = 完全一致，-1 = 完全相反
+      const dotProduct = heliDirX * normX + heliDirY * normY;
+
+      // 只考虑方向大致一致的纪念碑（夹角 < 90度）
+      if (dotProduct < 0.3) {
+        continue;
+      }
+
+      // 评分：方向一致性权重高，距离适中更好
+      // 距离得分：太近或太远都不好，理想距离 500-2500 米
+      let distanceScore = 1.0;
+      if (distance < 500) {
+        distanceScore = distance / 500;
+      } else if (distance > 2500) {
+        distanceScore = 2500 / distance;
+      }
+
+      const score = dotProduct * 0.7 + distanceScore * 0.3;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMonument = monument;
+      }
+    }
+
+    if (bestMonument && MONUMENT_INFO[bestMonument.token]) {
+      const monumentName = MONUMENT_INFO[bestMonument.token].name;
+      const position = formatPosition(bestMonument.x, bestMonument.y, mapSize);
+      return {
+        monument: monumentName,
+        position: position
+      };
+    }
+
+    return null;
   }
 
   /**
