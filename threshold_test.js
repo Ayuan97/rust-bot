@@ -1,4 +1,4 @@
-const GRID_DIAMETER = 146.25; // 146.28571428571428
+const GRID_DIAMETER = 150; // Rust 官方网格大小 150m
 const mapSizes = [1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 6000];
 
 function calculateGrids(mapSize, threshold) {
@@ -8,12 +8,10 @@ function calculateGrids(mapSize, threshold) {
     return Math.round(correctedSize / GRID_DIAMETER);
 }
 
-console.log("MapSize | Remainder | T=120 (Grids) | T=73.125 (Grids) | Diff?");
-console.log("---|---|---|---|---");
+console.log("MapSize | Remainder | T=75 (Grids)");
+console.log("---|---|---");
 for (const size of mapSizes) {
     const r = size % GRID_DIAMETER;
-    const g120 = calculateGrids(size, 120);
-    const g73 = calculateGrids(size, 73.125);
-    const diff = g120 !== g73 ? "<<" : "";
-    console.log(`${size} | ${r.toFixed(2)} | ${g120} | ${g73} | ${diff}`);
+    const g75 = calculateGrids(size, 75);
+    console.log(`${size} | ${r.toFixed(2)} | ${g75}`);
 }

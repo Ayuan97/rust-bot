@@ -5,7 +5,7 @@
 
 import MONUMENT_INFO from './monument-info.js';
 
-const GRID_DIAMETER = 146.25; // 每个网格的大小
+const GRID_DIAMETER = 150; // 每个网格的大小（Rust 官方网格 150m）
 const SUB_GRID_SIZE = 3; // 子网格分割数量（3x3 = 9个子格）
 const CENTER_RATIO = 1 / 6; // 用于 getDirection 中的中心判定
 /**
@@ -24,7 +24,7 @@ function numberToLetters(num) {
 function getCorrectedMapSize(mapSize) {
   const remainder = mapSize % GRID_DIAMETER;
   const gridOffset = GRID_DIAMETER - remainder;
-  return (remainder < 120) ? mapSize - remainder : mapSize + gridOffset;
+  return (remainder < 75) ? mapSize - remainder : mapSize + gridOffset;
 }
 
 /**
