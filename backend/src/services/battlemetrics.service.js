@@ -370,7 +370,7 @@ class BattlemetricsService extends EventEmitter {
 
       return players;
     } catch (error) {
-      console.error('[BATTLEMETRICS] 获取服务器活动会话失败:', error.message);
+      // console.error('[BATTLEMETRICS] 获取服务器活动会话失败:', error.message);
       return [];
     }
   }

@@ -541,7 +541,7 @@ class UserRustPlusManager extends EventEmitter {
       }
     } catch (error) {
       const errorMsg = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
-      logger.error(`❌ 用户 ${this.userId} 发送消息失败 (${serverId}):`, errorMsg);
+      // logger.error(`❌ 用户 ${this.userId} 发送消息失败 (${serverId}):`, errorMsg);
     }
 
     chatQueue.processing = false;

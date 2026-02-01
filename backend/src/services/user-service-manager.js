@@ -246,22 +246,22 @@ class UserServiceManager extends EventEmitter {
 
       // 2. 绑定 RustPlus 事件到 UserServiceManager（转发所有事件）
       this.rustPlusService.on('server:connected', (data) => {
-        this.log('RUST+', `服务器 ${data.serverId} 已连接`);
+        // this.log('RUST+', `服务器 ${data.serverId} 已连接`);
         this.emit('server:connected', data);
       });
 
       this.rustPlusService.on('server:disconnected', (data) => {
-        this.log('RUST+', `服务器 ${data.serverId} 已断开`, 'WARN');
+        // this.log('RUST+', `服务器 ${data.serverId} 已断开`, 'WARN');
         this.emit('server:disconnected', data);
       });
 
       this.rustPlusService.on('server:error', (data) => {
-        this.log('RUST+', `服务器 ${data.serverId} 错误: ${data.error}`, 'ERROR');
+        // this.log('RUST+', `服务器 ${data.serverId} 错误: ${data.error}`, 'ERROR');
         this.emit('server:error', data);
       });
 
       this.rustPlusService.on('server:reconnecting', (data) => {
-        this.log('RUST+', `服务器 ${data.serverId} 正在重新连接...`);
+        // this.log('RUST+', `服务器 ${data.serverId} 正在重新连接...`);
         this.emit('server:reconnecting', data);
       });
 
@@ -897,8 +897,8 @@ class UserServiceManager extends EventEmitter {
     if (existing) {
       // 检查是否需要更新：对比 playerId 和 playerToken
       const needsUpdate = existing.playerId !== data.playerId ||
-                          existing.playerToken !== data.playerToken ||
-                          existing.name !== data.name;
+        existing.playerToken !== data.playerToken ||
+        existing.name !== data.name;
 
       // 检查是否已连接
       const isConnected = this.rustPlusService.connections.has(existing.id);
