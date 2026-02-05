@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FaBrain, FaShip, FaHelicopter, FaOilCan, FaChevronDown, FaChevronUp, FaClock, FaChartLine, FaCheckCircle, FaExclamationTriangle, FaHourglassHalf, FaRadiation, FaSatellite } from 'react-icons/fa';
+import { FaBrain, FaShip, FaHelicopter, FaOilCan, FaChevronDown, FaChevronUp, FaClock, FaChartLine, FaCheckCircle, FaExclamationTriangle, FaHourglassHalf, FaRadiation, FaSatellite, FaQuestionCircle, FaHistory } from 'react-icons/fa';
 import { getPredictions, getPredictionPatterns, getActiveTimers } from '../services/api';
 
 // 事件类型配置
@@ -162,8 +162,44 @@ function EventPredictions({ serverId, isDemo }) {
   };
 
   // 计算学习进度百分比 (0-100)
+  // 需要 10 个样本才能开始预测
   const getProgress = (count) => {
-    return Math.min(100, Math.round((count / 5) * 100));
+    return Math.min(100, Math.round((count / 10) * 100));
+  };
+
+  // 格式化间隔时间（分钟转可读格式）
+  const formatIntervalTime = (minutes) => {
+    if (!minutes) return '-';
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours > 0) {
+      return mins > 0 ? `${hours}小时${mins}分` : `${hours}小时`;
+    }
+    return `${mins}分钟`;
+  };
+
+  // 格式化上次事件时间（相对时间）
+  const formatLastEventTime = (timeStr) => {
+    if (!timeStr) return '-';
+    const eventTime = new Date(timeStr).getTime();
+    const diff = now - eventTime;
+
+    if (diff < 0) return '-';
+
+    const minutes = Math.floor(diff / (1000 * 60));
+    const hours = Math.floor(minutes / 60);
+
+    if (hours > 24) {
+      const days = Math.floor(hours / 24);
+      return `${days}天前`;
+    }
+    if (hours > 0) {
+      return `${hours}小时前`;
+    }
+    if (minutes > 0) {
+      return `${minutes}分钟前`;
+    }
+    return '刚刚';
   };
 
   if (loading) {
@@ -279,7 +315,7 @@ function EventPredictions({ serverId, isDemo }) {
                 </div>
 
                 <div className="text-right">
-                  <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">预计时间</div>
+                  <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">预计时间 (现实时间)</div>
                   <div className="text-xs font-bold text-gray-300 font-mono">
                     {new Date(nextPrediction.predictedTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                   </div>
@@ -293,8 +329,20 @@ function EventPredictions({ serverId, isDemo }) {
           {/* 学习进度面板 */}
           <div className="space-y-3 pt-2 border-t border-white/5">
             <div className="flex items-center justify-between">
-              <div className="text-[10px] font-black uppercase text-gray-500 tracking-widest">
-                预测模型训练中
+              <div className="flex items-center gap-2">
+                <div className="text-[10px] font-black uppercase text-gray-500 tracking-widest">
+                  预测模型学习状态
+                </div>
+                <div className="group relative">
+                  <FaQuestionCircle className="text-gray-600 text-[10px] cursor-help" />
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 border border-white/10 rounded text-[10px] text-gray-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
+                    <div className="font-bold text-white mb-1">预测原理</div>
+                    <p className="mb-2">系统记录每次货船/直升机刷新的时间间隔，学习服务器的刷新规律。</p>
+                    <p className="mb-2">需要收集 <span className="text-purple-400 font-bold">10 次</span>刷新数据才能开始预测。</p>
+                    <p className="text-yellow-400">注意：刷新间隔为 2-4 小时不等，预测仅供参考。</p>
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full border-4 border-transparent border-t-gray-900"></div>
+                  </div>
+                </div>
               </div>
               <div className="text-[9px] text-gray-600">
                 基于服务器历史数据
@@ -307,34 +355,81 @@ function EventPredictions({ serverId, isDemo }) {
                 const pattern = patterns.find(p => p.eventType === type);
                 const count = pattern ? pattern.sampleCount : 0;
                 const progress = getProgress(count);
-                const isReady = count >= 5;
+                const isReady = count >= 10;
                 const Icon = config.icon;
+                const avgMinutes = pattern?.avgIntervalMinutes;
+                const lastEventTime = pattern?.lastEventTime;
 
                 return (
-                  <div key={type} className="bg-white/[0.02] border border-white/5 tactic-cut p-2 flex items-center gap-3 group hover:bg-white/[0.04] transition-colors">
-                    <div className={`w-8 h-8 flex items-center justify-center ${config.bgColor} ${config.color} tactic-cut`}>
-                      <Icon />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between mb-1">
-                        <span className="text-xs font-bold text-gray-300">{config.label}</span>
-                        <span className={`text-[10px] font-mono ${isReady ? 'text-green-400' : 'text-gray-500'}`}>
-                          {count}/5 样本
-                        </span>
+                  <div key={type} className="bg-white/[0.02] border border-white/5 tactic-cut p-3 group hover:bg-white/[0.04] transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 flex items-center justify-center ${config.bgColor} ${config.color} tactic-cut flex-shrink-0`}>
+                        <Icon />
                       </div>
 
-                      <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full ${isReady ? 'bg-green-500' : config.progressColor} transition-all duration-1000 ease-out relative`}
-                          style={{ width: `${progress}%` }}
-                        >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between mb-1">
+                          <span className="text-xs font-bold text-gray-300">{config.label}</span>
+                          <span className={`text-[10px] font-mono ${isReady ? 'text-green-400' : 'text-gray-500'}`}>
+                            {count}/10 样本
+                          </span>
                         </div>
+
+                        <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full ${isReady ? 'bg-green-500' : config.progressColor} transition-all duration-1000 ease-out relative`}
+                            style={{ width: `${progress}%` }}
+                          >
+                          </div>
+                        </div>
+
+                        {/* 详细信息 */}
+                        {count > 0 && (
+                          <div className="mt-2 flex items-center gap-4 text-[10px] text-gray-500">
+                            {avgMinutes && (
+                              <div className="flex items-center gap-1">
+                                <FaClock className="text-[8px]" />
+                                <span>平均间隔: <span className="text-gray-400">{formatIntervalTime(avgMinutes)}</span></span>
+                              </div>
+                            )}
+                            {lastEventTime && (
+                              <div className="flex items-center gap-1">
+                                <FaHistory className="text-[8px]" />
+                                <span>上次: <span className="text-gray-400">{formatLastEventTime(lastEventTime)}</span></span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 状态提示 */}
+                        {count === 0 && (
+                          <div className="mt-2 text-[10px] text-gray-600">
+                            等待首次事件...
+                          </div>
+                        )}
+                        {count > 0 && count < 10 && (
+                          <div className="mt-2 text-[10px] text-gray-600">
+                            还需 {10 - count} 次刷新数据
+                          </div>
+                        )}
+                        {isReady && (
+                          <div className="mt-2 text-[10px] text-green-500/80">
+                            已就绪，将在事件发生后生成预测
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
                 );
               })}
+            </div>
+
+            {/* 置信度说明 */}
+            <div className="p-2 bg-yellow-500/5 border border-yellow-500/20 tactic-cut">
+              <div className="text-[10px] text-yellow-500/80">
+                <span className="font-bold">置信度说明：</span>
+                表示预测的可靠程度。75% 以上才会发送通知。刷新间隔波动较大时置信度会降低。
+              </div>
             </div>
           </div>
         </div>

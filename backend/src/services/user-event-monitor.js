@@ -76,7 +76,7 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   prediction_cargo_enabled: true,      // 货船预测
   prediction_heli_enabled: true,       // 直升机预测
   prediction_advance_minutes: 5,       // 提前通知时间（分钟）
-  prediction_min_confidence: 0.6,      // 最低置信度（0-1）
+  prediction_min_confidence: 0.75,     // 最低置信度（0-1）- 提高阈值以减少不准确预测
 };
 
 class UserEventMonitor extends EventEmitter {
@@ -752,19 +752,10 @@ class UserEventMonitor extends EventEmitter {
       const direction = getDirection(heli.x, heli.y, mapSize);
       const now = Date.now();
 
-      // 预测直升机目的地纪念碑
-      let predictedMonument = null;
-      let predictedPosition = null;
-      if (typeof heli.rotation === 'number') {
-        const monuments = this.monuments.get(serverId) || [];
-        const prediction = this.predictHeliDestination(heli, monuments, mapSize);
-        if (prediction) {
-          predictedMonument = prediction.monument;
-          predictedPosition = prediction.position;
-        }
-      }
+      // 注意：已移除直升机目的地预测
+      // 根据 Rust Wiki，直升机会随机访问纪念碑，没有固定路线，预测会误导用户
 
-      logger.server(serverId, `🚁 武装直升机刷新 @ ${position} ${direction}`);
+      logger.server(serverId, `武装直升机刷新 @ ${position} ${direction}`);
 
       eventData.lastEvents.patrolHeliSpawn = now;
 
@@ -776,8 +767,6 @@ class UserEventMonitor extends EventEmitter {
         y: heli.y,
         position,
         direction,
-        predictedMonument,
-        predictedPosition,
         time: now
       };
 
@@ -786,9 +775,7 @@ class UserEventMonitor extends EventEmitter {
 
       if (this.isNotificationEnabled('heli_spawn')) {
         try {
-          const message = predictedMonument
-            ? notify('heli_spawn_predicted', { position, direction, predictedMonument, predictedPosition })
-            : notify('heli_spawn', { position, direction });
+          const message = notify('heli_spawn', { position, direction });
           if (message) {
             await this.rustPlusService.sendTeamMessage(serverId, message, { isBot: true });
           }

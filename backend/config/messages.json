@@ -21,7 +21,6 @@
     "small_oil_reset_warning": "小油井 3 分钟后重置，可以准备再次前往",
     "large_oil_reset_warning": "大油井 3 分钟后重置，可以准备再次前往",
     "heli_spawn": "武装直升机出现 {direction} 坐标 {position}",
-    "heli_spawn_predicted": "武装直升机出现 {direction} 坐标 {position} 预计飞往 {predictedMonument} ({predictedPosition})",
     "heli_downed": "武装直升机被击落 {direction} 坐标 {position}",
     "heli_leave": "武装直升机已离开 {direction}",
     "bradley_destroyed": "坦克已被摧毁 @ 发射场",

@@ -29,13 +29,14 @@ const EVENT_TYPE_NAMES = {
 
 class UserEventPrediction extends EventEmitter {
   // 最小样本数（低于此不预测）
-  static MIN_SAMPLES = 5;
+  // 注意：货船/直升机刷新间隔为 2-4 小时（变化范围 100%），需要更多样本才能准确预测
+  static MIN_SAMPLES = 10;
   // 滑动窗口大小
   static WINDOW_SIZE = 20;
   // 异常值过滤阈值（超过平均值的倍数）
   static OUTLIER_THRESHOLD = 3;
   // 最小置信度阈值
-  static MIN_CONFIDENCE = 0.6;
+  static MIN_CONFIDENCE = 0.75;
   // 默认提前通知时间（毫秒）
   static DEFAULT_ADVANCE_MINUTES = 5;
 

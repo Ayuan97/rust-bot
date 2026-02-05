@@ -35,7 +35,7 @@ const DEFAULT_SETTINGS = {
   prediction_heli_enabled: true,
   prediction_oil_rig_enabled: true,
   prediction_advance_minutes: 5,
-  prediction_min_confidence: 0.6,
+  prediction_min_confidence: 0.75,
 };
 
 // 通知分组配置
