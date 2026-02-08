@@ -59,8 +59,6 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   oil_rig_triggered: true,
   oil_rig_warning: true,
   oil_rig_unlocked: true,
-  oil_rig_radiation_warning: true,  // 辐射警告提醒
-  oil_rig_reset: true,              // 油井重置提醒
   bradley_destroyed: true,          // 坦克被摧毁提醒
   bradley_crate: true,              // 坦克箱子可拾取提醒
   bradley_respawn: true,            // 坦克重生提醒
@@ -1087,62 +1085,6 @@ class UserEventMonitor extends EventEmitter {
             }
           });
 
-          // 启动辐射警告计时器（42分钟 = 45分钟 - 3分钟提前）
-          EventTimerManager.stopTimer('small_oil_radiation_warning', serverId);
-          EventTimerManager.startTimer(
-            'small_oil_radiation_warning',
-            serverId,
-            EventTiming.OIL_RIG_RADIATION_START_TIME - EventTiming.OIL_RIG_RADIATION_WARNING_TIME,
-            async () => {
-              logger.server(serverId, `小油井辐射即将开启，请尽快离开`);
-
-              this.emit('small_oil_rig:radiation_warning', {
-                userId: this.userId,
-                serverId,
-                time: Date.now()
-              });
-
-              if (this.isNotificationEnabled('oil_rig_radiation_warning')) {
-                try {
-                  const msg = notify('small_oil_radiation_warning', {});
-                  if (msg) {
-                    await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-                  }
-                } catch (e) {
-                  logger.debug(`发送小油井辐射警告失败: ${e.message}`);
-                }
-              }
-            }
-          );
-
-          // 启动油井重置警告计时器（47分钟 = 50分钟 - 3分钟提前）
-          EventTimerManager.stopTimer('small_oil_reset', serverId);
-          EventTimerManager.startTimer(
-            'small_oil_reset',
-            serverId,
-            EventTiming.OIL_RIG_RESET_TIME - EventTiming.OIL_RIG_RESET_WARNING_TIME,
-            async () => {
-              logger.server(serverId, `小油井 3 分钟后重置，可以准备再次前往`);
-
-              this.emit('small_oil_rig:reset_warning', {
-                userId: this.userId,
-                serverId,
-                time: Date.now()
-              });
-
-              if (this.isNotificationEnabled('oil_rig_reset')) {
-                try {
-                  const msg = notify('small_oil_reset_warning', {});
-                  if (msg) {
-                    await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-                  }
-                } catch (e) {
-                  logger.debug(`发送小油井重置警告失败: ${e.message}`);
-                }
-              }
-            }
-          );
-
           // 标记 CH47 类型为油井
           eventData.ch47Types.set(ch47.id, 'oil_rig');
 
@@ -1252,62 +1194,6 @@ class UserEventMonitor extends EventEmitter {
                 }
               }
             });
-
-            // 启动辐射警告计时器（42分钟 = 45分钟 - 3分钟提前）
-            EventTimerManager.stopTimer('large_oil_radiation_warning', serverId);
-            EventTimerManager.startTimer(
-              'large_oil_radiation_warning',
-              serverId,
-              EventTiming.OIL_RIG_RADIATION_START_TIME - EventTiming.OIL_RIG_RADIATION_WARNING_TIME,
-              async () => {
-                logger.server(serverId, `大油井辐射即将开启，请尽快离开`);
-
-                this.emit('large_oil_rig:radiation_warning', {
-                  userId: this.userId,
-                  serverId,
-                  time: Date.now()
-                });
-
-                if (this.isNotificationEnabled('oil_rig_radiation_warning')) {
-                  try {
-                    const msg = notify('large_oil_radiation_warning', {});
-                    if (msg) {
-                      await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-                    }
-                  } catch (e) {
-                    logger.debug(`发送大油井辐射警告失败: ${e.message}`);
-                  }
-                }
-              }
-            );
-
-            // 启动油井重置警告计时器（47分钟 = 50分钟 - 3分钟提前）
-            EventTimerManager.stopTimer('large_oil_reset', serverId);
-            EventTimerManager.startTimer(
-              'large_oil_reset',
-              serverId,
-              EventTiming.OIL_RIG_RESET_TIME - EventTiming.OIL_RIG_RESET_WARNING_TIME,
-              async () => {
-                logger.server(serverId, `大油井 3 分钟后重置，可以准备再次前往`);
-
-                this.emit('large_oil_rig:reset_warning', {
-                  userId: this.userId,
-                  serverId,
-                  time: Date.now()
-                });
-
-                if (this.isNotificationEnabled('oil_rig_reset')) {
-                  try {
-                    const msg = notify('large_oil_reset_warning', {});
-                    if (msg) {
-                      await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
-                    }
-                  } catch (e) {
-                    logger.debug(`发送大油井重置警告失败: ${e.message}`);
-                  }
-                }
-              }
-            );
 
             // 标记 CH47 类型为油井
             eventData.ch47Types.set(ch47.id, 'oil_rig');

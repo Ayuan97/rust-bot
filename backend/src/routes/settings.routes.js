@@ -23,6 +23,8 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   player_death: true,
   player_online: true,
   player_offline: true,
+  player_joined_team: true,
+  player_left_team: true,
   player_afk: true,
   player_afk_minutes: 3,        // AFK 触发时间（分钟），默认 3 分钟
   player_afk_template: '',      // AFK 消息模板（空则使用默认）
@@ -50,10 +52,31 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   ch47_spawn: false,
   vending_new: false,
 
+  // 坦克通知
+  bradley_destroyed: true,
+  bradley_crate: true,
+  bradley_respawn: true,
+
   // 昼夜提醒
   day_night_enabled: true,      // 是否启用昼夜提醒
   day_notify_minutes: 5,        // 天亮前几分钟开始提醒
   night_notify_minutes: 8,      // 天黑前几分钟开始提醒
+
+  // 游戏内命令
+  cmd_help: true,
+  cmd_time: true,
+  cmd_pop: true,
+  cmd_team: true,
+  cmd_online: true,
+  cmd_afk: true,
+  cmd_cargo: true,
+  cmd_heli: true,
+  cmd_small: true,
+  cmd_large: true,
+  cmd_shop: true,
+  cmd_tr: true,
+  cmd_trf: true,
+  cmd_leader: true,
 };
 
 /**
@@ -260,6 +283,10 @@ router.post('/notifications', async (req, res) => {
       if (userService.dayNightNotifier) {
         await userService.dayNightNotifier.loadNotificationSettings();
       }
+      // 刷新命令服务的设置缓存
+      if (userService.commandsService) {
+        await userService.commandsService.loadCommandSettings();
+      }
       console.log(`[Settings] 用户 ${req.user.id} 的通知设置缓存已刷新`);
     }
 
@@ -306,6 +333,10 @@ router.post('/notifications/reset', async (req, res) => {
       }
       if (userService.dayNightNotifier) {
         await userService.dayNightNotifier.loadNotificationSettings();
+      }
+      // 刷新命令服务的设置缓存
+      if (userService.commandsService) {
+        await userService.commandsService.loadCommandSettings();
       }
       console.log(`[Settings] 用户 ${req.user.id} 的通知设置已重置并刷新缓存`);
     }

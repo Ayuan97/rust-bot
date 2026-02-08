@@ -36,6 +36,9 @@ class UserCommands extends EventEmitter {
     // 设备命令缓存（serverId -> Device[]）
     this.deviceCommandsCache = new Map();
 
+    // 命令开关设置缓存
+    this.commandSettings = null;
+
     // 时间配置缓存（serverId -> { dayLengthMinutes, sunrise, sunset, lastTime, lastFetchTime }）
     this.timeCache = new Map();
     this.TIME_CACHE_TTL = 5 * 60 * 1000; // 5分钟刷新一次配置
@@ -183,6 +186,51 @@ class UserCommands extends EventEmitter {
   }
 
   /**
+   * 从数据库加载命令开关设置
+   */
+  async loadCommandSettings() {
+    try {
+      const [rows] = await db.query(
+        'SELECT settings FROM notification_settings WHERE userId = ?',
+        [this.userId]
+      );
+
+      if (rows.length === 0) {
+        this.commandSettings = null;
+        return;
+      }
+
+      const settings = typeof rows[0].settings === 'string'
+        ? JSON.parse(rows[0].settings)
+        : (rows[0].settings || {});
+
+      // 只提取 cmd_ 开头的设置
+      this.commandSettings = {};
+      for (const [key, value] of Object.entries(settings)) {
+        if (key.startsWith('cmd_')) {
+          this.commandSettings[key] = value;
+        }
+      }
+    } catch (error) {
+      logger.error(`加载命令设置失败 (用户 ${this.userId}):`, error);
+      this.commandSettings = null;
+    }
+  }
+
+  /**
+   * 检查命令是否启用
+   * @param {string} name - 命令名（不含前缀）
+   * @returns {boolean}
+   */
+  isCommandEnabled(name) {
+    if (!this.commandSettings) {
+      return true; // 未加载设置时默认启用
+    }
+    const key = `cmd_${name}`;
+    return this.commandSettings[key] !== false;
+  }
+
+  /**
    * 处理消息（入口方法）
    */
   async handleMessage(serverId, name, steamId, message) {
@@ -209,6 +257,10 @@ class UserCommands extends EventEmitter {
       // 1. 尝试内置命令
       const command = this.commands.get(commandName);
       if (command) {
+        // 检查命令是否启用
+        if (!this.isCommandEnabled(commandName)) {
+          return true; // 静默忽略
+        }
         try {
           const response = await command.handler(serverId, args, context);
           if (response) {
@@ -1065,6 +1117,7 @@ class UserCommands extends EventEmitter {
     this.commands.clear();
     this.deviceCommandsCache.clear();
     this.timeCache.clear();
+    this.commandSettings = null;
     this.removeAllListeners();
     logger.debug(`👤 UserCommands 已销毁 (userId: ${this.userId})`);
   }

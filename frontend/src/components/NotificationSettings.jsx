@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
-import { FaBell, FaUser, FaShip, FaHelicopter, FaOilCan, FaBox, FaSync, FaSun, FaMoon } from 'react-icons/fa';
+import { FaBell, FaUser, FaShip, FaHelicopter, FaOilCan, FaBox, FaSync, FaSun, FaMoon, FaCrosshairs, FaTerminal } from 'react-icons/fa';
 import { useToast } from './Toast';
 import api from '../services/api';
 
@@ -8,6 +8,8 @@ const DEFAULT_SETTINGS = {
   player_death: true,
   player_online: true,
   player_offline: true,
+  player_joined_team: true,
+  player_left_team: true,
   player_afk: true,
   player_afk_minutes: 3,
   player_afk_template: '',
@@ -26,9 +28,26 @@ const DEFAULT_SETTINGS = {
   crate_spawn: false,
   ch47_spawn: false,
   vending_new: false,
+  bradley_destroyed: true,
+  bradley_crate: true,
+  bradley_respawn: true,
   day_night_enabled: true,
   day_notify_minutes: 5,
   night_notify_minutes: 8,
+  cmd_help: true,
+  cmd_time: true,
+  cmd_pop: true,
+  cmd_team: true,
+  cmd_online: true,
+  cmd_afk: true,
+  cmd_cargo: true,
+  cmd_heli: true,
+  cmd_small: true,
+  cmd_large: true,
+  cmd_shop: true,
+  cmd_tr: true,
+  cmd_trf: true,
+  cmd_leader: true,
 };
 
 // 通知分组配置
@@ -41,6 +60,8 @@ const NOTIFICATION_GROUPS = [
       { key: 'player_death', label: '死亡通知' },
       { key: 'player_online', label: '上线通知' },
       { key: 'player_offline', label: '下线通知' },
+      { key: 'player_joined_team', label: '加入队伍' },
+      { key: 'player_left_team', label: '离开队伍' },
       { key: 'player_afk', label: '挂机检测' },
       { key: 'player_afk_return', label: '挂机返回通知' },
     ]
@@ -77,6 +98,16 @@ const NOTIFICATION_GROUPS = [
     ]
   },
   {
+    id: 'bradley',
+    label: '坦克警报',
+    icon: FaCrosshairs,
+    items: [
+      { key: 'bradley_destroyed', label: '坦克摧毁' },
+      { key: 'bradley_crate', label: '箱子可拾取' },
+      { key: 'bradley_respawn', label: '坦克重生' },
+    ]
+  },
+  {
     id: 'other',
     label: '其他事件',
     icon: FaBox,
@@ -84,6 +115,27 @@ const NOTIFICATION_GROUPS = [
       { key: 'crate_spawn', label: '上锁箱子' },
       { key: 'ch47_spawn', label: 'CH47 出动' },
       { key: 'vending_new', label: '新售货机' },
+    ]
+  },
+  {
+    id: 'commands',
+    label: '游戏命令',
+    icon: FaTerminal,
+    items: [
+      { key: 'cmd_help', label: '!help' },
+      { key: 'cmd_time', label: '!time' },
+      { key: 'cmd_pop', label: '!pop' },
+      { key: 'cmd_team', label: '!team' },
+      { key: 'cmd_online', label: '!online' },
+      { key: 'cmd_afk', label: '!afk' },
+      { key: 'cmd_cargo', label: '!cargo' },
+      { key: 'cmd_heli', label: '!heli' },
+      { key: 'cmd_small', label: '!small' },
+      { key: 'cmd_large', label: '!large' },
+      { key: 'cmd_shop', label: '!shop' },
+      { key: 'cmd_tr', label: '!tr' },
+      { key: 'cmd_trf', label: '!trf' },
+      { key: 'cmd_leader', label: '!leader' },
     ]
   }
 ];
