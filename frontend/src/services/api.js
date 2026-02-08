@@ -98,14 +98,6 @@ export const checkDeviceReachability = (serverId, removeUnreachable = false) =>
 
 export const getEvents = (serverId, limit = 100) => api.get(`/servers/${serverId}/events`, { params: { limit } });
 
-// ========== 事件预测 ==========
-
-export const getPredictions = (serverId) => api.get(`/predictions/${serverId}`);
-
-export const getPredictionPatterns = (serverId) => api.get(`/predictions/${serverId}/patterns`);
-
-export const resetPredictionPatterns = (serverId) => api.post(`/predictions/${serverId}/patterns/reset`);
-
 export const getActiveTimers = (serverId) => api.get(`/servers/${serverId}/timers`);
 
 // ========== Battlemetrics ==========

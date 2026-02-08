@@ -11,7 +11,6 @@ import UserEventMonitor from './user-event-monitor.js';
 import UserAutomation from './user-automation.js';
 import UserCommands from './user-commands.js';
 import DayNightNotifier from './day-night-notifier.js';
-import UserEventPrediction from './user-event-prediction.js';
 import UserTrackingService from './user-tracking.service.js';
 import battlemetricsService from './battlemetrics.service.js';
 
@@ -39,7 +38,6 @@ class UserServiceManager extends EventEmitter {
     this.automationService = new UserAutomation(userId, this.rustPlusService);      // 设备自动化
     this.commandsService = new UserCommands(userId, this.rustPlusService, this.eventMonitorService);  // 游戏内命令
     this.dayNightNotifier = new DayNightNotifier(userId, this.rustPlusService);  // 昼夜提醒
-    this.predictionService = new UserEventPrediction(userId, this.rustPlusService, this.eventMonitorService);  // 事件预测
     this.trackingService = new UserTrackingService(userId);  // 玩家追踪
 
     // 待确认的服务器配对数据（单服务器限制）
@@ -464,56 +462,12 @@ class UserServiceManager extends EventEmitter {
         this.emit('player:contribution', { ...data, userId: this.userId });
       });
 
-      // 转发事件到预测服务进行学习
-      this.eventMonitorService.on('cargo:spawn', async (data) => {
-        try {
-          await this.predictionService.recordEvent(data.serverId, 'CARGO_SPAWN', data.time);
-        } catch (e) {
-          this.log('PREDICTION', `记录货船事件失败: ${e.message}`, 'ERROR');
-        }
-      });
-
-      this.eventMonitorService.on('patrol_heli:spawn', async (data) => {
-        try {
-          await this.predictionService.recordEvent(data.serverId, 'HELI_SPAWN', data.time);
-        } catch (e) {
-          this.log('PREDICTION', `记录直升机事件失败: ${e.message}`, 'ERROR');
-        }
-      });
-
-      // 注意: 油井事件不纳入预测系统，因为油井事件是玩家触发的（开始 hack 箱子后 CH47 才会来）
-      // 油井没有像货船/直升机那样的固定刷新间隔
-
       // 5. 绑定 Automation 事件到 UserServiceManager
       this.automationService.on('automation:executed', (data) => {
         this.emit('automation:executed', { ...data, userId: this.userId });
       });
 
-      // 6. 绑定 Prediction 事件到 UserServiceManager
-      this.predictionService.on('prediction:created', (data) => {
-        this.log('PREDICTION', `生成预测: ${data.eventTypeName} @ ${new Date(data.prediction.predictedTime).toLocaleString()}`);
-        this.emit('prediction:created', data);
-      });
-
-      this.predictionService.on('prediction:notified', (data) => {
-        this.log('PREDICTION', `预测通知已发送: ${data.eventTypeName}`);
-        this.emit('prediction:notified', data);
-      });
-
-      this.predictionService.on('prediction:occurred', (data) => {
-        this.log('PREDICTION', `预测事件已发生: ${data.eventTypeName}`);
-        this.emit('prediction:occurred', data);
-      });
-
-      this.predictionService.on('patterns:reset', (data) => {
-        this.log('PREDICTION', `学习数据已重置`);
-        this.emit('patterns:reset', data);
-      });
-
-      // 在子服务初始化完成后，立即加载预测通知设置
-      await this.predictionService.loadNotificationSettings();
-
-      // 7. 绑定 Tracking 事件到 UserServiceManager
+      // 6. 绑定 Tracking 事件到 UserServiceManager
       this.trackingService.on('tracking:online', (data) => {
         this.log('TRACKING', `玩家上线: ${data.playerName} @ ${data.serverName || '未知服务器'}`);
         this.emit('tracking:online', data);
@@ -586,9 +540,6 @@ class UserServiceManager extends EventEmitter {
           }
           if (this.dayNightNotifier) {
             await this.dayNightNotifier.start(server.id);
-          }
-          if (this.predictionService) {
-            await this.predictionService.start(server.id);
           }
         } catch (error) {
           console.error(`  ❌ 连接服务器 ${server.name || server.id} 失败:`, error.message);
@@ -688,15 +639,6 @@ class UserServiceManager extends EventEmitter {
         }
       }
 
-      // 停止预测服务
-      if (this.predictionService) {
-        try {
-          this.predictionService.stopAll();
-        } catch (error) {
-          console.error(`  [WARN] 停止预测服务失败:`, error.message);
-        }
-      }
-
       // 停止追踪服务
       if (this.trackingService) {
         try {
@@ -718,9 +660,6 @@ class UserServiceManager extends EventEmitter {
       }
       if (this.automationService) {
         this.automationService.removeAllListeners();
-      }
-      if (this.predictionService) {
-        this.predictionService.removeAllListeners();
       }
       if (this.trackingService) {
         this.trackingService.removeAllListeners();
@@ -757,9 +696,6 @@ class UserServiceManager extends EventEmitter {
     const automationStatus = this.automationService ? {
       activeServers: Array.from(this.automationService.pollIntervals.keys())
     } : null;
-    const predictionStatus = this.predictionService ? {
-      activeTimers: this.predictionService.notificationTimers.size
-    } : null;
     const trackingStatus = this.trackingService ? this.trackingService.getStatus() : null;
 
     return {
@@ -776,14 +712,12 @@ class UserServiceManager extends EventEmitter {
         automation: !!this.automationService,
         commands: !!this.commandsService,
         dayNight: !!this.dayNightNotifier,
-        prediction: !!this.predictionService,
         tracking: !!this.trackingService
       },
       rustPlusStats,
       fcmStatus,
       eventMonitorStatus,
       automationStatus,
-      predictionStatus,
       trackingStatus
     };
   }
@@ -845,15 +779,11 @@ class UserServiceManager extends EventEmitter {
       this.eventMonitorService.stop(oldServer.id);
       this.automationService.stop(oldServer.id);
       this.dayNightNotifier.stop(oldServer.id);
-      this.predictionService.stop(oldServer.id);
 
       // 3. 删除旧服务器（先删除关联的设备和事件日志）
       await db.query('DELETE FROM devices WHERE serverId = ?', [oldServer.id]);
       await db.query('DELETE FROM event_logs WHERE serverId = ?', [oldServer.id]);
       await db.query('DELETE FROM servers WHERE id = ?', [oldServer.id]);
-
-      // 清理预测服务的服务器地址缓存
-      this.predictionService.clearServerCache(oldServer.id);
 
       this.log('PAIRING', `已删除旧服务器: ${oldServer.name}`);
 
@@ -955,7 +885,6 @@ class UserServiceManager extends EventEmitter {
       await this.eventMonitorService.start(userServerId);
       await this.automationService.start(userServerId);
       await this.dayNightNotifier.start(userServerId);
-      await this.predictionService.start(userServerId);
       this.log('PAIRING', `所有实时服务已就绪`);
     } catch (svcError) {
       this.log('PAIRING', `实时服务启动失败: ${svcError.message}`, 'WARN');

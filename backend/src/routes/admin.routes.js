@@ -611,7 +611,6 @@ router.delete('/users/:id', async (req, res) => {
     await db.query('DELETE FROM orders WHERE userId = ?', [id]);
     await db.query('DELETE FROM subscriptions WHERE userId = ?', [id]);
     await db.query('DELETE FROM notification_settings WHERE userId = ?', [id]);
-    await db.query('DELETE FROM event_predictions WHERE userId = ?', [id]);
     await db.query('DELETE FROM extended_teammates WHERE userId = ?', [id]);
     await db.query('DELETE FROM users WHERE id = ?', [id]);
 

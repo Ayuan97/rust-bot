@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { FaShieldAlt, FaPlus, FaClock, FaUsers, FaSkullCrossbones, FaLock, FaLightbulb, FaDoorOpen, FaCrosshairs, FaFan, FaStar } from 'react-icons/fa';
 import ChatPanel from './ChatPanel';
 import EventTracker from './EventTracker';
-import EventPredictions from './EventPredictions';
 import SubscriptionStatus from './SubscriptionStatus';
 import { getDevices, getTeamDetailed } from '../services/api';
 import socketService from '../services/socket';
@@ -282,13 +281,6 @@ export default function HUDView({ server, teamData, isSubscriptionExpired, onPai
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-
-        {/* 事件预测面板 */}
-        <div className="tactic-border tactic-cut p-1 bg-black/40">
-          <div className="bg-black/40 px-4 py-3">
-            <EventPredictions serverId={server?.id} />
           </div>
         </div>
 

@@ -1586,46 +1586,17 @@ router.get('/:id/intelligence', async (req, res) => {
     }
 
     const server = serverRows[0];
-    const serverAddress = `${server.ip}:${server.port}`;
 
-    // 并行获取所有数据
-    const [[bmRows], [patterns], [predictions]] = await Promise.all([
-      server.battlemetricsId
-        ? db.query('SELECT * FROM public_servers WHERE battlemetricsId = ?', [server.battlemetricsId])
-        : [[]],
-      db.query('SELECT * FROM event_spawn_patterns WHERE serverAddress = ?', [serverAddress]),
-      db.query(
-        `SELECT * FROM event_predictions WHERE serverId = ? AND userId = ? AND status = 'PENDING' ORDER BY predictedTime ASC`,
-        [serverId, userId]
-      )
-    ]);
+    // 获取 Battlemetrics 数据
+    const [bmRows] = server.battlemetricsId
+      ? await db.query('SELECT * FROM public_servers WHERE battlemetricsId = ?', [server.battlemetricsId])
+      : [[]];
 
     const bmInfo = bmRows[0];
 
     // 获取连接状态
     const rustPlusService = getUserRustPlusService(userId);
     const connected = rustPlusService ? rustPlusService.isConnected(serverId) : false;
-
-    // 格式化模式数据
-    const MIN_SAMPLES = 5;
-    const formattedPatterns = patterns.map(p => ({
-      eventType: p.eventType,
-      sampleCount: p.sampleCount,
-      avgIntervalMinutes: p.avgInterval ? Math.round(p.avgInterval / 60000) : null,
-      stdDeviationMinutes: p.stdDeviation ? Math.round(p.stdDeviation / 60000) : null,
-      lastEventTime: p.lastEventTime,
-      canPredict: p.sampleCount >= MIN_SAMPLES && p.avgInterval !== null
-    }));
-
-    // 格式化预测数据
-    const formattedPredictions = predictions.map(p => ({
-      id: p.id,
-      eventType: p.eventType,
-      predictedTime: p.predictedTime,
-      confidenceLevel: p.confidenceLevel,
-      windowStart: p.windowStart,
-      windowEnd: p.windowEnd
-    }));
 
     res.json({
       success: true,
@@ -1663,12 +1634,7 @@ router.get('/:id/intelligence', async (req, res) => {
           modded: !!bmInfo.modded,
           pve: !!bmInfo.pve,
           updatedAt: bmInfo.updatedAt
-        } : null,
-        prediction: {
-          patterns: formattedPatterns,
-          activePredictions: formattedPredictions,
-          minSamples: MIN_SAMPLES
-        }
+        } : null
       }
     });
   } catch (error) {

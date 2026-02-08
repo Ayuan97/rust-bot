@@ -248,7 +248,6 @@ router.post('/delete-account', authenticate, async (req, res) => {
       await conn.query('DELETE FROM devices WHERE userId = ?', [userId]);
       await conn.query('DELETE FROM event_logs WHERE userId = ?', [userId]);
       await conn.query('DELETE FROM extended_teammates WHERE userId = ?', [userId]);
-      await conn.query('DELETE FROM event_predictions WHERE userId = ?', [userId]);
       await conn.query('DELETE FROM notification_settings WHERE userId = ?', [userId]);
       await conn.query('DELETE FROM servers WHERE userId = ?', [userId]);
       await conn.query('DELETE FROM orders WHERE userId = ?', [userId]);

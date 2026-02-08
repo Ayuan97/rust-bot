@@ -70,13 +70,6 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   day_night_enabled: true,
   day_notify_minutes: 5,
   night_notify_minutes: 8,
-  // 预测通知设置
-  // 注意: 油井事件不支持预测，因为油井是玩家触发的，没有固定刷新间隔
-  prediction_enabled: false,           // 预测功能总开关（默认关闭，需用户主动开启）
-  prediction_cargo_enabled: true,      // 货船预测
-  prediction_heli_enabled: true,       // 直升机预测
-  prediction_advance_minutes: 5,       // 提前通知时间（分钟）
-  prediction_min_confidence: 0.75,     // 最低置信度（0-1）- 提高阈值以减少不准确预测
 };
 
 class UserEventMonitor extends EventEmitter {
