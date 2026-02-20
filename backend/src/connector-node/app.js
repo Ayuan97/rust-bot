@@ -14,6 +14,8 @@ const NODE_MAX_PER_SERVER = Number(process.env.NODE_MAX_PER_SERVER || 4);
 const HEARTBEAT_INTERVAL_MS = Number(process.env.NODE_HEARTBEAT_INTERVAL_MS || 8000);
 const POLL_ASSIGNMENT_INTERVAL_MS = Number(process.env.NODE_POLL_ASSIGNMENT_INTERVAL_MS || 2000);
 const POLL_COMMAND_INTERVAL_MS = Number(process.env.NODE_POLL_COMMAND_INTERVAL_MS || 300);
+const CONTROL_PLANE_STALE_MS = Number(process.env.NODE_CONTROL_PLANE_STALE_MS || 45000);
+const CONTROL_PLANE_CHECK_INTERVAL_MS = Number(process.env.NODE_CONTROL_PLANE_CHECK_INTERVAL_MS || 2000);
 
 if (!INTERNAL_API_TOKEN) {
   // eslint-disable-next-line no-console
@@ -35,6 +37,9 @@ const activeSessions = new Map();
 let heartbeatTimer = null;
 let assignmentTimer = null;
 let commandTimer = null;
+let controlPlaneTimer = null;
+let lastControlPlaneSuccessAt = Date.now();
+let staleDisconnectTriggered = false;
 let stopped = false;
 
 function serializeResult(value) {
@@ -51,13 +56,26 @@ function serializeResult(value) {
   );
 }
 
+function markControlPlaneSuccess() {
+  const wasStale = staleDisconnectTriggered;
+  lastControlPlaneSuccessAt = Date.now();
+  staleDisconnectTriggered = false;
+
+  if (wasStale) {
+    // eslint-disable-next-line no-console
+    console.log('[connector-node] control plane recovered');
+  }
+}
+
 async function apiPost(path, payload) {
   const { data } = await http.post(path, payload);
+  markControlPlaneSuccess();
   return data;
 }
 
 async function apiGet(path, params = {}) {
   const { data } = await http.get(path, { params });
+  markControlPlaneSuccess();
   return data;
 }
 
@@ -140,6 +158,35 @@ async function disconnectSession(sessionId, reason = 'assignment_removed') {
   }
   activeSessions.delete(sessionId);
   await updateSessionState(sessionId, 'CLOSED', reason);
+}
+
+async function drainActiveSessionsForSafety(reason = 'control_plane_stale') {
+  for (const sessionId of Array.from(activeSessions.keys())) {
+    await disconnectSession(sessionId, reason);
+  }
+}
+
+async function monitorControlPlaneHealth() {
+  if (stopped) return;
+
+  const staleForMs = Date.now() - lastControlPlaneSuccessAt;
+  if (staleForMs <= CONTROL_PLANE_STALE_MS) {
+    return;
+  }
+  if (staleDisconnectTriggered) {
+    return;
+  }
+
+  staleDisconnectTriggered = true;
+  if (activeSessions.size === 0) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.error(
+    `[connector-node] control plane stale for ${staleForMs}ms, draining ${activeSessions.size} sessions`
+  );
+
+  await drainActiveSessionsForSafety('control_plane_stale');
 }
 
 async function syncAssignments() {
@@ -288,6 +335,13 @@ async function bootstrap() {
     pollCommands();
   }, POLL_COMMAND_INTERVAL_MS);
 
+  controlPlaneTimer = setInterval(() => {
+    monitorControlPlaneHealth().catch((error) => {
+      // eslint-disable-next-line no-console
+      console.error('[connector-node] control plane health check failed:', error.message);
+    });
+  }, CONTROL_PLANE_CHECK_INTERVAL_MS);
+
   rustManager.on('server:connected', ({ serverId }) => {
     updateSessionState(serverId, 'CONNECTED');
   });
@@ -330,6 +384,7 @@ async function shutdown(signal) {
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   if (assignmentTimer) clearInterval(assignmentTimer);
   if (commandTimer) clearInterval(commandTimer);
+  if (controlPlaneTimer) clearInterval(controlPlaneTimer);
 
   for (const sessionId of Array.from(activeSessions.keys())) {
     await disconnectSession(sessionId, 'node_shutdown');

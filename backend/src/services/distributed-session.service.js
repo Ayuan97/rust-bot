@@ -40,6 +40,8 @@ class DistributedSessionService extends EventEmitter {
     this.defaultNodeCapacity = Number(process.env.DISTRIBUTED_NODE_CAPACITY || 120);
     this.defaultMaxPerServer = Number(process.env.DISTRIBUTED_MAX_PER_SERVER || 4);
     this.gatewayHeartbeatTtlSec = Number(process.env.DISTRIBUTED_GATEWAY_HEARTBEAT_TTL_SEC || 30);
+    this.failoverGraceSec = Number(process.env.DISTRIBUTED_FAILOVER_GRACE_SEC || 20);
+    this.failoverBatchSize = Math.max(20, Number(process.env.DISTRIBUTED_FAILOVER_BATCH_SIZE || 200));
     this.queueExpireMinutes = Number(process.env.DISTRIBUTED_QUEUE_EXPIRE_MINUTES || 10);
     this.commandPollIntervalMs = Number(process.env.DISTRIBUTED_COMMAND_POLL_MS || 250);
     this.commandTimeoutMs = Number(process.env.DISTRIBUTED_COMMAND_TIMEOUT_MS || 25000);
@@ -65,6 +67,9 @@ class DistributedSessionService extends EventEmitter {
       });
       this.tryAssignQueuedSessions().catch((error) => {
         logger.error('[distributed-session] 队列调度失败:', error.message);
+      });
+      this.reconcileOfflineNodesAndFailoverSessions().catch((error) => {
+        logger.error('[distributed-session] failover reconcile failed:', error.message);
       });
     }, 10000);
     this.backgroundTimer.unref?.();
@@ -106,14 +111,137 @@ class DistributedSessionService extends EventEmitter {
 
   async findActiveSession(userId, serverId) {
     const [rows] = await db.query(
-      `SELECT id, userId, serverId, nodeId, serverKey, status
-       FROM connection_sessions
-       WHERE userId = ? AND serverId = ? AND status IN (${SESSION_STATUS_SQL})
-       ORDER BY createdAt DESC
+      `SELECT cs.id, cs.userId, cs.serverId, cs.nodeId, cs.serverKey, cs.status
+       FROM connection_sessions cs
+       LEFT JOIN gateway_nodes gn ON gn.id = cs.nodeId
+       WHERE cs.userId = ?
+         AND cs.serverId = ?
+         AND cs.status IN (${SESSION_STATUS_SQL})
+         AND (
+           cs.nodeId IS NULL
+           OR (
+             gn.status = 'ONLINE'
+             AND gn.lastHeartbeat >= DATE_SUB(NOW(), INTERVAL ? SECOND)
+           )
+         )
+       ORDER BY cs.createdAt DESC
        LIMIT 1`,
-      [userId, serverId]
+      [userId, serverId, this.gatewayHeartbeatTtlSec]
     );
     return rows[0] || null;
+  }
+
+  async reconcileOfflineNodesAndFailoverSessions() {
+    const staleSec = this.gatewayHeartbeatTtlSec + this.failoverGraceSec;
+    const [staleNodeRows] = await db.query(
+      `SELECT id
+       FROM gateway_nodes
+       WHERE status = 'ONLINE'
+         AND lastHeartbeat IS NOT NULL
+         AND lastHeartbeat < DATE_SUB(NOW(), INTERVAL ? SECOND)
+       LIMIT ?`,
+      [staleSec, this.failoverBatchSize]
+    );
+
+    if (staleNodeRows.length === 0) {
+      return {
+        staleNodeCount: 0,
+        failedSessionCount: 0,
+        reassignedCount: 0,
+      };
+    }
+
+    const staleNodeIds = staleNodeRows.map((row) => row.id);
+    const staleNodePlaceholders = staleNodeIds.map(() => '?').join(',');
+
+    await db.query(
+      `UPDATE gateway_nodes
+       SET status = 'OFFLINE', updatedAt = NOW()
+       WHERE id IN (${staleNodePlaceholders}) AND status = 'ONLINE'`,
+      staleNodeIds
+    );
+
+    const [sessionRows] = await db.query(
+      `SELECT id, userId, serverId, serverKey, nodeId
+       FROM connection_sessions
+       WHERE nodeId IN (${staleNodePlaceholders})
+         AND status IN (${SESSION_STATUS_SQL})
+       ORDER BY createdAt ASC`,
+      staleNodeIds
+    );
+
+    if (sessionRows.length === 0) {
+      logger.warn(
+        `[distributed-session] stale gateway detected, marked OFFLINE: nodes=${staleNodeIds.length}`
+      );
+      return {
+        staleNodeCount: staleNodeIds.length,
+        failedSessionCount: 0,
+        reassignedCount: 0,
+      };
+    }
+
+    const sessionIds = sessionRows.map((row) => row.id);
+    const sessionPlaceholders = sessionIds.map(() => '?').join(',');
+
+    await db.query(
+      `UPDATE connection_sessions
+       SET status = 'FAILED', lastError = ?, closedAt = NOW(), updatedAt = NOW()
+       WHERE id IN (${sessionPlaceholders})
+         AND status IN (${SESSION_STATUS_SQL})`,
+      ['gateway heartbeat timeout', ...sessionIds]
+    );
+
+    await db.query(
+      `UPDATE session_commands
+       SET status = 'FAILED', error = ?, updatedAt = NOW()
+       WHERE sessionId IN (${sessionPlaceholders})
+         AND status IN (${COMMAND_PENDING_STATUS_SQL})`,
+      ['node unavailable', ...sessionIds]
+    );
+
+    for (const session of sessionRows) {
+      this.emit('session:failed', {
+        userId: session.userId,
+        serverId: session.serverId,
+        sessionId: session.id,
+        nodeId: session.nodeId,
+        error: 'gateway heartbeat timeout',
+      });
+    }
+
+    let reassignedCount = 0;
+    const processedPairs = new Set();
+    for (const session of sessionRows) {
+      const pairKey = `${session.userId}:${session.serverId}`;
+      if (processedPairs.has(pairKey)) {
+        continue;
+      }
+      processedPairs.add(pairKey);
+
+      try {
+        await this.openSession({
+          userId: session.userId,
+          serverId: session.serverId,
+          reason: 'node_failover',
+        });
+        reassignedCount += 1;
+      } catch (error) {
+        logger.warn(
+          `[distributed-session] session failover failed user=${session.userId} server=${session.serverId}: ${error.message}`
+        );
+      }
+    }
+
+    logger.warn(
+      `[distributed-session] failover completed: staleNodes=${staleNodeIds.length}, failedSessions=${sessionRows.length}, reassigned=${reassignedCount}`
+    );
+
+    return {
+      staleNodeCount: staleNodeIds.length,
+      failedSessionCount: sessionRows.length,
+      reassignedCount,
+    };
   }
 
   async chooseNode(serverKey) {
@@ -582,6 +710,14 @@ class DistributedSessionService extends EventEmitter {
     if (nodeId && session.nodeId !== nodeId) {
       throw new Error('session does not belong to node');
     }
+    if (session.status === 'FAILED' || session.status === 'CLOSED') {
+      return {
+        sessionId,
+        status: session.status,
+        ignored: true,
+        reason: 'SESSION_TERMINAL',
+      };
+    }
 
     const connectedAt = status === 'CONNECTED' ? 'NOW()' : 'connectedAt';
     const closedAt = status === 'CLOSED' ? 'NOW()' : 'closedAt';
@@ -637,23 +773,43 @@ class DistributedSessionService extends EventEmitter {
     timeoutMs = this.commandTimeoutMs,
   }) {
     const [connectedRows] = await db.query(
-      `SELECT id, status
-       FROM connection_sessions
-       WHERE userId = ? AND serverId = ? AND status IN (${SESSION_CONNECTED_STATUS_SQL})
-       ORDER BY createdAt DESC
+      `SELECT cs.id, cs.status
+       FROM connection_sessions cs
+       LEFT JOIN gateway_nodes gn ON gn.id = cs.nodeId
+       WHERE cs.userId = ?
+         AND cs.serverId = ?
+         AND cs.status IN (${SESSION_CONNECTED_STATUS_SQL})
+         AND (
+           cs.nodeId IS NULL
+           OR (
+             gn.status = 'ONLINE'
+             AND gn.lastHeartbeat >= DATE_SUB(NOW(), INTERVAL ? SECOND)
+           )
+         )
+       ORDER BY cs.createdAt DESC
        LIMIT 1`,
-      [userId, serverId]
+      [userId, serverId, this.gatewayHeartbeatTtlSec]
     );
     const session = connectedRows[0];
 
     if (!session) {
       const [transitionalRows] = await db.query(
-        `SELECT id
-         FROM connection_sessions
-         WHERE userId = ? AND serverId = ? AND status IN ('ASSIGNED','CONNECTING')
-         ORDER BY createdAt DESC
+        `SELECT cs.id
+         FROM connection_sessions cs
+         LEFT JOIN gateway_nodes gn ON gn.id = cs.nodeId
+         WHERE cs.userId = ?
+           AND cs.serverId = ?
+           AND cs.status IN ('ASSIGNED','CONNECTING')
+           AND (
+             cs.nodeId IS NULL
+             OR (
+               gn.status = 'ONLINE'
+               AND gn.lastHeartbeat >= DATE_SUB(NOW(), INTERVAL ? SECOND)
+             )
+           )
+         ORDER BY cs.createdAt DESC
          LIMIT 1`,
-        [userId, serverId]
+        [userId, serverId, this.gatewayHeartbeatTtlSec]
       );
 
       if (transitionalRows.length > 0) {
@@ -772,10 +928,11 @@ class DistributedSessionService extends EventEmitter {
       throw new Error('command not found for node');
     }
 
-    await db.query(
+    const [updateResult] = await db.query(
       `UPDATE session_commands
        SET status = ?, result = ?, error = ?, updatedAt = NOW()
-       WHERE id = ?`,
+       WHERE id = ?
+         AND status IN (${COMMAND_PENDING_STATUS_SQL})`,
       [
         success ? 'DONE' : 'FAILED',
         result === null || result === undefined ? null : stringifyJson(result),
@@ -783,6 +940,9 @@ class DistributedSessionService extends EventEmitter {
         commandId,
       ]
     );
+    if (updateResult.affectedRows === 0) {
+      return { commandId, success: false, ignored: true, reason: 'COMMAND_ALREADY_RESOLVED' };
+    }
     return { commandId, success };
   }
 
