@@ -1,14 +1,18 @@
-import { Server } from 'socket.io';
+﻿import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import db from '../lib/db.js';
 import globalServiceManager from './global-manager.service.js';
 import logger from '../utils/logger.js';
+import distributedSessionService from './distributed-session.service.js';
 
 class WebSocketService {
   constructor() {
     this.io = null;
     this.globalServiceListenersInitialized = false;
     this.eventListeners = new Map(); // 存储监听器引用以便清理
+    this.distributedServiceListenersInitialized = false;
+    this.distributedEventListeners = new Map();
+    this.distributedSessionCache = new Map(); // key: userId:serverId -> status
   }
 
   /**
@@ -108,6 +112,131 @@ class WebSocketService {
     console.log('✅ WebSocket 服务已启动（已启用认证 + 房间隔离）');
   }
 
+  _getSessionCacheKey(userId, serverId) {
+    return `${userId}:${serverId}`;
+  }
+
+  _setDistributedSessionState(userId, serverId, status) {
+    const key = this._getSessionCacheKey(userId, serverId);
+    if (status) {
+      this.distributedSessionCache.set(key, status);
+    } else {
+      this.distributedSessionCache.delete(key);
+    }
+  }
+
+  _normalizeMapPayload(mapPayload) {
+    if (!mapPayload || typeof mapPayload !== 'object') return mapPayload;
+    if (mapPayload.jpgImageBase64 && !mapPayload.jpgImage) {
+      mapPayload.jpgImage = Buffer.from(mapPayload.jpgImageBase64, 'base64');
+      return mapPayload;
+    }
+    if (mapPayload.jpgImage?.__type === 'buffer-base64' && typeof mapPayload.jpgImage.data === 'string') {
+      mapPayload.jpgImage = Buffer.from(mapPayload.jpgImage.data, 'base64');
+      return mapPayload;
+    }
+    if (typeof mapPayload.jpgImage === 'string') {
+      mapPayload.jpgImage = Buffer.from(mapPayload.jpgImage, 'base64');
+      return mapPayload;
+    }
+    if (mapPayload.jpgImage?.type === 'Buffer' && Array.isArray(mapPayload.jpgImage.data)) {
+      mapPayload.jpgImage = Buffer.from(mapPayload.jpgImage.data);
+      return mapPayload;
+    }
+    return mapPayload;
+  }
+
+  createDistributedUserService(socket) {
+    const ensureSession = async (serverId, reason) => {
+      const result = await distributedSessionService.openSession({
+        userId: socket.userId,
+        serverId,
+        reason,
+      });
+      if (result.status === 'queued') {
+        const error = new Error('连接排队中，请稍后重试');
+        error.code = 'SESSION_QUEUED';
+        throw error;
+      }
+      return result;
+    };
+
+    const dispatch = async (serverId, action, payload = {}, timeoutMs) => {
+      let response = await distributedSessionService.dispatchCommand({
+        userId: socket.userId,
+        serverId,
+        action,
+        payload,
+        timeoutMs,
+      });
+
+      if (response.status === 'missing_session') {
+        await ensureSession(serverId, `command:${action}`);
+        response = await distributedSessionService.dispatchCommand({
+          userId: socket.userId,
+          serverId,
+          action,
+          payload,
+          timeoutMs,
+        });
+      }
+
+      if (response.status === 'queued') {
+        socket.emit('server:connect:queued', { serverId, reason: response.reason });
+        const error = new Error('连接排队中，请稍后重试');
+        error.code = 'SESSION_QUEUED';
+        throw error;
+      }
+      if (response.status !== 'success') {
+        throw new Error(response.error || '分布式命令执行失败');
+      }
+      return response.result;
+    };
+
+    const adapter = {
+      isConnected: (serverId) => {
+        const key = this._getSessionCacheKey(socket.userId, serverId);
+        return this.distributedSessionCache.get(key) === 'CONNECTED';
+      },
+      connect: async (config) => {
+        const result = await ensureSession(config.serverId, 'socket_connect');
+        if (result.status === 'connected') {
+          this._setDistributedSessionState(socket.userId, config.serverId, 'CONNECTED');
+        } else {
+          this._setDistributedSessionState(socket.userId, config.serverId, 'ASSIGNED');
+        }
+        return result;
+      },
+      disconnect: async (serverId) => {
+        await distributedSessionService.closeSession({
+          userId: socket.userId,
+          serverId,
+          reason: 'socket_disconnect',
+        });
+        this._setDistributedSessionState(socket.userId, serverId, null);
+      },
+      sendTeamMessage: async (serverId, message) => dispatch(serverId, 'sendTeamMessage', { message }),
+      getTeamChat: async (serverId) => dispatch(serverId, 'getTeamChat', {}),
+      setEntityValue: async (serverId, entityId, value) => dispatch(serverId, 'setEntityValue', { entityId, value }),
+      getEntityInfo: async (serverId, entityId) => dispatch(serverId, 'getEntityInfo', { entityId }),
+      getServerInfo: async (serverId) => dispatch(serverId, 'getServerInfo', {}),
+      getTeamInfo: async (serverId) => dispatch(serverId, 'getTeamInfo', {}),
+      getMap: async (serverId) => this._normalizeMapPayload(await dispatch(serverId, 'getMap', {})),
+      getMapMarkers: async (serverId) => dispatch(serverId, 'getMapMarkers', {}),
+      getTime: async (serverId) => dispatch(serverId, 'getTime', {}),
+      turnSmartSwitchOn: async (serverId, entityId) => dispatch(serverId, 'turnSmartSwitchOn', { entityId }),
+      turnSmartSwitchOff: async (serverId, entityId) => dispatch(serverId, 'turnSmartSwitchOff', { entityId }),
+      subscribeCamera: async (serverId, cameraId) => dispatch(serverId, 'subscribeCamera', { cameraId }),
+      unsubscribeCamera: async (serverId, cameraId) => dispatch(serverId, 'unsubscribeCamera', { cameraId }),
+      cameraMove: async (serverId, cameraId, buttons, x, y) => dispatch(serverId, 'cameraMove', { cameraId, buttons, x, y }),
+      cameraZoom: async (serverId, cameraId) => dispatch(serverId, 'cameraZoom', { cameraId }),
+      cameraShoot: async (serverId, cameraId) => dispatch(serverId, 'cameraShoot', { cameraId }),
+      cameraReload: async (serverId, cameraId) => dispatch(serverId, 'cameraReload', { cameraId }),
+    };
+
+    return { rustPlusService: adapter };
+  }
+
   /**
    * 设置客户端事件处理
    */
@@ -158,15 +287,38 @@ class WebSocketService {
           }
 
           // 使用数据库中的安全配置连接
-          await userService.rustPlusService.connect({
+          const connectResult = await userService.rustPlusService.connect({
             serverId: server.id,
             ip: server.ip,
             port: server.port,
             playerId: server.playerId,
             playerToken: server.playerToken
           });
-          socket.emit('server:connect:success', { serverId });
+          if (connectResult?.queued) {
+            return socket.emit('server:connect:queued', {
+              serverId,
+              reason: connectResult.reason,
+              queueId: connectResult.queueId,
+              queuePosition: connectResult.queuePosition
+            });
+          }
+          if (connectResult?.assigned && !connectResult.connected) {
+            return socket.emit('server:connect:queued', {
+              serverId,
+              reason: connectResult.reason || 'SESSION_CONNECTING',
+              sessionId: connectResult.sessionId,
+              nodeId: connectResult.nodeId
+            });
+          }
+          socket.emit('server:connect:success', {
+            serverId,
+            sessionId: connectResult?.sessionId,
+            nodeId: connectResult?.nodeId
+          });
         } catch (error) {
+          if (error.code === 'SESSION_QUEUED') {
+            return;
+          }
           socket.emit('server:connect:error', {
             serverId: typeof data === 'string' ? data : data?.serverId,
             error: error.message
@@ -175,7 +327,8 @@ class WebSocketService {
       });
 
       // 断开服务器连接
-      socket.on('server:disconnect', async (serverId) => {
+      socket.on('server:disconnect', async (data) => {
+        const serverId = typeof data === 'string' ? data : data?.serverId;
         try {
           if (!serverId) {
             return socket.emit('server:disconnect:error', { error: '缺少 serverId' });
@@ -662,6 +815,61 @@ class WebSocketService {
     logger.info('✅ GlobalServiceManager 事件监听器已设置（房间隔离模式）');
   }
 
+  setupDistributedSessionListeners() {
+    if (this.distributedServiceListenersInitialized) {
+      return;
+    }
+    this.distributedServiceListenersInitialized = true;
+
+    const addListener = (eventName, handler) => {
+      distributedSessionService.on(eventName, handler);
+      this.distributedEventListeners.set(eventName, handler);
+    };
+
+    addListener('session:queued', (data) => {
+      this.io.to(`user:${data.userId}`).emit('server:connect:queued', data);
+      this._setDistributedSessionState(data.userId, data.serverId, 'QUEUED');
+    });
+
+    addListener('session:assigned', (data) => {
+      this._setDistributedSessionState(data.userId, data.serverId, 'ASSIGNED');
+      if (data.fromQueue) {
+        this.io.to(`user:${data.userId}`).emit('server:connect:success', {
+          serverId: data.serverId,
+          sessionId: data.sessionId,
+          nodeId: data.nodeId,
+          fromQueue: true
+        });
+      }
+    });
+
+    addListener('session:connecting', (data) => {
+      this._setDistributedSessionState(data.userId, data.serverId, 'CONNECTING');
+      this.io.to(`user:${data.userId}`).emit('server:reconnecting', data);
+    });
+
+    addListener('session:connected', (data) => {
+      this._setDistributedSessionState(data.userId, data.serverId, 'CONNECTED');
+      this.io.to(`user:${data.userId}`).emit('server:connected', data);
+    });
+
+    addListener('session:failed', (data) => {
+      this._setDistributedSessionState(data.userId, data.serverId, null);
+      this.io.to(`user:${data.userId}`).emit('server:error', {
+        userId: data.userId,
+        serverId: data.serverId,
+        error: data.error,
+        sessionId: data.sessionId,
+        nodeId: data.nodeId
+      });
+    });
+
+    addListener('session:disconnected', (data) => {
+      this._setDistributedSessionState(data.userId, data.serverId, null);
+      this.io.to(`user:${data.userId}`).emit('server:disconnected', data);
+    });
+  }
+
   /**
    * 清理所有事件监听器
    */
@@ -672,6 +880,13 @@ class WebSocketService {
     }
     this.eventListeners.clear();
     this.globalServiceListenersInitialized = false;
+
+    for (const [eventName, handler] of this.distributedEventListeners) {
+      distributedSessionService.off(eventName, handler);
+    }
+    this.distributedEventListeners.clear();
+    this.distributedServiceListenersInitialized = false;
+    this.distributedSessionCache.clear();
 
     // 关闭 Socket.IO
     if (this.io) {
@@ -730,3 +945,4 @@ class WebSocketService {
 }
 
 export default new WebSocketService();
+

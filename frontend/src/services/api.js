@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-// Docker 部署时使用相对路径（通过 nginx 代理），本地开发时使用环境变量
+// 优先使用根目录 .env 里的 VITE_API_URL，未配置时回退到 /api。
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({

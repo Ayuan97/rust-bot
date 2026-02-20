@@ -1,6 +1,6 @@
 import { io } from 'socket.io-client';
 
-// Docker 部署时使用当前页面 origin（通过 nginx 代理），本地开发时使用环境变量
+// 优先使用根目录 .env 里的 VITE_SOCKET_URL，留空时使用当前页面 origin。
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '';
 
 class SocketService {
@@ -111,23 +111,49 @@ class SocketService {
       if (!this.socket) {
         return reject(new Error('Socket 未连接'));
       }
+      const cleanup = () => {
+        this.socket?.off('server:connect:success', onSuccess);
+        this.socket?.off('server:connect:error', onError);
+        this.socket?.off('server:connect:queued', onQueued);
+      };
+
+      const onSuccess = (data) => {
+        clearTimeout(timeout);
+        cleanup();
+        resolve(data);
+      };
+
+      const onError = (error) => {
+        clearTimeout(timeout);
+        cleanup();
+        reject(error);
+      };
+
+      const onQueued = (data) => {
+        clearTimeout(timeout);
+        cleanup();
+        const reason = data?.reason || 'SESSION_QUEUED';
+        const queuePosition = data?.queuePosition;
+        const message = reason === 'SESSION_CONNECTING'
+          ? '连接正在建立中，请稍后再试'
+          : `连接排队中${queuePosition ? `，当前排队第 ${queuePosition} 位` : ''}`;
+        const queuedError = new Error(message);
+        queuedError.code = reason;
+        queuedError.data = data;
+        reject(queuedError);
+      };
+
       const timeout = setTimeout(() => {
-        this.socket?.off('server:connect:success');
-        this.socket?.off('server:connect:error');
+        cleanup();
         reject(new Error('连接服务器超时'));
       }, 15000); // 15秒超时
 
       // 只发送 serverId，后端从数据库获取安全配置
       this.socket.emit('server:connect', serverId);
 
-      this.socket.once('server:connect:success', (data) => {
-        clearTimeout(timeout);
-        resolve(data);
-      });
-      this.socket.once('server:connect:error', (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
+      this.socket.once('server:connect:success', onSuccess);
+      this.socket.once('server:connect:error', onError);
+      this.socket.once('server:connect:queued', onQueued);
     });
   }
 

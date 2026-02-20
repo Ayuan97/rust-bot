@@ -1,13 +1,10 @@
 import express from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
-
-// 加载环境变量（必须在其他导入之前）
-dotenv.config();
+import './utils/load-env.js';
 
 // 环境变量验证
 import { validateEnv } from './utils/env-validator.js';
@@ -17,11 +14,12 @@ validateEnv();
 import globalServiceManager from './services/global-manager.service.js';
 import websocketService from './services/websocket.service.js';
 import battlemetricsScheduler from './services/battlemetrics-scheduler.service.js';
+import distributedSessionService from './services/distributed-session.service.js';
+import autoscalerService from './services/autoscaler.service.js';
 
 // 路由
 import serverRoutes from './routes/server.routes.js';
 import pairingRoutes from './routes/pairing.routes.js';
-import proxyRoutes from './routes/proxy.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import paymentRoutes from './routes/payment.routes.js';
@@ -29,6 +27,7 @@ import userRoutes from './routes/user.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import fcmRoutes from './routes/fcm.routes.js';
 import trackingRoutes from './routes/tracking.routes.js';
+import internalRoutes from './routes/internal.routes.js';
 
 // 中间件
 import { apiLimiter, authLimiter } from './middleware/rate-limiter.js';
@@ -54,7 +53,7 @@ app.use(cors({
   origin: '*',
   credentials: false
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // 全局速率限制
 app.use('/api', apiLimiter);
@@ -66,10 +65,10 @@ app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/servers', serverRoutes);
 app.use('/api/pairing', pairingRoutes);
-app.use('/api/proxy', proxyRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/fcm', fcmRoutes);
 app.use('/api/tracking', trackingRoutes);
+app.use('/api/internal', internalRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {
@@ -77,7 +76,8 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: Date.now(),
-    activeUsers
+    activeUsers,
+    connectionMode: 'distributed'
   });
 });
 
@@ -103,6 +103,11 @@ server.listen(PORT, async () => {
   try {
     // 初始化所有有效用户的服务
     console.log('\n🚀 初始化多租户服务管理器...\n');
+
+    distributedSessionService.start();
+    autoscalerService.setSessionService(distributedSessionService);
+    distributedSessionService.setAutoscaler(autoscalerService);
+    autoscalerService.start();
 
     const result = await globalServiceManager.initializeAllActiveUsers();
 
@@ -153,6 +158,8 @@ const gracefulShutdown = async (signal) => {
 
   try {
     // 0. 停止 Battlemetrics 调度器
+    autoscalerService.stop();
+    distributedSessionService.shutdown();
     battlemetricsScheduler.stop();
 
     // 1. 停止所有用户服务（最重要的清理）

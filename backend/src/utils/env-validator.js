@@ -57,6 +57,17 @@ export function validateEnv() {
     }
   }
 
+  if (!process.env.INTERNAL_API_TOKEN) {
+    missing.push('INTERNAL_API_TOKEN');
+  }
+  if (String(process.env.AUTOSCALER_ENABLED || 'false') === 'true') {
+    if (!process.env.AUTOSCALER_WEBHOOK_URL &&
+        !process.env.AUTOSCALER_SCALE_UP_COMMAND &&
+        !process.env.AUTOSCALER_SCALE_DOWN_COMMAND) {
+      warnings.push('AUTOSCALER_ENABLED=true but no webhook or scale commands are configured');
+    }
+  }
+
   // 输出警告
   if (warnings.length > 0) {
     console.warn('\n⚠️  环境变量警告:');
@@ -68,7 +79,7 @@ export function validateEnv() {
   if (missing.length > 0) {
     console.error('\n❌ 缺少必需的环境变量:');
     missing.forEach(key => console.error(`   - ${key}`));
-    console.error('\n请在 backend/.env 文件中配置这些变量\n');
+    console.error('\n请在项目根目录 .env 文件中配置这些变量\n');
     throw new Error(`缺少必需的环境变量: ${missing.join(', ')}`);
   }
 

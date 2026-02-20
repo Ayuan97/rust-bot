@@ -159,7 +159,7 @@ router.post('/:id/connect', requireActiveSubscription, async (req, res) => {
       return res.status(400).json({ success: false, error: '用户服务未初始化' });
     }
 
-    await rustPlusService.connect({
+    const connectResult = await rustPlusService.connect({
       serverId: server.id,
       ip: server.ip,
       port: server.port,
@@ -167,7 +167,31 @@ router.post('/:id/connect', requireActiveSubscription, async (req, res) => {
       playerToken: server.playerToken
     });
 
-    res.json({ success: true });
+    if (connectResult?.queued) {
+      return res.status(202).json({
+        success: true,
+        queued: true,
+        reason: connectResult.reason,
+        queueId: connectResult.queueId,
+        queuePosition: connectResult.queuePosition
+      });
+    }
+    if (connectResult?.assigned && !connectResult.connected) {
+      return res.status(202).json({
+        success: true,
+        queued: true,
+        reason: connectResult.reason || 'SESSION_CONNECTING',
+        sessionId: connectResult.sessionId,
+        nodeId: connectResult.nodeId
+      });
+    }
+
+    res.json({
+      success: true,
+      queued: false,
+      sessionId: connectResult?.sessionId,
+      nodeId: connectResult?.nodeId
+    });
   } catch (error) {
     console.error('连接服务器失败:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -1682,22 +1706,15 @@ router.get('/:id/battlemetrics/top-players', async (req, res) => {
 
 /**
  * GET /api/servers/settings/connection
- * 获取 Rust+ 连接设置
+ * 获取连接设置（分布式固定模式）
  */
 router.get('/settings/connection', (req, res) => {
   try {
-    const rustPlusService = getUserRustPlusService(req.user.id);
-    if (!rustPlusService) {
-      return res.status(400).json({ success: false, error: '用户服务未初始化' });
-    }
-
     res.json({
       success: true,
       settings: {
-        useFacepunchProxy: rustPlusService.useFacepunchProxy,
-        description: rustPlusService.useFacepunchProxy
-          ? '通过 Facepunch 官方代理 (wss://companion-rust.facepunch.com)'
-          : '直连游戏服务器 (ws://IP:PORT)'
+        mode: 'distributed',
+        description: '固定分布式连接模式（由连接节点池承载 Rust 连接）'
       }
     });
   } catch (error) {
@@ -1707,35 +1724,13 @@ router.get('/settings/connection', (req, res) => {
 
 /**
  * POST /api/servers/settings/connection
- * 设置 Rust+ 连接模式
+ * 分布式模式下不支持切换连接模式
  */
 router.post('/settings/connection', (req, res) => {
-  try {
-    const { useFacepunchProxy } = req.body;
-
-    if (typeof useFacepunchProxy !== 'boolean') {
-      return res.status(400).json({ success: false, error: 'useFacepunchProxy 必须是布尔值' });
-    }
-
-    const rustPlusService = getUserRustPlusService(req.user.id);
-    if (!rustPlusService) {
-      return res.status(400).json({ success: false, error: '用户服务未初始化' });
-    }
-
-    rustPlusService.setUseFacepunchProxy(useFacepunchProxy);
-
-    res.json({
-      success: true,
-      message: useFacepunchProxy
-        ? '已切换到 Facepunch 代理模式（需要重新连接服务器生效）'
-        : '已切换到直连模式（需要重新连接服务器生效）',
-      settings: {
-        useFacepunchProxy: rustPlusService.useFacepunchProxy
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+  res.status(400).json({
+    success: false,
+    error: '分布式模式下不支持切换连接模式'
+  });
 });
 
 export default router;

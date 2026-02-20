@@ -2,11 +2,8 @@
  * MySQL2 数据库连接池
  */
 
-import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
-
-// 确保环境变量已加载（ES模块 import 会提升，需要在此处加载）
-dotenv.config();
+import '../utils/load-env.js';
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
