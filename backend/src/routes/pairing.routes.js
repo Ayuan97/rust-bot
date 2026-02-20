@@ -226,7 +226,7 @@ router.post('/register/simple', requireActiveSubscription, async (req, res) => {
     const now = new Date();
     if (serverRows.length === 0) {
       // 如果用户还没有服务器，创建一个占位符用于存储 FCM 凭证
-      const serverId = `fcm-${req.user.id}`;
+      const serverId = uuidv4();
       await db.query(
         `INSERT INTO servers (id, userId, name, ip, port, playerId, playerToken, fcmCredentials, isActive, createdAt, updatedAt)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,

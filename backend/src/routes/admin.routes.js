@@ -8,6 +8,7 @@ import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
 import db from '../lib/db.js';
 import globalServiceManager from '../services/global-manager.service.js';
 import paymentService from '../services/payment.service.js';
+import distributedSessionService from '../services/distributed-session.service.js';
 
 const router = express.Router();
 
@@ -1001,6 +1002,26 @@ router.get('/system', async (req, res) => {
     res.status(500).json({
       success: false,
       error: '获取系统状态失败'
+    });
+  }
+});
+
+/**
+ * GET /api/admin/distributed/status
+ * 获取分布式节点状态总览（子节点运行情况）
+ */
+router.get('/distributed/status', async (req, res) => {
+  try {
+    const overview = await distributedSessionService.getNodeStatusOverview();
+    res.json({
+      success: true,
+      data: overview
+    });
+  } catch (error) {
+    console.error('获取分布式节点状态失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '获取分布式节点状态失败'
     });
   }
 });

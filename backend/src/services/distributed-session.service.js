@@ -946,6 +946,108 @@ class DistributedSessionService extends EventEmitter {
     return { commandId, success };
   }
 
+  async getNodeStatusOverview() {
+    const metrics = await this.getScalingMetrics();
+    const [nodeRows] = await db.query(
+      `SELECT
+         gn.id,
+         gn.publicIp,
+         gn.region,
+         gn.status,
+         gn.totalCapacity,
+         gn.maxPerServer,
+         gn.metadata,
+         gn.lastHeartbeat,
+         gn.updatedAt,
+         SUM(CASE WHEN cs.status IN (${SESSION_STATUS_SQL}) THEN 1 ELSE 0 END) AS activeSessions,
+         SUM(CASE WHEN cs.status = 'CONNECTED' THEN 1 ELSE 0 END) AS connectedSessions,
+         SUM(CASE WHEN cs.status = 'CONNECTING' THEN 1 ELSE 0 END) AS connectingSessions,
+         SUM(CASE WHEN cs.status = 'ASSIGNED' THEN 1 ELSE 0 END) AS assignedSessions
+       FROM gateway_nodes gn
+       LEFT JOIN connection_sessions cs ON cs.nodeId = gn.id
+       GROUP BY
+         gn.id,
+         gn.publicIp,
+         gn.region,
+         gn.status,
+         gn.totalCapacity,
+         gn.maxPerServer,
+         gn.metadata,
+         gn.lastHeartbeat,
+         gn.updatedAt
+       ORDER BY
+         CASE gn.status
+           WHEN 'ONLINE' THEN 1
+           WHEN 'DRAINING' THEN 2
+           ELSE 3
+         END,
+         activeSessions DESC,
+         gn.updatedAt DESC`
+    );
+    const [queueRows] = await db.query(
+      `SELECT reason, COUNT(*) AS count
+       FROM connection_queue
+       WHERE status = 'PENDING'
+       GROUP BY reason
+       ORDER BY count DESC`
+    );
+    const [failedRows] = await db.query(
+      `SELECT COUNT(*) AS failedIn5m
+       FROM connection_sessions
+       WHERE status = 'FAILED'
+         AND updatedAt >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)`
+    );
+
+    const now = Date.now();
+    const heartbeatTtlSec = this.gatewayHeartbeatTtlSec;
+    const nodes = nodeRows.map((row) => {
+      const totalCapacity = Number(row.totalCapacity || this.defaultNodeCapacity);
+      const activeSessions = Number(row.activeSessions || 0);
+      const lastHeartbeatAt = row.lastHeartbeat ? new Date(row.lastHeartbeat) : null;
+      const heartbeatAgeSec = lastHeartbeatAt
+        ? Math.max(0, Math.floor((now - lastHeartbeatAt.getTime()) / 1000))
+        : null;
+      const heartbeatAlive =
+        row.status === 'ONLINE' && heartbeatAgeSec !== null && heartbeatAgeSec <= heartbeatTtlSec;
+
+      return {
+        id: row.id,
+        publicIp: row.publicIp,
+        region: row.region || null,
+        status: row.status,
+        totalCapacity,
+        maxPerServer: Number(row.maxPerServer || this.defaultMaxPerServer),
+        activeSessions,
+        connectedSessions: Number(row.connectedSessions || 0),
+        connectingSessions: Number(row.connectingSessions || 0),
+        assignedSessions: Number(row.assignedSessions || 0),
+        utilization: totalCapacity > 0 ? activeSessions / totalCapacity : 0,
+        lastHeartbeatAt,
+        heartbeatAgeSec,
+        heartbeatAlive,
+        metadata: parseJson(row.metadata, {}),
+        updatedAt: row.updatedAt ? new Date(row.updatedAt) : null,
+      };
+    });
+
+    const summary = {
+      ...metrics,
+      heartbeatTtlSec,
+      registeredNodes: nodes.length,
+      configuredOnlineNodes: nodes.filter((node) => node.status === 'ONLINE').length,
+      liveOnlineNodes: nodes.filter((node) => node.heartbeatAlive).length,
+      drainingNodes: nodes.filter((node) => node.status === 'DRAINING').length,
+      offlineNodes: nodes.filter((node) => node.status === 'OFFLINE').length,
+      failedSessionsIn5m: Number(failedRows[0]?.failedIn5m || 0),
+      queueByReason: queueRows.map((row) => ({
+        reason: row.reason,
+        count: Number(row.count || 0),
+      })),
+    };
+
+    return { summary, nodes };
+  }
+
   async getIdleNodeIds() {
     const [rows] = await db.query(
       `SELECT gn.id
