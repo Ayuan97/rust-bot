@@ -4,6 +4,7 @@
  */
 
 import { EventEmitter } from 'events';
+import { v4 as uuidv4, v5 as uuidv5 } from 'uuid';
 import db from '../lib/db.js';
 import DistributedRustPlusManager from './distributed-rustplus-manager.js';
 import UserFCMManager from './user-fcm-manager.js';
@@ -13,6 +14,8 @@ import UserCommands from './user-commands.js';
 import DayNightNotifier from './day-night-notifier.js';
 import UserTrackingService from './user-tracking.service.js';
 import battlemetricsService from './battlemetrics.service.js';
+
+const SERVER_ID_NAMESPACE = 'c94a3f4a-6b0d-4ad6-b8ee-71f8fd0e9a4d';
 
 class UserServiceManager extends EventEmitter {
   constructor(userId) {
@@ -487,6 +490,12 @@ class UserServiceManager extends EventEmitter {
       // 连接到所有服务器（并发连接）
       const connectionPromises = this.user.servers.map(async (server) => {
         try {
+          // 跳过 FCM 占位符服务器，仅用于保存凭证，不参与 Rust 连接
+          if (server.ip === '0.0.0.0') {
+            console.log(`  ⏩ 跳过占位符服务器: ${server.name || server.id}`);
+            return;
+          }
+
           const connectResult = await this.rustPlusService.connect({
             serverId: server.id,
             ip: server.ip,
@@ -792,8 +801,8 @@ class UserServiceManager extends EventEmitter {
    * @private
    */
   async _executeServerPairing(data) {
-    // 生成用户专属的服务器 ID（防止不同用户配对同一服务器时 ID 冲突）
-    let userServerId = `${this.userId}_${data.id}`;
+    // 生成固定长度的用户专属服务器 ID（避免超过数据库 id 长度限制）
+    let userServerId = this._buildScopedServerId(data.id);
 
     // 1. 保存/更新服务器信息到数据库
     const serverData = {
@@ -897,8 +906,8 @@ class UserServiceManager extends EventEmitter {
         return;
       }
 
-      // 生成用户专属的服务器 ID（与服务器配对保持一致）
-      const userServerId = `${this.userId}_${data.originalServerId}`;
+      // 生成用户专属服务器 ID（与服务器配对保持一致）
+      const userServerId = this._buildScopedServerId(data.originalServerId);
 
       // 检查服务器是否存在
       const [serverRows] = await db.query(
@@ -1027,6 +1036,18 @@ class UserServiceManager extends EventEmitter {
       this.log('ENTITY_PAIRING', `设备配对处理失败: ${error.message}`, 'ERROR');
       console.error(error);
     }
+  }
+
+  /**
+   * 生成用户作用域内的稳定服务器 ID（固定 36 字符）
+   * - 有 originId 时：v5(userId:originId)
+   * - 无 originId 时：回退到随机 v4
+   */
+  _buildScopedServerId(originId) {
+    if (originId === null || originId === undefined || originId === '') {
+      return uuidv4();
+    }
+    return uuidv5(`${this.userId}:${String(originId)}`, SERVER_ID_NAMESPACE);
   }
 
   /**
