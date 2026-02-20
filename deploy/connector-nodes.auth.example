@@ -1,4 +1,4 @@
-# Password mode (format: host|user|password)
-# Examples:
+# 密码模式（格式：host|user|password）
+# 示例：
 # 10.0.0.21|root|MyPass@123
 # 10.0.0.22|root|AnotherPass@456

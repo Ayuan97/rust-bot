@@ -1,4 +1,4 @@
-# SSH key mode (one target per line)
-# Examples:
+# 免密模式（每行一个 SSH 目标）
+# 示例：
 # root@10.0.0.21
 # connector-node-2

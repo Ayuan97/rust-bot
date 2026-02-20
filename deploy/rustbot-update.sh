@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# 主节点一键更新脚本：
+# 1) 拉取指定分支代码
+# 2) 更新后端依赖 + 构建前端
+# 3) 重启主节点与本机子节点
+# 4) 健康检查
+# 5) 可选扇出更新远程子节点
+
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 APP_DIR=${APP_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}
 WEB_DIR=${WEB_DIR:-/var/www/app.rustplusplus.com}
@@ -15,6 +22,7 @@ FANOUT_CONNECTOR_STRICT=${FANOUT_CONNECTOR_STRICT:-false}
 
 cd "$APP_DIR"
 
+# 防止在错误目录执行，必须是 git 工作树
 if [ ! -d .git ]; then
   echo "[rustbot-update] ERROR: $APP_DIR is not a git working tree"
   exit 1
@@ -48,9 +56,11 @@ npm run build
 mkdir -p "$WEB_DIR"
 rsync -a --delete dist/ "$WEB_DIR/"
 
+# 重启前先清日志，方便后续排障
 "$SCRIPT_DIR/rustbot-clean-logs.sh"
 "$SCRIPT_DIR/rustbot-restart.sh"
 
+# 主节点健康检查，避免发布后静默失败
 for i in $(seq 1 "$HEALTH_RETRIES"); do
   if curl -fsS "$HEALTH_URL" >/dev/null; then
     echo "[rustbot-update] health check ok (attempt ${i}/${HEALTH_RETRIES})"
@@ -63,6 +73,7 @@ for i in $(seq 1 "$HEALTH_RETRIES"); do
   fi
 done
 
+# 可选：从主节点自动触发远程子节点更新
 if [ "$FANOUT_CONNECTOR_UPDATES" = "true" ]; then
   if "$SCRIPT_DIR/rustbot-update-connectors.sh" "$BRANCH"; then
     echo "[rustbot-update] connector fanout update done"

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# 远程子节点批量更新脚本：
+# - 支持免密模式（connector-nodes.list）
+# - 支持密码模式（connector-nodes.auth，依赖 sshpass）
+# - 主节点会把 GitHub deploy key 和更新脚本同步到每台子节点后执行更新
+
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 BRANCH=${1:-main}
 
@@ -22,6 +27,7 @@ trim() {
 }
 
 require_files() {
+  # 本地前置检查：更新助手脚本 + GitHub deploy key 必须存在
   if [ ! -f "$LOCAL_HELPER_SCRIPT" ]; then
     echo "[rustbot-update-connectors] ERROR: missing helper script: $LOCAL_HELPER_SCRIPT"
     exit 1
@@ -33,6 +39,7 @@ require_files() {
 }
 
 remote_prepare_cmd() {
+  # 远程准备：写入 GitHub SSH 配置并设置权限
   cat <<'EOF'
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
@@ -56,6 +63,7 @@ EOF
 }
 
 remote_finalize_helper_cmd() {
+  # 修复潜在 CRLF/BOM 并赋予执行权限
   cat <<'EOF'
 sed -i 's/\r$//' /usr/local/bin/rustbot-update-connector
 if [ "$(xxd -l 3 -p /usr/local/bin/rustbot-update-connector 2>/dev/null)" = "efbbbf" ]; then
@@ -67,6 +75,7 @@ EOF
 }
 
 update_node_by_key() {
+  # 免密模式：直接使用 SSH key 登录目标机器
   local target="$1"
   local prepare_cmd
   local finalize_cmd
@@ -84,6 +93,7 @@ update_node_by_key() {
 }
 
 update_node_by_password() {
+  # 密码模式：使用 sshpass 执行 scp/ssh
   local host="$1"
   local user="$2"
   local pass="$3"
@@ -109,6 +119,7 @@ processed=0
 failed=0
 
 if [ -f "$NODE_FILE" ]; then
+  # 第一阶段：处理免密节点清单
   mapfile -t key_nodes < <(grep -Ev '^[[:space:]]*(#|$)' "$NODE_FILE")
   for node in "${key_nodes[@]}"; do
     node="$(trim "$node")"
@@ -127,6 +138,7 @@ if [ -f "$NODE_FILE" ]; then
 fi
 
 if [ -f "$NODE_AUTH_FILE" ]; then
+  # 第二阶段：处理账号密码节点清单
   if ! command -v sshpass >/dev/null 2>&1; then
     echo "[rustbot-update-connectors] ERROR: sshpass not installed"
     exit 1
