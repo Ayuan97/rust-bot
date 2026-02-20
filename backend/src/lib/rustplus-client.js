@@ -15,6 +15,44 @@ const __dirname = path.dirname(__filename);
 // Proto 文件路径（使用原库的 proto 文件）
 const PROTO_PATH = path.resolve(__dirname, '../../node_modules/@liamcottle/rustplus.js/rustplus.proto');
 
+function stringifyRustErrorValue(value) {
+  try {
+    return JSON.stringify(value, (_, current) => {
+      if (typeof current === 'bigint') return current.toString();
+      return current;
+    });
+  } catch {
+    return String(value);
+  }
+}
+
+function normalizeRustError(rawError, fallbackMessage = 'Rust+ 请求失败') {
+  if (rawError instanceof Error) {
+    return rawError;
+  }
+
+  let message = '';
+  if (typeof rawError === 'string') {
+    message = rawError;
+  } else if (rawError && typeof rawError.message === 'string') {
+    message = rawError.message;
+  } else if (rawError && rawError.message) {
+    message = stringifyRustErrorValue(rawError.message);
+  } else if (rawError && typeof rawError.error === 'string') {
+    message = rawError.error;
+  } else if (rawError) {
+    message = stringifyRustErrorValue(rawError);
+  }
+
+  if (!message || message === '{}' || message === '[object Object]') {
+    message = fallbackMessage;
+  }
+
+  const error = new Error(message);
+  error.raw = rawError;
+  return error;
+}
+
 class RustPlusClient extends EventEmitter {
   /**
    * @param {string} server - 服务器 IP 或域名
@@ -184,7 +222,7 @@ class RustPlusClient extends EventEmitter {
         clearTimeout(timeout);
 
         if (message.response.error) {
-          reject(message.response.error);
+          reject(normalizeRustError(message.response.error));
         } else {
           resolve(message.response);
         }
@@ -327,7 +365,7 @@ class Camera extends EventEmitter {
 
       this.rustplus.subscribeToCamera(this.identifier, (message) => {
         if (message.response.error) {
-          reject(message.response.error);
+          reject(normalizeRustError(message.response.error, '订阅摄像头失败'));
           return true;
         }
 
@@ -356,7 +394,7 @@ class Camera extends EventEmitter {
 
       this.rustplus.unsubscribeFromCamera((message) => {
         if (message.response.error) {
-          reject(message.response.error);
+          reject(normalizeRustError(message.response.error, '取消订阅摄像头失败'));
           return true;
         }
 

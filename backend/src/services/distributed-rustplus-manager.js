@@ -17,6 +17,25 @@ const FORWARDED_EVENTS = [
   'camera:rays',
 ];
 
+function formatDispatchError(error, fallback = 'distributed command failed') {
+  if (!error) return fallback;
+  if (typeof error === 'string') return error;
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error.message === 'string') return error.message;
+  if (error.message) {
+    try {
+      return JSON.stringify(error.message);
+    } catch {
+      return String(error.message);
+    }
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
 class DistributedRustPlusManager extends EventEmitter {
   constructor(userId) {
     super();
@@ -367,7 +386,7 @@ class DistributedRustPlusManager extends EventEmitter {
     }
 
     if (response.status !== 'success') {
-      throw new Error(response.error || 'distributed command failed');
+      throw new Error(formatDispatchError(response.error));
     }
 
     return response.result;

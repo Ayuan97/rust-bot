@@ -59,6 +59,60 @@ function safeDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function extractErrorMessage(error, fallback = '未知错误') {
+  if (!error) return fallback;
+  if (typeof error === 'string') return error;
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error.message === 'string') return error.message;
+  if (error.message) {
+    try {
+      return JSON.stringify(error.message);
+    } catch {
+      return String(error.message);
+    }
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function isNoTeamError(message = '') {
+  const text = String(message || '').toLowerCase();
+  return (
+    text.includes('not in team') ||
+    text.includes('not in a team') ||
+    text.includes('team not found') ||
+    text.includes('no team') ||
+    text.includes('未加入队伍') ||
+    text.includes('不在队伍')
+  );
+}
+
+function normalizeJsonValue(value) {
+  if (typeof value === 'bigint') return value.toString();
+  if (Array.isArray(value)) return value.map(normalizeJsonValue);
+  if (!value || typeof value !== 'object') return value;
+
+  const normalized = {};
+  for (const [key, current] of Object.entries(value)) {
+    normalized[key] = normalizeJsonValue(current);
+  }
+  return normalized;
+}
+
+function normalizeTeamInfo(teamInfo) {
+  if (!teamInfo || typeof teamInfo !== 'object') {
+    return { members: [], leaderSteamId: null };
+  }
+  const normalized = normalizeJsonValue(teamInfo);
+  if (!Array.isArray(normalized.members)) {
+    normalized.members = [];
+  }
+  return normalized;
+}
+
 // ============================================================
 // 服务器管理
 // ============================================================
@@ -431,10 +485,17 @@ router.get('/:id/team', async (req, res) => {
       return res.status(400).json({ success: false, error: '服务器未连接' });
     }
 
-    const teamInfo = await rustPlusService.getTeamInfo(req.params.id);
+    const teamInfo = normalizeTeamInfo(await rustPlusService.getTeamInfo(req.params.id));
     res.json({ success: true, teamInfo });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    const errorMessage = extractErrorMessage(error);
+    console.error(`[team] 获取队伍信息失败 server=${req.params.id}:`, errorMessage);
+
+    if (isNoTeamError(errorMessage)) {
+      return res.json({ success: true, teamInfo: { members: [], leaderSteamId: null } });
+    }
+
+    res.status(500).json({ success: false, error: errorMessage });
   }
 });
 
@@ -452,7 +513,7 @@ router.get('/:id/team-detailed', async (req, res) => {
     }
 
     // 1. 获取基础队伍信息
-    const teamInfo = await rustPlusService.getTeamInfo(serverId);
+    const teamInfo = normalizeTeamInfo(await rustPlusService.getTeamInfo(serverId));
     if (!teamInfo || !teamInfo.members) {
       return res.json({ success: true, members: [] });
     }
@@ -507,8 +568,14 @@ router.get('/:id/team-detailed', async (req, res) => {
       leaderId: teamInfo.leaderSteamId?.toString()
     });
   } catch (error) {
-    console.error('获取增强队伍信息失败:', error);
-    res.status(500).json({ success: false, error: error.message });
+    const errorMessage = extractErrorMessage(error);
+    console.error('获取增强队伍信息失败:', errorMessage);
+
+    if (isNoTeamError(errorMessage)) {
+      return res.json({ success: true, members: [], leaderId: null });
+    }
+
+    res.status(500).json({ success: false, error: errorMessage });
   }
 });
 
