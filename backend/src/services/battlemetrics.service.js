@@ -293,80 +293,85 @@ class BattlemetricsService extends EventEmitter {
 
   /**
    * 获取服务器当前活动会话（在线玩家完整列表）
-   * 使用分页获取所有在线玩家
+   * Battlemetrics 新版接口要求必须带 start/stop，且时间跨度不能过大
    * @param {string} serverId - Battlemetrics 服务器 ID
    * @returns {Promise<Array>} 在线玩家数组
    * @private
    */
   async _getServerActiveSessions(serverId) {
     try {
-      const players = [];
-      let nextUrl = `https://api.battlemetrics.com/servers/${serverId}/relationships/sessions?filter[online]=true&page[size]=100&include=player`;
+      const now = new Date();
+      const rawWindowMinutes = Number(process.env.BATTLEMETRICS_ONLINE_WINDOW_MINUTES || 39);
+      const windowMinutes = Number.isFinite(rawWindowMinutes)
+        ? Math.min(39, Math.max(5, Math.floor(rawWindowMinutes)))
+        : 39;
+      const start = new Date(now.getTime() - windowMinutes * 60 * 1000);
 
-      // 分页获取所有在线玩家（最多 5 页，500 人）
-      let pageCount = 0;
-      const maxPages = 5;
+      const url = `https://api.battlemetrics.com/servers/${serverId}/relationships/sessions?start=${encodeURIComponent(start.toISOString())}&stop=${encodeURIComponent(now.toISOString())}`;
+      const response = await axios.get(url, this._getAxiosConfig());
 
-      while (nextUrl && pageCount < maxPages) {
-        const response = await axios.get(nextUrl, this._getAxiosConfig());
-
-        if (response.status !== 200) {
-          break;
-        }
-
-        // 构建玩家 ID -> 信息映射（从 included 中获取完整玩家信息）
-        const playerMap = new Map();
-        if (response.data.included) {
-          for (const item of response.data.included) {
-            if (item.type === 'player') {
-              playerMap.set(item.id, {
-                id: item.id,
-                name: item.attributes?.name || 'Unknown',
-                updatedAt: item.attributes?.updatedAt,
-                private: item.attributes?.private || null
-              });
-            }
-          }
-        }
-
-        // 从会话数据中提取玩家
-        for (const session of response.data.data) {
-          if (session.type === 'session') {
-            const playerRelation = session.relationships?.player?.data;
-            if (playerRelation) {
-              const sessionStart = session.attributes?.start || null;
-              const sessionStop = session.attributes?.stop || null;
-              const onlineDurationSec = sessionStart && !sessionStop
-                ? Math.max(0, Math.floor((Date.now() - new Date(sessionStart).getTime()) / 1000))
-                : null;
-              const playerInfo = playerMap.get(playerRelation.id);
-              if (playerInfo) {
-                players.push(playerInfo);
-              } else {
-                // 如果 included 中没有，使用会话中的名称
-                players.push({
-                  id: playerRelation.id,
-                  name: session.attributes?.name || 'Unknown',
-                  updatedAt: sessionStart
-                });
-              }
-              const current = players[players.length - 1];
-              current.sessionId = session.id;
-              current.sessionStart = sessionStart;
-              current.sessionStop = sessionStop;
-              current.onlineDurationSec = onlineDurationSec;
-            }
-          }
-        }
-
-        // 检查是否有下一页
-        nextUrl = response.data.links?.next || null;
-        pageCount++;
+      if (response.status !== 200) {
+        return [];
       }
 
-      return players;
+      const sessions = Array.isArray(response.data?.data) ? response.data.data : [];
+
+      // 某些返回不会包含 included，优先用 session.attributes.name 兜底
+      const playerMap = new Map();
+      if (Array.isArray(response.data?.included)) {
+        for (const item of response.data.included) {
+          if (item.type === 'player') {
+            playerMap.set(item.id, {
+              id: item.id,
+              name: item.attributes?.name || 'Unknown',
+              updatedAt: item.attributes?.updatedAt,
+              private: item.attributes?.private ?? null
+            });
+          }
+        }
+      }
+
+      const onlinePlayers = new Map();
+      for (const session of sessions) {
+        if (session.type !== 'session') continue;
+
+        const sessionStart = session.attributes?.start || null;
+        const sessionStop = session.attributes?.stop || null;
+        if (sessionStop) continue; // 仅保留当前在线会话
+
+        const playerRelation = session.relationships?.player?.data;
+        const playerId = playerRelation?.id || `SESSION_${session.id}`;
+        if (onlinePlayers.has(playerId)) continue;
+
+        const fromIncluded = playerMap.get(playerId);
+        const onlineDurationSec = sessionStart
+          ? Math.max(0, Math.floor((Date.now() - new Date(sessionStart).getTime()) / 1000))
+          : null;
+
+        onlinePlayers.set(playerId, {
+          id: playerId,
+          name: fromIncluded?.name || session.attributes?.name || 'Unknown',
+          updatedAt: fromIncluded?.updatedAt || sessionStart,
+          private: fromIncluded?.private ?? session.attributes?.private ?? null,
+          sessionId: session.id,
+          sessionStart,
+          sessionStop,
+          onlineDurationSec
+        });
+      }
+
+      return Array.from(onlinePlayers.values());
     } catch (error) {
-      // console.error('[BATTLEMETRICS] 获取服务器活动会话失败:', error.message);
+      if (error.response) {
+        console.warn(`[BATTLEMETRICS] 获取在线会话失败 server=${serverId} status=${error.response.status}`);
+      } else {
+        console.warn(`[BATTLEMETRICS] 获取在线会话失败 server=${serverId}: ${error.message}`);
+      }
+
+      const cached = this.servers.get(serverId);
+      if (cached?.onlinePlayers?.length) {
+        return cached.onlinePlayers;
+      }
       return [];
     }
   }

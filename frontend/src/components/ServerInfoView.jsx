@@ -271,6 +271,9 @@ function ServerInfoView({ server, onBack }) {
     });
   }, [bmInfo?.onlinePlayers, onlineSearch, nowTs]);
 
+  const totalOnlineCount = bmInfo?.players || 0;
+  const detailOnlineCount = bmInfo?.onlinePlayers?.length || 0;
+
   if (!serverId) {
     return (
       <div className="h-full flex items-center justify-center p-6">
@@ -590,7 +593,7 @@ function ServerInfoView({ server, onBack }) {
           </div>
 
           {/* 中列：在线玩家列表 */}
-          <InfoPanel title={`在线玩家 (${bmInfo?.players || 0})`} icon={FaUsers} className="h-fit">
+          <InfoPanel title={`在线玩家明细 (${detailOnlineCount}/${totalOnlineCount})`} icon={FaUsers} className="h-fit">
             {loading ? (
               <div className="space-y-2">
                 {[1, 2, 3, 4, 5].map(i => (
@@ -599,6 +602,11 @@ function ServerInfoView({ server, onBack }) {
               </div>
             ) : bmInfo?.onlinePlayers && bmInfo.onlinePlayers.length > 0 ? (
               <div className="space-y-3">
+                {detailOnlineCount < totalOnlineCount && (
+                  <div className="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                    BattleMetrics 仅返回最近时间窗口内有会话活动的玩家明细。
+                  </div>
+                )}
                 <div className="relative">
                   <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-xs" />
                   <input
@@ -643,7 +651,7 @@ function ServerInfoView({ server, onBack }) {
             ) : (
               <div className="text-center py-8 text-gray-500">
                 <FaUsers className="text-3xl mx-auto mb-2 opacity-50" />
-                <p>暂无在线玩家数据</p>
+                <p>{totalOnlineCount > 0 ? '在线玩家明细暂不可用，请稍后刷新' : '暂无在线玩家数据'}</p>
               </div>
             )}
           </InfoPanel>
