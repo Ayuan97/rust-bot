@@ -1,0 +1,4 @@
+# Password mode (format: host|user|password)
+# Examples:
+# 10.0.0.21|root|MyPass@123
+# 10.0.0.22|root|AnotherPass@456

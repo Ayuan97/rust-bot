@@ -1,0 +1,4 @@
+# SSH key mode (one target per line)
+# Examples:
+# root@10.0.0.21
+# connector-node-2
