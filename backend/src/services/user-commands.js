@@ -14,6 +14,22 @@ import { AppMarkerType } from '../utils/event-constants.js';
 import { formatPosition } from '../utils/coordinates.js';
 import { getLanguageCode } from '../utils/languages.js';
 
+const SHOP_SEARCH_CHINESE_REGEX = /[\u3400-\u9FFF]/;
+const SHOP_TRANSLATION_CACHE_LIMIT = 200;
+const SHOP_SEARCH_ALIAS_MAP = new Map([
+  ['金属门', ['door.hinged.metal', 'sheet metal door', 'metal door', '铁门']],
+  ['铁门', ['door.hinged.metal', 'sheet metal door', 'metal door']],
+  ['冲锋枪', ['smg', 'submachine gun']],
+  ['半自动步枪', ['rifle.semiauto', 'semi automatic rifle']],
+  ['步枪子弹', ['ammo.rifle', 'rifle ammo']],
+  ['手枪子弹', ['ammo.pistol', 'pistol ammo']],
+  ['霰弹枪子弹', ['ammo.shotgun', 'shotgun ammo']],
+  ['火箭弹', ['ammo.rocket.basic', 'rocket']],
+  ['高质金属', ['metal.refined', 'high quality metal']],
+  ['高金', ['metal.refined', 'high quality metal']],
+  ['金属碎片', ['metal.fragments', 'metal fragments']]
+]);
+
 class UserCommands extends EventEmitter {
   constructor(userId, rustPlusService, eventMonitorService = null) {
     super();
@@ -42,6 +58,7 @@ class UserCommands extends EventEmitter {
     // 时间配置缓存（serverId -> { dayLengthMinutes, sunrise, sunset, lastTime, lastFetchTime }）
     this.timeCache = new Map();
     this.TIME_CACHE_TTL = 5 * 60 * 1000; // 5分钟刷新一次配置
+    this.shopSearchTranslationCache = new Map();
 
     // 注册内置命令
     this.registerBuiltInCommands();
@@ -871,6 +888,120 @@ class UserCommands extends EventEmitter {
     }
   }
 
+  getShopSearchAliases(searchTerm) {
+    const normalized = String(searchTerm || '').toLowerCase().replace(/\s+/g, '');
+    if (!normalized) {
+      return [];
+    }
+
+    const aliases = [];
+    for (const [keyword, values] of SHOP_SEARCH_ALIAS_MAP.entries()) {
+      if (normalized.includes(keyword)) {
+        aliases.push(...values);
+      }
+    }
+
+    return aliases;
+  }
+
+  getShopTranslationCacheKey(searchTerm) {
+    return String(searchTerm || '').toLowerCase().replace(/\s+/g, '');
+  }
+
+  setShopTranslationCache(key, value) {
+    this.shopSearchTranslationCache.set(key, value);
+    if (this.shopSearchTranslationCache.size <= SHOP_TRANSLATION_CACHE_LIMIT) {
+      return;
+    }
+
+    const oldestKey = this.shopSearchTranslationCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      this.shopSearchTranslationCache.delete(oldestKey);
+    }
+  }
+
+  buildShopSearchCandidates(searchTerm, translatedTerm = '') {
+    const candidates = [searchTerm, ...this.getShopSearchAliases(searchTerm)];
+
+    if (translatedTerm) {
+      const normalizedTranslated = translatedTerm.trim();
+      candidates.push(normalizedTranslated);
+
+      // Keep a singular form for simple plural translations (e.g. Rockets -> Rocket)
+      const singularizedTranslated = normalizedTranslated.replace(/\b([a-z]+)s\b/gi, '$1');
+      if (singularizedTranslated.toLowerCase() !== normalizedTranslated.toLowerCase()) {
+        candidates.push(singularizedTranslated);
+      }
+    }
+
+    const dedupedCandidates = [];
+    const seen = new Set();
+    for (const rawCandidate of candidates) {
+      const candidate = String(rawCandidate || '').trim();
+      if (!candidate) continue;
+
+      const key = candidate.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      dedupedCandidates.push(candidate);
+    }
+
+    return dedupedCandidates;
+  }
+
+  async resolveShopSearchCandidates(searchTerm) {
+    const normalizedSearchTerm = String(searchTerm || '').trim();
+    if (!normalizedSearchTerm) {
+      return [];
+    }
+
+    const baseCandidates = this.buildShopSearchCandidates(normalizedSearchTerm);
+    if (!SHOP_SEARCH_CHINESE_REGEX.test(normalizedSearchTerm)) {
+      return baseCandidates;
+    }
+
+    const cacheKey = this.getShopTranslationCacheKey(normalizedSearchTerm);
+    let translatedTerm = this.shopSearchTranslationCache.get(cacheKey);
+
+    if (translatedTerm === undefined) {
+      try {
+        translatedTerm = (await translate(normalizedSearchTerm, { from: 'zh', to: 'en' }))?.trim() || '';
+        if (translatedTerm.toLowerCase() === normalizedSearchTerm.toLowerCase()) {
+          translatedTerm = '';
+        }
+      } catch (error) {
+        translatedTerm = '';
+        logger.debug(`shop search translation failed (${normalizedSearchTerm}): ${error.message}`);
+      }
+
+      this.setShopTranslationCache(cacheKey, translatedTerm);
+    }
+
+    const translatedCandidates = this.buildShopSearchCandidates(normalizedSearchTerm, translatedTerm);
+    return translatedCandidates.length > baseCandidates.length ? translatedCandidates : baseCandidates;
+  }
+
+  rankShopMatchingItems(searchTerms) {
+    const scoreByItemId = new Map();
+
+    for (let termIndex = 0; termIndex < searchTerms.length; termIndex++) {
+      const term = searchTerms[termIndex];
+      const ids = searchItems(term).slice(0, 50);
+      for (let matchIndex = 0; matchIndex < ids.length; matchIndex++) {
+        const itemId = ids[matchIndex];
+        const score = (searchTerms.length - termIndex) * 1000 - matchIndex;
+        const currentScore = scoreByItemId.get(itemId) ?? Number.NEGATIVE_INFINITY;
+        if (score > currentScore) {
+          scoreByItemId.set(itemId, score);
+        }
+      }
+    }
+
+    return [...scoreByItemId.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([itemId]) => itemId);
+  }
+
   /**
    * !shop - 搜索售货机物品
    */
@@ -887,28 +1018,29 @@ class UserCommands extends EventEmitter {
         return cmd('shop', 'empty');
       }
 
-      // 如果没有搜索参数，显示统计
+      // 没有搜索参数时只返回统计
       if (args.length === 0) {
         return cmd('shop', 'summary', { count: vendingMachines.length });
       }
 
-      // 搜索物品
-      const searchTerm = args.join(' ');
-      const matchingItemIds = searchItems(searchTerm);
+      const searchTerm = args.join(' ').trim();
+      const searchCandidates = await this.resolveShopSearchCandidates(searchTerm);
+      const matchingItemIds = this.rankShopMatchingItems(searchCandidates);
 
       if (matchingItemIds.length === 0) {
         return cmd('shop', 'not_found', { item: searchTerm });
       }
 
-      // 在售货机中搜索匹配的物品
+      // 在售货机中搜索匹配物品
       const results = [];
-      const matchingIdSet = new Set(matchingItemIds.slice(0, 10)); // 只取前10个匹配结果
+      const matchingIdSet = new Set(matchingItemIds.slice(0, 10));
 
       for (const vm of vendingMachines) {
         if (!vm.sellOrders || vm.sellOrders.length === 0) continue;
 
         for (const order of vm.sellOrders) {
-          if (matchingIdSet.has(String(order.itemId))) {
+          const itemId = String(order.itemId);
+          if (matchingIdSet.has(itemId)) {
             const position = formatPosition(vm.x, vm.y, mapSize);
             const itemName = getItemName(order.itemId);
             const itemShortName = getItemShortName(order.itemId);
@@ -916,6 +1048,7 @@ class UserCommands extends EventEmitter {
             const currencyShortName = getItemShortName(order.currencyId);
 
             results.push({
+              itemId,
               position,
               itemName,
               itemShortName,
@@ -937,10 +1070,19 @@ class UserCommands extends EventEmitter {
       // 格式化输出（限制结果数量，避免消息过长）
       const maxResults = 5;
       const displayResults = results.slice(0, maxResults);
-      const itemName = getItemName(matchingItemIds[0]);
-      const itemShortName = getItemShortName(matchingItemIds[0]);
+      const matchedItemIds = new Set(results.map(r => r.itemId));
 
-      let output = cmd('shop', 'found', { count: results.length, item: `:${itemShortName}: ${itemName}` }) + '\n';
+      let displayItem = searchTerm;
+      if (matchedItemIds.size === 1) {
+        const singleItemId = displayResults[0]?.itemId;
+        if (singleItemId) {
+          const itemName = getItemName(singleItemId);
+          const itemShortName = getItemShortName(singleItemId);
+          displayItem = `:${itemShortName}: ${itemName}`;
+        }
+      }
+
+      let output = cmd('shop', 'found', { count: results.length, item: displayItem }) + '\n';
 
       for (const r of displayResults) {
         output += `${r.position}: ${r.quantity}x :${r.itemShortName}: = ${r.cost}:${r.currencyShortName}: (库存${r.stock})\n`;
@@ -1117,6 +1259,7 @@ class UserCommands extends EventEmitter {
     this.commands.clear();
     this.deviceCommandsCache.clear();
     this.timeCache.clear();
+    this.shopSearchTranslationCache.clear();
     this.commandSettings = null;
     this.removeAllListeners();
     logger.debug(`👤 UserCommands 已销毁 (userId: ${this.userId})`);

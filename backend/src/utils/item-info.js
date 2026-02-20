@@ -32,16 +32,20 @@ try {
 
 // 加载中文翻译
 let TRANSLATIONS = {};
-let REVERSE_TRANSLATIONS = {}; // 中文 -> 英文shortName
+let REVERSE_TRANSLATIONS = {}; // 中文 -> 英文shortName[]
 try {
   const translationPath = path.join(__dirname, 'item-translations.json');
   const translationData = fs.readFileSync(translationPath, 'utf8');
   const data = JSON.parse(translationData);
   TRANSLATIONS = data.translations;
 
-  // 构建反向映射（中文 -> shortName）
+  // 构建反向映射（中文 -> shortName[]），兼容一词多物品
   for (const [shortName, chineseName] of Object.entries(TRANSLATIONS)) {
-    REVERSE_TRANSLATIONS[chineseName.toLowerCase()] = shortName;
+    const key = chineseName.toLowerCase();
+    if (!REVERSE_TRANSLATIONS[key]) {
+      REVERSE_TRANSLATIONS[key] = [];
+    }
+    REVERSE_TRANSLATIONS[key].push(shortName);
   }
 
   console.log(`✅ 已加载 ${Object.keys(TRANSLATIONS).length} 个中文翻译`);
@@ -54,6 +58,15 @@ const unknownItems = new Set();
 
 // 未知物品记录文件
 const UNKNOWN_ITEMS_FILE = path.join(__dirname, 'unknown-items.json');
+
+/**
+ * 转义正则特殊字符，避免用户输入触发无效正则
+ * @param {string} value
+ * @returns {string}
+ */
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 /**
  * 保存未知物品到JSON文件
@@ -174,17 +187,25 @@ export function getImportantItemIds() {
  * @returns {string[]} 匹配的物品ID列表（按相关度排序）
  */
 export function searchItems(searchTerm) {
-  const term = searchTerm.toLowerCase().trim();
+  const term = String(searchTerm || '').toLowerCase().trim();
+  if (!term) {
+    return [];
+  }
   const matches = [];
 
   // 先检查是否有精确的中文翻译匹配
-  const exactShortName = REVERSE_TRANSLATIONS[term];
-  if (exactShortName) {
-    // 找到精确匹配的shortName，查找对应的物品ID
+  const exactShortNames = REVERSE_TRANSLATIONS[term];
+  if (exactShortNames?.length) {
+    // 找到精确匹配的shortName列表，查找对应的物品ID
+    const exactShortNameSet = new Set(exactShortNames);
+    const exactMatchedIds = [];
     for (const [itemId, itemInfo] of Object.entries(ITEM_INFO)) {
-      if (itemInfo.shortName === exactShortName) {
-        return [itemId]; // 精确匹配，直接返回
+      if (exactShortNameSet.has(itemInfo.shortName)) {
+        exactMatchedIds.push(itemId);
       }
+    }
+    if (exactMatchedIds.length > 0) {
+      return exactMatchedIds;
     }
   }
 
@@ -227,7 +248,8 @@ export function searchItems(searchTerm) {
     }
     else if (term.length < 4) {
       // 短搜索词（<4字符）需要单词边界匹配，避免误匹配
-      const wordBoundaryRegex = new RegExp(`(^|[._-])${term}([._-]|$)`, 'i');
+      const escapedTerm = escapeRegExp(term);
+      const wordBoundaryRegex = new RegExp(`(^|[._-])${escapedTerm}([._-]|$)`, 'i');
       if (wordBoundaryRegex.test(shortName)) {
         score = 50;
       }
