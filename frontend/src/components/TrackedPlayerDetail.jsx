@@ -14,6 +14,7 @@ function TrackedPlayerDetail({ steamId, onClose, onUpdate }) {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [saving, setSaving] = useState(false);
+  const [nowTs, setNowTs] = useState(Date.now());
 
   // 加载玩家数据
   useEffect(() => {
@@ -47,6 +48,11 @@ function TrackedPlayerDetail({ steamId, onClose, onUpdate }) {
 
     loadData();
   }, [steamId, toast]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // 保存编辑
   const handleSave = async () => {
@@ -87,6 +93,13 @@ function TrackedPlayerDetail({ steamId, onClose, onUpdate }) {
       return `${hours}小时${mins}分钟`;
     }
     return `${mins}分钟`;
+  };
+
+  const getCurrentOnlineDuration = () => {
+    if (!player?.isOnline || !player?.sessionStartTime) return null;
+    const startTs = new Date(player.sessionStartTime).getTime();
+    if (Number.isNaN(startTs)) return null;
+    return Math.max(0, Math.floor((nowTs - startTs) / 1000));
   };
 
   // 事件类型显示
@@ -193,6 +206,18 @@ function TrackedPlayerDetail({ steamId, onClose, onUpdate }) {
                     <p className="text-white truncate">
                       {player.currentServerName || '-'}
                     </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">上线时间</p>
+                    <p className="text-white">{formatTime(player.sessionStartTime || player.lastOnlineTime)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">本次在线时长</p>
+                    <p className="text-white">{player.isOnline ? formatDuration(getCurrentOnlineDuration()) : '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">累计游玩</p>
+                    <p className="text-white">{Math.floor(Number(player.playtime || 0) / 60)} 小时</p>
                   </div>
                 </div>
               </div>

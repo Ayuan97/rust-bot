@@ -80,9 +80,11 @@ class UserTrackingService extends EventEmitter {
     try {
       const [rows] = await db.query(
         `SELECT tp.*, tpc.currentName, tpc.isOnline, tpc.currentServerBmId, tpc.currentServerName,
-                tpc.lastOnlineTime, tpc.lastOfflineTime, tpc.sessionStartTime
+                tpc.lastOnlineTime, tpc.lastOfflineTime, tpc.sessionStartTime,
+                pp.playtime
          FROM tracked_players tp
          LEFT JOIN tracked_player_cache tpc ON tp.steamId = tpc.steamId
+         LEFT JOIN player_profiles pp ON tp.steamId = pp.steamId
          WHERE tp.userId = ? AND tp.isActive = 1`,
         [this.userId]
       );
@@ -223,6 +225,7 @@ class UserTrackingService extends EventEmitter {
     const currentServerBmId = onlineStatus.server?.id || null;
     const currentServerName = onlineStatus.server?.name || null;
     const playerName = onlineStatus.session?.name || player.currentName || 'Unknown';
+    const sessionStartFromBm = isNowOnline ? (onlineStatus.session?.start || null) : null;
 
     // 检测状态变化
     if (!wasOnline && isNowOnline) {
@@ -230,7 +233,8 @@ class UserTrackingService extends EventEmitter {
       await this._handlePlayerOnline(steamId, player, {
         playerName,
         serverBmId: currentServerBmId,
-        serverName: currentServerName
+        serverName: currentServerName,
+        sessionStartTime: sessionStartFromBm
       });
     } else if (wasOnline && !isNowOnline) {
       // 下线事件
@@ -257,9 +261,13 @@ class UserTrackingService extends EventEmitter {
       isOnline: isNowOnline,
       currentServerBmId,
       currentServerName,
-      lastOnlineTime: isNowOnline ? new Date() : player.lastOnlineTime,
+      lastOnlineTime: isNowOnline && !wasOnline
+        ? (sessionStartFromBm ? new Date(sessionStartFromBm) : new Date())
+        : player.lastOnlineTime,
       lastOfflineTime: !isNowOnline && wasOnline ? new Date() : player.lastOfflineTime,
-      sessionStartTime: isNowOnline && !wasOnline ? new Date() : player.sessionStartTime
+      sessionStartTime: isNowOnline
+        ? (sessionStartFromBm ? new Date(sessionStartFromBm) : (player.sessionStartTime || new Date()))
+        : null
     });
 
     // 更新内存缓存
@@ -267,6 +275,13 @@ class UserTrackingService extends EventEmitter {
     player.cachedServerBmId = currentServerBmId;
     player.cachedServerName = currentServerName;
     player.currentName = playerName;
+    player.lastOnlineTime = isNowOnline && !wasOnline
+      ? (sessionStartFromBm ? new Date(sessionStartFromBm) : new Date())
+      : player.lastOnlineTime;
+    player.lastOfflineTime = !isNowOnline && wasOnline ? new Date() : player.lastOfflineTime;
+    player.sessionStartTime = isNowOnline
+      ? (sessionStartFromBm ? new Date(sessionStartFromBm) : (player.sessionStartTime || new Date()))
+      : null;
   }
 
   /**
@@ -274,7 +289,7 @@ class UserTrackingService extends EventEmitter {
    * @private
    */
   async _handlePlayerOnline(steamId, player, data) {
-    const { playerName, serverBmId, serverName } = data;
+    const { playerName, serverBmId, serverName, sessionStartTime = null } = data;
 
     // 判断是否在用户的服务器
     const isSameServer = serverBmId && this.userServerBmIds.has(serverBmId);
@@ -301,6 +316,7 @@ class UserTrackingService extends EventEmitter {
       playerName,
       serverBmId,
       serverName,
+      sessionStartTime,
       isSameServer,
       isHighPriority,
       notes: player.notes,
@@ -634,7 +650,11 @@ class UserTrackingService extends EventEmitter {
         priority: player.priority,
         isOnline: player.cachedOnline,
         currentServerBmId: player.cachedServerBmId,
-        currentServerName: player.cachedServerName
+        currentServerName: player.cachedServerName,
+        sessionStartTime: player.sessionStartTime || null,
+        lastOnlineTime: player.lastOnlineTime || null,
+        lastOfflineTime: player.lastOfflineTime || null,
+        playtime: Number(player.playtime || 0)
       });
     }
 
@@ -672,6 +692,10 @@ class UserTrackingService extends EventEmitter {
       isOnline: player.cachedOnline,
       currentServerBmId: player.cachedServerBmId,
       currentServerName: player.cachedServerName,
+      sessionStartTime: player.sessionStartTime || null,
+      lastOnlineTime: player.lastOnlineTime || null,
+      lastOfflineTime: player.lastOfflineTime || null,
+      playtime: Number(player.playtime || 0),
       profile
     };
   }

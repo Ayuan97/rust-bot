@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   FaServer, FaUsers, FaClock, FaMapMarkedAlt, FaTrophy, FaTachometerAlt,
   FaCubes, FaCalendarAlt, FaSyncAlt, FaChartLine, FaGlobe, FaGamepad,
   FaSeedling, FaExternalLinkAlt, FaUserClock, FaSignal, FaHourglassHalf,
   FaCheckCircle, FaExclamationTriangle, FaInfoCircle, FaCrosshairs, FaTimes,
-  FaSpinner, FaPlus
+  FaSpinner, FaPlus, FaSearch
 } from 'react-icons/fa';
 import { getBattlemetricsInfo, getTopPlayers, trackPlayerByBmId } from '../services/api';
 import { formatTimeAgo } from '../utils/time';
@@ -98,6 +98,8 @@ function ServerInfoView({ server, onBack }) {
   const [cooldown, setCooldown] = useState(0);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [tracking, setTracking] = useState(false);
+  const [onlineSearch, setOnlineSearch] = useState('');
+  const [nowTs, setNowTs] = useState(Date.now());
   const serverId = server?.id || null;
 
   // 追踪玩家
@@ -169,6 +171,11 @@ function ServerInfoView({ server, onBack }) {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const timer = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   // 冷却计时器
   useEffect(() => {
     if (cooldown > 0) {
@@ -218,6 +225,51 @@ function ServerInfoView({ server, onBack }) {
     };
     return cycleMap[cycle] || cycle || '未知';
   };
+
+  const getSessionDurationSec = (player) => {
+    if (!player?.sessionStart) return null;
+    const start = new Date(player.sessionStart).getTime();
+    if (Number.isNaN(start)) return null;
+    return Math.max(0, Math.floor((nowTs - start) / 1000));
+  };
+
+  const formatDuration = (seconds) => {
+    if (seconds === null || seconds === undefined || Number.isNaN(seconds) || seconds < 0) {
+      return '-';
+    }
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) return `${hours}小时${mins}分钟`;
+    return `${mins}分钟`;
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const filteredOnlinePlayers = useMemo(() => {
+    const list = bmInfo?.onlinePlayers || [];
+    const q = onlineSearch.trim().toLowerCase();
+    const sorted = [...list].sort((a, b) => {
+      const ad = getSessionDurationSec(a) ?? a.onlineDurationSec ?? 0;
+      const bd = getSessionDurationSec(b) ?? b.onlineDurationSec ?? 0;
+      return bd - ad;
+    });
+    if (!q) return sorted;
+    return sorted.filter((p) => {
+      const name = String(p.name || '').toLowerCase();
+      const id = String(p.id || '').toLowerCase();
+      return name.includes(q) || id.includes(q);
+    });
+  }, [bmInfo?.onlinePlayers, onlineSearch, nowTs]);
 
   if (!serverId) {
     return (
@@ -546,23 +598,47 @@ function ServerInfoView({ server, onBack }) {
                 ))}
               </div>
             ) : bmInfo?.onlinePlayers && bmInfo.onlinePlayers.length > 0 ? (
-              <div className="space-y-1 max-h-96 overflow-y-auto">
-                {bmInfo.onlinePlayers.slice(0, 50).map((player, index) => (
-                  <div
-                    key={player.id || index}
-                    onClick={() => setSelectedPlayer(player)}
-                    className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-white/5 transition-colors group cursor-pointer"
-                  >
-                    <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                    <span className="text-sm text-white truncate flex-1">{player.name}</span>
-                    <FaCrosshairs className="text-xs text-gray-600 group-hover:text-[#cd5241] transition-colors" />
+              <div className="space-y-3">
+                <div className="relative">
+                  <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-xs" />
+                  <input
+                    type="text"
+                    value={onlineSearch}
+                    onChange={(e) => setOnlineSearch(e.target.value)}
+                    placeholder="搜索玩家名或 BM ID"
+                    className="w-full pl-8 pr-3 py-2 text-xs bg-black/40 border border-white/10 rounded-lg focus:outline-none focus:border-[#cd5241]/40"
+                  />
+                </div>
+                <div className="max-h-96 overflow-y-auto border border-white/10 rounded-lg">
+                  <div className="grid grid-cols-12 text-[10px] text-gray-500 uppercase tracking-wider px-3 py-2 border-b border-white/10 bg-white/[0.02]">
+                    <span className="col-span-5">玩家</span>
+                    <span className="col-span-3">上线时间</span>
+                    <span className="col-span-3">在线时长</span>
+                    <span className="col-span-1 text-right">追踪</span>
                   </div>
-                ))}
-                {bmInfo.onlinePlayers.length > 50 && (
-                  <div className="text-center text-xs text-gray-500 py-2">
-                    还有 {bmInfo.onlinePlayers.length - 50} 名玩家...
-                  </div>
-                )}
+                  {filteredOnlinePlayers.map((player, index) => (
+                    <button
+                      type="button"
+                      key={player.id || index}
+                      onClick={() => setSelectedPlayer(player)}
+                      className="group w-full grid grid-cols-12 items-center px-3 py-2 border-b border-white/5 hover:bg-white/5 transition-colors text-left"
+                    >
+                      <span className="col-span-5 text-sm text-white truncate">{player.name || 'Unknown'}</span>
+                      <span className="col-span-3 text-xs text-gray-400">{formatDateTime(player.sessionStart)}</span>
+                      <span className="col-span-3 text-xs text-green-400">
+                        {formatDuration(getSessionDurationSec(player) || player.onlineDurationSec)}
+                      </span>
+                      <span className="col-span-1 text-right">
+                        <FaCrosshairs className="inline text-xs text-gray-600 group-hover:text-[#cd5241] transition-colors" />
+                      </span>
+                    </button>
+                  ))}
+                  {filteredOnlinePlayers.length === 0 && (
+                    <div className="text-center text-xs text-gray-500 py-6">
+                      未找到匹配玩家
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500">
@@ -647,6 +723,16 @@ function ServerInfoView({ server, onBack }) {
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">服务器</span>
                   <span className="text-white truncate ml-4 max-w-[180px]">{server?.name || bmInfo?.name}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">上线时间</span>
+                  <span className="text-white">{formatDateTime(selectedPlayer.sessionStart)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">在线时长</span>
+                  <span className="text-green-400">
+                    {formatDuration(getSessionDurationSec(selectedPlayer) || selectedPlayer.onlineDurationSec)}
+                  </span>
                 </div>
               </div>
 

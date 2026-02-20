@@ -314,7 +314,7 @@ class BattlemetricsService extends EventEmitter {
           break;
         }
 
-        // 构建玩家 ID -> 名称的映射（从 included 中获取完整玩家信息）
+        // 构建玩家 ID -> 信息映射（从 included 中获取完整玩家信息）
         const playerMap = new Map();
         if (response.data.included) {
           for (const item of response.data.included) {
@@ -322,7 +322,8 @@ class BattlemetricsService extends EventEmitter {
               playerMap.set(item.id, {
                 id: item.id,
                 name: item.attributes?.name || 'Unknown',
-                updatedAt: item.attributes?.updatedAt
+                updatedAt: item.attributes?.updatedAt,
+                private: item.attributes?.private || null
               });
             }
           }
@@ -333,6 +334,11 @@ class BattlemetricsService extends EventEmitter {
           if (session.type === 'session') {
             const playerRelation = session.relationships?.player?.data;
             if (playerRelation) {
+              const sessionStart = session.attributes?.start || null;
+              const sessionStop = session.attributes?.stop || null;
+              const onlineDurationSec = sessionStart && !sessionStop
+                ? Math.max(0, Math.floor((Date.now() - new Date(sessionStart).getTime()) / 1000))
+                : null;
               const playerInfo = playerMap.get(playerRelation.id);
               if (playerInfo) {
                 players.push(playerInfo);
@@ -341,9 +347,14 @@ class BattlemetricsService extends EventEmitter {
                 players.push({
                   id: playerRelation.id,
                   name: session.attributes?.name || 'Unknown',
-                  updatedAt: session.attributes?.start
+                  updatedAt: sessionStart
                 });
               }
+              const current = players[players.length - 1];
+              current.sessionId = session.id;
+              current.sessionStart = sessionStart;
+              current.sessionStop = sessionStop;
+              current.onlineDurationSec = onlineDurationSec;
             }
           }
         }

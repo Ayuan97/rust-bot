@@ -9,6 +9,21 @@ import socketService from '../services/socket';
 import AddTrackingModal from './AddTrackingModal';
 import TrackedPlayerDetail from './TrackedPlayerDetail';
 
+function formatDuration(seconds) {
+  if (!seconds || seconds < 0) return '0分钟';
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) return `${hours}小时${mins}分钟`;
+  return `${mins}分钟`;
+}
+
+function getOnlineDurationSec(player, nowTs) {
+  if (!player?.isOnline || !player?.sessionStartTime) return 0;
+  const start = new Date(player.sessionStartTime).getTime();
+  if (Number.isNaN(start)) return 0;
+  return Math.max(0, Math.floor((nowTs - start) / 1000));
+}
+
 function TrackingView() {
   const toast = useToast();
   const [players, setPlayers] = useState([]);
@@ -20,6 +35,7 @@ function TrackingView() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [menuOpenId, setMenuOpenId] = useState(null);
+  const [nowTs, setNowTs] = useState(Date.now());
 
   // 加载追踪列表
   const loadPlayers = useCallback(async (isRefresh = false) => {
@@ -49,12 +65,24 @@ function TrackingView() {
     loadPlayers();
   }, [loadPlayers]);
 
+  useEffect(() => {
+    const timer = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   // 监听 Socket 事件
   useEffect(() => {
     const handleOnline = (data) => {
       setPlayers(prev => prev.map(p =>
         p.steamId === data.steamId
-          ? { ...p, isOnline: true, currentServerName: data.serverName, currentServerBmId: data.serverBmId }
+          ? {
+              ...p,
+              isOnline: true,
+              currentServerName: data.serverName,
+              currentServerBmId: data.serverBmId,
+              sessionStartTime: data.sessionStartTime || new Date().toISOString(),
+              lastOnlineTime: data.sessionStartTime || new Date().toISOString()
+            }
           : p
       ));
 
@@ -72,13 +100,16 @@ function TrackingView() {
     const handleOffline = (data) => {
       setPlayers(prev => prev.map(p =>
         p.steamId === data.steamId
-          ? { ...p, isOnline: false }
+          ? {
+              ...p,
+              isOnline: false,
+              sessionStartTime: null,
+              lastOfflineTime: new Date().toISOString()
+            }
           : p
       ));
 
-      const duration = data.sessionDuration
-        ? `, 在线 ${Math.floor(data.sessionDuration / 3600)}小时${Math.floor((data.sessionDuration % 3600) / 60)}分钟`
-        : '';
+      const duration = data.sessionDuration ? `, 在线 ${formatDuration(data.sessionDuration)}` : '';
       toast.info(`[追踪] ${data.playerName} 下线了${duration}`);
     };
 
@@ -253,6 +284,7 @@ function TrackingView() {
                     <PlayerCard
                       key={player.steamId}
                       player={player}
+                      nowTs={nowTs}
                       menuOpen={menuOpenId === player.steamId}
                       onMenuToggle={() => setMenuOpenId(menuOpenId === player.steamId ? null : player.steamId)}
                       onDelete={() => handleDelete(player.steamId, player.currentName)}
@@ -297,7 +329,10 @@ function TrackingView() {
 }
 
 // 玩家卡片组件
-function PlayerCard({ player, menuOpen, onMenuToggle, onDelete, onClick }) {
+function PlayerCard({ player, nowTs, menuOpen, onMenuToggle, onDelete, onClick }) {
+  const onlineDurationSec = getOnlineDurationSec(player, nowTs);
+  const totalPlaytimeHours = Math.floor(Number(player.playtime || 0) / 60);
+
   return (
     <div
       className={`relative bg-dark-800/50 rounded-xl border transition-all cursor-pointer hover:border-white/20 ${
@@ -369,6 +404,13 @@ function PlayerCard({ player, menuOpen, onMenuToggle, onDelete, onClick }) {
             <span className="truncate">{player.currentServerName}</span>
           </div>
         )}
+
+        <div className="mt-2 text-xs text-gray-500 space-y-1">
+          <div>累计游玩: {totalPlaytimeHours} 小时</div>
+          <div>
+            当前在线: {player.isOnline ? formatDuration(onlineDurationSec) : '-'}
+          </div>
+        </div>
 
         {/* 备注 */}
         {player.notes && (
