@@ -29,6 +29,36 @@ function getUserRustPlusService(userId) {
   return userService.rustPlusService;
 }
 
+const MYSQL_INT_MIN = -2147483648;
+const MYSQL_INT_MAX = 2147483647;
+
+function safeString(value, maxLength = null, fallback = null) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const text = String(value);
+  if (!maxLength) return text;
+  return text.length > maxLength ? text.slice(0, maxLength) : text;
+}
+
+function safeInt(value, { fallback = null, allowNull = true } = {}) {
+  if (value === null || value === undefined || value === '') {
+    return allowNull ? null : fallback;
+  }
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return allowNull ? null : fallback;
+  }
+  const intValue = Math.trunc(num);
+  if (intValue < MYSQL_INT_MIN) return MYSQL_INT_MIN;
+  if (intValue > MYSQL_INT_MAX) return MYSQL_INT_MAX;
+  return intValue;
+}
+
+function safeDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 // ============================================================
 // 服务器管理
 // ============================================================
@@ -1500,78 +1530,119 @@ router.get('/:id/battlemetrics', async (req, res) => {
 
     if (isStale) {
       // 缓存过期，获取完整数据并更新缓存
-      const freshData = await battlemetricsService.getServerInfo(battlemetricsId);
-      onlinePlayers = freshData?.onlinePlayers || [];
+      try {
+        const freshData = await battlemetricsService.getServerInfo(battlemetricsId);
+        onlinePlayers = freshData?.onlinePlayers || [];
 
-      if (freshData) {
-        const now = new Date();
-        const upsertData = {
-          name: freshData.name || 'Unknown',
-          ip: freshData.ip,
-          port: freshData.port,
-          address: freshData.address,
-          status: freshData.status || 'online',
-          players: freshData.players || 0,
-          maxPlayers: freshData.maxPlayers || 0,
-          queuedPlayers: freshData.queuedPlayers || 0,
-          rank: freshData.rank,
-          fps: freshData.fps,
-          fpsAvg: freshData.fpsAvg,
-          uptime: freshData.uptime,
-          entityCount: freshData.entityCount,
-          map: freshData.map,
-          mapSize: freshData.mapSize,
-          seed: freshData.worldSeed,
-          wipeTime: freshData.lastWipe ? new Date(freshData.lastWipe) : null,
-          wipeCycle: freshData.wipeCycle,
-          nextWipe: freshData.nextWipe ? new Date(freshData.nextWipe) : null,
-          headerImage: freshData.headerImage,
-          logoImage: freshData.logoImage,
-          rustMapsUrl: freshData.rustMapsUrl,
-          rustMapsThumbnail: freshData.rustMapsThumbnail,
-          country: freshData.country,
-          official: freshData.official ? 1 : 0,
-          modded: freshData.modded ? 1 : 0,
-          pve: freshData.pve ? 1 : 0,
-          description: freshData.description,
-          url: freshData.url
-        };
+        if (freshData) {
+          const now = new Date();
+          const upsertData = {
+            name: safeString(freshData.name, 255, 'Unknown'),
+            ip: safeString(freshData.ip, 45, null),
+            port: safeInt(freshData.port, { fallback: null, allowNull: true }),
+            address: safeString(freshData.address, 100, null),
+            status: safeString(freshData.status, 20, 'online'),
+            players: safeInt(freshData.players, { fallback: 0, allowNull: false }),
+            maxPlayers: safeInt(freshData.maxPlayers, { fallback: 0, allowNull: false }),
+            queuedPlayers: safeInt(freshData.queuedPlayers, { fallback: 0, allowNull: false }),
+            rank: safeInt(freshData.rank, { fallback: null, allowNull: true }),
+            fps: safeInt(freshData.fps, { fallback: null, allowNull: true }),
+            fpsAvg: safeInt(freshData.fpsAvg, { fallback: null, allowNull: true }),
+            uptime: safeInt(freshData.uptime, { fallback: null, allowNull: true }),
+            entityCount: safeInt(freshData.entityCount, { fallback: null, allowNull: true }),
+            map: safeString(freshData.map, 100, null),
+            mapSize: safeInt(freshData.mapSize, { fallback: null, allowNull: true }),
+            seed: safeInt(freshData.worldSeed, { fallback: null, allowNull: true }),
+            wipeTime: safeDate(freshData.lastWipe),
+            wipeCycle: safeString(freshData.wipeCycle, 20, null),
+            nextWipe: safeDate(freshData.nextWipe),
+            headerImage: safeString(freshData.headerImage, null, null),
+            logoImage: safeString(freshData.logoImage, null, null),
+            rustMapsUrl: safeString(freshData.rustMapsUrl, 255, null),
+            rustMapsThumbnail: safeString(freshData.rustMapsThumbnail, null, null),
+            country: safeString(freshData.country, 50, null),
+            official: freshData.official ? 1 : 0,
+            modded: freshData.modded ? 1 : 0,
+            pve: freshData.pve ? 1 : 0,
+            description: safeString(freshData.description, null, null),
+            url: safeString(freshData.url, 255, null)
+          };
 
-        if (bmInfo) {
-          // Update
-          const updateParts = Object.keys(upsertData).map(k => `${k} = ?`);
-          updateParts.push('updatedAt = ?');
-          const updateParams = [...Object.values(upsertData), now, battlemetricsId];
-          await db.query(
-            `UPDATE public_servers SET ${updateParts.join(', ')} WHERE battlemetricsId = ?`,
-            updateParams
+          if (bmInfo) {
+            // Update
+            const updateParts = Object.keys(upsertData).map(k => `${k} = ?`);
+            updateParts.push('updatedAt = ?');
+            const updateParams = [...Object.values(upsertData), now, battlemetricsId];
+            await db.query(
+              `UPDATE public_servers SET ${updateParts.join(', ')} WHERE battlemetricsId = ?`,
+              updateParams
+            );
+          } else {
+            // Insert
+            await db.query(
+              `INSERT INTO public_servers (battlemetricsId, ${Object.keys(upsertData).join(', ')}, createdAt, updatedAt)
+               VALUES (?, ${Object.keys(upsertData).map(() => '?').join(', ')}, ?, ?)`,
+              [battlemetricsId, ...Object.values(upsertData), now, now]
+            );
+          }
+
+          // Re-fetch
+          const [newBmRows] = await db.query(
+            'SELECT * FROM public_servers WHERE battlemetricsId = ?',
+            [battlemetricsId]
           );
-        } else {
-          // Insert
-          await db.query(
-            `INSERT INTO public_servers (battlemetricsId, ${Object.keys(upsertData).join(', ')}, createdAt, updatedAt)
-             VALUES (?, ${Object.keys(upsertData).map(() => '?').join(', ')}, ?, ?)`,
-            [battlemetricsId, ...Object.values(upsertData), now, now]
-          );
+          bmInfo = newBmRows[0];
         }
-
-        // Re-fetch
-        const [newBmRows] = await db.query(
-          'SELECT * FROM public_servers WHERE battlemetricsId = ?',
-          [battlemetricsId]
-        );
-        bmInfo = newBmRows[0];
+      } catch (bmError) {
+        console.warn(`[battlemetrics] 获取或写入缓存失败 server=${req.params.id}: ${bmError.message}`);
       }
     } else {
       // 缓存未过期，但在线玩家列表仍需实时获取
-      const freshData = await battlemetricsService.getServerInfo(battlemetricsId);
-      onlinePlayers = freshData?.onlinePlayers || [];
+      try {
+        const freshData = await battlemetricsService.getServerInfo(battlemetricsId);
+        onlinePlayers = freshData?.onlinePlayers || [];
+      } catch (bmError) {
+        console.warn(`[battlemetrics] 获取在线玩家失败 server=${req.params.id}: ${bmError.message}`);
+      }
     }
 
     if (!bmInfo) {
-      return res.status(500).json({
-        success: false,
-        error: '获取 Battlemetrics 信息失败'
+      return res.json({
+        success: true,
+        degraded: true,
+        data: {
+          battlemetricsId,
+          name: server.name || 'Unknown',
+          ip: server.ip,
+          port: safeInt(server.port, { fallback: null, allowNull: true }),
+          address: `${server.ip}:${server.port}`,
+          status: 'unknown',
+          players: 0,
+          maxPlayers: 0,
+          queuedPlayers: 0,
+          rank: null,
+          fps: null,
+          fpsAvg: null,
+          uptime: null,
+          entityCount: null,
+          map: null,
+          mapSize: null,
+          seed: null,
+          wipeTime: null,
+          wipeCycle: null,
+          nextWipe: null,
+          headerImage: null,
+          logoImage: null,
+          rustMapsUrl: null,
+          rustMapsThumbnail: null,
+          country: null,
+          official: false,
+          modded: false,
+          pve: false,
+          description: null,
+          url: null,
+          onlinePlayers: []
+        }
       });
     }
 
