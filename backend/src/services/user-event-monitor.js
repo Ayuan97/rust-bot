@@ -1644,6 +1644,19 @@ class UserEventMonitor extends EventEmitter {
       const mapSize = this.rustPlusService.getMapSize(serverId);
       const monuments = this.monuments.get(serverId) || [];
       const now = Date.now();
+      const toTeamMemberState = (member) => ({
+        name: member.name,
+        x: member.x,
+        y: member.y,
+        isOnline: member.isOnline,
+        isAlive: member.isAlive,
+        deathTime: member.deathTime,
+        spawnTime: member.spawnTime,
+        lastMovement: now,
+        afkSeconds: 0,
+        lastOnlineTime: member.isOnline ? now : null,
+        lastOfflineTime: member.isOnline ? null : now
+      });
 
       // 首次轮询
       if (eventData.isFirstTeamPoll) {
@@ -1651,74 +1664,52 @@ class UserEventMonitor extends EventEmitter {
           const steamId = member.steamId?.toString();
           if (!steamId) continue;
 
-          eventData.teamMembers.set(steamId, {
-            name: member.name,
-            x: member.x,
-            y: member.y,
-            isOnline: member.isOnline,
-            isAlive: member.isAlive,
-            deathTime: member.deathTime,
-            spawnTime: member.spawnTime,
-            lastMovement: now,
-            afkSeconds: 0,
-            lastOnlineTime: member.isOnline ? now : null,
-            lastOfflineTime: member.isOnline ? null : now
-          });
+          eventData.teamMembers.set(steamId, toTeamMemberState(member));
         }
         eventData.teamLeaderSteamId = teamInfo.leaderSteamId?.toString() || null;
         eventData.isFirstTeamPoll = false;
         return;
       }
 
-      // 检测成员变化（完整实现类似原 EventMonitorService）
-      // 这里简化实现，重点是添加 userId 到所有事件
-
-      // 队伍切换检测: 队长变化 + 同时有成员离开和加入 = 切换了队伍
       const currentLeaderSteamId = teamInfo.leaderSteamId?.toString() || null;
       const oldLeaderSteamId = eventData.teamLeaderSteamId;
+      const currentSteamIdSet = new Set(
+        teamInfo.members.map(m => m.steamId?.toString()).filter(Boolean)
+      );
+      const oldSteamIds = new Set(eventData.teamMembers.keys());
 
-      if (oldLeaderSteamId && currentLeaderSteamId && oldLeaderSteamId !== currentLeaderSteamId) {
-        const currentSteamIdSet = new Set(
-          teamInfo.members.map(m => m.steamId?.toString()).filter(Boolean)
+      let leftCount = 0;
+      for (const id of oldSteamIds) {
+        if (!currentSteamIdSet.has(id)) leftCount++;
+      }
+      let newCount = 0;
+      for (const id of currentSteamIdSet) {
+        if (!oldSteamIds.has(id)) newCount++;
+      }
+
+      const playerSteamId = serverConfig?.playerId?.toString() || null;
+      const onlySelfBefore = oldSteamIds.size === 1 && playerSteamId && oldSteamIds.has(playerSteamId);
+      const emptyToTeamBootstrap = oldSteamIds.size === 0 && currentSteamIdSet.size > 0;
+      const joinedExistingTeam = onlySelfBefore && currentSteamIdSet.size > 1 && leftCount === 0 && newCount > 0;
+      const teamLeaderChanged = oldLeaderSteamId && currentLeaderSteamId && oldLeaderSteamId !== currentLeaderSteamId;
+      const shouldSilentResync = emptyToTeamBootstrap || joinedExistingTeam || (teamLeaderChanged && (leftCount > 0 || newCount > 0));
+
+      // 队伍基线发生明显切换时，静默重建快照，避免一次性刷屏“成员加入队伍”
+      if (shouldSilentResync) {
+        logger.server(
+          serverId,
+          `检测到队伍基线切换 (leader: ${oldLeaderSteamId || '-'} -> ${currentLeaderSteamId || '-'}, old=${oldSteamIds.size}, new=${currentSteamIdSet.size}, +${newCount}, -${leftCount})，静默重建队伍快照`
         );
-        const oldSteamIds = new Set(eventData.teamMembers.keys());
 
-        let leftCount = 0;
-        for (const id of oldSteamIds) {
-          if (!currentSteamIdSet.has(id)) leftCount++;
+        eventData.teamMembers.clear();
+        for (const member of teamInfo.members) {
+          const steamId = member.steamId?.toString();
+          if (!steamId) continue;
+          eventData.teamMembers.set(steamId, toTeamMemberState(member));
         }
-        let newCount = 0;
-        for (const id of currentSteamIdSet) {
-          if (!oldSteamIds.has(id)) newCount++;
-        }
-
-        if (leftCount > 0 && newCount > 0) {
-          logger.server(serverId, `检测到队伍切换 (队长: ${oldLeaderSteamId} -> ${currentLeaderSteamId}, 离开: ${leftCount}, 新增: ${newCount}), 重置队伍数据`);
-
-          eventData.teamMembers.clear();
-          for (const member of teamInfo.members) {
-            const steamId = member.steamId?.toString();
-            if (!steamId) continue;
-            eventData.teamMembers.set(steamId, {
-              name: member.name,
-              x: member.x,
-              y: member.y,
-              isOnline: member.isOnline,
-              isAlive: member.isAlive,
-              deathTime: member.deathTime,
-              spawnTime: member.spawnTime,
-              lastMovement: now,
-              afkSeconds: 0,
-              lastOnlineTime: member.isOnline ? now : null,
-              lastOfflineTime: member.isOnline ? null : now
-            });
-          }
-          eventData.teamLeaderSteamId = currentLeaderSteamId;
-
-          // 同步扩展队友列表
-          await this.syncExtendedTeammates(serverId, teamInfo);
-          return;
-        }
+        eventData.teamLeaderSteamId = currentLeaderSteamId;
+        await this.syncExtendedTeammates(serverId, teamInfo);
+        return;
       }
 
       eventData.teamLeaderSteamId = currentLeaderSteamId;
@@ -1733,19 +1724,7 @@ class UserEventMonitor extends EventEmitter {
         // 新成员加入队伍 - 动态添加到 teamMembers
         if (!oldState) {
           logger.server(serverId, `新成员加入队伍: ${member.name}`);
-          eventData.teamMembers.set(steamId, {
-            name: member.name,
-            x: member.x,
-            y: member.y,
-            isOnline: member.isOnline,
-            isAlive: member.isAlive,
-            deathTime: member.deathTime,
-            spawnTime: member.spawnTime,
-            lastMovement: now,
-            afkSeconds: 0,
-            lastOnlineTime: member.isOnline ? now : null,
-            lastOfflineTime: member.isOnline ? null : now
-          });
+          eventData.teamMembers.set(steamId, toTeamMemberState(member));
 
           // 触发加入队伍事件
           const payload = {
@@ -1985,16 +1964,10 @@ class UserEventMonitor extends EventEmitter {
       }
 
       // 检测离开队伍的成员
-      const currentSteamIds = new Set(
-        teamInfo.members
-          .map(m => m.steamId?.toString())
-          .filter(Boolean)
-      );
-
       // 先收集要删除的成员，避免在迭代中修改 Map
       const leftMembers = [];
       for (const [steamId, oldState] of eventData.teamMembers) {
-        if (!currentSteamIds.has(steamId)) {
+        if (!currentSteamIdSet.has(steamId)) {
           leftMembers.push({ steamId, name: oldState.name });
         }
       }
