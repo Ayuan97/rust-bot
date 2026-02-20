@@ -108,9 +108,13 @@ function App() {
       const gameServers = allServers.filter(s => s.ip !== '0.0.0.0');
 
       setServers(gameServers);
-      if (gameServers.length > 0 && !activeServer) {
-        setActiveServer(gameServers[0]);
-      }
+      // 保持当前选中服务器；若不存在则自动切换到首个可用服务器
+      setActiveServer((prev) => {
+        if (gameServers.length === 0) return null;
+        if (!prev) return gameServers[0];
+        const current = gameServers.find(s => s.id === prev.id);
+        return current || gameServers[0];
+      });
     } catch (e) {
       console.error('获取服务器列表失败', e);
     }

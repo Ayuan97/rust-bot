@@ -98,6 +98,7 @@ function ServerInfoView({ server, onBack }) {
   const [cooldown, setCooldown] = useState(0);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [tracking, setTracking] = useState(false);
+  const serverId = server?.id || null;
 
   // 追踪玩家
   const handleTrackPlayer = async () => {
@@ -125,6 +126,15 @@ function ServerInfoView({ server, onBack }) {
 
   // 加载数据
   const loadData = useCallback(async (isRefresh = false) => {
+    if (!serverId) {
+      setBmInfo(null);
+      setTopPlayers([]);
+      setLastRefresh(null);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     if (isRefresh) {
       setRefreshing(true);
     } else {
@@ -133,8 +143,8 @@ function ServerInfoView({ server, onBack }) {
 
     try {
       const [bmRes, playersRes] = await Promise.all([
-        getBattlemetricsInfo(server.id),
-        getTopPlayers(server.id, 30)
+        getBattlemetricsInfo(serverId),
+        getTopPlayers(serverId, 30)
       ]);
 
       if (bmRes.data.success) {
@@ -152,7 +162,7 @@ function ServerInfoView({ server, onBack }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [server.id]);
+  }, [serverId]);
 
   // 初始加载
   useEffect(() => {
@@ -175,7 +185,9 @@ function ServerInfoView({ server, onBack }) {
   };
 
   // 计算玩家百分比
-  const playerPercentage = bmInfo ? Math.round((bmInfo.players / bmInfo.maxPlayers) * 100) : 0;
+  const playerPercentage = bmInfo?.maxPlayers
+    ? Math.round((bmInfo.players / bmInfo.maxPlayers) * 100)
+    : 0;
 
   // 获取状态颜色
   const getStatusColor = (status) => {
@@ -206,6 +218,29 @@ function ServerInfoView({ server, onBack }) {
     };
     return cycleMap[cycle] || cycle || '未知';
   };
+
+  if (!serverId) {
+    return (
+      <div className="h-full flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-dark-800/40 border border-white/10 rounded-xl p-6 text-center">
+          <FaServer className="mx-auto text-3xl text-gray-500 mb-3" />
+          <h3 className="text-lg font-bold text-white mb-2">暂无可用服务器</h3>
+          <p className="text-sm text-gray-400 mb-5">
+            请先完成服务器配对或选择已连接服务器，再查看服务器信息。
+          </p>
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="px-4 py-2 rounded-lg bg-[#cd5241] hover:bg-[#b04537] text-white text-sm font-bold transition-colors"
+            >
+              返回基地概览
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto">
