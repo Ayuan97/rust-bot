@@ -184,18 +184,6 @@ CREATE TABLE IF NOT EXISTS `admin_logs` (
   INDEX `admin_logs_createdAt_idx` (`createdAt`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 代理配置表
-CREATE TABLE IF NOT EXISTS `proxy_config` (
-  `id` INT NOT NULL DEFAULT 1,
-  `subscriptionUrl` TEXT NULL,
-  `selectedNode` VARCHAR(255) NULL,
-  `proxyPort` INT NOT NULL DEFAULT 10808,
-  `autoStart` TINYINT(1) NOT NULL DEFAULT 0,
-  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  `updatedAt` DATETIME(3) NOT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 -- 玩家档案表
 CREATE TABLE IF NOT EXISTS `player_profiles` (
   `steamId` VARCHAR(36) NOT NULL,
@@ -349,4 +337,105 @@ CREATE TABLE IF NOT EXISTS `tracking_events` (
   INDEX `tracking_events_userId_createdAt_idx` (`userId`, `createdAt`),
   INDEX `tracking_events_steamId_createdAt_idx` (`steamId`, `createdAt`),
   CONSTRAINT `tracking_events_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- Distributed connection + budget guard tables
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `gateway_nodes` (
+  `id` VARCHAR(64) NOT NULL,
+  `publicIp` VARCHAR(45) NOT NULL,
+  `region` VARCHAR(64) NULL,
+  `status` ENUM('ONLINE', 'OFFLINE', 'DRAINING') NOT NULL DEFAULT 'ONLINE',
+  `totalCapacity` INT NOT NULL DEFAULT 120,
+  `maxPerServer` INT NOT NULL DEFAULT 4,
+  `metadata` JSON NULL,
+  `lastHeartbeat` DATETIME(3) NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `gateway_nodes_publicIp_key` (`publicIp`),
+  INDEX `gateway_nodes_status_lastHeartbeat_idx` (`status`, `lastHeartbeat`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `connection_sessions` (
+  `id` VARCHAR(36) NOT NULL,
+  `userId` VARCHAR(36) NOT NULL,
+  `serverId` VARCHAR(36) NOT NULL,
+  `serverKey` VARCHAR(128) NOT NULL,
+  `nodeId` VARCHAR(64) NULL,
+  `status` ENUM('ASSIGNED', 'CONNECTING', 'CONNECTED', 'FAILED', 'CLOSED') NOT NULL DEFAULT 'ASSIGNED',
+  `sourceQueueId` VARCHAR(36) NULL,
+  `lastError` VARCHAR(255) NULL,
+  `connectedAt` DATETIME(3) NULL,
+  `closedAt` DATETIME(3) NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `connection_sessions_userId_status_idx` (`userId`, `status`),
+  INDEX `connection_sessions_serverId_status_idx` (`serverId`, `status`),
+  INDEX `connection_sessions_serverKey_status_idx` (`serverKey`, `status`),
+  INDEX `connection_sessions_nodeId_status_idx` (`nodeId`, `status`),
+  CONSTRAINT `connection_sessions_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `connection_sessions_serverId_fkey` FOREIGN KEY (`serverId`) REFERENCES `servers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `connection_sessions_nodeId_fkey` FOREIGN KEY (`nodeId`) REFERENCES `gateway_nodes` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `connection_queue` (
+  `id` VARCHAR(36) NOT NULL,
+  `userId` VARCHAR(36) NOT NULL,
+  `serverId` VARCHAR(36) NOT NULL,
+  `serverKey` VARCHAR(128) NOT NULL,
+  `reason` VARCHAR(64) NOT NULL DEFAULT 'NO_CAPACITY',
+  `status` ENUM('PENDING', 'ASSIGNED', 'CANCELLED', 'EXPIRED') NOT NULL DEFAULT 'PENDING',
+  `priority` INT NOT NULL DEFAULT 100,
+  `sessionId` VARCHAR(36) NULL,
+  `expiresAt` DATETIME(3) NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `connection_queue_status_createdAt_idx` (`status`, `createdAt`),
+  INDEX `connection_queue_serverKey_status_idx` (`serverKey`, `status`),
+  INDEX `connection_queue_userId_status_idx` (`userId`, `status`),
+  CONSTRAINT `connection_queue_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `connection_queue_serverId_fkey` FOREIGN KEY (`serverId`) REFERENCES `servers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `connection_queue_sessionId_fkey` FOREIGN KEY (`sessionId`) REFERENCES `connection_sessions` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `cost_ledger` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `billingMonth` CHAR(7) NOT NULL,
+  `itemType` ENUM('NODE_HOUR', 'BANDWIDTH_GB', 'MANUAL_ADJUST', 'NODE_RESERVED') NOT NULL,
+  `quantity` DECIMAL(12, 4) NOT NULL DEFAULT 0,
+  `unitPrice` DECIMAL(12, 4) NOT NULL DEFAULT 0,
+  `amount` DECIMAL(12, 4) NOT NULL DEFAULT 0,
+  `currency` VARCHAR(10) NOT NULL DEFAULT 'CNY',
+  `metadata` JSON NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  INDEX `cost_ledger_billingMonth_idx` (`billingMonth`),
+  INDEX `cost_ledger_itemType_idx` (`itemType`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `session_commands` (
+  `id` VARCHAR(36) NOT NULL,
+  `sessionId` VARCHAR(36) NOT NULL,
+  `userId` VARCHAR(36) NOT NULL,
+  `serverId` VARCHAR(36) NOT NULL,
+  `action` VARCHAR(100) NOT NULL,
+  `payload` JSON NULL,
+  `status` ENUM('PENDING', 'CLAIMED', 'DONE', 'FAILED', 'EXPIRED') NOT NULL DEFAULT 'PENDING',
+  `result` JSON NULL,
+  `error` VARCHAR(255) NULL,
+  `claimedAt` DATETIME(3) NULL,
+  `expiresAt` DATETIME(3) NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `session_commands_sessionId_status_idx` (`sessionId`, `status`),
+  INDEX `session_commands_userId_status_idx` (`userId`, `status`),
+  INDEX `session_commands_serverId_status_idx` (`serverId`, `status`),
+  CONSTRAINT `session_commands_sessionId_fkey` FOREIGN KEY (`sessionId`) REFERENCES `connection_sessions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `session_commands_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `session_commands_serverId_fkey` FOREIGN KEY (`serverId`) REFERENCES `servers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -1,6 +1,6 @@
 /**
  * 自定义 RustPlus 客户端
- * 完全替代 @liamcottle/rustplus.js，支持 SOCKS5 代理
+ * 完全替代 @liamcottle/rustplus.js
  */
 
 import WebSocket from 'ws';
@@ -8,7 +8,6 @@ import protobuf from 'protobufjs';
 import { EventEmitter } from 'events';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { SocksProxyAgent } from 'socks-proxy-agent';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,29 +15,20 @@ const __dirname = path.dirname(__filename);
 // Proto 文件路径（使用原库的 proto 文件）
 const PROTO_PATH = path.resolve(__dirname, '../../node_modules/@liamcottle/rustplus.js/rustplus.proto');
 
-// Facepunch 官方代理地址
-const FACEPUNCH_PROXY = 'wss://companion-rust.facepunch.com';
-
 class RustPlusClient extends EventEmitter {
   /**
    * @param {string} server - 服务器 IP 或域名
    * @param {number|string} port - Rust+ App 端口
    * @param {string} playerId - Steam ID
    * @param {number|string} playerToken - 玩家 Token（通常是负数）
-   * @param {Object} options - 可选配置
-   * @param {boolean} options.useFacepunchProxy - 是否使用 Facepunch 官方代理
-   * @param {Object} options.proxy - SOCKS5 代理配置 { host, port }
    */
-  constructor(server, port, playerId, playerToken, options = {}) {
+  constructor(server, port, playerId, playerToken) {
     super();
 
     this.server = server;
     this.port = parseInt(port);
     this.playerId = playerId;
     this.playerToken = parseInt(playerToken);
-
-    this.useFacepunchProxy = options.useFacepunchProxy || false;
-    this.proxyConfig = options.proxy || null;
 
     this.websocket = null;
     this.AppRequest = null;
@@ -75,22 +65,14 @@ class RustPlusClient extends EventEmitter {
     }
 
     // 构建 WebSocket 地址
-    const address = this.useFacepunchProxy
-      ? `${FACEPUNCH_PROXY}/game/${this.server}/${this.port}`
-      : `ws://${this.server}:${this.port}`;
+    const address = `ws://${this.server}:${this.port}`;
 
     // 配置 WebSocket 选项
     const wsOptions = {
       handshakeTimeout: 10000, // 10秒握手超时
     };
 
-    if (this.proxyConfig) {
-      const proxyUrl = `socks5://${this.proxyConfig.host}:${this.proxyConfig.port}`;
-      wsOptions.agent = new SocksProxyAgent(proxyUrl);
-      console.log(`🔌 通过 SOCKS5 代理连接: ${address}`);
-    } else {
-      console.log(`🔌 直连服务器: ${address}`);
-    }
+    console.log(`🔌 直连服务器: ${address}`);
 
     // 触发 connecting 事件
     this.emit('connecting');

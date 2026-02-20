@@ -5,7 +5,7 @@
 
 import { EventEmitter } from 'events';
 import db from '../lib/db.js';
-import UserRustPlusManager from './user-rustplus-manager.js';
+import DistributedRustPlusManager from './distributed-rustplus-manager.js';
 import UserFCMManager from './user-fcm-manager.js';
 import UserEventMonitor from './user-event-monitor.js';
 import UserAutomation from './user-automation.js';
@@ -32,7 +32,7 @@ class UserServiceManager extends EventEmitter {
     this.MAX_LOGS = 200; // 最多保留 200 条记录
 
     // 各个服务实例
-    this.rustPlusService = new UserRustPlusManager(userId);  // Rust+ 连接管理
+    this.rustPlusService = new DistributedRustPlusManager(userId);  // Rust+ 分布式连接管理
     this.fcmService = new UserFCMManager(userId);            // FCM 推送监听
     this.eventMonitorService = new UserEventMonitor(userId, this.rustPlusService);  // 事件监控
     this.automationService = new UserAutomation(userId, this.rustPlusService);      // 设备自动化
@@ -209,25 +209,7 @@ class UserServiceManager extends EventEmitter {
     try {
       console.log(`  🔧 初始化子服务...`);
 
-      // 1. 加载全局代理配置并应用
-      const [proxyRows] = await db.query('SELECT * FROM proxy_config WHERE id = 1');
-      const proxyConfig = proxyRows[0];
-      if (proxyConfig && proxyConfig.subscriptionUrl) {
-        // 如果代理服务正在运行，获取 Agent 和配置
-        const proxyService = (await import('./proxy.service.js')).default;
-        if (proxyService.isRunning) {
-          const proxyAgent = proxyService.getProxyAgent();
-          const socksHost = '127.0.0.1';
-          const socksPort = proxyConfig.proxyPort || 10808;
-
-          this.rustPlusService.setProxyConfig({ host: socksHost, port: socksPort });
-          this.fcmService.setProxyConfig({ host: socksHost, port: socksPort });
-          this.fcmService.setProxyAgent(proxyAgent);
-          this.log('PROXY', `已应用全局代理配置 (端口: ${socksPort})`);
-        }
-      }
-
-      // 1.5. 自动启动 FCM 监听 (如果有凭证)
+      // 1. 自动启动 FCM 监听 (如果有凭证)
       if (this.user.servers && this.user.servers.length > 0) {
         const serverWithCreds = this.user.servers.find(s => s.fcmCredentials);
         if (serverWithCreds) {
@@ -505,14 +487,20 @@ class UserServiceManager extends EventEmitter {
       // 连接到所有服务器（并发连接）
       const connectionPromises = this.user.servers.map(async (server) => {
         try {
-          await this.rustPlusService.connect({
+          const connectResult = await this.rustPlusService.connect({
             serverId: server.id,
             ip: server.ip,
             port: server.port,
             playerId: server.playerId,
             playerToken: server.playerToken
           });
-          console.log(`  ✅ 已连接到服务器: ${server.name || server.id}`);
+          if (connectResult?.queued) {
+            console.log(`  ⏳ 服务器进入分布式连接队列: ${server.name || server.id} (position=${connectResult.queuePosition || 1})`);
+          } else if (connectResult?.assigned && !connectResult.connected) {
+            console.log(`  🔄 服务器已分配连接节点: ${server.name || server.id}`);
+          } else {
+            console.log(`  ✅ 已连接到服务器: ${server.name || server.id}`);
+          }
 
           // 自动查找并关联 Battlemetrics ID（如果尚未关联）
           if (!server.battlemetricsId) {
@@ -650,6 +638,9 @@ class UserServiceManager extends EventEmitter {
 
       // 清理所有子服务的事件监听器，防止内存泄漏
       if (this.rustPlusService) {
+        if (typeof this.rustPlusService.destroy === 'function') {
+          this.rustPlusService.destroy();
+        }
         this.rustPlusService.removeAllListeners();
       }
       if (this.fcmService) {

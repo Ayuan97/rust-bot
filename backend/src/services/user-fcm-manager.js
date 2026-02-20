@@ -4,15 +4,15 @@
  */
 
 import EventEmitter from 'events';
-import tls from 'tls';
 import AndroidFCM from '@liamcottle/push-receiver/src/android/fcm.js';
 import PushReceiverClient from '@liamcottle/push-receiver/src/client.js';
-import { SocksClient } from 'socks';
 import logger from '../utils/logger.js';
 
 // FCM 心跳常量
 const kHeartbeatPingTag = 0;
 const HEARTBEAT_INTERVAL = 4 * 60 * 1000; // 4 分钟发送一次心跳（Google 建议 5 分钟内）
+const RECONNECT_BASE_DELAY = 5000; // 首次重连等待 5 秒
+const RECONNECT_MAX_DELAY = 60000; // 最大重连等待 60 秒
 
 // Rust Companion App 公开参数（来自官方 CLI）
 const FCM_CONFIG = {
@@ -38,31 +38,13 @@ class UserFCMManager extends EventEmitter {
     this.isListening = false;
     this.reconnectTimer = null;
     this.lastDisconnectTime = null;
-    this.proxyAgent = null; // 代理 Agent (用于 HTTP 请求)
-    this.proxyConfig = null; // SOCKS5 代理配置 (用于 FCM 连接)
     this._manualStop = false;
     this.lastError = null; // 最近一次错误信息
     this.isConnecting = false; // 防止并发连接
     this.heartbeatTimer = null; // 心跳定时器
+    this.reconnectAttempts = 0; // 重连次数（用于指数退避）
 
     logger.debug(`👤 UserFCMManager 已创建 (userId: ${userId})`);
-  }
-
-  /**
-   * 设置代理 Agent（从 ProxyService 获取）
-   */
-  setProxyAgent(proxyAgent) {
-    this.proxyAgent = proxyAgent;
-    logger.info(`✅ 用户 ${this.userId} FCM 服务已配置 HTTP 代理`);
-  }
-
-  /**
-   * 设置 SOCKS5 代理配置（用于 FCM 连接）
-   * @param {Object} config - { host: '127.0.0.1', port: 10808 }
-   */
-  setProxyConfig(config) {
-    this.proxyConfig = config;
-    logger.info(`✅ 用户 ${this.userId} FCM 服务已配置 SOCKS5 代理: ${config.host}:${config.port}`);
   }
 
   /**
@@ -134,6 +116,92 @@ class UserFCMManager extends EventEmitter {
   }
 
   /**
+   * 清理重连定时器
+   * @private
+   */
+  _clearReconnectTimer() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  /**
+   * 销毁当前 FCM 监听器并清理资源
+   * @private
+   */
+  _destroyCurrentListener() {
+    if (!this.fcmListener) {
+      return;
+    }
+
+    try {
+      if (this.fcmListener._retryTimeout) {
+        clearTimeout(this.fcmListener._retryTimeout);
+        this.fcmListener._retryTimeout = null;
+      }
+
+      // 避免 destroy 时再触发我们的重连逻辑
+      this.fcmListener.removeAllListeners('disconnect');
+      this.fcmListener.removeAllListeners('connect');
+      this.fcmListener.removeAllListeners('ON_DATA_RECEIVED');
+      this.fcmListener.removeAllListeners('ON_NOTIFICATION_RECEIVED');
+      this.fcmListener.removeAllListeners('error');
+
+      this.fcmListener.destroy();
+    } catch (error) {
+      logger.warn(`[FCM] 用户 ${this.userId} 销毁监听器时发生异常: ${error.message}`);
+    } finally {
+      this.fcmListener = null;
+    }
+  }
+
+  /**
+   * 安排重连（带指数退避）
+   * @param {string} reason - 重连原因
+   * @private
+   */
+  _scheduleReconnect(reason = 'unknown') {
+    if (this._manualStop || !this.credentials) {
+      return;
+    }
+
+    this.isListening = false;
+    this._stopHeartbeat();
+    this._destroyCurrentListener();
+
+    // 已有重连任务则不重复安排
+    if (this.reconnectTimer) {
+      return;
+    }
+
+    this.reconnectAttempts += 1;
+    const delay = Math.min(
+      RECONNECT_BASE_DELAY * Math.pow(2, Math.max(0, this.reconnectAttempts - 1)),
+      RECONNECT_MAX_DELAY
+    );
+
+    logger.warn(
+      `[FCM] 用户 ${this.userId} 将在 ${Math.ceil(delay / 1000)} 秒后重连（原因: ${reason}，第 ${this.reconnectAttempts} 次）`
+    );
+
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
+
+      if (this._manualStop || !this.credentials || this.isListening || this.isConnecting) {
+        return;
+      }
+
+      try {
+        await this.start();
+      } catch (error) {
+        logger.error(`[FCM] 用户 ${this.userId} 重连失败: ${error.message}`);
+        this._scheduleReconnect('retry-failed');
+      }
+    }, delay);
+  }
+
+  /**
    * 使用已有凭证开始监听
    * @param {Object} credentials - FCM 凭证（可选，如果不提供则使用已加载的凭证）
    */
@@ -166,6 +234,10 @@ class UserFCMManager extends EventEmitter {
     try {
       // 重置手动停止标志
       this._manualStop = false;
+      this._clearReconnectTimer();
+
+      // 避免残留的旧监听器影响新的连接流程
+      this._destroyCurrentListener();
 
       logger.info(`👂 用户 ${this.userId} 开始监听 FCM 推送消息...`);
       logger.debug('📋 凭证信息:');
@@ -196,6 +268,9 @@ class UserFCMManager extends EventEmitter {
       this.fcmListener.on('connect', () => {
         logger.info(`[FCM] 用户 ${this.userId} FCM 连接已建立`);
         logger.info(`[FCM] 用户 ${this.userId} 开始接收推送通知...`);
+        this.isListening = true;
+        this.reconnectAttempts = 0;
+        this._clearReconnectTimer();
         this.lastError = null; // 连接成功，清除错误
 
         // 设置 TCP keepalive 防止连接被中间设备断开
@@ -216,9 +291,6 @@ class UserFCMManager extends EventEmitter {
       this.fcmListener.on('disconnect', () => {
         const now = Date.now();
 
-        // 停止心跳
-        this._stopHeartbeat();
-
         // 如果是手动停止，不输出日志也不重连
         if (this._manualStop) {
           logger.debug(`用户 ${this.userId} FCM disconnect 事件触发（手动停止，忽略）`);
@@ -227,55 +299,44 @@ class UserFCMManager extends EventEmitter {
 
         // 防止重复日志（1分钟内只输出一次）
         if (!this.lastDisconnectTime || (now - this.lastDisconnectTime) > 60000) {
-          logger.warn(`[FCM] 用户 ${this.userId} FCM 连接已断开，30 秒后重连`);
+          logger.warn(`[FCM] 用户 ${this.userId} FCM 连接已断开，准备重连`);
           this.lastDisconnectTime = now;
         }
 
-        this.isListening = false;
-
-        // 清除之前的重连定时器
-        if (this.reconnectTimer) {
-          clearTimeout(this.reconnectTimer);
-        }
-
-        // 30 秒后重连（缩短间隔以便快速恢复配对功能）
-        this.reconnectTimer = setTimeout(async () => {
-          if (!this.isListening && this.credentials && !this._manualStop) {
-            try {
-              logger.info(`[FCM] 用户 ${this.userId} 尝试重新连接...`);
-              await this.start();
-            } catch (error) {
-              logger.error(`[FCM] 用户 ${this.userId} 重连失败:`, error.message);
-            }
-          }
-        }, 30000); // 30 秒
+        this._scheduleReconnect('disconnect');
       });
 
       // 监听错误
       this.fcmListener.on('error', (error) => {
         logger.error(`[FCM] 用户 ${this.userId} 错误事件触发`);
         this.handleFCMError(error);
+
+        // 某些错误不会触发 disconnect，主动兜底重连
+        if (!this._manualStop) {
+          this._scheduleReconnect('listener-error');
+        }
       });
 
-      // 禁用库内部的自动重连，统一由我们自己管理重连逻辑
+      // 接管库内部重连入口，统一走外层调度（含指数退避）
       this.fcmListener._retry = () => {
-        logger.debug(`[FCM] 用户 ${this.userId} 库内部重连已被禁用（由 UserFCMManager 管理）`);
+        if (!this._manualStop) {
+          logger.warn(`[FCM] 用户 ${this.userId} 库内部触发重连信号，切换为外层重连调度`);
+          this._scheduleReconnect('internal-retry');
+        }
       };
 
-      // 连接到 FCM - 如果配置了代理则通过代理连接
+      // 连接到 FCM
 
       logger.info(`[FCM] 用户 ${this.userId} 正在连接到 FCM 服务器...`);
 
       const CONNECT_TIMEOUT = 15000; // 15秒连接超时
 
-      const connectPromise = this.proxyConfig
-        ? this._connectWithProxy()
-        : this.fcmListener.connect();
+      const connectPromise = this.fcmListener.connect();
 
       // 使用 Promise.race 防止连接挂起
       await Promise.race([
         connectPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('FCM 连接超时 (可能由于网络受限，请配置代理)')), CONNECT_TIMEOUT))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('FCM 连接超时')), CONNECT_TIMEOUT))
       ]);
 
       this.isListening = true;
@@ -286,10 +347,11 @@ class UserFCMManager extends EventEmitter {
       logger.error(`[FCM] 用户 ${this.userId} FCM 连接失败:`, error.message);
       this.handleFCMError(error);
 
-      // 如果连接失败，清理监听器防止后台无限重试导致的黑屏挂起
-      if (this.fcmListener) {
-        this.fcmListener.destroy();
-        this.fcmListener = null;
+      // 保证失败后也会持续重连，而不是只尝试一次
+      if (!this._manualStop) {
+        this._scheduleReconnect('start-failed');
+      } else {
+        this._destroyCurrentListener();
       }
 
       throw error;
@@ -335,123 +397,7 @@ class UserFCMManager extends EventEmitter {
     }
   }
 
-  /**
-   * 通过 SOCKS5 代理连接到 FCM
-   */
-  async _connectWithProxy() {
-    const FCM_HOST = 'mtalk.google.com';
-    const FCM_PORT = 5228;
-
-    logger.info(`🌐 用户 ${this.userId} 通过 SOCKS5 代理 ${this.proxyConfig.host}:${this.proxyConfig.port} 连接到 FCM...`);
-
-    // 1. 创建 SOCKS5 代理连接
-    const proxyResult = await SocksClient.createConnection({
-      proxy: {
-        host: this.proxyConfig.host,
-        port: this.proxyConfig.port,
-        type: 5,
-      },
-      command: 'connect',
-      destination: {
-        host: FCM_HOST,
-        port: FCM_PORT,
-      },
-      timeout: 30000,
-    });
-
-    logger.info(`✅ 用户 ${this.userId} SOCKS5 代理 TCP 连接已建立`);
-
-    const proxySocket = proxyResult.socket;
-
-    // 2. 初始化 protobuf
-    await this.fcmListener.constructor.init();
-
-    // 3. 在代理 socket 上进行 TLS 升级
-    logger.info(`🔒 用户 ${this.userId} 升级为 TLS 连接...`);
-
-    return new Promise((resolve, reject) => {
-      let resolved = false;
-
-      const done = (err) => {
-        if (resolved) return;
-        resolved = true;
-        clearTimeout(timeout);
-        if (err) reject(err);
-      };
-
-      // 超时处理
-      const timeout = setTimeout(() => {
-        done(new Error('TLS 连接超时'));
-        proxySocket.destroy();
-      }, 30000);
-
-      // 使用 tls.connect 升级连接
-      const tlsSocket = tls.connect({
-        socket: proxySocket,
-        servername: FCM_HOST,
-        rejectUnauthorized: true,
-        minVersion: 'TLSv1.2',
-      });
-
-      tlsSocket.setKeepAlive(true);
-
-      // TLS 握手完成
-      tlsSocket.once('secureConnect', async () => {
-        logger.info(`✅ 用户 ${this.userId} TLS 握手完成`);
-
-        try {
-          // 设置到 fcmListener
-          this.fcmListener._socket = tlsSocket;
-
-          // 绑定事件
-          tlsSocket.on('close', this.fcmListener._onSocketClose);
-          tlsSocket.on('error', this.fcmListener._onSocketError);
-
-          // 发送登录请求
-          tlsSocket.write(this.fcmListener._loginBuffer());
-
-          // 初始化 parser
-          const { default: Parser } = await import('@liamcottle/push-receiver/src/parser.js');
-          await Parser.init();
-
-          this.fcmListener._parser = new Parser(tlsSocket);
-          this.fcmListener._parser.on('message', this.fcmListener._onMessage);
-          this.fcmListener._parser.on('error', this.fcmListener._onParserError);
-
-          logger.info(`[FCM] 用户 ${this.userId} FCM 代理连接完成`);
-          this.fcmListener.emit('connect');
-          done();
-          resolve();
-        } catch (err) {
-          done(err);
-        }
-      });
-
-      // 错误处理
-      tlsSocket.once('error', (err) => {
-        logger.error(`❌ 用户 ${this.userId} TLS 错误:`, err.message);
-        tlsSocket.destroy();
-        proxySocket.destroy();
-        done(err);
-      });
-
-      proxySocket.once('error', (err) => {
-        logger.error(`❌ 用户 ${this.userId} 代理 Socket 错误:`, err.message);
-        tlsSocket.destroy();
-        proxySocket.destroy();
-        done(err);
-      });
-
-      proxySocket.once('close', (hadError) => {
-        if (!resolved) {
-          logger.error(`❌ 用户 ${this.userId} 代理连接被关闭, hadError:`, hadError);
-          tlsSocket.destroy();
-          done(new Error('代理连接被关闭'));
-        }
-      });
-    });
-  }
-
+  
   /**
    * 停止监听
    * @param {boolean} preventReconnect - 是否阻止自动重连（默认 true）
@@ -462,35 +408,15 @@ class UserFCMManager extends EventEmitter {
       this._manualStop = true;
     }
 
-    if (this.fcmListener) {
-      // 先清除库的内部重连定时器
-      if (this.fcmListener._retryTimeout) {
-        clearTimeout(this.fcmListener._retryTimeout);
-        this.fcmListener._retryTimeout = null;
-      }
+    this._stopHeartbeat();
+    this._clearReconnectTimer();
+    this._destroyCurrentListener();
+    this.isListening = false;
+    this.isConnecting = false;
+    this.reconnectAttempts = 0;
 
-      // 停止心跳
-      this._stopHeartbeat();
-
-      // 移除事件监听器，避免 destroy 触发 disconnect 事件
-      this.fcmListener.removeAllListeners('disconnect');
-      this.fcmListener.removeAllListeners('connect');
-      this.fcmListener.removeAllListeners('ON_DATA_RECEIVED');
-      this.fcmListener.removeAllListeners('ON_NOTIFICATION_RECEIVED');
-      this.fcmListener.removeAllListeners('error');
-
-      this.fcmListener.destroy();
-      this.fcmListener = null;
-      this.isListening = false;
-
-      if (this.reconnectTimer) {
-        clearTimeout(this.reconnectTimer);
-        this.reconnectTimer = null;
-      }
-
-      logger.info(`🛑 用户 ${this.userId} FCM 监听已停止`);
-      this.emit('stopped', { userId: this.userId });
-    }
+    logger.info(`🛑 用户 ${this.userId} FCM 监听已停止`);
+    this.emit('stopped', { userId: this.userId });
   }
 
   /**
@@ -740,16 +666,9 @@ class UserFCMManager extends EventEmitter {
     try {
       logger.info(`📱 用户 ${this.userId} 正在获取 Expo Push Token...`);
 
-      // 配置 axios 使用代理
       const axiosConfig = {
         timeout: 30000,
       };
-
-      if (this.proxyAgent) {
-        axiosConfig.httpsAgent = this.proxyAgent;
-        axiosConfig.httpAgent = this.proxyAgent;
-        logger.debug(`   用户 ${this.userId} 使用代理请求 Expo API`);
-      }
 
       const response = await axios.post('https://exp.host/--/api/v2/push/getExpoPushToken', {
         type: 'fcm',
@@ -778,16 +697,9 @@ class UserFCMManager extends EventEmitter {
     try {
       logger.info(`📡 用户 ${this.userId} 正在注册到 Rust+ API...`);
 
-      // 配置 axios 使用代理
       const axiosConfig = {
         timeout: 30000,
       };
-
-      if (this.proxyAgent) {
-        axiosConfig.httpsAgent = this.proxyAgent;
-        axiosConfig.httpAgent = this.proxyAgent;
-        logger.debug(`   用户 ${this.userId} 使用代理请求 Rust+ API`);
-      }
 
       await axios.post('https://companion-rust.facepunch.com:443/api/push/register', {
         AuthToken: authToken,

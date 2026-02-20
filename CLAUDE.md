@@ -20,7 +20,6 @@ GlobalServiceManager (全局单例)
 │       ├── UserAutomation        # 设备自动化
 │       └── UserCommands          # 游戏内命令
 ├── WebSocketService              # 实时通信
-└── ProxyService                  # xray 代理
 ```
 
 **多租户隔离**:
@@ -35,7 +34,7 @@ GlobalServiceManager (全局单例)
 backend/
 ├── src/app.js                    # 入口
 ├── src/lib/db.js                 # 数据库连接池 (mysql2)
-├── src/services/                 # 服务层 (global-manager, user-*, websocket, proxy, alipay)
+├── src/services/                 # 服务层 (global-manager, user-*, websocket, alipay)
 ├── src/routes/                   # API 路由 (/api/auth, /api/servers, /api/pairing...)
 ├── src/utils/                    # 工具 (coordinates, event-constants, messages, logger)
 └── sql/init.sql                  # 数据库初始化脚本
@@ -57,7 +56,7 @@ frontend/src/
 
 **数据库变更** (严格遵守):
 - 使用 `backend/sql/init.sql` 定义表结构
-- 变更通过 SQL 脚本执行 (`backend/sql/migrations/`)
+- 变更直接更新 `backend/sql/init.sql`
 - 禁止使用 ORM 迁移工具
 
 **前端**:

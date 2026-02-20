@@ -5,7 +5,6 @@ class BattlemetricsService extends EventEmitter {
   constructor() {
     super();
     this.servers = new Map(); // serverId -> battlemetrics data
-    this.proxyAgent = null;
     this.apiToken = process.env.BATTLEMETRICS_API_TOKEN || null;
 
     if (this.apiToken) {
@@ -16,15 +15,7 @@ class BattlemetricsService extends EventEmitter {
   }
 
   /**
-   * 设置代理 Agent
-   */
-  setProxyAgent(proxyAgent) {
-    this.proxyAgent = proxyAgent;
-    console.log('✅ Battlemetrics 服务已配置代理');
-  }
-
-  /**
-   * 获取 axios 配置（带代理和认证）
+   * 获取 axios 配置（带认证）
    */
   _getAxiosConfig() {
     const config = {
@@ -35,12 +26,6 @@ class BattlemetricsService extends EventEmitter {
     // 添加认证 Token
     if (this.apiToken) {
       config.headers['Authorization'] = `Bearer ${this.apiToken}`;
-    }
-
-    // 添加代理
-    if (this.proxyAgent) {
-      config.httpsAgent = this.proxyAgent;
-      config.httpAgent = this.proxyAgent;
     }
 
     return config;

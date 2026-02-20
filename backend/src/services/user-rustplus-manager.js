@@ -29,13 +29,6 @@ class UserRustPlusManager extends EventEmitter {
     this.RECONNECT_INITIAL_DELAYS = [5000, 10000, 20000, 40000, 60000]; // 前5次递增延迟
     this.RECONNECT_INTERVAL = 60000; // 之后每60秒重试一次（无限重试）
 
-    // 是否使用 Facepunch 官方代理连接（通过 wss://companion-rust.facepunch.com）
-    // 当直接连接游戏服务器 IP 失败时，可以启用此选项
-    this.useFacepunchProxy = false;
-
-    // SOCKS5 代理配置（用于 WebSocket 连接）
-    this.proxyConfig = null; // { host: '127.0.0.1', port: 10808 }
-
     // 聊天消息队列配置（参考 rustplusplus）
     this.chatQueues = new Map(); // serverId -> { queue: [], processing: false, timeout: null }
     this.messagesSentByBot = new Map(); // serverId -> [messages] 用于 bot 消息去重
@@ -44,28 +37,6 @@ class UserRustPlusManager extends EventEmitter {
     this.BOT_MESSAGE_HISTORY_LIMIT = 20; // bot 消息历史记录数量
 
     logger.debug(`👤 UserRustPlusManager 已创建 (userId: ${userId})`);
-  }
-
-  /**
-   * 设置是否使用 Facepunch 代理
-   * @param {boolean} enabled - 是否启用
-   */
-  setUseFacepunchProxy(enabled) {
-    this.useFacepunchProxy = enabled;
-    logger.info(`🌐 用户 ${this.userId} Rust+ 连接模式: ${enabled ? 'Facepunch 代理' : '直连游戏服务器'}`);
-  }
-
-  /**
-   * 设置 SOCKS5 代理配置（用于 WebSocket 连接）
-   * @param {Object} config - 代理配置 { host, port }
-   */
-  setProxyConfig(config) {
-    this.proxyConfig = config;
-    if (config) {
-      logger.info(`🌐 用户 ${this.userId} Rust+ WebSocket 代理: socks5://${config.host}:${config.port}`);
-    } else {
-      logger.info(`🌐 用户 ${this.userId} Rust+ WebSocket 代理已禁用`);
-    }
   }
 
   /**
@@ -105,11 +76,7 @@ class UserRustPlusManager extends EventEmitter {
     this.serverConfigs.set(serverId, config);
 
     try {
-      // 使用自定义 RustPlus 客户端，支持 SOCKS5 代理
-      const rustplus = new RustPlusClient(ip, port, playerId, playerToken, {
-        useFacepunchProxy: this.useFacepunchProxy,
-        proxy: this.proxyConfig,
-      });
+      const rustplus = new RustPlusClient(ip, port, playerId, playerToken);
 
       // 监听连接事件
       rustplus.on('connected', async () => {

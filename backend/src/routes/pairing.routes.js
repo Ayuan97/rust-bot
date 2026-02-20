@@ -511,7 +511,7 @@ router.get('/credentials/diagnose', async (req, res) => {
         issues.push({
           level: 'warning',
           message: `连接不稳定: ${lastError.message}`,
-          solution: '请检查网络或代理设置'
+          solution: '请检查网络连接状态'
         });
         // 这种情况下也传回 lastError 以便前端展示小黄条
         info.lastError = lastError;

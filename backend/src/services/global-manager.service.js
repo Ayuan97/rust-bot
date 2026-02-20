@@ -586,29 +586,6 @@ class GlobalServiceManager extends EventEmitter {
     }
   }
 
-  /**
-   * 为所有活跃用户刷新代理配置
-   * 当全局代理启动、停止或切换节点时调用
-   */
-  async refreshAllUserProxySettings() {
-    console.log('\n🌐 正在为所有活跃用户同步代理配置...');
-    const proxyService = (await import('./proxy.service.js')).default;
-
-    const [proxyRows] = await db.query('SELECT * FROM proxy_config WHERE id = 1');
-    const proxyConfig = proxyRows[0];
-    const isRunning = proxyService.isRunning;
-    const proxyAgent = isRunning ? proxyService.getProxyAgent() : null;
-    const socksConfig = isRunning ? { host: '127.0.0.1', port: proxyConfig?.proxyPort || 10808 } : null;
-
-    let count = 0;
-    for (const userService of this.userServices.values()) {
-      userService.rustPlusService.setProxyConfig(socksConfig);
-      userService.fcmService.setProxyConfig(socksConfig);
-      userService.fcmService.setProxyAgent(proxyAgent);
-      count++;
-    }
-    console.log(`✅ 已同步代理配置到 ${count} 个用户实例\n`);
-  }
 }
 
 // 导出单例

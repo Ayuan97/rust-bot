@@ -56,7 +56,7 @@ function AutoRegisterPanel({ onComplete, onClose }) {
     const safetyTimeout = setTimeout(() => {
       setLoading(false);
       setStep(2);
-      toast.error('请求响应超时，请检查后端网络连接或代理配置');
+      toast.error('请求响应超时，请检查后端网络连接');
     }, 20000); // 20秒前端超时
 
     try {

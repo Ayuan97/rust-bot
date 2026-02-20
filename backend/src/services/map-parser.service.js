@@ -52,11 +52,10 @@ class RustMapParser {
    * @param {string} url - 地图文件下载地址
    * @param {object} options - 选项
    * @param {boolean} options.useCache - 是否使用缓存 (默认 true)
-   * @param {object} options.httpsAgent - HTTPS 代理
    * @returns {Promise<object>} 解析后的地图数据
    */
   async parseFromUrl(url, options = {}) {
-    const { useCache = true, httpsAgent = null } = options;
+    const { useCache = true } = options;
 
     // 检查缓存
     if (useCache && this.cache.has(url)) {
@@ -67,7 +66,7 @@ class RustMapParser {
     await this.init();
 
     console.log('[MapParser] 下载地图文件:', url);
-    const buffer = await this.downloadFile(url, httpsAgent);
+    const buffer = await this.downloadFile(url);
     console.log('[MapParser] 下载完成, 大小:', (buffer.length / 1024 / 1024).toFixed(2), 'MB');
 
     const result = this.parse(buffer);
@@ -363,7 +362,7 @@ class RustMapParser {
   /**
    * 下载文件
    */
-  downloadFile(url, httpsAgent = null) {
+  downloadFile(url) {
     return new Promise((resolve, reject) => {
       const protocol = url.startsWith('https') ? https : http;
       const options = {
@@ -373,15 +372,11 @@ class RustMapParser {
         }
       };
 
-      if (httpsAgent) {
-        options.agent = httpsAgent;
-      }
-
       const request = protocol.get(url, options, (response) => {
         // 处理重定向
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
           console.log('[MapParser] 重定向到:', response.headers.location);
-          this.downloadFile(response.headers.location, httpsAgent)
+          this.downloadFile(response.headers.location)
             .then(resolve)
             .catch(reject);
           return;
