@@ -30,7 +30,7 @@ import trackingRoutes from './routes/tracking.routes.js';
 import internalRoutes from './routes/internal.routes.js';
 
 // 中间件
-import { apiLimiter, authLimiter } from './middleware/rate-limiter.js';
+import { apiLimiter } from './middleware/rate-limiter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -43,6 +43,14 @@ if (!existsSync(dataDir)) {
 
 const app = express();
 const server = createServer(app);
+
+// 生产环境默认信任一层反向代理，避免所有请求被识别为 127.0.0.1 导致限流误伤
+const defaultTrustProxy = process.env.NODE_ENV === 'production' ? 'true' : 'false';
+const trustProxyValue = String(process.env.TRUST_PROXY ?? defaultTrustProxy).toLowerCase();
+const trustProxyEnabled = ['1', 'true', 'yes', 'on'].includes(trustProxyValue);
+if (trustProxyEnabled) {
+  app.set('trust proxy', 1);
+}
 
 // 设置 server 超时，加速优雅关闭
 server.keepAliveTimeout = 5000;
@@ -58,8 +66,8 @@ app.use(express.json({ limit: '10mb' }));
 // 全局速率限制
 app.use('/api', apiLimiter);
 
-// 路由（认证路由使用更严格的限制）
-app.use('/api/auth', authLimiter, authRoutes);
+// 路由
+app.use('/api/auth', authRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);

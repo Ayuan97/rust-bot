@@ -59,7 +59,7 @@ const limiter = new RateLimiter();
  * @param {object} options 配置选项
  * @param {number} options.limit - 时间窗口内允许的最大请求数（默认 100）
  * @param {number} options.windowMs - 时间窗口毫秒数（默认 60000 = 1分钟）
- * @param {string} options.keyGenerator - 生成限制键的方式：'ip' 或 'user'（默认 'ip'）
+ * @param {string|Function} options.keyGenerator - 生成限制键的方式：'ip'、'user' 或自定义函数
  * @param {string} options.message - 超限时的错误消息
  */
 export function rateLimit(options = {}) {
@@ -73,10 +73,19 @@ export function rateLimit(options = {}) {
   return (req, res, next) => {
     // 生成限制键
     let key;
-    if (keyGenerator === 'user' && req.user) {
+    const clientIp = req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown';
+
+    if (typeof keyGenerator === 'function') {
+      key = keyGenerator(req, clientIp);
+    } else if (keyGenerator === 'user' && req.user) {
       key = `user:${req.user.id}`;
     } else {
-      key = `ip:${req.ip || req.connection.remoteAddress}`;
+      key = `ip:${clientIp}`;
+    }
+
+    // 防止自定义 keyGenerator 返回空值，回退到 IP 限流
+    if (!key || typeof key !== 'string') {
+      key = `ip:${clientIp}`;
     }
 
     const result = limiter.check(key, limit, windowMs);

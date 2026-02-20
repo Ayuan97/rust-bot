@@ -8,6 +8,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import db, { getConnection } from '../lib/db.js';
 import { authenticate } from '../middleware/auth.middleware.js';
+import { rateLimit } from '../middleware/rate-limiter.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
@@ -18,11 +19,29 @@ const JWT_EXPIRES_IN = '7d';
 // 密码加密轮数
 const SALT_ROUNDS = 10;
 
+// 注册限流：每分钟最多 10 次
+const registerLimiter = rateLimit({
+  limit: 10,
+  windowMs: 60 * 1000,
+  message: '注册尝试过于频繁，请稍后再试'
+});
+
+// 登录限流：按“客户端 IP + 用户名”做限制，避免同 IP 下不同用户互相误伤
+const loginLimiter = rateLimit({
+  limit: 20,
+  windowMs: 60 * 1000,
+  message: '登录尝试过于频繁，请稍后再试',
+  keyGenerator: (req, clientIp) => {
+    const username = String(req.body?.username || '').trim().toLowerCase();
+    return username ? `login:${clientIp}:${username}` : `login:${clientIp}`;
+  }
+});
+
 /**
  * POST /api/auth/register
  * 用户注册
  */
-router.post('/register', async (req, res) => {
+router.post('/register', registerLimiter, async (req, res) => {
   try {
     const { username, password, confirmPassword } = req.body;
 
@@ -167,7 +186,7 @@ router.post('/register', async (req, res) => {
  * POST /api/auth/login
  * 用户登录
  */
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
 
