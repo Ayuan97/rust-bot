@@ -99,6 +99,7 @@ function ServerInfoView({ server, onBack }) {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [tracking, setTracking] = useState(false);
   const [onlineSearch, setOnlineSearch] = useState('');
+  const [allOnlineSearch, setAllOnlineSearch] = useState('');
   const [nowTs, setNowTs] = useState(Date.now());
   const serverId = server?.id || null;
 
@@ -255,9 +256,9 @@ function ServerInfoView({ server, onBack }) {
     });
   };
 
-  const filteredOnlinePlayers = useMemo(() => {
-    const list = bmInfo?.onlinePlayers || [];
-    const q = onlineSearch.trim().toLowerCase();
+  const filterOnlinePlayers = useCallback((players, keyword) => {
+    const list = Array.isArray(players) ? players : [];
+    const q = String(keyword || '').trim().toLowerCase();
     const sorted = [...list].sort((a, b) => {
       const ad = getSessionDurationSec(a) ?? a.onlineDurationSec ?? 0;
       const bd = getSessionDurationSec(b) ?? b.onlineDurationSec ?? 0;
@@ -269,10 +270,28 @@ function ServerInfoView({ server, onBack }) {
       const id = String(p.id || '').toLowerCase();
       return name.includes(q) || id.includes(q);
     });
-  }, [bmInfo?.onlinePlayers, onlineSearch, nowTs]);
+  }, [nowTs]);
+
+  const filteredRecentOnlinePlayers = useMemo(
+    () => filterOnlinePlayers(bmInfo?.onlinePlayers || [], onlineSearch),
+    [bmInfo?.onlinePlayers, onlineSearch, filterOnlinePlayers]
+  );
+
+  const allOnlineSourcePlayers = useMemo(() => {
+    if (Array.isArray(bmInfo?.allOnlinePlayers) && bmInfo.allOnlinePlayers.length > 0) {
+      return bmInfo.allOnlinePlayers;
+    }
+    return bmInfo?.onlinePlayers || [];
+  }, [bmInfo?.allOnlinePlayers, bmInfo?.onlinePlayers]);
+
+  const filteredAllOnlinePlayers = useMemo(
+    () => filterOnlinePlayers(allOnlineSourcePlayers, allOnlineSearch),
+    [allOnlineSourcePlayers, allOnlineSearch, filterOnlinePlayers]
+  );
 
   const totalOnlineCount = bmInfo?.players || 0;
-  const detailOnlineCount = bmInfo?.onlinePlayers?.length || 0;
+  const recentOnlineCount = bmInfo?.onlinePlayers?.length || 0;
+  const allOnlineCount = allOnlineSourcePlayers.length;
 
   if (!serverId) {
     return (
@@ -593,68 +612,133 @@ function ServerInfoView({ server, onBack }) {
           </div>
 
           {/* 中列：在线玩家列表 */}
-          <InfoPanel title={`在线玩家明细 (${detailOnlineCount}/${totalOnlineCount})`} icon={FaUsers} className="h-fit">
-            {loading ? (
-              <div className="space-y-2">
-                {[1, 2, 3, 4, 5].map(i => (
-                  <div key={i} className="h-12 bg-gray-700/30 rounded animate-pulse" />
-                ))}
-              </div>
-            ) : bmInfo?.onlinePlayers && bmInfo.onlinePlayers.length > 0 ? (
-              <div className="space-y-3">
-                {detailOnlineCount < totalOnlineCount && (
-                  <div className="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-                    BattleMetrics 仅返回最近时间窗口内有会话活动的玩家明细。
-                  </div>
-                )}
-                <div className="relative">
-                  <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-xs" />
-                  <input
-                    type="text"
-                    value={onlineSearch}
-                    onChange={(e) => setOnlineSearch(e.target.value)}
-                    placeholder="搜索玩家名或 BM ID"
-                    className="w-full pl-8 pr-3 py-2 text-xs bg-black/40 border border-white/10 rounded-lg focus:outline-none focus:border-[#cd5241]/40"
-                  />
-                </div>
-                <div className="max-h-96 overflow-y-auto border border-white/10 rounded-lg">
-                  <div className="grid grid-cols-12 text-[10px] text-gray-500 uppercase tracking-wider px-3 py-2 border-b border-white/10 bg-white/[0.02]">
-                    <span className="col-span-5">玩家</span>
-                    <span className="col-span-3">上线时间</span>
-                    <span className="col-span-3">在线时长</span>
-                    <span className="col-span-1 text-right">追踪</span>
-                  </div>
-                  {filteredOnlinePlayers.map((player, index) => (
-                    <button
-                      type="button"
-                      key={player.id || index}
-                      onClick={() => setSelectedPlayer(player)}
-                      className="group w-full grid grid-cols-12 items-center px-3 py-2 border-b border-white/5 hover:bg-white/5 transition-colors text-left"
-                    >
-                      <span className="col-span-5 text-sm text-white truncate">{player.name || 'Unknown'}</span>
-                      <span className="col-span-3 text-xs text-gray-400">{formatDateTime(player.sessionStart)}</span>
-                      <span className="col-span-3 text-xs text-green-400">
-                        {formatDuration(getSessionDurationSec(player) || player.onlineDurationSec)}
-                      </span>
-                      <span className="col-span-1 text-right">
-                        <FaCrosshairs className="inline text-xs text-gray-600 group-hover:text-[#cd5241] transition-colors" />
-                      </span>
-                    </button>
+          <div className="space-y-6">
+            <InfoPanel title={`最近登录玩家 (${recentOnlineCount}/${totalOnlineCount})`} icon={FaUserClock} className="h-fit">
+              {loading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <div key={i} className="h-12 bg-gray-700/30 rounded animate-pulse" />
                   ))}
-                  {filteredOnlinePlayers.length === 0 && (
-                    <div className="text-center text-xs text-gray-500 py-6">
-                      未找到匹配玩家
+                </div>
+              ) : recentOnlineCount > 0 ? (
+                <div className="space-y-3">
+                  {recentOnlineCount < totalOnlineCount && (
+                    <div className="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                      该列表仅展示最近时间窗口内有会话活动的玩家，可在下方查看全部在线玩家。
                     </div>
                   )}
+                  <div className="relative">
+                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-xs" />
+                    <input
+                      type="text"
+                      value={onlineSearch}
+                      onChange={(e) => setOnlineSearch(e.target.value)}
+                      placeholder="搜索最近登录玩家"
+                      className="w-full pl-8 pr-3 py-2 text-xs bg-black/40 border border-white/10 rounded-lg focus:outline-none focus:border-[#cd5241]/40"
+                    />
+                  </div>
+                  <div className="max-h-64 overflow-y-auto border border-white/10 rounded-lg">
+                    <div className="grid grid-cols-12 text-[10px] text-gray-500 uppercase tracking-wider px-3 py-2 border-b border-white/10 bg-white/[0.02]">
+                      <span className="col-span-5">玩家</span>
+                      <span className="col-span-3">上线时间</span>
+                      <span className="col-span-3">在线时长</span>
+                      <span className="col-span-1 text-right">追踪</span>
+                    </div>
+                    {filteredRecentOnlinePlayers.map((player, index) => (
+                      <button
+                        type="button"
+                        key={player.id || index}
+                        onClick={() => setSelectedPlayer(player)}
+                        className="group w-full grid grid-cols-12 items-center px-3 py-2 border-b border-white/5 hover:bg-white/5 transition-colors text-left"
+                      >
+                        <span className="col-span-5 text-sm text-white truncate">{player.name || 'Unknown'}</span>
+                        <span className="col-span-3 text-xs text-gray-400">{formatDateTime(player.sessionStart)}</span>
+                        <span className="col-span-3 text-xs text-green-400">
+                          {formatDuration(getSessionDurationSec(player) || player.onlineDurationSec)}
+                        </span>
+                        <span className="col-span-1 text-right">
+                          <FaCrosshairs className="inline text-xs text-gray-600 group-hover:text-[#cd5241] transition-colors" />
+                        </span>
+                      </button>
+                    ))}
+                    {filteredRecentOnlinePlayers.length === 0 && (
+                      <div className="text-center text-xs text-gray-500 py-6">
+                        未找到匹配玩家
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <FaUsers className="text-3xl mx-auto mb-2 opacity-50" />
-                <p>{totalOnlineCount > 0 ? '在线玩家明细暂不可用，请稍后刷新' : '暂无在线玩家数据'}</p>
-              </div>
-            )}
-          </InfoPanel>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <FaUserClock className="text-3xl mx-auto mb-2 opacity-50" />
+                  <p>{totalOnlineCount > 0 ? '最近登录玩家暂不可用，请稍后刷新' : '暂无在线玩家数据'}</p>
+                </div>
+              )}
+            </InfoPanel>
+
+            <InfoPanel title={`全部在线玩家 (${allOnlineCount}/${totalOnlineCount})`} icon={FaUsers} className="h-fit">
+              {loading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <div key={i} className="h-12 bg-gray-700/30 rounded animate-pulse" />
+                  ))}
+                </div>
+              ) : allOnlineCount > 0 ? (
+                <div className="space-y-3">
+                  {allOnlineCount < totalOnlineCount && (
+                    <div className="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                      全量在线列表与总在线人数可能存在 BattleMetrics 的短暂同步延迟。
+                    </div>
+                  )}
+                  <div className="relative">
+                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-xs" />
+                    <input
+                      type="text"
+                      value={allOnlineSearch}
+                      onChange={(e) => setAllOnlineSearch(e.target.value)}
+                      placeholder="搜索全部在线玩家"
+                      className="w-full pl-8 pr-3 py-2 text-xs bg-black/40 border border-white/10 rounded-lg focus:outline-none focus:border-[#cd5241]/40"
+                    />
+                  </div>
+                  <div className="max-h-96 overflow-y-auto border border-white/10 rounded-lg">
+                    <div className="grid grid-cols-12 text-[10px] text-gray-500 uppercase tracking-wider px-3 py-2 border-b border-white/10 bg-white/[0.02]">
+                      <span className="col-span-5">玩家</span>
+                      <span className="col-span-3">上线时间</span>
+                      <span className="col-span-3">在线时长</span>
+                      <span className="col-span-1 text-right">追踪</span>
+                    </div>
+                    {filteredAllOnlinePlayers.map((player, index) => (
+                      <button
+                        type="button"
+                        key={`${player.id || index}-all`}
+                        onClick={() => setSelectedPlayer(player)}
+                        className="group w-full grid grid-cols-12 items-center px-3 py-2 border-b border-white/5 hover:bg-white/5 transition-colors text-left"
+                      >
+                        <span className="col-span-5 text-sm text-white truncate">{player.name || 'Unknown'}</span>
+                        <span className="col-span-3 text-xs text-gray-400">{formatDateTime(player.sessionStart)}</span>
+                        <span className="col-span-3 text-xs text-green-400">
+                          {formatDuration(getSessionDurationSec(player) || player.onlineDurationSec)}
+                        </span>
+                        <span className="col-span-1 text-right">
+                          <FaCrosshairs className="inline text-xs text-gray-600 group-hover:text-[#cd5241] transition-colors" />
+                        </span>
+                      </button>
+                    ))}
+                    {filteredAllOnlinePlayers.length === 0 && (
+                      <div className="text-center text-xs text-gray-500 py-6">
+                        未找到匹配玩家
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <FaUsers className="text-3xl mx-auto mb-2 opacity-50" />
+                  <p>{totalOnlineCount > 0 ? '全部在线玩家列表暂不可用，请稍后刷新' : '暂无在线玩家数据'}</p>
+                </div>
+              )}
+            </InfoPanel>
+          </div>
 
           {/* 右列：时长排行榜 */}
           <InfoPanel title="30天时长排行" icon={FaChartLine} className="h-fit">

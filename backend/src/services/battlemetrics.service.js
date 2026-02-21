@@ -192,9 +192,9 @@ class BattlemetricsService extends EventEmitter {
    */
   async getServerInfo(battlemetricsId) {
     try {
-      // 并行请求：服务器基本信息 + 在线会话列表
+      // 并行请求：服务器基本信息 + 最近窗口在线会话
       const [serverResponse, sessionsResponse] = await Promise.all([
-        axios.get(`https://api.battlemetrics.com/servers/${battlemetricsId}`, this._getAxiosConfig()),
+        axios.get(`https://api.battlemetrics.com/servers/${battlemetricsId}?include=session`, this._getAxiosConfig()),
         this._getServerActiveSessions(battlemetricsId)
       ]);
 
@@ -205,6 +205,7 @@ class BattlemetricsService extends EventEmitter {
       const data = serverResponse.data;
       const attributes = data.data.attributes;
       const details = attributes.details;
+      const allOnlinePlayers = this._extractOnlinePlayersFromIncludedSessions(data?.included, battlemetricsId);
 
       const serverInfo = {
         id: data.data.id,
@@ -255,8 +256,10 @@ class BattlemetricsService extends EventEmitter {
         updatedAt: attributes.updatedAt,
       };
 
-      // 使用活动会话获取完整的在线玩家列表
+      // 最近时间窗口内有会话活动的在线玩家
       serverInfo.onlinePlayers = sessionsResponse;
+      // 全量在线玩家列表（更贴近 players 计数，可能存在短暂同步延迟）
+      serverInfo.allOnlinePlayers = allOnlinePlayers.length > 0 ? allOnlinePlayers : sessionsResponse;
 
       // 预估清档周期 (基于服务器名称和历史)
       serverInfo.wipeCycle = this._estimateWipeCycle(attributes.name, details.rust_description);
@@ -291,8 +294,50 @@ class BattlemetricsService extends EventEmitter {
     }
   }
 
+  _extractOnlinePlayersFromIncludedSessions(included, serverId) {
+    if (!Array.isArray(included) || included.length === 0) {
+      return [];
+    }
+
+    const onlinePlayers = new Map();
+    const nowTs = Date.now();
+
+    for (const item of included) {
+      if (item.type !== 'session') continue;
+
+      const sessionStart = item.attributes?.start || null;
+      const sessionStop = item.attributes?.stop || null;
+      if (sessionStop) continue;
+
+      const relationServerId = item.relationships?.server?.data?.id;
+      if (relationServerId && String(relationServerId) !== String(serverId)) continue;
+
+      const playerRelation = item.relationships?.player?.data;
+      const playerId = playerRelation?.id || `SESSION_${item.id}`;
+      if (onlinePlayers.has(playerId)) continue;
+
+      const sessionStartTs = sessionStart ? new Date(sessionStart).getTime() : null;
+      const onlineDurationSec = Number.isFinite(sessionStartTs)
+        ? Math.max(0, Math.floor((nowTs - sessionStartTs) / 1000))
+        : null;
+
+      onlinePlayers.set(playerId, {
+        id: playerId,
+        name: item.attributes?.name || 'Unknown',
+        updatedAt: sessionStart,
+        private: item.attributes?.private ?? null,
+        sessionId: item.id,
+        sessionStart,
+        sessionStop,
+        onlineDurationSec
+      });
+    }
+
+    return Array.from(onlinePlayers.values());
+  }
+
   /**
-   * 获取服务器当前活动会话（在线玩家完整列表）
+   * 获取服务器最近时间窗口内的活动会话（在线玩家）
    * Battlemetrics 新版接口要求必须带 start/stop，且时间跨度不能过大
    * @param {string} serverId - Battlemetrics 服务器 ID
    * @returns {Promise<Array>} 在线玩家数组

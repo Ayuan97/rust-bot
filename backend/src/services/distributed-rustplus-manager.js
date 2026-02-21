@@ -2,6 +2,7 @@ import EventEmitter from 'events';
 import db from '../lib/db.js';
 import distributedSessionService from './distributed-session.service.js';
 import logger from '../utils/logger.js';
+import { AppMarkerType } from '../utils/event-constants.js';
 
 const FORWARDED_EVENTS = [
   'rust:message',
@@ -16,6 +17,31 @@ const FORWARDED_EVENTS = [
   'camera:render',
   'camera:rays',
 ];
+
+const APP_MARKER_TYPE_LOOKUP = Object.entries(AppMarkerType).reduce((map, [name, value]) => {
+  const key = String(name).replace(/[\s_-]/g, '').toLowerCase();
+  map.set(key, value);
+  return map;
+}, new Map());
+
+function normalizeMapMarkerType(type) {
+  if (typeof type === 'number') {
+    return type;
+  }
+
+  if (typeof type === 'string') {
+    if (/^\d+$/.test(type)) {
+      return Number(type);
+    }
+
+    const normalized = type.replace(/[\s_-]/g, '').toLowerCase();
+    if (APP_MARKER_TYPE_LOOKUP.has(normalized)) {
+      return APP_MARKER_TYPE_LOOKUP.get(normalized);
+    }
+  }
+
+  return type;
+}
 
 function formatDispatchError(error, fallback = 'distributed command failed') {
   if (!error) return fallback;
@@ -436,7 +462,21 @@ class DistributedRustPlusManager extends EventEmitter {
   }
 
   async getMapMarkers(serverId) {
-    return this._dispatch(serverId, 'getMapMarkers', {});
+    const result = await this._dispatch(serverId, 'getMapMarkers', {});
+
+    // protobuf message JSON 化后会把 enum 转成字符串（如 "VendingMachine"），
+    // 这里统一还原为数字枚举，避免下游类型比较失效。
+    if (Array.isArray(result?.markers)) {
+      return {
+        ...result,
+        markers: result.markers.map((marker) => ({
+          ...marker,
+          type: normalizeMapMarkerType(marker?.type),
+        })),
+      };
+    }
+
+    return result;
   }
 
   async getTeamInfo(serverId) {

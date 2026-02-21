@@ -1009,7 +1009,9 @@ class UserCommands extends EventEmitter {
     try {
       const mapSize = this.rustPlusService.getMapSize(serverId);
       const response = await this.rustPlusService.getMapMarkers(serverId);
-      const markers = response.markers || [];
+      const markers = Array.isArray(response)
+        ? response
+        : (response?.markers || []);
 
       // 过滤售货机
       const vendingMachines = markers.filter(m => m.type === AppMarkerType.VendingMachine);

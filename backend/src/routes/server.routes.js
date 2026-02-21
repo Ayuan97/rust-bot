@@ -1594,12 +1594,14 @@ router.get('/:id/battlemetrics', async (req, res) => {
 
     // 在线玩家列表变化频繁，每次都获取最新数据
     let onlinePlayers = [];
+    let allOnlinePlayers = [];
 
     if (isStale) {
       // 缓存过期，获取完整数据并更新缓存
       try {
         const freshData = await battlemetricsService.getServerInfo(battlemetricsId);
         onlinePlayers = freshData?.onlinePlayers || [];
+        allOnlinePlayers = freshData?.allOnlinePlayers || [];
 
         if (freshData) {
           const now = new Date();
@@ -1668,6 +1670,7 @@ router.get('/:id/battlemetrics', async (req, res) => {
       try {
         const freshData = await battlemetricsService.getServerInfo(battlemetricsId);
         onlinePlayers = freshData?.onlinePlayers || [];
+        allOnlinePlayers = freshData?.allOnlinePlayers || [];
       } catch (bmError) {
         console.warn(`[battlemetrics] 获取在线玩家失败 server=${req.params.id}: ${bmError.message}`);
       }
@@ -1708,7 +1711,8 @@ router.get('/:id/battlemetrics', async (req, res) => {
           pve: false,
           description: null,
           url: null,
-          onlinePlayers: []
+          onlinePlayers: [],
+          allOnlinePlayers: []
         }
       });
     }
@@ -1720,6 +1724,7 @@ router.get('/:id/battlemetrics', async (req, res) => {
 
     // 附加在线玩家列表（不存储在数据库中）
     bmInfo.onlinePlayers = onlinePlayers;
+    bmInfo.allOnlinePlayers = allOnlinePlayers.length > 0 ? allOnlinePlayers : onlinePlayers;
 
     res.json({ success: true, data: bmInfo });
   } catch (error) {

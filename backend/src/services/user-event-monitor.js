@@ -425,7 +425,9 @@ class UserEventMonitor extends EventEmitter {
 
     // 获取当前标记
     const response = await this.rustPlusService.getMapMarkers(serverId);
-    const currentMarkers = response.markers || [];
+    const currentMarkers = Array.isArray(response)
+      ? response
+      : (response?.markers || []);
 
     // 获取上次的标记
     const previousMarkers = this.previousMarkers.get(serverId) || [];
