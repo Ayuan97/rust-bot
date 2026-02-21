@@ -58,6 +58,10 @@ class UserCommands extends EventEmitter {
     // 时间配置缓存（serverId -> { dayLengthMinutes, sunrise, sunset, lastTime, lastFetchTime }）
     this.timeCache = new Map();
     this.TIME_CACHE_TTL = 5 * 60 * 1000; // 5分钟刷新一次配置
+    this.popHistory = new Map(); // serverId -> [{ timestamp, players }]
+    this.POP_HISTORY_WINDOW_MS = 60 * 60 * 1000; // 过去一小时
+    this.POP_HISTORY_RETENTION_MS = 2 * 60 * 60 * 1000; // 最多保留两小时样本
+    this.POP_HISTORY_MAX_POINTS = 240; // 防止极端刷屏导致内存增长
     this.shopSearchTranslationCache = new Map();
 
     // 注册内置命令
@@ -619,13 +623,19 @@ class UserCommands extends EventEmitter {
       let minutesUntil;
       if (isDay) {
         const realMinutesPerDayHour = dayRealMinutes / dayGameHours;
-        minutesUntil = Math.floor(gameHoursUntil * realMinutesPerDayHour);
+        minutesUntil = Math.max(0, Math.ceil(gameHoursUntil * realMinutesPerDayHour));
       } else {
         const realMinutesPerNightHour = nightRealMinutes / nightGameHours;
-        minutesUntil = Math.floor(gameHoursUntil * realMinutesPerNightHour);
+        minutesUntil = Math.max(0, Math.ceil(gameHoursUntil * realMinutesPerNightHour));
       }
 
       // 使用模板: msg_night = 距离天黑, msg_day = 距离天亮
+      if (minutesUntil === 0) {
+        return isDay
+          ? `当前游戏时间为 ${timeStr}（即将天黑）`
+          : `当前游戏时间为 ${timeStr}（即将天亮）`;
+      }
+
       if (isDay) {
         return cmd('time', 'msg_night', { time: timeStr, minutes: minutesUntil });
       } else {
@@ -652,11 +662,37 @@ class UserCommands extends EventEmitter {
       const current = info.players || 0;
       const max = info.maxPlayers || 0;
       const queued = info.queuedPlayers || 0;
+      const now = Date.now();
 
-      if (queued > 0) {
-        return cmd('pop', 'msg_queued', { current, max, queued });
+      const history = this.popHistory.get(serverId) || [];
+      const windowStart = now - this.POP_HISTORY_WINDOW_MS;
+
+      const windowHistory = history.filter((point) => point.timestamp >= windowStart);
+      const basePlayers = windowHistory.length > 0 ? windowHistory[0].players : current;
+      const diff = current - basePlayers;
+      const diffText = `${diff >= 0 ? '+' : ''}${diff}`;
+
+      const baseText = diff === 0
+        ? `当前服务器在线人数为${current} / ${max}玩家`
+        : `当前服务器在线人数为${current} / ${max}玩家（过去一小时内为${diffText}玩家）`;
+
+      const output = queued > 0 ? `${baseText}，排队${queued}人` : baseText;
+
+      const retained = history.filter((point) => point.timestamp >= now - this.POP_HISTORY_RETENTION_MS);
+      const lastPoint = retained[retained.length - 1];
+      if (lastPoint && now - lastPoint.timestamp < 30000) {
+        lastPoint.timestamp = now;
+        lastPoint.players = current;
+      } else {
+        retained.push({ timestamp: now, players: current });
       }
-      return cmd('pop', 'msg_no_change', { current, max });
+
+      if (retained.length > this.POP_HISTORY_MAX_POINTS) {
+        retained.splice(0, retained.length - this.POP_HISTORY_MAX_POINTS);
+      }
+      this.popHistory.set(serverId, retained);
+
+      return output;
 
     } catch (error) {
       logger.error('获取人数失败:', error);
@@ -1035,7 +1071,7 @@ class UserCommands extends EventEmitter {
 
       // 在售货机中搜索匹配物品
       const results = [];
-      const matchingIdSet = new Set(matchingItemIds.slice(0, 10));
+      const matchingIdSet = new Set(matchingItemIds.slice(0, 20));
 
       for (const vm of vendingMachines) {
         if (!vm.sellOrders || vm.sellOrders.length === 0) continue;
@@ -1043,6 +1079,10 @@ class UserCommands extends EventEmitter {
         for (const order of vm.sellOrders) {
           const itemId = String(order.itemId);
           if (matchingIdSet.has(itemId)) {
+            // amountInStock 在部分协议返回中可能缺失（0 库存时尤为常见），统一兜底为 0
+            const normalizedStock = Number.isFinite(Number(order.amountInStock))
+              ? Number(order.amountInStock)
+              : 0;
             const position = formatPosition(vm.x, vm.y, mapSize);
             const itemName = getItemName(order.itemId);
             const itemShortName = getItemShortName(order.itemId);
@@ -1058,7 +1098,7 @@ class UserCommands extends EventEmitter {
               cost: order.costPerItem,
               currencyName,
               currencyShortName,
-              stock: order.amountInStock,
+              stock: normalizedStock,
               vmName: vm.name || '售货机'
             });
           }
@@ -1070,7 +1110,7 @@ class UserCommands extends EventEmitter {
       }
 
       // 格式化输出（限制结果数量，避免消息过长）
-      const maxResults = 5;
+      const maxResults = 20;
       const displayResults = results.slice(0, maxResults);
       const matchedItemIds = new Set(results.map(r => r.itemId));
 
@@ -1261,6 +1301,7 @@ class UserCommands extends EventEmitter {
     this.commands.clear();
     this.deviceCommandsCache.clear();
     this.timeCache.clear();
+    this.popHistory.clear();
     this.shopSearchTranslationCache.clear();
     this.commandSettings = null;
     this.removeAllListeners();

@@ -453,19 +453,22 @@ class UserServiceManager extends EventEmitter {
       });
 
       // 6. 绑定 Tracking 事件到 UserServiceManager
-      this.trackingService.on('tracking:online', (data) => {
+      this.trackingService.on('tracking:online', async (data) => {
         this.log('TRACKING', `玩家上线: ${data.playerName} @ ${data.serverName || '未知服务器'}`);
         this.emit('tracking:online', data);
+        await this._notifyTrackingEventInGame('online', data);
       });
 
-      this.trackingService.on('tracking:offline', (data) => {
+      this.trackingService.on('tracking:offline', async (data) => {
         this.log('TRACKING', `玩家下线: ${data.playerName}`);
         this.emit('tracking:offline', data);
+        await this._notifyTrackingEventInGame('offline', data);
       });
 
-      this.trackingService.on('tracking:server_change', (data) => {
+      this.trackingService.on('tracking:server_change', async (data) => {
         this.log('TRACKING', `玩家换服: ${data.playerName} ${data.fromServerName} -> ${data.toServerName}`);
         this.emit('tracking:server_change', data);
+        await this._notifyTrackingEventInGame('server_change', data);
       });
 
       console.log(`  [OK] 子服务初始化完成`);
@@ -721,6 +724,93 @@ class UserServiceManager extends EventEmitter {
       trackingStatus
     };
   }
+
+  _formatTrackingSessionDuration(seconds) {
+    const totalSeconds = Number(seconds);
+    if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+      return null;
+    }
+
+    const hours = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    if (hours > 0) {
+      return `${hours}小时${mins}分钟`;
+    }
+    return `${mins}分钟`;
+  }
+
+  _buildTrackingChatMessage(eventType, data) {
+    const playerName = data?.playerName || '未知玩家';
+
+    if (eventType === 'online') {
+      const serverName = data?.serverName || '未知服务器';
+      if (data?.isSameServer) {
+        return `[追踪警报] ${playerName} 进入了你的服务器 (${serverName})`;
+      }
+      return `[追踪] ${playerName} 上线了 @ ${serverName}`;
+    }
+
+    if (eventType === 'offline') {
+      const duration = this._formatTrackingSessionDuration(data?.sessionDuration);
+      if (duration) {
+        return `[追踪] ${playerName} 下线了 (在线 ${duration})`;
+      }
+      return `[追踪] ${playerName} 下线了`;
+    }
+
+    if (eventType === 'server_change') {
+      const fromName = data?.fromServerName || '未知服务器';
+      const toName = data?.toServerName || '未知服务器';
+      if (data?.isEnteringUserServer) {
+        return `[追踪警报] ${playerName} 换服进入了你的服务器 (${toName})`;
+      }
+      return `[追踪] ${playerName} 换服: ${fromName} -> ${toName}`;
+    }
+
+    return null;
+  }
+
+  _resolveTrackingNotifyServerId(data) {
+    const connectedServerIds = this.rustPlusService?.getConnectedServers?.() || [];
+    if (connectedServerIds.length === 0) {
+      return null;
+    }
+
+    const preferredBmId = data?.toServerBmId || data?.serverBmId || null;
+    if (!preferredBmId || !Array.isArray(this.user?.servers)) {
+      return connectedServerIds[0];
+    }
+
+    const preferredServer = this.user.servers.find(
+      (server) => server.battlemetricsId && String(server.battlemetricsId) === String(preferredBmId)
+    );
+
+    if (preferredServer && connectedServerIds.includes(preferredServer.id)) {
+      return preferredServer.id;
+    }
+
+    return connectedServerIds[0];
+  }
+
+  async _notifyTrackingEventInGame(eventType, data) {
+    try {
+      const message = this._buildTrackingChatMessage(eventType, data);
+      if (!message) {
+        return;
+      }
+
+      const targetServerId = this._resolveTrackingNotifyServerId(data);
+      if (!targetServerId) {
+        this.log('TRACKING', '未找到可用连接，跳过游戏内追踪通知', 'DEBUG');
+        return;
+      }
+
+      await this.rustPlusService.sendTeamMessage(targetServerId, message, { isBot: true });
+    } catch (error) {
+      this.log('TRACKING', `游戏内追踪通知发送失败: ${error.message}`, 'WARN');
+    }
+  }
+
   /**
    * 处理服务器配对事件
    * 保存服务器信息并建立连接
