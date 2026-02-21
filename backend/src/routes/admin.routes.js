@@ -4,16 +4,253 @@
  */
 
 import express from 'express';
+import bcrypt from 'bcrypt';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
-import db from '../lib/db.js';
+import db, { getConnection } from '../lib/db.js';
 import globalServiceManager from '../services/global-manager.service.js';
 import paymentService from '../services/payment.service.js';
 import distributedSessionService from '../services/distributed-session.service.js';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
+const SALT_ROUNDS = 10;
+const VALID_PLAN_TYPES = new Set(['TRIAL', 'MONTHLY', 'QUARTERLY', 'YEARLY']);
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DEFAULT_NOTIFICATION_SETTINGS = {
+  player_death: true,
+  player_online: true,
+  player_offline: true,
+  player_afk: true,
+  cargo_spawn: true,
+  heli_spawn: true,
+  oil_rig_triggered: true
+};
 
 // 所有管理接口都需要管理员权限
 router.use(authenticate, requireAdmin);
+
+/**
+ * POST /api/admin/users
+ * 管理员创建用户
+ */
+router.post('/users', async (req, res) => {
+  let conn;
+
+  try {
+    const {
+      username,
+      password,
+      email,
+      isAdmin = false,
+      isActive = true,
+      planType = 'TRIAL',
+      subscriptionDays = 0,
+      balance = 0
+    } = req.body;
+
+    const normalizedUsername = typeof username === 'string' ? username.trim() : '';
+    const normalizedEmail = typeof email === 'string' ? email.trim() : '';
+    const parsedDays = Number.parseInt(subscriptionDays, 10);
+    const parsedBalance = Number.parseFloat(balance);
+
+    if (!normalizedUsername || !password) {
+      return res.status(400).json({
+        success: false,
+        error: '请填写用户名和密码'
+      });
+    }
+
+    if (normalizedUsername.length < 3 || normalizedUsername.length > 50) {
+      return res.status(400).json({
+        success: false,
+        error: '用户名长度必须在 3-50 个字符之间'
+      });
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(normalizedUsername)) {
+      return res.status(400).json({
+        success: false,
+        error: '用户名只能包含字母、数字和下划线'
+      });
+    }
+
+    if (String(password).length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: '密码长度至少需要 6 位'
+      });
+    }
+
+    if (normalizedEmail && !EMAIL_REGEX.test(normalizedEmail)) {
+      return res.status(400).json({
+        success: false,
+        error: '邮箱格式不正确'
+      });
+    }
+
+    if (typeof isAdmin !== 'boolean' || typeof isActive !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        error: 'isAdmin 和 isActive 必须是布尔值'
+      });
+    }
+
+    if (!VALID_PLAN_TYPES.has(planType)) {
+      return res.status(400).json({
+        success: false,
+        error: '无效的套餐类型'
+      });
+    }
+
+    if (Number.isNaN(parsedDays) || parsedDays < 0 || parsedDays > 3650) {
+      return res.status(400).json({
+        success: false,
+        error: '订阅天数必须是 0-3650 的整数'
+      });
+    }
+
+    if (Number.isNaN(parsedBalance) || parsedBalance < 0) {
+      return res.status(400).json({
+        success: false,
+        error: '初始余额不能小于 0'
+      });
+    }
+
+    const [existingUsersByName] = await db.query(
+      'SELECT id FROM users WHERE username = ? LIMIT 1',
+      [normalizedUsername]
+    );
+    if (existingUsersByName.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: '用户名已被占用'
+      });
+    }
+
+    if (normalizedEmail) {
+      const [existingUsersByEmail] = await db.query(
+        'SELECT id FROM users WHERE email = ? LIMIT 1',
+        [normalizedEmail]
+      );
+      if (existingUsersByEmail.length > 0) {
+        return res.status(409).json({
+          success: false,
+          error: '邮箱已被占用'
+        });
+      }
+    }
+
+    const now = new Date();
+    const endDate = new Date(now.getTime() + parsedDays * 24 * 60 * 60 * 1000);
+    const subscriptionStatus = 'ACTIVE';
+    const userId = uuidv4();
+    const subscriptionId = uuidv4();
+    const notificationSettingsId = uuidv4();
+    const adminLogId = uuidv4();
+    const hashedPassword = await bcrypt.hash(String(password), SALT_ROUNDS);
+
+    conn = await getConnection();
+    await conn.beginTransaction();
+
+    await conn.query(
+      `INSERT INTO users (id, username, email, password, balance, isActive, isAdmin, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        userId,
+        normalizedUsername,
+        normalizedEmail || null,
+        hashedPassword,
+        parsedBalance.toFixed(2),
+        isActive ? 1 : 0,
+        isAdmin ? 1 : 0,
+        now,
+        now
+      ]
+    );
+
+    await conn.query(
+      `INSERT INTO subscriptions (id, userId, planType, status, startDate, endDate, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [subscriptionId, userId, planType, subscriptionStatus, now, endDate, now, now]
+    );
+
+    await conn.query(
+      `INSERT INTO notification_settings (id, userId, settings, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?)`,
+      [notificationSettingsId, userId, JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS), now, now]
+    );
+
+    await conn.query(
+      `INSERT INTO admin_logs (id, adminId, targetUserId, action, details, createdAt)
+       VALUES (?, ?, ?, 'CREATE_USER', ?, ?)`,
+      [
+        adminLogId,
+        req.user.id,
+        userId,
+        JSON.stringify({
+          username: normalizedUsername,
+          email: normalizedEmail || null,
+          isAdmin,
+          isActive,
+          planType,
+          subscriptionDays: parsedDays,
+          balance: Number(parsedBalance.toFixed(2))
+        }),
+        now
+      ]
+    );
+
+    await conn.commit();
+
+    if (isActive && endDate > now && !globalServiceManager.userServices.has(userId)) {
+      try {
+        await globalServiceManager.createUserService(userId);
+      } catch (serviceError) {
+        console.error(`创建用户服务失败（userId=${userId}）:`, serviceError);
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: '用户创建成功',
+      data: {
+        id: userId,
+        username: normalizedUsername,
+        email: normalizedEmail || null,
+        isActive,
+        isAdmin,
+        balance: Number(parsedBalance.toFixed(2)),
+        subscriptions: {
+          planType,
+          startDate: now,
+          endDate,
+          status: subscriptionStatus
+        }
+      }
+    });
+  } catch (error) {
+    if (conn) {
+      await conn.rollback();
+    }
+
+    if (error?.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({
+        success: false,
+        error: '用户名或邮箱已存在'
+      });
+    }
+
+    console.error('管理员创建用户失败:', error);
+    return res.status(500).json({
+      success: false,
+      error: '创建用户失败'
+    });
+  } finally {
+    if (conn) {
+      conn.release();
+    }
+  }
+});
 
 /**
  * PUT /api/admin/users/:id/adjust

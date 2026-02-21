@@ -8,6 +8,18 @@ import {
 import api from '../../services/api';
 import { useToast } from '../Toast';
 
+const INITIAL_CREATE_USER_FORM = {
+  username: '',
+  password: '',
+  confirmPassword: '',
+  email: '',
+  planType: 'TRIAL',
+  subscriptionDays: 0,
+  balance: 0,
+  isActive: true,
+  isAdmin: false
+};
+
 const SurvivorRoster = ({ onNavigateToLogs }) => {
   const toast = useToast();
 
@@ -27,9 +39,12 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
   // 弹窗状态
   const [selectedUser, setSelectedUser] = useState(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isServersModalOpen, setIsServersModalOpen] = useState(false);
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [createUserForm, setCreateUserForm] = useState(INITIAL_CREATE_USER_FORM);
 
   // 调整表单
   const [balanceDelta, setBalanceDelta] = useState(0);
@@ -107,6 +122,92 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
     setBalanceDelta(0);
     setDaysDelta(0);
     setAdjustReason('');
+  };
+
+  const resetCreateForm = () => {
+    setCreateUserForm(INITIAL_CREATE_USER_FORM);
+  };
+
+  const handleCreateUserInput = (field, value) => {
+    setCreateUserForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const closeCreateModal = () => {
+    setIsCreateModalOpen(false);
+    resetCreateForm();
+  };
+
+  const handleCreateUser = async () => {
+    const normalizedUsername = createUserForm.username.trim();
+    const normalizedEmail = createUserForm.email.trim();
+
+    if (!normalizedUsername) {
+      toast.error('请输入用户名');
+      return;
+    }
+
+    if (normalizedUsername.length < 3 || normalizedUsername.length > 50) {
+      toast.error('用户名长度必须在 3-50 个字符之间');
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(normalizedUsername)) {
+      toast.error('用户名只能包含字母、数字和下划线');
+      return;
+    }
+
+    if (createUserForm.password.length < 6) {
+      toast.error('密码长度至少需要 6 位');
+      return;
+    }
+
+    if (createUserForm.password !== createUserForm.confirmPassword) {
+      toast.error('两次输入的密码不一致');
+      return;
+    }
+
+    const parsedDays = Number.parseInt(createUserForm.subscriptionDays, 10);
+    if (Number.isNaN(parsedDays) || parsedDays < 0) {
+      toast.error('订阅天数必须是大于等于 0 的整数');
+      return;
+    }
+
+    const parsedBalance = Number.parseFloat(createUserForm.balance);
+    if (Number.isNaN(parsedBalance) || parsedBalance < 0) {
+      toast.error('初始余额不能小于 0');
+      return;
+    }
+
+    try {
+      setCreateSubmitting(true);
+      const res = await api.post('/admin/users', {
+        username: normalizedUsername,
+        password: createUserForm.password,
+        email: normalizedEmail || undefined,
+        planType: createUserForm.planType,
+        subscriptionDays: parsedDays,
+        balance: parsedBalance,
+        isActive: createUserForm.isActive,
+        isAdmin: createUserForm.isAdmin
+      });
+
+      if (res.data.success) {
+        toast.success(`用户 ${normalizedUsername} 创建成功`);
+        closeCreateModal();
+        if (page !== 1) {
+          setPage(1);
+        } else {
+          fetchUsers();
+        }
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || '创建用户失败');
+    } finally {
+      setCreateSubmitting(false);
+    }
   };
 
   // 启用/禁用用户
@@ -249,13 +350,26 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
           <span className="text-sm font-normal text-gray-500">({total})</span>
         </h2>
 
-        <button
-          onClick={fetchUsers}
-          disabled={loading}
-          className="p-2 bg-gray-800 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
-        >
-          <FaSync className={loading ? 'animate-spin' : ''} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              resetCreateForm();
+              setIsCreateModalOpen(true);
+            }}
+            className="px-3 py-2 bg-orange-600 hover:bg-orange-500 rounded text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-2"
+          >
+            <FaPlus className="text-[10px]" />
+            添加用户
+          </button>
+
+          <button
+            onClick={fetchUsers}
+            disabled={loading}
+            className="p-2 bg-gray-800 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+          >
+            <FaSync className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
       {/* 筛选栏 */}
@@ -534,6 +648,148 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
           </div>
         )}
       </div>
+
+      {/* 新建用户弹窗 */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#121417] border border-gray-800 rounded-lg w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-[#1A1C1F]">
+              <h3 className="font-bold text-gray-100 flex items-center gap-2">
+                <FaPlus className="text-orange-500" />
+                添加用户
+              </h3>
+              <button
+                onClick={closeCreateModal}
+                disabled={createSubmitting}
+                className="text-gray-500 hover:text-white disabled:opacity-40"
+              >
+                <FaTimes />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">用户名 *</label>
+                  <input
+                    type="text"
+                    value={createUserForm.username}
+                    onChange={(e) => handleCreateUserInput('username', e.target.value)}
+                    placeholder="3-50 位，字母/数字/下划线"
+                    className="w-full bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">邮箱（可选）</label>
+                  <input
+                    type="email"
+                    value={createUserForm.email}
+                    onChange={(e) => handleCreateUserInput('email', e.target.value)}
+                    placeholder="example@mail.com"
+                    className="w-full bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">密码 *</label>
+                  <input
+                    type="password"
+                    value={createUserForm.password}
+                    onChange={(e) => handleCreateUserInput('password', e.target.value)}
+                    placeholder="至少 6 位"
+                    className="w-full bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">确认密码 *</label>
+                  <input
+                    type="password"
+                    value={createUserForm.confirmPassword}
+                    onChange={(e) => handleCreateUserInput('confirmPassword', e.target.value)}
+                    placeholder="再次输入密码"
+                    className="w-full bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">套餐</label>
+                  <select
+                    value={createUserForm.planType}
+                    onChange={(e) => handleCreateUserInput('planType', e.target.value)}
+                    className="w-full bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                  >
+                    <option value="TRIAL">试用</option>
+                    <option value="MONTHLY">月付</option>
+                    <option value="QUARTERLY">季付</option>
+                    <option value="YEARLY">年付</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">订阅天数</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={createUserForm.subscriptionDays}
+                    onChange={(e) => handleCreateUserInput('subscriptionDays', e.target.value)}
+                    className="w-full bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">初始余额</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={createUserForm.balance}
+                    onChange={(e) => handleCreateUserInput('balance', e.target.value)}
+                    className="w-full bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-6 pt-1">
+                <label className="inline-flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={createUserForm.isActive}
+                    onChange={(e) => handleCreateUserInput('isActive', e.target.checked)}
+                    className="rounded border-gray-700 bg-[#0D0E10] text-orange-500 focus:ring-orange-500/40"
+                  />
+                  创建后立即启用
+                </label>
+                <label className="inline-flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={createUserForm.isAdmin}
+                    onChange={(e) => handleCreateUserInput('isAdmin', e.target.checked)}
+                    className="rounded border-gray-700 bg-[#0D0E10] text-orange-500 focus:ring-orange-500/40"
+                  />
+                  管理员账号
+                </label>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={closeCreateModal}
+                  disabled={createSubmitting}
+                  className="flex-1 py-2.5 border border-gray-800 hover:bg-gray-800 rounded font-bold text-xs uppercase tracking-widest transition-all disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleCreateUser}
+                  disabled={createSubmitting}
+                  className="flex-1 py-2.5 bg-orange-600 hover:bg-orange-500 text-white rounded font-bold text-xs uppercase tracking-widest transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {createSubmitting && <FaSync className="text-xs animate-spin" />}
+                  确认创建
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 资产调整弹窗 */}
       {isAdjustModalOpen && selectedUser && (
