@@ -6,7 +6,7 @@ import {
   FaGlobe, FaTools, FaBell, FaServer
 } from 'react-icons/fa';
 import { useAuth } from './context/AuthContext';
-import api, { getServers, connectServer, getMapInfo, getTeamInfo } from './services/api';
+import api, { getServers, connectServer, disconnectServer, getMapInfo, getTeamInfo } from './services/api';
 import { useToast } from './components/Toast';
 import socketService from './services/socket';
 import { getCorrectedMapSize } from './utils/coordinates';
@@ -160,6 +160,22 @@ function App() {
       }
     } catch (e) {
       toast.error('远程链路建立失败，请检查服务器 token');
+    } finally {
+      setConnectionLoading(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!activeServer) return;
+    setConnectionLoading(true);
+    try {
+      const res = await disconnectServer(activeServer.id);
+      if (res.data.success) {
+        toast.success(res.data.message || `已断开 ${activeServer.name} 的连接`);
+        fetchServers();
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.error || '断开连接失败');
     } finally {
       setConnectionLoading(false);
     }
@@ -374,6 +390,19 @@ function App() {
               <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest leading-none mb-1">强制清档倒计时</span>
               <span className="text-xs font-mono font-black text-[#cd5241]">{wipeCountdown}</span>
             </div>
+            {activeServer?.connected && (
+              <button
+                onClick={handleDisconnect}
+                disabled={connectionLoading}
+                className={`px-4 py-2 border tactic-cut text-[10px] font-black uppercase tracking-widest flex items-center gap-3 transition-all ${
+                  connectionLoading
+                    ? 'bg-white/5 border-white/10 text-gray-500 cursor-not-allowed'
+                    : 'bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-400 hover:text-red-300'
+                }`}
+              >
+                断开连接
+              </button>
+            )}
             <button
               onClick={() => {
                 setMapFocusTarget(null);

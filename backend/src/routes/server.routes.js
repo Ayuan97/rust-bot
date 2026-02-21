@@ -283,6 +283,46 @@ router.post('/:id/connect', requireActiveSubscription, async (req, res) => {
 });
 
 /**
+ * POST /api/servers/:id/disconnect
+ * 手动断开服务器连接
+ */
+router.post('/:id/disconnect', async (req, res) => {
+  try {
+    const serverId = req.params.id;
+    const [rows] = await db.query(
+      'SELECT id, name FROM servers WHERE id = ? AND userId = ?',
+      [serverId, req.user.id]
+    );
+
+    const server = rows[0];
+    if (!server) {
+      return res.status(404).json({ success: false, error: '服务器不存在' });
+    }
+
+    const rustPlusService = getUserRustPlusService(req.user.id);
+    if (!rustPlusService) {
+      // 用户服务未运行时视为已断开，避免前端卡死在“连接中”状态。
+      return res.json({
+        success: true,
+        disconnected: false,
+        message: '用户服务未运行，服务器已视为断开'
+      });
+    }
+
+    await rustPlusService.disconnect(serverId);
+
+    return res.json({
+      success: true,
+      disconnected: true,
+      message: `已断开 ${server.name} 的连接`
+    });
+  } catch (error) {
+    console.error('断开服务器失败:', error);
+    return res.status(500).json({ success: false, error: error.message || '断开服务器失败' });
+  }
+});
+
+/**
  * POST /api/servers
  * 添加新服务器
  * 需要有效订阅

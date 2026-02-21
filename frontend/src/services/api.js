@@ -46,6 +46,7 @@ export const getServers = () => api.get('/servers');
 export const getServer = (id) => api.get(`/servers/${id}`);
 
 export const connectServer = (id) => api.post(`/servers/${id}/connect`);
+export const disconnectServer = (id) => api.post(`/servers/${id}/disconnect`);
 
 export const addServer = (server) => api.post('/servers', server);
 
