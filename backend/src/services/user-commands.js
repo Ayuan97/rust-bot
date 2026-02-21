@@ -61,6 +61,7 @@ class UserCommands extends EventEmitter {
     this.popHistory = new Map(); // serverId -> [{ timestamp, players }]
     this.POP_HISTORY_WINDOW_MS = 60 * 60 * 1000; // 过去一小时
     this.POP_HISTORY_RETENTION_MS = 2 * 60 * 60 * 1000; // 最多保留两小时样本
+    this.POP_BASELINE_TOLERANCE_MS = 5 * 60 * 1000; // 基线允许误差，超出则不展示一小时变化
     this.POP_HISTORY_MAX_POINTS = 240; // 防止极端刷屏导致内存增长
     this.shopSearchTranslationCache = new Map();
 
@@ -663,22 +664,23 @@ class UserCommands extends EventEmitter {
       const max = info.maxPlayers || 0;
       const queued = info.queuedPlayers || 0;
       const now = Date.now();
-
       const history = this.popHistory.get(serverId) || [];
+      const retained = history.filter((point) => point.timestamp >= now - this.POP_HISTORY_RETENTION_MS);
       const windowStart = now - this.POP_HISTORY_WINDOW_MS;
 
-      const windowHistory = history.filter((point) => point.timestamp >= windowStart);
-      const basePlayers = windowHistory.length > 0 ? windowHistory[0].players : current;
-      const diff = current - basePlayers;
-      const diffText = `${diff >= 0 ? '+' : ''}${diff}`;
+      // 仅在“接近一小时前”存在样本时才展示变化，避免用过旧数据误报一小时涨跌
+      const baselinePoint = [...retained].reverse().find((point) => point.timestamp <= windowStart);
+      const hasReliableBaseline = baselinePoint
+        && (windowStart - baselinePoint.timestamp) <= this.POP_BASELINE_TOLERANCE_MS;
+      const diff = hasReliableBaseline ? (current - baselinePoint.players) : null;
+      const diffText = diff === null ? '' : `${diff >= 0 ? '+' : ''}${diff}`;
 
-      const baseText = diff === 0
+      const baseText = (diff === null || diff === 0)
         ? `当前服务器在线人数为${current} / ${max}玩家`
         : `当前服务器在线人数为${current} / ${max}玩家（过去一小时内为${diffText}玩家）`;
 
       const output = queued > 0 ? `${baseText}，排队${queued}人` : baseText;
 
-      const retained = history.filter((point) => point.timestamp >= now - this.POP_HISTORY_RETENTION_MS);
       const lastPoint = retained[retained.length - 1];
       if (lastPoint && now - lastPoint.timestamp < 30000) {
         lastPoint.timestamp = now;

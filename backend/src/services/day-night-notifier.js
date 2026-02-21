@@ -26,7 +26,9 @@ class DayNightNotifier {
     this.userId = userId;
     this.rustPlusService = rustPlusService;
     this.timers = new Map(); // serverId -> timer
-    this.lastNotifiedMinute = new Map(); // serverId -> { type: 'day'|'night', minute: number }
+    // serverId -> { type: 'day'|'night', notifiedMinutes: Set<number> }
+    this.lastNotifiedMinute = new Map();
+    this.checkingServers = new Set(); // 防止同一服务器的检查并发执行
     this.checkInterval = 60 * 1000; // 每分钟检查一次
     this.notificationSettings = null;
   }
@@ -97,6 +99,11 @@ class DayNightNotifier {
     logger.info(`⏰ 启动服务器 ${serverId} 的昼夜提醒 (用户 ${this.userId})`);
 
     const timer = setInterval(async () => {
+      if (this.checkingServers.has(serverId)) {
+        return;
+      }
+
+      this.checkingServers.add(serverId);
       try {
         await this.checkAndNotify(serverId);
       } catch (error) {
@@ -105,6 +112,8 @@ class DayNightNotifier {
           return;
         }
         logger.error(`[昼夜提醒] 检查失败 ${serverId} (用户 ${this.userId}): ${errorMessage}`);
+      } finally {
+        this.checkingServers.delete(serverId);
       }
     }, this.checkInterval);
 
@@ -120,6 +129,7 @@ class DayNightNotifier {
       clearInterval(timer);
       this.timers.delete(serverId);
       this.lastNotifiedMinute.delete(serverId);
+      this.checkingServers.delete(serverId);
       logger.info(`⏹️ 已停止服务器 ${serverId} 的昼夜提醒 (用户 ${this.userId})`);
     }
   }
@@ -178,10 +188,14 @@ class DayNightNotifier {
 
     // 检查是否在通知范围内
     if (realMinutes <= notifyStart && realMinutes > 0) {
-      const lastNotify = this.lastNotifiedMinute.get(serverId);
+      let notifyState = this.lastNotifiedMinute.get(serverId);
+      if (!notifyState || notifyState.type !== changeType) {
+        notifyState = { type: changeType, notifiedMinutes: new Set() };
+        this.lastNotifiedMinute.set(serverId, notifyState);
+      }
 
-      // 避免同一分钟重复发送
-      if (!lastNotify || lastNotify.type !== changeType || lastNotify.minute !== realMinutes) {
+      // 避免抖动造成同一分钟重复发送（例如 5 -> 4 -> 5）
+      if (!notifyState.notifiedMinutes.has(realMinutes)) {
         let message;
         if (changeType === 'night') {
           message = `${realMinutes} 分钟后 天黑`;
@@ -191,8 +205,7 @@ class DayNightNotifier {
 
         logger.info(`🌓 [昼夜提醒] ${message} (用户 ${this.userId})`);
         await this.rustPlusService.sendTeamMessage(serverId, message, { isBot: true });
-
-        this.lastNotifiedMinute.set(serverId, { type: changeType, minute: realMinutes });
+        notifyState.notifiedMinutes.add(realMinutes);
       }
     }
 
