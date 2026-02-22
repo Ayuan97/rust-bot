@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { FaPlus, FaEdit, FaTrash, FaSave, FaTimes, FaStar, FaCheck } from 'react-icons/fa';
 import api from '../../services/api';
+import { useToast } from '../Toast';
+import { useConfirm } from '../ConfirmModal';
 
 const PlanManager = () => {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [formData, setFormData] = useState({
@@ -31,86 +36,146 @@ const PlanManager = () => {
       }
     } catch (err) {
       console.error('获取套餐列表失败:', err);
+      toast.error('获取套餐列表失败');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreate = async () => {
-    try {
-      const data = {
-        ...formData,
-        price: parseFloat(formData.price),
-        duration: parseInt(formData.duration),
-        features: formData.features.filter(f => f.trim() !== '')
-      };
+  const validateForm = () => {
+    if (!formData.code.trim()) return '请输入套餐代码';
+    if (!formData.name.trim()) return '请输入套餐名称';
+    const price = Number.parseFloat(formData.price);
+    if (Number.isNaN(price) || price < 0) return '请输入有效的价格';
+    const duration = Number.parseInt(formData.duration, 10);
+    if (Number.isNaN(duration) || duration <= 0) return '套餐时长必须大于 0';
+    if (formData.features.every((feature) => !feature.trim())) return '请至少填写一条功能特性';
+    return '';
+  };
 
+  const buildPayload = () => ({
+    ...formData,
+    code: formData.code.trim().toUpperCase(),
+    name: formData.name.trim(),
+    description: formData.description.trim(),
+    price: Number.parseFloat(formData.price),
+    duration: Number.parseInt(formData.duration, 10),
+    sortOrder: Number.parseInt(formData.sortOrder, 10) || 0,
+    features: formData.features.map((feature) => feature.trim()).filter(Boolean)
+  });
+
+  const closeFormModal = () => {
+    setEditingPlan(null);
+    setShowCreateModal(false);
+    resetForm();
+  };
+
+  const handleCreate = async () => {
+    const error = validateForm();
+    if (error) {
+      toast.error(error);
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const data = buildPayload();
       const res = await api.post('/admin/plans', data);
       if (res.data.success) {
         setPlans([...plans, res.data.data]);
-        setShowCreateModal(false);
-        resetForm();
+        closeFormModal();
+        toast.success('套餐创建成功');
       }
     } catch (err) {
-      alert(err.response?.data?.error || '创建失败');
+      toast.error(err.response?.data?.error || '创建失败');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleUpdate = async () => {
-    try {
-      const data = {
-        ...formData,
-        price: parseFloat(formData.price),
-        duration: parseInt(formData.duration),
-        features: formData.features.filter(f => f.trim() !== '')
-      };
+    const error = validateForm();
+    if (error) {
+      toast.error(error);
+      return;
+    }
 
+    try {
+      setSubmitting(true);
+      const data = buildPayload();
       const res = await api.put(`/admin/plans/${editingPlan.id}`, data);
       if (res.data.success) {
         setPlans(plans.map(p => p.id === editingPlan.id ? res.data.data : p));
-        setEditingPlan(null);
-        resetForm();
+        closeFormModal();
+        toast.success('套餐更新成功');
       }
     } catch (err) {
-      alert(err.response?.data?.error || '更新失败');
+      toast.error(err.response?.data?.error || '更新失败');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDelete = async (plan) => {
-    if (!confirm(`确定要删除套餐「${plan.name}」吗？\n\n如果有关联订单，请改为禁用套餐。`)) return;
+    const confirmed = await confirm({
+      type: 'danger',
+      title: '删除套餐',
+      message: `确定要删除套餐「${plan.name}」吗？如果已有历史订单，建议改为禁用。`,
+      confirmText: '确认删除'
+    });
+    if (!confirmed) return;
 
     try {
       const res = await api.delete(`/admin/plans/${plan.id}`);
       if (res.data.success) {
         setPlans(plans.filter(p => p.id !== plan.id));
+        toast.success('套餐已删除');
       }
     } catch (err) {
-      alert(err.response?.data?.error || '删除失败');
+      toast.error(err.response?.data?.error || '删除失败');
     }
   };
 
   const handleToggleActive = async (plan) => {
+    const nextActive = !plan.isActive;
+    if (!nextActive) {
+      const confirmed = await confirm({
+        type: 'warning',
+        title: '禁用套餐',
+        message: `禁用后该套餐将不再对新订单展示，确定继续吗？`,
+        confirmText: '确认禁用'
+      });
+      if (!confirmed) return;
+    }
+
     try {
-      const res = await api.put(`/admin/plans/${plan.id}`, { isActive: !plan.isActive });
+      const res = await api.put(`/admin/plans/${plan.id}`, { isActive: nextActive });
       if (res.data.success) {
         setPlans(plans.map(p => p.id === plan.id ? res.data.data : p));
+        toast.success(nextActive ? '套餐已启用' : '套餐已禁用');
       }
     } catch (err) {
-      alert(err.response?.data?.error || '操作失败');
+      toast.error(err.response?.data?.error || '操作失败');
     }
   };
 
   const handleInitDefault = async () => {
-    if (!confirm('确定要初始化默认套餐吗？\n\n这将创建周卡、半月卡、月卡三个默认套餐。')) return;
+    const confirmed = await confirm({
+      type: 'warning',
+      title: '初始化默认套餐',
+      message: '将创建周卡、半月卡、月卡三个套餐。若同编码套餐已存在将返回失败。',
+      confirmText: '确认初始化'
+    });
+    if (!confirmed) return;
 
     try {
       const res = await api.post('/admin/plans/init');
       if (res.data.success) {
         fetchPlans();
-        alert('初始化成功');
+        toast.success('默认套餐初始化成功');
       }
     } catch (err) {
-      alert(err.response?.data?.error || '初始化失败');
+      toast.error(err.response?.data?.error || '初始化失败');
     }
   };
 
@@ -279,20 +344,18 @@ const PlanManager = () => {
 
       <div className="flex justify-end gap-2 pt-4 border-t border-gray-700">
         <button
-          onClick={() => {
-            setEditingPlan(null);
-            setShowCreateModal(false);
-            resetForm();
-          }}
-          className="px-4 py-2 bg-gray-700 rounded text-sm hover:bg-gray-600"
+          onClick={closeFormModal}
+          disabled={submitting}
+          className="px-4 py-2 bg-gray-700 rounded text-sm hover:bg-gray-600 disabled:opacity-60"
         >
           取消
         </button>
         <button
           onClick={onSubmit}
-          className="px-4 py-2 bg-orange-600 rounded text-sm hover:bg-orange-700 flex items-center gap-2"
+          disabled={submitting}
+          className="px-4 py-2 bg-orange-600 rounded text-sm hover:bg-orange-700 flex items-center gap-2 disabled:opacity-60"
         >
-          <FaSave /> {submitText}
+          <FaSave className={submitting ? 'animate-spin' : ''} /> {submitText}
         </button>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  FaChartLine, FaArrowUp, FaArrowDown, FaHistory, FaFilter,
+  FaChartLine, FaArrowUp, FaHistory,
   FaFileExport, FaWallet, FaShoppingCart, FaUserShield, FaSync,
   FaSearch, FaChevronLeft, FaChevronRight, FaTimes, FaCalendarAlt
 } from 'react-icons/fa';
@@ -35,7 +35,7 @@ const TradeCenter = () => {
     if (view === 'orders') {
       fetchOrders();
     }
-  }, [view, page, statusFilter, typeFilter]);
+  }, [view, page, statusFilter, typeFilter, dateRange.start, dateRange.end]);
 
   // 搜索防抖
   useEffect(() => {
@@ -152,16 +152,16 @@ const TradeCenter = () => {
   };
 
   const totalPages = Math.ceil(total / limit);
-  const hasFilters = searchTerm || statusFilter || typeFilter || dateRange.start || dateRange.end;
+  const hasFilters = Boolean(searchTerm || statusFilter || typeFilter || dateRange.start || dateRange.end);
 
   return (
     <div className="space-y-4">
       {/* 标题和视图切换 */}
-      <div className="flex justify-between items-center">
-        <div className="flex bg-[#121417] p-1 rounded-lg border border-gray-800">
+      <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
+        <div className="flex bg-[#121417] p-1 rounded-lg border border-gray-800 w-full md:w-auto">
           <button
             onClick={() => setView('analytics')}
-            className={`px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${
+            className={`flex-1 md:flex-none px-4 md:px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${
               view === 'analytics' ? 'bg-orange-600 text-white' : 'text-gray-500 hover:text-gray-300'
             }`}
           >
@@ -169,7 +169,7 @@ const TradeCenter = () => {
           </button>
           <button
             onClick={() => setView('orders')}
-            className={`px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${
+            className={`flex-1 md:flex-none px-4 md:px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${
               view === 'orders' ? 'bg-orange-600 text-white' : 'text-gray-500 hover:text-gray-300'
             }`}
           >
@@ -177,12 +177,17 @@ const TradeCenter = () => {
           </button>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex items-center justify-between md:justify-end gap-2">
+          {view === 'orders' && (
+            <span className="text-xs text-gray-500">
+              共 {total} 条 · 第 {page} / {Math.max(totalPages, 1)} 页
+            </span>
+          )}
           {view === 'orders' && (
             <button
               onClick={handleExportCSV}
               disabled={orders.length === 0}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded text-xs disabled:opacity-50"
+              className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded text-xs disabled:opacity-50"
             >
               <FaFileExport />
               导出 CSV
@@ -298,9 +303,9 @@ const TradeCenter = () => {
       ) : view === 'orders' ? (
         <div className="space-y-4 animate-in fade-in duration-300">
           {/* 筛选栏 */}
-          <div className="flex flex-wrap gap-3 bg-[#121417] border border-gray-800 rounded-lg p-4">
+          <div className="flex flex-wrap items-center gap-3 bg-[#121417] border border-gray-800 rounded-lg p-4">
             {/* 搜索 */}
-            <div className="relative flex-1 min-w-[180px]">
+            <div className="relative flex-1 min-w-[200px]">
               <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs" />
               <input
                 type="text"
@@ -339,7 +344,7 @@ const TradeCenter = () => {
             </select>
 
             {/* 日期范围 */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <FaCalendarAlt className="text-gray-500 text-xs" />
               <input
                 type="date"
@@ -368,71 +373,79 @@ const TradeCenter = () => {
             )}
           </div>
 
+          <div className="text-xs text-gray-500">
+            {hasFilters
+              ? `已启用筛选，当前展示 ${orders.length} 条结果`
+              : `未启用筛选，默认展示最近 ${orders.length} 条订单`}
+          </div>
+
           {/* 订单表格 */}
           <div className="bg-[#121417] border border-gray-800 rounded-lg overflow-hidden">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-[#1A1C1F] text-gray-500 font-bold uppercase tracking-wider text-[11px] border-b border-gray-800">
-                <tr>
-                  <th className="px-4 py-3">订单号</th>
-                  <th className="px-4 py-3">用户</th>
-                  <th className="px-4 py-3">类型</th>
-                  <th className="px-4 py-3 text-right">金额</th>
-                  <th className="px-4 py-3">状态</th>
-                  <th className="px-4 py-3">创建时间</th>
-                  <th className="px-4 py-3">支付时间</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800/50">
-                {loading ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm min-w-[900px]">
+                <thead className="bg-[#1A1C1F] text-gray-500 font-bold uppercase tracking-wider text-[11px] border-b border-gray-800">
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
-                      <FaSync className="animate-spin inline mr-2" />
-                      加载中...
-                    </td>
+                    <th className="px-4 py-3">订单号</th>
+                    <th className="px-4 py-3">用户</th>
+                    <th className="px-4 py-3">类型</th>
+                    <th className="px-4 py-3 text-right">金额</th>
+                    <th className="px-4 py-3">状态</th>
+                    <th className="px-4 py-3">创建时间</th>
+                    <th className="px-4 py-3">支付时间</th>
                   </tr>
-                ) : orders.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-gray-600">
-                      暂无订单数据
-                    </td>
-                  </tr>
-                ) : orders.map(order => {
-                  const typeInfo = getOrderTypeLabel(order.type);
-                  const statusInfo = getStatusLabel(order.status);
-                  return (
-                    <tr key={order.id} className="hover:bg-white/5 transition-colors">
-                      <td className="px-4 py-3">
-                        <span className="text-[10px] text-gray-500 font-mono">{order.id.substring(0, 12)}...</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-gray-300">{order.users?.username || 'System'}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${typeInfo.bg} ${typeInfo.color}`}>
-                          {typeInfo.label}
-                        </span>
-                      </td>
-                      <td className={`px-4 py-3 text-right font-mono font-bold ${
-                        parseFloat(order.amount) >= 0 ? 'text-green-400' : 'text-red-400'
-                      }`}>
-                        {parseFloat(order.amount) >= 0 ? '+' : ''}{parseFloat(order.amount || 0).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusInfo.bg} ${statusInfo.color}`}>
-                          {statusInfo.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">
-                        {new Date(order.createdAt).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">
-                        {order.paidAt ? new Date(order.paidAt).toLocaleString() : '-'}
+                </thead>
+                <tbody className="divide-y divide-gray-800/50">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
+                        <FaSync className="animate-spin inline mr-2" />
+                        加载中...
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ) : orders.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-12 text-center text-gray-600">
+                        暂无订单数据
+                      </td>
+                    </tr>
+                  ) : orders.map(order => {
+                    const typeInfo = getOrderTypeLabel(order.type);
+                    const statusInfo = getStatusLabel(order.status);
+                    return (
+                      <tr key={order.id} className="hover:bg-white/5 transition-colors">
+                        <td className="px-4 py-3">
+                          <span className="text-[10px] text-gray-500 font-mono">{order.id.substring(0, 12)}...</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-gray-300">{order.users?.username || 'System'}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${typeInfo.bg} ${typeInfo.color}`}>
+                            {typeInfo.label}
+                          </span>
+                        </td>
+                        <td className={`px-4 py-3 text-right font-mono font-bold ${
+                          parseFloat(order.amount) >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {parseFloat(order.amount) >= 0 ? '+' : ''}{parseFloat(order.amount || 0).toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusInfo.bg} ${statusInfo.color}`}>
+                            {statusInfo.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 text-xs">
+                          {new Date(order.createdAt).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 text-xs">
+                          {order.paidAt ? new Date(order.paidAt).toLocaleString() : '-'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
             {/* 分页 */}
             {totalPages > 1 && (

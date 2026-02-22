@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  FaTerminal, FaSync, FaTrashAlt, FaDownload, FaCircle,
-  FaSearch, FaFilter, FaTimes
+  FaTerminal, FaSync, FaDownload, FaCircle,
+  FaSearch, FaTimes
 } from 'react-icons/fa';
 import api from '../../services/api';
 import { useToast } from '../Toast';
@@ -13,6 +13,7 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
   const [logs, setLogs] = useState([]);
   const [filteredLogs, setFilteredLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState('');
   const [isAutoScroll, setIsAutoScroll] = useState(true);
   const logEndRef = useRef(null);
 
@@ -89,12 +90,18 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
   const fetchLogs = async () => {
     if (!selectedUserId) return;
     try {
+      setLoading(true);
       const res = await api.get(`/admin/users/${selectedUserId}/logs`);
       if (res.data.success) {
         setLogs(res.data.data);
+        setFetchError('');
       }
     } catch (err) {
+      const message = err.response?.data?.error || '获取日志失败';
+      setFetchError(message);
       console.error('获取日志失败', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -105,7 +112,6 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
       return;
     }
 
-    const selectedUser = users.find(u => u.id === selectedUserId);
     const content = filteredLogs.map(log =>
       `[${new Date(log.timestamp).toLocaleString()}] [${log.module}] [${log.level}] ${log.message}`
     ).join('\n');
@@ -151,19 +157,38 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
 
   // 获取可用的模块列表
   const availableModules = [...new Set(logs.map(log => log.module))].filter(Boolean);
+  const selectedUser = useMemo(
+    () => users.find((user) => user.id === selectedUserId),
+    [users, selectedUserId]
+  );
+  const levelSummary = useMemo(() => {
+    const bucket = { INFO: 0, SUCCESS: 0, WARN: 0, ERROR: 0 };
+    logs.forEach((log) => {
+      const level = log.level || 'INFO';
+      if (bucket[level] !== undefined) {
+        bucket[level] += 1;
+      }
+    });
+    return bucket;
+  }, [logs]);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-160px)] space-y-4">
-      <div className="flex justify-between items-center shrink-0">
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <FaTerminal className="text-orange-500" />
-          系统诊断控制台
-        </h2>
+    <div className="flex flex-col h-full min-h-[620px] space-y-4">
+      <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center shrink-0">
+        <div>
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <FaTerminal className="text-orange-500" />
+            系统诊断控制台
+          </h2>
+          <p className="text-xs text-gray-500 mt-1">
+            {selectedUser ? `当前监听：${selectedUser.username}` : '请先选择活跃用户开始诊断'}
+          </p>
+        </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2 md:justify-end">
           {/* 用户选择 */}
           <div className="flex items-center gap-2 bg-[#121417] border border-gray-800 rounded px-3 py-1">
-            <span className="text-[10px] font-bold text-gray-500 uppercase">监听对象:</span>
+            <span className="text-[10px] font-bold text-gray-500 uppercase">监听对象</span>
             <select
               value={selectedUserId}
               onChange={(e) => setSelectedUserId(e.target.value)}
@@ -188,20 +213,21 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
 
           {/* 刷新按钮 */}
           <button
-            onClick={() => { setLogs([]); fetchActiveUsers(); }}
+            onClick={() => { fetchActiveUsers(); fetchLogs(); }}
             className="p-2 bg-gray-800 hover:bg-gray-700 rounded transition-colors text-gray-400"
             title="刷新"
           >
-            <FaSync />
+            <FaSync className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
 
       {/* 筛选栏 */}
       {selectedUserId && (
-        <div className="flex gap-3 items-center bg-[#121417] border border-gray-800 rounded-lg p-3 shrink-0">
+        <div className="bg-[#121417] border border-gray-800 rounded-lg p-3 shrink-0 space-y-3">
+          <div className="flex flex-wrap gap-3 items-center">
           {/* 搜索 */}
-          <div className="relative flex-1">
+          <div className="relative flex-1 min-w-[220px]">
             <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-xs" />
             <input
               type="text"
@@ -216,7 +242,7 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
           <select
             value={levelFilter}
             onChange={(e) => setLevelFilter(e.target.value)}
-            className="bg-[#0D0E10] border border-gray-800 rounded px-3 py-1.5 text-xs focus:border-orange-500 outline-none cursor-pointer"
+            className="bg-[#0D0E10] border border-gray-800 rounded px-3 py-1.5 text-xs focus:border-orange-500 outline-none cursor-pointer min-w-[110px]"
           >
             <option value="">全部级别</option>
             <option value="INFO">INFO</option>
@@ -229,7 +255,7 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
           <select
             value={moduleFilter}
             onChange={(e) => setModuleFilter(e.target.value)}
-            className="bg-[#0D0E10] border border-gray-800 rounded px-3 py-1.5 text-xs focus:border-orange-500 outline-none cursor-pointer"
+            className="bg-[#0D0E10] border border-gray-800 rounded px-3 py-1.5 text-xs focus:border-orange-500 outline-none cursor-pointer min-w-[120px]"
           >
             <option value="">全部模块</option>
             {availableModules.map(mod => (
@@ -253,6 +279,32 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
             {filteredLogs.length}/{logs.length}
           </span>
         </div>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { key: 'ERROR', label: '错误', className: 'text-red-300 border-red-500/30 bg-red-500/10' },
+              { key: 'WARN', label: '告警', className: 'text-yellow-300 border-yellow-500/30 bg-yellow-500/10' },
+              { key: 'SUCCESS', label: '成功', className: 'text-green-300 border-green-500/30 bg-green-500/10' },
+              { key: 'INFO', label: '信息', className: 'text-blue-300 border-blue-500/30 bg-blue-500/10' }
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setLevelFilter((prev) => (prev === item.key ? '' : item.key))}
+                className={`px-2.5 py-1 border rounded text-[11px] transition-colors ${
+                  levelFilter === item.key ? item.className : 'text-gray-400 border-white/10 bg-white/[0.02] hover:bg-white/[0.06]'
+                }`}
+              >
+                {item.label} {levelSummary[item.key]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {fetchError && (
+        <div className="text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded px-3 py-2">
+          {fetchError}
+        </div>
       )}
 
       <div className="flex-1 bg-[#050505] border border-gray-800 rounded-lg overflow-hidden flex flex-col relative shadow-inner">
@@ -265,7 +317,11 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
                 {selectedUserId ? 'Log_Stream_Active' : 'Awaiting_Target...'}
               </span>
             </div>
-            {selectedUserId && <span className="text-gray-500">Buffer: {logs.length}/{200}</span>}
+            {selectedUserId && (
+              <span className="text-gray-500">
+                Buffer: {logs.length}/{200} · {loading ? '同步中' : '实时'}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <button
@@ -274,7 +330,7 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
             >
               [ Auto_Scroll: {isAutoScroll ? 'ON' : 'OFF'} ]
             </button>
-            <span className="text-gray-700">ConVars_v1.0.4</span>
+            <span className="text-gray-700 hidden sm:inline">ConVars_v1.0.4</span>
           </div>
         </div>
 

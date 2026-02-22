@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
-  FaSearch, FaSync, FaWallet, FaHourglassHalf, FaCircle,
-  FaTerminal, FaEdit, FaCheck, FaTimes, FaPlus, FaMinus, FaUsers,
+  FaSearch, FaSync, FaWallet, FaCircle,
+  FaTerminal, FaEdit, FaTimes, FaPlus, FaMinus, FaUsers,
   FaBan, FaCheckCircle, FaServer, FaEye, FaChevronLeft, FaChevronRight,
-  FaFilter, FaEnvelope, FaPlug, FaTrashAlt
+  FaPlug, FaTrashAlt
 } from 'react-icons/fa';
 import api from '../../services/api';
 import { useToast } from '../Toast';
+import { useConfirm } from '../ConfirmModal';
 
 const INITIAL_CREATE_USER_FORM = {
   username: '',
@@ -22,6 +23,7 @@ const INITIAL_CREATE_USER_FORM = {
 
 const SurvivorRoster = ({ onNavigateToLogs }) => {
   const toast = useToast();
+  const confirm = useConfirm();
 
   // 列表数据
   const [users, setUsers] = useState([]);
@@ -45,6 +47,9 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
   const [isServersModalOpen, setIsServersModalOpen] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createUserForm, setCreateUserForm] = useState(INITIAL_CREATE_USER_FORM);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   // 调整表单
   const [balanceDelta, setBalanceDelta] = useState(0);
@@ -213,7 +218,13 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
   // 启用/禁用用户
   const handleToggleStatus = async (user) => {
     const action = user.isActive ? '禁用' : '启用';
-    if (!confirm(`确定要${action}用户 "${user.username}" 吗？`)) return;
+    const confirmed = await confirm({
+      type: user.isActive ? 'warning' : 'info',
+      title: `${action}用户`,
+      message: `确定要${action}用户「${user.username}」吗？`,
+      confirmText: action
+    });
+    if (!confirmed) return;
 
     try {
       const res = await api.put(`/admin/users/${user.id}/status`, {
@@ -229,29 +240,32 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
   };
 
   // 删除用户
-  const handleDeleteUser = async (user) => {
-    // 二次确认
-    const confirmText = `确定要永久删除用户 "${user.username}" 吗？\n\n此操作将删除该用户的所有数据：\n- 服务器配对信息\n- 设备配置\n- 事件日志\n- 订单记录\n- 订阅信息\n\n此操作不可撤销！`;
+  const handleDeleteUser = (user) => {
+    setDeleteTarget(user);
+    setDeleteConfirmInput('');
+  };
 
-    if (!confirm(confirmText)) return;
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
 
-    // 再次确认
-    const finalConfirm = prompt(`请输入用户名 "${user.username}" 以确认删除：`);
-    if (finalConfirm !== user.username) {
-      if (finalConfirm !== null) {
-        toast.error('用户名不匹配，取消删除');
-      }
+    if (deleteConfirmInput.trim() !== deleteTarget.username) {
+      toast.error('用户名不匹配，无法删除');
       return;
     }
 
     try {
-      const res = await api.delete(`/admin/users/${user.id}`);
+      setDeleteSubmitting(true);
+      const res = await api.delete(`/admin/users/${deleteTarget.id}`);
       if (res.data.success) {
-        toast.success(`用户 ${user.username} 已删除`);
+        toast.success(`用户 ${deleteTarget.username} 已删除`);
+        setDeleteTarget(null);
+        setDeleteConfirmInput('');
         fetchUsers();
       }
     } catch (err) {
       toast.error(err.response?.data?.error || '删除用户失败');
+    } finally {
+      setDeleteSubmitting(false);
     }
   };
 
@@ -293,7 +307,13 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
   // 强制断开服务器
   const handleDisconnectServer = async (serverId) => {
-    if (!confirm('确定要强制断开此服务器连接吗？')) return;
+    const confirmed = await confirm({
+      type: 'warning',
+      title: '强制断开连接',
+      message: '确定要强制断开该服务器连接吗？断开后用户需重新发起连接。',
+      confirmText: '确认断开'
+    });
+    if (!confirmed) return;
 
     try {
       const res = await api.delete(`/admin/users/${selectedUser.id}/servers/${serverId}`);
@@ -415,7 +435,8 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
       {/* 用户表格 */}
       <div className="bg-[#121417] border border-gray-800 rounded-lg overflow-hidden">
-        <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm min-w-[980px]">
           <thead className="bg-[#1A1C1F] text-gray-500 font-bold uppercase tracking-wider text-[11px] border-b border-gray-800">
             <tr>
               <th className="px-4 py-3">幸存者</th>
@@ -522,7 +543,7 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
                 {/* 操作 */}
                 <td className="px-4 py-3 text-right">
-                  <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex justify-end gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                     {/* 查看详情 */}
                     <button
                       onClick={() => handleViewDetail(user)}
@@ -593,7 +614,8 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
 
         {/* 分页 */}
         {totalPages > 1 && (
@@ -648,6 +670,68 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
           </div>
         )}
       </div>
+
+      {/* 删除确认弹窗 */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#121417] border border-red-500/30 rounded-lg w-full max-w-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-red-500/20 flex justify-between items-center bg-red-500/10">
+              <h3 className="font-bold text-red-200 flex items-center gap-2">
+                <FaTrashAlt />
+                永久删除用户
+              </h3>
+              <button
+                onClick={() => {
+                  if (deleteSubmitting) return;
+                  setDeleteTarget(null);
+                  setDeleteConfirmInput('');
+                }}
+                className="text-red-200/70 hover:text-red-100"
+              >
+                <FaTimes />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-red-100 leading-relaxed">
+                此操作将永久删除用户 <span className="font-bold">「{deleteTarget.username}」</span> 的服务器、设备、日志、订单和订阅数据，且不可恢复。
+              </p>
+              <p className="text-xs text-red-200/80">
+                请输入用户名 <span className="font-bold">{deleteTarget.username}</span> 进行确认。
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmInput}
+                onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                placeholder="输入用户名确认"
+                className="w-full bg-[#0D0E10] border border-red-500/30 rounded px-3 py-2 text-sm focus:border-red-400 outline-none"
+              />
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    if (deleteSubmitting) return;
+                    setDeleteTarget(null);
+                    setDeleteConfirmInput('');
+                  }}
+                  disabled={deleteSubmitting}
+                  className="flex-1 py-2.5 border border-gray-700 hover:bg-gray-800 rounded font-bold text-xs uppercase tracking-widest disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleConfirmDelete}
+                  disabled={deleteSubmitting}
+                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded font-bold text-xs uppercase tracking-widest disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {deleteSubmitting && <FaSync className="animate-spin text-xs" />}
+                  永久删除
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 新建用户弹窗 */}
       {isCreateModalOpen && (
