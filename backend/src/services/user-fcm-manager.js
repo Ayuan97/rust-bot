@@ -501,7 +501,7 @@ class UserFCMManager extends EventEmitter {
       if (data.channelId === 'pairing') {
         logger.info(`配对推送 body 数据:`, JSON.stringify(body, null, 2));
 
-        const entityId = parseIntSafe(pickField('entityId', 'entity_id', 'entityID'));
+        const entityId = parseIntSafe(pickField('entityId', 'entity_id', 'entityID', 'entityid', 'entity'));
         const entityType = pickField('entityType', 'entity_type');
         const entityName = pickField('entityName', 'entity_name', 'name') || data.title;
         const originalServerId = pickField('id', 'serverId', 'server_id', 'serverID');
@@ -560,7 +560,7 @@ class UserFCMManager extends EventEmitter {
       else if (data.channelId === 'entity_pairing') {
         logger.info(`设备配对 body 数据 (entity_pairing):`, JSON.stringify(body, null, 2));
 
-        const entityId = parseIntSafe(pickField('entityId', 'entity_id', 'entityID'));
+        const entityId = parseIntSafe(pickField('entityId', 'entity_id', 'entityID', 'entityid', 'entity'));
         const entityType = pickField('entityType', 'entity_type');
         const entityName = pickField('entityName', 'entity_name', 'name');
         const originalServerId = pickField('id', 'serverId', 'server_id', 'serverID');
@@ -619,7 +619,7 @@ class UserFCMManager extends EventEmitter {
 
       // 智能警报推送
       else if (data.channelId === 'alarm') {
-        const entityId = parseIntSafe(pickField('entityId', 'entity_id', 'entityID'));
+        const entityId = parseIntSafe(pickField('entityId', 'entity_id', 'entityID', 'entityid', 'entity'));
         const timestamp = Number(pickField('time', 'timestamp', 'ts')) || Date.now();
         const alarmInfo = {
           userId: this.userId,

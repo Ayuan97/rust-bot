@@ -412,8 +412,8 @@ function DeviceControl({ serverId, isReadOnly = false }) {
         )));
       }
 
-      const deviceName = data.deviceName || data.name || `警报 ${data.entityId || ''}`;
-      toast.warning(`警报触发: ${deviceName}`);
+      const alarmContent = data.message || data.title || data.deviceName || data.name || `警报 ${data.entityId || ''}`;
+      toast.warning(`警报触发: ${alarmContent}`);
     };
     socketService.on('entity:changed', handleEntityChanged);
     socketService.on('device:paired', handleDevicePaired);

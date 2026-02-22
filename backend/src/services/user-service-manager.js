@@ -1285,6 +1285,8 @@ class UserServiceManager extends EventEmitter {
     try {
       const { serverId, entityId } = data;
       const triggerTime = Number.parseInt(data.time, 10) || Date.now();
+      const incomingMessage = typeof data.message === 'string' ? data.message.trim() : '';
+      const parsedEntityId = Number.parseInt(entityId, 10);
 
       if (this._isDuplicateAlarmTrigger(serverId, entityId, triggerTime)) {
         this.log('ALARM', `Duplicate alarm ignored: serverId=${serverId}, entityId=${entityId}`, 'DEBUG');
@@ -1293,10 +1295,24 @@ class UserServiceManager extends EventEmitter {
 
       this.log('ALARM', `警报触发: serverId=${serverId}, entityId=${entityId}`);
 
+      if (Number.isNaN(parsedEntityId)) {
+        this.log('ALARM', `FCM 警报缺少 entityId，跳过设备查询: serverId=${serverId}`, 'WARN');
+        this.emit('alarm:triggered', {
+          ...data,
+          userId: this.userId,
+          serverId: serverId || null,
+          entityId: null,
+          deviceName: data.deviceName || data.name || null,
+          message: incomingMessage || null,
+          time: triggerTime
+        });
+        return;
+      }
+
       // 1. 从数据库查询设备信息
       const [deviceRows] = await db.query(
         'SELECT * FROM devices WHERE serverId = ? AND userId = ? AND entityId = ?',
-        [serverId, this.userId, Number.parseInt(entityId, 10)]
+        [serverId, this.userId, parsedEntityId]
       );
 
       const device = deviceRows[0];
@@ -1311,8 +1327,11 @@ class UserServiceManager extends EventEmitter {
         // 对于未记录的设备，如果确实收到了警报请求（虽然现在流程上应该不会了），仍发出基础事件但不发消息
         this.emit('alarm:triggered', {
           ...data,
-          deviceName: `设备 ${entityId}`,
-          message: null
+          userId: this.userId,
+          entityId: parsedEntityId,
+          deviceName: data.deviceName || data.name || `设备 ${parsedEntityId}`,
+          message: incomingMessage || null,
+          time: triggerTime
         });
         return;
       }
@@ -1324,14 +1343,13 @@ class UserServiceManager extends EventEmitter {
       );
 
       // 3. 构建警报消息
-      const deviceName = device.name || `警报 ${entityId}`;
-      const customMessage = device.message;
+      const deviceName = device.name || `警报 ${parsedEntityId}`;
+      const webMessage = typeof device.message === 'string' ? device.message.trim() : '';
+      // 优先使用 Rust 游戏内警报内容，缺失时回退到网页配置消息。
+      const notifyMessage = incomingMessage || webMessage || null;
 
       // 游戏内消息格式
-      let chatMessage = `[警报] ${deviceName}`;
-      if (customMessage) {
-        chatMessage += `: ${customMessage}`;
-      }
+      const chatMessage = `[警报] ${notifyMessage || deviceName}`;
 
       // 4. 发送游戏内聊天消息
       try {
@@ -1343,9 +1361,9 @@ class UserServiceManager extends EventEmitter {
 
       // 5. 保存到历史记录
       await this.eventMonitorService.saveEventLog(serverId, 'alarm:triggered', {
-        entityId,
+        entityId: parsedEntityId,
         deviceName,
-        message: customMessage,
+        message: notifyMessage,
         time: triggerTime
       });
 
@@ -1353,9 +1371,9 @@ class UserServiceManager extends EventEmitter {
       this.emit('alarm:triggered', {
         userId: this.userId,
         serverId,
-        entityId,
+        entityId: parsedEntityId,
         deviceName,
-        message: customMessage,
+        message: notifyMessage,
         time: triggerTime
       });
 

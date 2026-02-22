@@ -55,7 +55,7 @@ export default function EventTracker({ serverId, isDemo = false }) {
                 description = `队友离线: ${data.name || '未知'}`;
                 break;
             case 'alarm:triggered':
-                description = `警报触发: ${data.title || data.name || '智能警报'}`;
+                description = `警报触发: ${data.message || data.title || data.deviceName || data.name || '智能警报'}`;
                 break;
             case 'entity:changed':
                 description = `${data.name || '设备'}: ${data.value ? '开启' : '关闭'}`;
@@ -114,7 +114,7 @@ export default function EventTracker({ serverId, isDemo = false }) {
                             case 'player:died': description = `队友阵亡: ${data.name || '未知'}`; break;
                             case 'player:online': description = `队友上线: ${data.name || '未知'}`; break;
                             case 'player:offline': description = `队友离线: ${data.name || '未知'}`; break;
-                            case 'alarm:triggered': description = `警报触发: ${data.title || data.deviceName || data.name || '智能警报'}`; break;
+                            case 'alarm:triggered': description = `警报触发: ${data.message || data.title || data.deviceName || data.name || '智能警报'}`; break;
                             case 'entity:changed': description = `${data.name || '设备'}: ${data.value ? '开启' : '关闭'}`; break;
                             default: break;
                         }
