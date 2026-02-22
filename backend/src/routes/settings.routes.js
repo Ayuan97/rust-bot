@@ -142,13 +142,13 @@ function validateAfkTemplate(template) {
   }
 
   // 检查是否只包含合法变量
-  const allowedVars = ['{name}', '{position}', '{minutes}'];
+  const allowedVars = ['{name}', '{position}', '{minutes}', '{duration}'];
   const varPattern = /\{[^}]+\}/g;
   const foundVars = trimmed.match(varPattern) || [];
 
   for (const v of foundVars) {
     if (!allowedVars.includes(v)) {
-      return { valid: false, error: `不支持的变量: ${v}，仅支持 {name}, {position}, {minutes}` };
+      return { valid: false, error: `不支持的变量: ${v}，仅支持 {name}, {position}, {minutes}, {duration}` };
     }
   }
 
@@ -174,13 +174,13 @@ function validateAfkReturnTemplate(template) {
   }
 
   // 检查是否只包含合法变量
-  const allowedVars = ['{name}', '{minutes}'];
+  const allowedVars = ['{name}', '{minutes}', '{duration}'];
   const varPattern = /\{[^}]+\}/g;
   const foundVars = trimmed.match(varPattern) || [];
 
   for (const v of foundVars) {
     if (!allowedVars.includes(v)) {
-      return { valid: false, error: `不支持的变量: ${v}，仅支持 {name}, {minutes}` };
+      return { valid: false, error: `不支持的变量: ${v}，仅支持 {name}, {minutes}, {duration}` };
     }
   }
 

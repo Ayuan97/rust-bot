@@ -299,6 +299,7 @@ function NotificationSettings() {
                             { var: '{name}', label: '名字', required: true },
                             { var: '{position}', label: '坐标' },
                             { var: '{minutes}', label: '分钟' },
+                            { var: '{duration}', label: '时长' },
                           ].map(v => (
                             <button
                               key={v.var}
@@ -340,6 +341,7 @@ function NotificationSettings() {
                           {[
                             { var: '{name}', label: '名字', required: true },
                             { var: '{minutes}', label: '分钟' },
+                            { var: '{duration}', label: '时长' },
                           ].map(v => (
                             <button
                               key={v.var}

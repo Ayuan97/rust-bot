@@ -62,6 +62,7 @@ class UserCommands extends EventEmitter {
     this.POP_HISTORY_WINDOW_MS = 60 * 60 * 1000; // 过去一小时
     this.POP_HISTORY_RETENTION_MS = 2 * 60 * 60 * 1000; // 最多保留两小时样本
     this.POP_BASELINE_TOLERANCE_MS = 5 * 60 * 1000; // 基线允许误差，超出则不展示一小时变化
+    this.POP_MIN_DIFF_WINDOW_MS = 5 * 60 * 1000; // 样本窗口不足 5 分钟时不展示涨跌
     this.POP_HISTORY_MAX_POINTS = 240; // 防止极端刷屏导致内存增长
     this.shopSearchTranslationCache = new Map();
 
@@ -668,16 +669,39 @@ class UserCommands extends EventEmitter {
       const retained = history.filter((point) => point.timestamp >= now - this.POP_HISTORY_RETENTION_MS);
       const windowStart = now - this.POP_HISTORY_WINDOW_MS;
 
-      // 仅在“接近一小时前”存在样本时才展示变化，避免用过旧数据误报一小时涨跌
-      const baselinePoint = [...retained].reverse().find((point) => point.timestamp <= windowStart);
-      const hasReliableBaseline = baselinePoint
-        && (windowStart - baselinePoint.timestamp) <= this.POP_BASELINE_TOLERANCE_MS;
-      const diff = hasReliableBaseline ? (current - baselinePoint.players) : null;
-      const diffText = diff === null ? '' : `${diff >= 0 ? '+' : ''}${diff}`;
+      // 优先寻找“接近一小时前”的样本（允许前后 5 分钟误差）
+      let oneHourBaseline = null;
+      let oneHourBaselineGap = Number.POSITIVE_INFINITY;
+      for (const point of retained) {
+        const gap = Math.abs(point.timestamp - windowStart);
+        if (gap <= this.POP_BASELINE_TOLERANCE_MS && gap < oneHourBaselineGap) {
+          oneHourBaseline = point;
+          oneHourBaselineGap = gap;
+        }
+      }
 
-      const baseText = (diff === null || diff === 0)
+      // 如果没有可靠的一小时基线，退化为“最近 N 分钟”基线，避免一直不显示涨跌
+      let diff = null;
+      let diffWindowLabel = null;
+      if (oneHourBaseline) {
+        diff = current - oneHourBaseline.players;
+        diffWindowLabel = '过去一小时内';
+      } else {
+        const fallbackBaseline = retained.find((point) => point.timestamp >= windowStart) || retained[0] || null;
+        if (fallbackBaseline) {
+          const spanMs = now - fallbackBaseline.timestamp;
+          if (spanMs >= this.POP_MIN_DIFF_WINDOW_MS) {
+            diff = current - fallbackBaseline.players;
+            const spanMinutes = Math.max(1, Math.floor(spanMs / 60000));
+            diffWindowLabel = `最近${spanMinutes}分钟内`;
+          }
+        }
+      }
+
+      const diffText = diff === null ? '' : `${diff >= 0 ? '+' : ''}${diff}`;
+      const baseText = (diff === null || diffWindowLabel === null || diff === 0)
         ? `当前服务器在线人数为${current} / ${max}玩家`
-        : `当前服务器在线人数为${current} / ${max}玩家（过去一小时内为${diffText}玩家）`;
+        : `当前服务器在线人数为${current} / ${max}玩家（${diffWindowLabel}为${diffText}玩家）`;
 
       const output = queued > 0 ? `${baseText}，排队${queued}人` : baseText;
 
@@ -764,21 +788,53 @@ class UserCommands extends EventEmitter {
    */
   async handleAfk(serverId, args, context) {
     try {
-      const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
-
-      if (!teamInfo || !teamInfo.members) {
+      if (!this.eventMonitorService) {
         return cmd('afk', 'error');
       }
 
-      // 简化版：认为在线但死亡的为挂机
-      const afkMembers = teamInfo.members.filter(m => m.isOnline && !m.isAlive);
+      const eventData = this.eventMonitorService.eventData.get(serverId);
+      const teamMembers = eventData?.teamMembers;
+
+      if (!teamMembers || teamMembers.size === 0) {
+        // 首次轮询基线尚未建立时，避免误报错误
+        return cmd('afk', 'empty');
+      }
+
+      const configuredMinutes = Number.parseInt(
+        this.eventMonitorService.notificationSettings?.player_afk_minutes,
+        10
+      );
+      const afkThresholdSeconds = (Number.isNaN(configuredMinutes) ? 3 : configuredMinutes) * 60;
+
+      const afkMembers = [];
+      for (const [, state] of teamMembers.entries()) {
+        if (!state?.isOnline) {
+          continue;
+        }
+
+        const afkSeconds = Number.parseInt(state.afkSeconds, 10) || 0;
+        if (afkSeconds < afkThresholdSeconds) {
+          continue;
+        }
+
+        afkMembers.push({
+          name: state.name || '未知玩家',
+          afkSeconds
+        });
+      }
 
       if (afkMembers.length === 0) {
         return cmd('afk', 'empty');
       }
 
       const count = afkMembers.length;
-      const list = afkMembers.map(m => `\`${m.name}\``).join(' ');
+      const list = afkMembers
+        .sort((a, b) => b.afkSeconds - a.afkSeconds)
+        .map((m) => {
+          const duration = formatDuration(m.afkSeconds * 1000);
+          return cmd('afk', 'item', { name: m.name, duration }) || `\`${m.name}\`(${duration})`;
+        })
+        .join(' ');
 
       return cmd('afk', 'msg', { count, list });
 

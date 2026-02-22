@@ -19,6 +19,7 @@ import globalManager from './global-manager.service.js';
 // 刷新间隔
 const PLAYER_DATA_REFRESH_INTERVAL = 10 * 60 * 1000; // 10分钟刷新一次 Steam 数据
 const PLAYER_STATS_SNAPSHOT_INTERVAL = 24 * 60 * 60 * 1000; // 每天 00:00 快照（逻辑上在 checkPlayerStats 中处理）
+const AFK_MOVEMENT_THRESHOLD_METERS = 3; // 玩家位移超过该值才判定为“有移动”，避免坐标抖动导致计时重置
 
 // 直升机可访问纪念碑 token 列表
 const HELI_ACCESSIBLE_MONUMENTS = [
@@ -1834,21 +1835,25 @@ class UserEventMonitor extends EventEmitter {
 
         // 检测 AFK（玩家在线但位置不变超过设定时间）
         if (member.isOnline) {
-          const hasMoved = oldState.x !== member.x || oldState.y !== member.y;
-          const afkMinutes = this.notificationSettings?.player_afk_minutes || 3;
-          const afkThresholdSeconds = afkMinutes * 60;
+          const movementDistance = getDistance(oldState.x, oldState.y, member.x, member.y);
+          const hasMoved = movementDistance >= AFK_MOVEMENT_THRESHOLD_METERS;
+          const configuredAfkMinutes = this.notificationSettings?.player_afk_minutes || 3;
+          const afkThresholdSeconds = configuredAfkMinutes * 60;
 
           if (hasMoved) {
             // 如果之前是 AFK 状态，发送返回通知
             if (oldState.afkSeconds >= afkThresholdSeconds) {
               logger.server(serverId, `🏃 ${member.name} 已返回`);
+              const afkDurationSeconds = Number.parseInt(oldState.afkSeconds, 10) || 0;
+              const afkDurationMinutes = Math.max(1, Math.floor(afkDurationSeconds / 60));
+              const afkDurationText = formatDuration(afkDurationSeconds * 1000);
 
               const payload = {
                 userId: this.userId,
                 serverId,
                 steamId,
                 name: member.name,
-                afkDuration: oldState.afkSeconds,
+                afkDuration: afkDurationSeconds,
                 time: now
               };
 
@@ -1857,13 +1862,13 @@ class UserEventMonitor extends EventEmitter {
               // 发送 AFK 返回通知
               if (this.isNotificationEnabled('player_afk_return')) {
                 try {
-                  const afkMinutes = Math.floor(oldState.afkSeconds / 60);
                   const defaultTemplate = '`{name}` 在离开 {minutes} 分钟后回来了';
                   const template = this.notificationSettings?.player_afk_return_template?.trim() || defaultTemplate;
 
                   const msg = template
                     .replace(/{name}/g, member.name)
-                    .replace(/{minutes}/g, afkMinutes);
+                    .replace(/{minutes}/g, afkDurationMinutes)
+                    .replace(/{duration}/g, afkDurationText);
 
                   await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
                 } catch (e) {
@@ -1883,7 +1888,9 @@ class UserEventMonitor extends EventEmitter {
             oldState.afkSeconds = timeSinceLastMove;
 
             if (isGoneAfk) {
-              logger.server(serverId, `💤 ${member.name} 已挂机 ${afkMinutes} 分钟`);
+              const afkDurationMinutes = Math.max(1, Math.floor(timeSinceLastMove / 60));
+              const afkDurationText = formatDuration(timeSinceLastMove * 1000);
+              logger.server(serverId, `💤 ${member.name} 已挂机 ${afkDurationMinutes} 分钟`);
 
               const payload = {
                 userId: this.userId,
@@ -1908,7 +1915,8 @@ class UserEventMonitor extends EventEmitter {
                   const msg = template
                     .replace(/{name}/g, member.name)
                     .replace(/{position}/g, position)
-                    .replace(/{minutes}/g, afkMinutes);
+                    .replace(/{minutes}/g, afkDurationMinutes)
+                    .replace(/{duration}/g, afkDurationText);
 
                   await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
                 } catch (e) {
