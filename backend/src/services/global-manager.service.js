@@ -471,6 +471,10 @@ class GlobalServiceManager extends EventEmitter {
       this.emit('entity:paired', data);
     });
 
+    userService.on('entity:paired:success', (data) => {
+      this.emit('entity:paired:success', data);
+    });
+
     userService.on('fcm:listening', (data) => {
       this.emit('fcm:listening', data);
     });

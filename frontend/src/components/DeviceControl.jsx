@@ -378,13 +378,19 @@ function DeviceControl({ serverId, isReadOnly = false }) {
   useEffect(() => {
     fetchDevices();
     const handleEntityChanged = (data) => {
-      if (data.serverId === serverId) {
-        setDevices((prev) => prev.map((d) => d.entityId === data.entityId ? { ...d, currentValue: data.value } : d));
+      if (String(data.serverId) === String(serverId)) {
+        const changedEntityId = Number.parseInt(data.entityId, 10);
+        setDevices((prev) => prev.map((d) => (
+          Number.parseInt(d.entityId, 10) === changedEntityId
+            ? { ...d, currentValue: data.value }
+            : d
+        )));
       }
     };
     const handleDevicePaired = (data) => {
-      if (data.serverId === serverId) {
-        toast.success(`检测到新设备: ${data.name}`);
+      if (String(data.serverId) === String(serverId)) {
+        const deviceName = data.device?.name || data.name || data.entityName || `设备 ${data.entityId || ''}`;
+        toast.success(`检测到新设备: ${deviceName}`);
         fetchDevices();
       }
     };

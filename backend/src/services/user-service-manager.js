@@ -382,6 +382,43 @@ class UserServiceManager extends EventEmitter {
         await this._handleEntityPairing(data);
       });
 
+      this.fcmService.on('alarm', async (data) => {
+        try {
+          const resolvedServerId = await this._resolveScopedServerIdForAlarm(data.serverId, data.entityId);
+          if (!resolvedServerId) {
+            this.log('ALARM', `FCM 警报无法匹配服务器: serverId=${data.serverId}, entityId=${data.entityId}`, 'WARN');
+            this.emit('alarm:triggered', {
+              ...data,
+              userId: this.userId,
+              serverId: data.serverId || null,
+              entityId: data.entityId || null,
+              deviceName: data.deviceName || `设备 ${data.entityId || '未知'}`,
+              message: data.message || null,
+              time: data.time || Date.now()
+            });
+            return;
+          }
+
+          await this._handleAlarmTriggered({
+            ...data,
+            userId: this.userId,
+            serverId: resolvedServerId,
+            time: data.time || Date.now()
+          });
+        } catch (alarmError) {
+          this.log('ALARM', `处理 FCM 警报失败: ${alarmError.message}`, 'ERROR');
+          this.emit('alarm:triggered', {
+            ...data,
+            userId: this.userId,
+            serverId: data.serverId || null,
+            entityId: data.entityId || null,
+            deviceName: data.deviceName || `设备 ${data.entityId || '未知'}`,
+            message: data.message || null,
+            time: data.time || Date.now()
+          });
+        }
+      });
+
       this.fcmService.on('listening', (data) => {
         console.log(`  👂 FCM 监听已启动`);
         this.emit('fcm:listening', data);
@@ -990,24 +1027,34 @@ class UserServiceManager extends EventEmitter {
     try {
       this.log('ENTITY_PAIRING', `正在处理设备配对: entityId=${data.entityId}, type=${data.entityType}`);
 
-      // 验证必要字段
-      if (!data.entityId || !data.originalServerId) {
-        this.log('ENTITY_PAIRING', `设备配对数据不完整: entityId=${data.entityId}, originalServerId=${data.originalServerId}`, 'WARN');
+      const entityId = Number.parseInt(data.entityId, 10);
+      if (Number.isNaN(entityId)) {
+        this.log('ENTITY_PAIRING', `设备配对数据不完整: entityId=${data.entityId}`, 'WARN');
+        return;
+      }
+
+      const sourceServerId = data.originalServerId || data.serverId || data.server_id || null;
+      const hasServerInfo = Boolean(data.serverInfo && data.serverInfo.ip && data.serverInfo.port);
+      if (!sourceServerId && !hasServerInfo) {
+        this.log('ENTITY_PAIRING', '设备配对缺少服务器标识与服务器信息，无法关联到用户服务器', 'WARN');
         return;
       }
 
       // 生成用户专属服务器 ID（与服务器配对保持一致）
-      const userServerId = this._buildScopedServerId(data.originalServerId);
+      let userServerId = sourceServerId ? this._buildScopedServerId(sourceServerId) : null;
 
       // 检查服务器是否存在
-      const [serverRows] = await db.query(
-        'SELECT id FROM servers WHERE id = ? AND userId = ?',
-        [userServerId, this.userId]
-      );
+      let serverRows = [];
+      if (userServerId) {
+        [serverRows] = await db.query(
+          'SELECT id FROM servers WHERE id = ? AND userId = ?',
+          [userServerId, this.userId]
+        );
+      }
 
       // 如果服务器不存在，尝试自动创建
       if (serverRows.length === 0) {
-        if (data.serverInfo && data.serverInfo.ip && data.serverInfo.port) {
+        if (hasServerInfo) {
           this.log('ENTITY_PAIRING', `服务器不存在，正在自动创建: ${data.serverInfo.name}`);
 
           // 检查是否已有相同 IP:Port 的服务器
@@ -1021,7 +1068,11 @@ class UserServiceManager extends EventEmitter {
             const existingServerId = existingByIp[0].id;
             this.log('ENTITY_PAIRING', `找到已存在的服务器 (IP:Port匹配): ${existingServerId}`);
             data.serverId = existingServerId;
+            userServerId = existingServerId;
           } else {
+            if (!userServerId) {
+              userServerId = this._buildScopedServerId(`${data.serverInfo.ip}:${data.serverInfo.port}`);
+            }
             // 创建新服务器
             await db.query(
               `INSERT INTO servers (id, userId, name, ip, port, playerId, playerToken, img, url, description, isActive, createdAt, updatedAt)
@@ -1069,7 +1120,6 @@ class UserServiceManager extends EventEmitter {
         }
       }
 
-      const entityId = parseInt(data.entityId);
       const deviceId = `${data.serverId}_${entityId}`;
 
       const deviceData = {
@@ -1086,8 +1136,8 @@ class UserServiceManager extends EventEmitter {
 
       // 检查设备是否已存在
       const [existingDevices] = await db.query(
-        'SELECT * FROM devices WHERE serverId = ? AND entityId = ?',
-        [data.serverId, entityId]
+        'SELECT * FROM devices WHERE serverId = ? AND userId = ? AND entityId = ?',
+        [data.serverId, this.userId, entityId]
       );
 
       const existing = existingDevices[0];
@@ -1117,6 +1167,9 @@ class UserServiceManager extends EventEmitter {
       this.emit('entity:paired:success', {
         userId: this.userId,
         serverId: data.serverId,
+        entityId,
+        name: deviceData.name,
+        entityType: deviceType,
         device: deviceData
       });
 
@@ -1141,6 +1194,45 @@ class UserServiceManager extends EventEmitter {
   }
 
   /**
+   * 将 FCM 推送里的服务器标识解析为当前用户作用域的 serverId
+   * @private
+   */
+  async _resolveScopedServerIdForAlarm(rawServerId, entityId) {
+    if (rawServerId !== null && rawServerId !== undefined && rawServerId !== '') {
+      const directServerId = String(rawServerId);
+      const [directRows] = await db.query(
+        'SELECT id FROM servers WHERE id = ? AND userId = ? LIMIT 1',
+        [directServerId, this.userId]
+      );
+      if (directRows.length > 0) {
+        return directServerId;
+      }
+
+      const scopedServerId = this._buildScopedServerId(directServerId);
+      const [scopedRows] = await db.query(
+        'SELECT id FROM servers WHERE id = ? AND userId = ? LIMIT 1',
+        [scopedServerId, this.userId]
+      );
+      if (scopedRows.length > 0) {
+        return scopedServerId;
+      }
+    }
+
+    const parsedEntityId = Number.parseInt(entityId, 10);
+    if (!Number.isNaN(parsedEntityId)) {
+      const [deviceRows] = await db.query(
+        'SELECT serverId FROM devices WHERE userId = ? AND entityId = ? ORDER BY updatedAt DESC LIMIT 1',
+        [this.userId, parsedEntityId]
+      );
+      if (deviceRows.length > 0) {
+        return deviceRows[0].serverId;
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * 处理警报触发事件
    * 查询设备信息，更新触发时间，发送游戏内消息
    * @private
@@ -1153,8 +1245,8 @@ class UserServiceManager extends EventEmitter {
 
       // 1. 从数据库查询设备信息
       const [deviceRows] = await db.query(
-        'SELECT * FROM devices WHERE serverId = ? AND entityId = ?',
-        [serverId, parseInt(entityId)]
+        'SELECT * FROM devices WHERE serverId = ? AND userId = ? AND entityId = ?',
+        [serverId, this.userId, Number.parseInt(entityId, 10)]
       );
 
       const device = deviceRows[0];

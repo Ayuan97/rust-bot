@@ -780,6 +780,12 @@ class WebSocketService {
       this.io.to(`user:${data.userId}`).emit('entity:paired', data);
     });
 
+    addListener('entity:paired:success', (data) => {
+      this.io.to(`user:${data.userId}`).emit('entity:paired:success', data);
+      // 兼容前端设备列表监听事件名
+      this.io.to(`user:${data.userId}`).emit('device:paired', data);
+    });
+
     addListener('fcm:listening', (data) => {
       this.io.to(`user:${data.userId}`).emit('fcm:listening', data);
     });

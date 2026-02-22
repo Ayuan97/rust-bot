@@ -477,33 +477,57 @@ class UserFCMManager extends EventEmitter {
         }
       }
 
+      // 部分推送字段不在 body，而是直接在 data/appData，统一做字段归一化
+      const payload = { ...data, ...body };
+      const pickField = (...keys) => {
+        for (const key of keys) {
+          const value = payload[key];
+          if (value !== undefined && value !== null && value !== '') {
+            return value;
+          }
+        }
+        return undefined;
+      };
+
+      const parseIntSafe = (value) => {
+        if (value === undefined || value === null || value === '') {
+          return undefined;
+        }
+        const parsed = Number.parseInt(value, 10);
+        return Number.isNaN(parsed) ? undefined : parsed;
+      };
+
       // 配对推送 - channelId 都是 'pairing'，需要根据 body.type 或 entityId 区分
       if (data.channelId === 'pairing') {
         logger.info(`配对推送 body 数据:`, JSON.stringify(body, null, 2));
 
+        const entityId = parseIntSafe(pickField('entityId', 'entity_id', 'entityID'));
+        const entityType = pickField('entityType', 'entity_type');
+        const entityName = pickField('entityName', 'entity_name', 'name') || data.title;
+        const originalServerId = pickField('id', 'serverId', 'server_id', 'serverID');
+        const pairedServerMeta = {
+          name: pickField('name', 'serverName') || data.title || '未命名服务器',
+          ip: pickField('ip', 'serverIp', 'server_ip'),
+          port: pickField('port', 'serverPort', 'server_port'),
+          playerId: pickField('playerId', 'player_id'),
+          playerToken: pickField('playerToken', 'player_token'),
+          img: pickField('img'),
+          logo: pickField('logo'),
+          url: pickField('url'),
+          desc: pickField('desc', 'description')
+        };
+
         // 检查是设备配对还是服务器配对
-        // 设备配对会有 entityId 字段，或者 type 不是 'server'
-        if (body.entityId) {
+        if (entityId !== undefined) {
           // 这是设备/实体配对
           const entityInfo = {
             userId: this.userId,
-            entityId: body.entityId,
-            entityType: body.entityType,
-            entityName: body.entityName || body.name || data.title,
+            entityId,
+            entityType,
+            entityName,
             // serverId 是服务器的原始 ID
-            originalServerId: body.id || body.serverId || body.server_id,
-            // 服务器信息（用于自动创建服务器）
-            serverInfo: {
-              name: body.name || data.title || '未命名服务器',
-              ip: body.ip,
-              port: body.port,
-              playerId: body.playerId,
-              playerToken: body.playerToken,
-              img: body.img,
-              logo: body.logo,
-              url: body.url,
-              desc: body.desc
-            },
+            originalServerId,
+            serverInfo: pairedServerMeta,
             type: 'entity'
           };
 
@@ -513,17 +537,17 @@ class UserFCMManager extends EventEmitter {
           // 这是服务器配对
           const serverInfo = {
             userId: this.userId,
-            id: body.id || `server_${Date.now()}`,
-            name: body.name || data.title || '未命名服务器',
-            ip: body.ip,
-            port: body.port,
-            playerId: body.playerId,
-            playerToken: body.playerToken,
-            img: body.img,
-            logo: body.logo,
-            url: body.url,
-            desc: body.desc,
-            mapUrl: body.rust_world_levelurl || body.levelurl,
+            id: originalServerId || `server_${Date.now()}`,
+            name: pairedServerMeta.name,
+            ip: pairedServerMeta.ip,
+            port: pairedServerMeta.port,
+            playerId: pairedServerMeta.playerId,
+            playerToken: pairedServerMeta.playerToken,
+            img: pairedServerMeta.img,
+            logo: pairedServerMeta.logo,
+            url: pairedServerMeta.url,
+            desc: pairedServerMeta.desc,
+            mapUrl: pickField('rust_world_levelurl', 'levelurl', 'mapUrl'),
             type: 'pairing'
           };
 
@@ -536,24 +560,28 @@ class UserFCMManager extends EventEmitter {
       else if (data.channelId === 'entity_pairing') {
         logger.info(`设备配对 body 数据 (entity_pairing):`, JSON.stringify(body, null, 2));
 
+        const entityId = parseIntSafe(pickField('entityId', 'entity_id', 'entityID'));
+        const entityType = pickField('entityType', 'entity_type');
+        const entityName = pickField('entityName', 'entity_name', 'name');
+        const originalServerId = pickField('id', 'serverId', 'server_id', 'serverID');
         const entityInfo = {
           userId: this.userId,
-          entityId: body.entityId,
-          entityType: body.entityType,
-          entityName: body.entityName || body.name,
+          entityId,
+          entityType,
+          entityName,
           // serverId 是服务器的原始 ID
-          originalServerId: body.id || body.serverId || body.server_id,
+          originalServerId,
           // 服务器信息（用于自动创建服务器）
           serverInfo: {
-            name: body.name || '未命名服务器',
-            ip: body.ip,
-            port: body.port,
-            playerId: body.playerId,
-            playerToken: body.playerToken,
-            img: body.img,
-            logo: body.logo,
-            url: body.url,
-            desc: body.desc
+            name: pickField('name', 'serverName') || '未命名服务器',
+            ip: pickField('ip', 'serverIp', 'server_ip'),
+            port: pickField('port', 'serverPort', 'server_port'),
+            playerId: pickField('playerId', 'player_id'),
+            playerToken: pickField('playerToken', 'player_token'),
+            img: pickField('img'),
+            logo: pickField('logo'),
+            url: pickField('url'),
+            desc: pickField('desc', 'description')
           },
           type: 'entity'
         };
@@ -591,11 +619,15 @@ class UserFCMManager extends EventEmitter {
 
       // 智能警报推送
       else if (data.channelId === 'alarm') {
+        const entityId = parseIntSafe(pickField('entityId', 'entity_id', 'entityID'));
+        const timestamp = Number(pickField('time', 'timestamp', 'ts')) || Date.now();
         const alarmInfo = {
           userId: this.userId,
           title: data.title,
-          message: body.message || data.message || data.body,
-          serverId: body.id,
+          message: pickField('message') || data.message || data.body,
+          serverId: pickField('id', 'serverId', 'server_id'),
+          entityId,
+          time: timestamp,
           type: 'alarm'
         };
 
