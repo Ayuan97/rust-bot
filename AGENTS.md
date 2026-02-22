@@ -74,6 +74,25 @@
 - FCM 配对可能创建占位服务器（`ip = 0.0.0.0`），前端展示需过滤该占位数据。
 - 支付回调需保证：签名校验、金额校验、幂等处理、订单状态流转正确。
 
+## 服务器信息排查规则（线上）
+- 当出现“已连接服务器与页面展示服务器信息不一致”“BattleMetrics 信息异常”“服务器详情明显错绑”时，允许并优先进行线上排查。
+- 排查顺序固定为：`servers` 绑定信息（`id/userId/ip/port/battlemetricsId`）→ `public_servers` 对应缓存记录 → 后端接口实际响应 → PM2 日志（如 `/root/.pm2/logs/rust-main-out.log`、`/root/.pm2/logs/rust-main-error.log`）。
+- 所有线上 SQL 查询/修复必须遵守多租户隔离，带 `userId` 过滤或先做资源归属校验，禁止跨用户读取或修改。
+- 需要修改线上数据时，必须先记录影响范围与回滚点，再执行修复；输出结论时必须包含“根因 + 修复动作 + 回滚方案”。
+- 若怀疑 BattleMetrics 匹配逻辑问题，必须同时核对 IP 与端口，禁止只按 IP 唯一匹配后直接落库。
+
+## 线上排查固定连接信息（敏感）
+- 仅用于线上复杂问题排查与日志定位，禁止外传、禁止发到公开仓库或工单截图中。
+- SSH 主节点：`38.76.201.25`
+- SSH 账号：`root`
+- SSH 密码：`7q4ao2M2NosF`
+- 服务器项目目录：`/www/wwwroot/rust-bot`
+- 线上环境变量文件：`/www/wwwroot/rust-bot/.env`
+- PM2 日志目录：`/root/.pm2/logs`
+- 关键日志文件：`/root/.pm2/logs/rust-main-out.log`、`/root/.pm2/logs/rust-main-error.log`、`/root/.pm2/logs/rust-connector-1-out.log`、`/root/.pm2/logs/rust-connector-1-error.log`
+- MySQL 连接信息：`DB_HOST=127.0.0.1`，`DB_PORT=3306`，`DB_USER=rustapp`，`DB_PASSWORD=xlCodReFpZxUBrv3mFF1jk6x`，`DB_NAME=rustplus_db`
+- MySQL 排查命令示例：`mysql -h127.0.0.1 -P3306 -urustapp -p'xlCodReFpZxUBrv3mFF1jk6x' rustplus_db`
+
 ## 开发命令
 - 后端开发：`cd backend && npm run dev`
 - 后端生产：`cd backend && npm start`

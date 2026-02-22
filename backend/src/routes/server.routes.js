@@ -1624,33 +1624,85 @@ router.get('/:id/battlemetrics', async (req, res) => {
 
     const server = serverRows[0];
     let battlemetricsId = server.battlemetricsId;
+    let bmInfo = null;
 
-    // 如果没有保存的 Battlemetrics ID，尝试查找并保存
-    if (!battlemetricsId) {
-      battlemetricsId = await battlemetricsService.searchServerByAddress(
-        server.ip, server.port, server.name
+    const rematchBattlemetrics = async (reason) => {
+      const matchedId = await battlemetricsService.searchServerByAddress(
+        server.ip,
+        server.port,
+        server.name
       );
 
-      if (battlemetricsId) {
+      if (!matchedId) {
+        console.warn(`[battlemetrics] 服务器 ${req.params.id} 重新匹配失败 (reason=${reason})`);
+        return null;
+      }
+
+      if (String(matchedId) !== String(battlemetricsId || '')) {
         await db.query(
-          'UPDATE servers SET battlemetricsId = ?, updatedAt = ? WHERE id = ?',
-          [battlemetricsId, new Date(), req.params.id]
+          'UPDATE servers SET battlemetricsId = ?, updatedAt = ? WHERE id = ? AND userId = ?',
+          [matchedId, new Date(), req.params.id, req.user.id]
         );
-      } else {
+      }
+
+      battlemetricsId = matchedId;
+      const [matchedRows] = await db.query(
+        'SELECT * FROM public_servers WHERE battlemetricsId = ?',
+        [battlemetricsId]
+      );
+      bmInfo = matchedRows[0] || null;
+      return matchedId;
+    };
+
+    const ensureFreshDataMatches = async (freshData, reason) => {
+      if (!freshData) {
+        return null;
+      }
+
+      if (battlemetricsService.isLikelyServerMatch(server, freshData)) {
+        return freshData;
+      }
+
+      console.warn(`[battlemetrics] 检测到 Battlemetrics 数据与用户服务器不一致 serverId=${req.params.id} bmId=${battlemetricsId}`);
+      const previousId = String(battlemetricsId || '');
+      const rematchedId = await rematchBattlemetrics(reason);
+      if (!rematchedId || String(rematchedId) === previousId) {
+        return null;
+      }
+
+      const rematchedData = await battlemetricsService.getServerInfo(rematchedId);
+      if (!rematchedData || !battlemetricsService.isLikelyServerMatch(server, rematchedData)) {
+        return null;
+      }
+      return rematchedData;
+    };
+
+    if (!battlemetricsId) {
+      const matchedId = await rematchBattlemetrics('MISSING_BINDING');
+      if (!matchedId) {
         return res.status(404).json({
           success: false,
           error: '未找到 Battlemetrics 信息'
         });
       }
+    } else {
+      const [bmRows] = await db.query(
+        'SELECT * FROM public_servers WHERE battlemetricsId = ?',
+        [battlemetricsId]
+      );
+      bmInfo = bmRows[0] || null;
+
+      if (bmInfo && !battlemetricsService.isLikelyServerMatch(server, bmInfo)) {
+        console.warn(`[battlemetrics] 检测到疑似错绑 serverId=${req.params.id} bmId=${battlemetricsId}`);
+        const rematchedId = await rematchBattlemetrics('CACHE_BINDING_MISMATCH');
+        if (!rematchedId) {
+          return res.status(409).json({
+            success: false,
+            error: 'Battlemetrics 绑定异常，请在控制台重新配对服务器后重试'
+          });
+        }
+      }
     }
-
-    // 从 public_servers 缓存读取
-    const [bmRows] = await db.query(
-      'SELECT * FROM public_servers WHERE battlemetricsId = ?',
-      [battlemetricsId]
-    );
-
-    let bmInfo = bmRows[0];
 
     // 如果缓存不存在或数据太旧，则实时获取
     const CACHE_TTL = 5 * 60 * 1000;
@@ -1663,7 +1715,15 @@ router.get('/:id/battlemetrics', async (req, res) => {
     if (isStale) {
       // 缓存过期，获取完整数据并更新缓存
       try {
-        const freshData = await battlemetricsService.getServerInfo(battlemetricsId);
+        let freshData = await battlemetricsService.getServerInfo(battlemetricsId);
+        freshData = await ensureFreshDataMatches(freshData, 'FRESH_DATA_MISMATCH');
+        if (!freshData) {
+          return res.status(409).json({
+            success: false,
+            error: 'Battlemetrics 绑定异常，请在控制台重新配对服务器后重试'
+          });
+        }
+
         onlinePlayers = freshData?.onlinePlayers || [];
         allOnlinePlayers = freshData?.allOnlinePlayers || [];
 
@@ -1732,7 +1792,14 @@ router.get('/:id/battlemetrics', async (req, res) => {
     } else {
       // 缓存未过期，但在线玩家列表仍需实时获取
       try {
-        const freshData = await battlemetricsService.getServerInfo(battlemetricsId);
+        let freshData = await battlemetricsService.getServerInfo(battlemetricsId);
+        freshData = await ensureFreshDataMatches(freshData, 'ONLINE_LIST_MISMATCH');
+        if (!freshData) {
+          return res.status(409).json({
+            success: false,
+            error: 'Battlemetrics 绑定异常，请在控制台重新配对服务器后重试'
+          });
+        }
         onlinePlayers = freshData?.onlinePlayers || [];
         allOnlinePlayers = freshData?.allOnlinePlayers || [];
       } catch (bmError) {

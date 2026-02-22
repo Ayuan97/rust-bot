@@ -31,6 +31,71 @@ class BattlemetricsService extends EventEmitter {
     return config;
   }
 
+  _normalizeServerName(name) {
+    if (!name) return '';
+    return String(name)
+      .toLowerCase()
+      .replace(/\[[^\]]*\]/g, ' ')
+      .replace(/[#()[\]{}]/g, ' ')
+      .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  _nameMatchScore(expectedName, actualName) {
+    const expected = this._normalizeServerName(expectedName);
+    const actual = this._normalizeServerName(actualName);
+
+    if (!expected || !actual) return 0;
+    if (expected === actual) return 100;
+    if (actual.includes(expected) || expected.includes(actual)) return 90;
+
+    const expectedTokens = expected.split(' ').filter(token => token.length >= 3);
+    const actualTokens = actual.split(' ').filter(token => token.length >= 3);
+    if (expectedTokens.length === 0 || actualTokens.length === 0) return 0;
+
+    const actualTokenSet = new Set(actualTokens);
+    let sameCount = 0;
+    for (const token of expectedTokens) {
+      if (actualTokenSet.has(token)) {
+        sameCount += 1;
+      }
+    }
+
+    if (sameCount === 0) return 0;
+
+    const ratio = sameCount / Math.max(expectedTokens.length, actualTokens.length);
+    if (ratio >= 0.8) return 85;
+    if (ratio >= 0.6 && sameCount >= 2) return 75;
+    if (ratio >= 0.5 && sameCount >= 2) return 65;
+    return 0;
+  }
+
+  isLikelyServerMatch(targetServer, candidateServer) {
+    if (!targetServer || !candidateServer) {
+      return false;
+    }
+
+    const targetIp = targetServer.ip ? String(targetServer.ip).trim() : '';
+    const candidateIp = candidateServer.ip ? String(candidateServer.ip).trim() : '';
+    const targetPort = Number.parseInt(targetServer.port, 10);
+    const candidatePort = Number.parseInt(candidateServer.port, 10);
+
+    const ipMatched = Boolean(targetIp && candidateIp && targetIp === candidateIp);
+    const portMatched = Number.isFinite(targetPort) && Number.isFinite(candidatePort) && targetPort === candidatePort;
+    const nameScore = this._nameMatchScore(targetServer.name, candidateServer.name);
+
+    if (ipMatched && (portMatched || nameScore >= 75)) {
+      return true;
+    }
+
+    if (portMatched && nameScore >= 90) {
+      return true;
+    }
+
+    return false;
+  }
+
   /**
    * 通过服务器名称搜索 Battlemetrics ID
    */
@@ -133,42 +198,49 @@ class BattlemetricsService extends EventEmitter {
 
       // 1. 尝试寻找 IP 和 Port 完美匹配
       for (const server of candidates.values()) {
-        const serverIp = server.attributes.ip;
-        const serverPort = server.attributes.port;
+        const attrs = server.attributes || {};
+        const serverIp = attrs.ip;
+        const serverPort = Number.parseInt(attrs.port, 10);
         if (serverIp === ip && serverPort === targetPort) {
           console.log(`✅ ✅ 找到完美匹配 (IP + Port)!`);
-          console.log(`   服务器: ${server.attributes.name}`);
+          console.log(`   服务器: ${attrs.name}`);
           console.log(`   ID: ${server.id}`);
           return server.id;
         }
       }
 
-      // 2. 尝试寻找 名称 完美匹配 (且 IP 相同)
+      // 2. 尝试通过 IP + 名称进行高置信匹配
       if (serverName) {
+        const rankedMatches = [];
+
         for (const server of candidates.values()) {
-          if (server.attributes.name === serverName && server.attributes.ip === ip) {
-            console.log(`✅ 通过 名称+IP 匹配成功!`);
-            console.log(`   ID: ${server.id}`);
-            return server.id;
+          const attrs = server.attributes || {};
+          if (attrs.ip !== ip) {
+            continue;
+          }
+
+          const score = this._nameMatchScore(serverName, attrs.name);
+          if (score >= 75) {
+            rankedMatches.push({ server, score });
           }
         }
-        // 放宽一点，只匹配名称
-        for (const server of candidates.values()) {
-          if (server.attributes.name === serverName) {
-            console.log(`✅ 通过 名称精确匹配成功!`);
-            console.log(`   ID: ${server.id}`);
-            return server.id;
+
+        if (rankedMatches.length > 0) {
+          rankedMatches.sort((a, b) => b.score - a.score);
+          const [first, second] = rankedMatches;
+
+          if (!second || first.score >= second.score + 10) {
+            console.log(`✅ 通过 名称+IP 高置信匹配成功 (score=${first.score})`);
+            console.log(`   服务器: ${first.server.attributes?.name}`);
+            console.log(`   ID: ${first.server.id}`);
+            return first.server.id;
           }
+
+          console.warn(`⚠️ 名称+IP 匹配结果存在歧义，拒绝自动绑定`);
         }
       }
 
-      // 3. 如果通过 IP 搜到了唯一结果 (忽略端口)
-      const ipMatches = Array.from(candidates.values()).filter(s => s.attributes.ip === ip);
-      if (ipMatches.length === 1) {
-        console.log(`✅ 找到唯一 IP 匹配 (端口不匹配: ${ipMatches[0].attributes.port} vs ${targetPort})`);
-        console.log(`   自动认领: ${ipMatches[0].attributes.name}`);
-        return ipMatches[0].id;
-      }
+      // 3. 不再执行“仅 IP 唯一匹配”兜底，避免同 IP 多服时错绑
 
       console.log(`❌ 无法自动匹配服务器。无法从 ${candidates.size} 个候选中确定目标。`);
       // 显示部分候选项
