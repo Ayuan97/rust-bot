@@ -16,6 +16,7 @@ import UserTrackingService from './user-tracking.service.js';
 import battlemetricsService from './battlemetrics.service.js';
 
 const SERVER_ID_NAMESPACE = 'c94a3f4a-6b0d-4ad6-b8ee-71f8fd0e9a4d';
+const DEVICE_ID_NAMESPACE = '2d6e02e6-8c75-4f87-9e8f-b2e6996f3f5c';
 
 class UserServiceManager extends EventEmitter {
   constructor(userId) {
@@ -1120,7 +1121,7 @@ class UserServiceManager extends EventEmitter {
         }
       }
 
-      const deviceId = `${data.serverId}_${entityId}`;
+      const deviceId = this._buildDeviceId(data.serverId, entityId);
 
       const deviceData = {
         id: deviceId,
@@ -1191,6 +1192,17 @@ class UserServiceManager extends EventEmitter {
       return uuidv4();
     }
     return uuidv5(`${this.userId}:${String(originId)}`, SERVER_ID_NAMESPACE);
+  }
+
+  /**
+   * 生成稳定的设备 ID（固定 36 字符 UUID）
+   * @private
+   */
+  _buildDeviceId(serverId, entityId) {
+    return uuidv5(
+      `${this.userId}:${String(serverId)}:${Number.parseInt(entityId, 10)}`,
+      DEVICE_ID_NAMESPACE
+    );
   }
 
   /**
