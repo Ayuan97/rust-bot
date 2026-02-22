@@ -1626,6 +1626,47 @@ router.get('/:id/battlemetrics', async (req, res) => {
     let battlemetricsId = server.battlemetricsId;
     let bmInfo = null;
 
+    const buildDegradedResponse = (reason = 'UNAVAILABLE') => ({
+      success: true,
+      degraded: true,
+      reason,
+      message: '暂未匹配到 Battlemetrics 信息，已回退为基础服务器数据',
+      data: {
+        battlemetricsId: battlemetricsId || null,
+        name: server.name || 'Unknown',
+        ip: server.ip,
+        port: safeInt(server.port, { fallback: null, allowNull: true }),
+        address: `${server.ip}:${server.port}`,
+        status: 'unknown',
+        players: 0,
+        maxPlayers: 0,
+        queuedPlayers: 0,
+        rank: null,
+        fps: null,
+        fpsAvg: null,
+        uptime: null,
+        entityCount: null,
+        map: null,
+        mapSize: null,
+        seed: null,
+        wipeTime: null,
+        wipeCycle: null,
+        nextWipe: null,
+        headerImage: null,
+        logoImage: null,
+        rustMapsUrl: null,
+        rustMapsThumbnail: null,
+        country: null,
+        official: false,
+        modded: false,
+        pve: false,
+        description: null,
+        url: null,
+        onlinePlayers: [],
+        allOnlinePlayers: []
+      }
+    });
+
     const rematchBattlemetrics = async (reason) => {
       const matchedId = await battlemetricsService.searchServerByAddress(
         server.ip,
@@ -1680,10 +1721,7 @@ router.get('/:id/battlemetrics', async (req, res) => {
     if (!battlemetricsId) {
       const matchedId = await rematchBattlemetrics('MISSING_BINDING');
       if (!matchedId) {
-        return res.status(404).json({
-          success: false,
-          error: '未找到 Battlemetrics 信息'
-        });
+        return res.json(buildDegradedResponse('NOT_FOUND'));
       }
     } else {
       const [bmRows] = await db.query(
@@ -1696,10 +1734,7 @@ router.get('/:id/battlemetrics', async (req, res) => {
         console.warn(`[battlemetrics] 检测到疑似错绑 serverId=${req.params.id} bmId=${battlemetricsId}`);
         const rematchedId = await rematchBattlemetrics('CACHE_BINDING_MISMATCH');
         if (!rematchedId) {
-          return res.status(409).json({
-            success: false,
-            error: 'Battlemetrics 绑定异常，请在控制台重新配对服务器后重试'
-          });
+          return res.json(buildDegradedResponse('BINDING_MISMATCH'));
         }
       }
     }
@@ -1718,10 +1753,7 @@ router.get('/:id/battlemetrics', async (req, res) => {
         let freshData = await battlemetricsService.getServerInfo(battlemetricsId);
         freshData = await ensureFreshDataMatches(freshData, 'FRESH_DATA_MISMATCH');
         if (!freshData) {
-          return res.status(409).json({
-            success: false,
-            error: 'Battlemetrics 绑定异常，请在控制台重新配对服务器后重试'
-          });
+          return res.json(buildDegradedResponse('FRESH_DATA_MISMATCH'));
         }
 
         onlinePlayers = freshData?.onlinePlayers || [];
@@ -1795,10 +1827,7 @@ router.get('/:id/battlemetrics', async (req, res) => {
         let freshData = await battlemetricsService.getServerInfo(battlemetricsId);
         freshData = await ensureFreshDataMatches(freshData, 'ONLINE_LIST_MISMATCH');
         if (!freshData) {
-          return res.status(409).json({
-            success: false,
-            error: 'Battlemetrics 绑定异常，请在控制台重新配对服务器后重试'
-          });
+          return res.json(buildDegradedResponse('ONLINE_LIST_MISMATCH'));
         }
         onlinePlayers = freshData?.onlinePlayers || [];
         allOnlinePlayers = freshData?.allOnlinePlayers || [];
@@ -1808,44 +1837,7 @@ router.get('/:id/battlemetrics', async (req, res) => {
     }
 
     if (!bmInfo) {
-      return res.json({
-        success: true,
-        degraded: true,
-        data: {
-          battlemetricsId,
-          name: server.name || 'Unknown',
-          ip: server.ip,
-          port: safeInt(server.port, { fallback: null, allowNull: true }),
-          address: `${server.ip}:${server.port}`,
-          status: 'unknown',
-          players: 0,
-          maxPlayers: 0,
-          queuedPlayers: 0,
-          rank: null,
-          fps: null,
-          fpsAvg: null,
-          uptime: null,
-          entityCount: null,
-          map: null,
-          mapSize: null,
-          seed: null,
-          wipeTime: null,
-          wipeCycle: null,
-          nextWipe: null,
-          headerImage: null,
-          logoImage: null,
-          rustMapsUrl: null,
-          rustMapsThumbnail: null,
-          country: null,
-          official: false,
-          modded: false,
-          pve: false,
-          description: null,
-          url: null,
-          onlinePlayers: [],
-          allOnlinePlayers: []
-        }
-      });
+      return res.json(buildDegradedResponse('CACHE_MISS'));
     }
 
     // Convert booleans
