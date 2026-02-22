@@ -9,6 +9,41 @@ import {
 import { getBattlemetricsInfo, getTopPlayers, trackPlayerByBmId } from '../services/api';
 import { formatTimeAgo } from '../utils/time';
 import { useToast } from './Toast';
+import socketService from '../services/socket';
+
+const POP_CURVE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+const POP_CURVE_FULL_TOLERANCE_MS = 20 * 60 * 1000;
+
+function formatMiniDateTime(timestamp) {
+  if (!timestamp) return '--';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '--';
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  const hour = `${date.getHours()}`.padStart(2, '0');
+  const minute = `${date.getMinutes()}`.padStart(2, '0');
+  return `${month}-${day} ${hour}:${minute}`;
+}
+
+function buildPopulationPath(points, width, height, padding = 10) {
+  if (!Array.isArray(points) || points.length === 0) {
+    return '';
+  }
+
+  const minPlayers = Math.min(...points.map((point) => point.players));
+  const maxPlayers = Math.max(...points.map((point) => point.players));
+  const playerRange = Math.max(1, maxPlayers - minPlayers);
+
+  const minTs = points[0].timestamp;
+  const maxTs = points[points.length - 1].timestamp;
+  const tsRange = Math.max(1, maxTs - minTs);
+
+  return points.map((point, index) => {
+    const x = padding + ((point.timestamp - minTs) / tsRange) * (width - padding * 2);
+    const y = height - padding - ((point.players - minPlayers) / playerRange) * (height - padding * 2);
+    return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
+  }).join(' ');
+}
 
 // 状态卡片组件
 function StatCard({ icon: Icon, label, value, subValue, color = 'rust-orange', loading }) {
@@ -92,6 +127,7 @@ function ServerInfoView({ server, onBack }) {
   const toast = useToast();
   const [bmInfo, setBmInfo] = useState(null);
   const [topPlayers, setTopPlayers] = useState([]);
+  const [runtimeInfo, setRuntimeInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -132,6 +168,7 @@ function ServerInfoView({ server, onBack }) {
     if (!serverId) {
       setBmInfo(null);
       setTopPlayers([]);
+      setRuntimeInfo(null);
       setLastRefresh(null);
       setLoading(false);
       setRefreshing(false);
@@ -145,17 +182,24 @@ function ServerInfoView({ server, onBack }) {
     }
 
     try {
-      const [bmRes, playersRes] = await Promise.all([
+      const [bmResult, playersResult, runtimeResult] = await Promise.allSettled([
         getBattlemetricsInfo(serverId),
-        getTopPlayers(serverId, 30)
+        getTopPlayers(serverId, 30),
+        socketService.getServerInfo(serverId)
       ]);
 
-      if (bmRes.data.success) {
-        setBmInfo(bmRes.data.data);
+      if (bmResult.status === 'fulfilled' && bmResult.value?.data?.success) {
+        setBmInfo(bmResult.value.data.data);
       }
 
-      if (playersRes.data.success) {
-        setTopPlayers(playersRes.data.players || []);
+      if (playersResult.status === 'fulfilled' && playersResult.value?.data?.success) {
+        setTopPlayers(playersResult.value.data.players || []);
+      }
+
+      if (runtimeResult.status === 'fulfilled' && runtimeResult.value) {
+        setRuntimeInfo(runtimeResult.value);
+      } else if (!isRefresh) {
+        setRuntimeInfo(null);
       }
 
       setLastRefresh(new Date());
@@ -292,6 +336,33 @@ function ServerInfoView({ server, onBack }) {
   const totalOnlineCount = bmInfo?.players || 0;
   const recentOnlineCount = bmInfo?.onlinePlayers?.length || 0;
   const allOnlineCount = allOnlineSourcePlayers.length;
+  const popSeries = useMemo(() => (
+    Array.isArray(runtimeInfo?.popSeries)
+      ? runtimeInfo.popSeries
+        .map((point) => ({
+          timestamp: Number(point?.timestamp) || 0,
+          players: Number(point?.players) || 0
+        }))
+        .filter((point) => point.timestamp > 0)
+        .sort((a, b) => a.timestamp - b.timestamp)
+      : []
+  ), [runtimeInfo?.popSeries]);
+  const canShowPopCurve = popSeries.length >= 2;
+  const popPath = canShowPopCurve ? buildPopulationPath(popSeries, 840, 180) : '';
+  const popMin = canShowPopCurve ? Math.min(...popSeries.map((point) => point.players)) : 0;
+  const popMax = canShowPopCurve ? Math.max(...popSeries.map((point) => point.players)) : 0;
+  const popStart = canShowPopCurve ? popSeries[0] : null;
+  const popEnd = canShowPopCurve ? popSeries[popSeries.length - 1] : null;
+  const popMidTs = (canShowPopCurve && popStart && popEnd)
+    ? Math.floor((popStart.timestamp + popEnd.timestamp) / 2)
+    : null;
+  const popCoverageMs = (canShowPopCurve && popStart && popEnd)
+    ? Math.max(0, popEnd.timestamp - popStart.timestamp)
+    : 0;
+  const popCoverageHours = Math.max(1, Math.round(popCoverageMs / (60 * 60 * 1000)));
+  const popHasFullThreeDay = canShowPopCurve && popCoverageMs >= (POP_CURVE_WINDOW_MS - POP_CURVE_FULL_TOLERANCE_MS);
+  const popTrendDiff = Number(runtimeInfo?.popTrend?.diff) || 0;
+  const showPopTrend = Boolean(runtimeInfo?.popTrend?.hasBaseline) && popTrendDiff !== 0;
 
   if (!serverId) {
     return (
@@ -502,6 +573,57 @@ function ServerInfoView({ server, onBack }) {
         </div>
 
         {/* 主要内容区域 - 三列布局 */}
+
+        <div className="bg-dark-800/30 rounded-xl border border-white/5 overflow-hidden">
+          <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <FaChartLine className="text-rust-orange" />
+              <span className="font-semibold text-white">{'\u5728\u7ebf\u4eba\u6570\u8d8b\u52bf'}</span>
+            </div>
+            <div className="flex items-center gap-4 text-xs text-gray-400">
+              {showPopTrend && (
+                <span className="inline-flex items-center gap-1">
+                  <FaSignal className={popTrendDiff > 0 ? 'text-emerald-400' : 'text-red-400'} />
+                  <span>{'\u0031\u5c0f\u65f6\u53d8\u5316'}</span>
+                  <span className={popTrendDiff > 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>
+                    {popTrendDiff > 0 ? '+' : ''}{popTrendDiff}
+                  </span>
+                </span>
+              )}
+              <span>{'\u5f53\u524d\u5728\u7ebf'} {runtimeInfo?.players ?? bmInfo?.players ?? '-'}</span>
+            </div>
+          </div>
+          <div className="p-4">
+            {canShowPopCurve ? (
+              <>
+                <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                  <span>{'\u8fd13\u5929\u5728\u7ebf\u66f2\u7ebf'}</span>
+                  <span>MIN {popMin} / MAX {popMax}</span>
+                </div>
+                <svg viewBox="0 0 840 180" className="w-full h-40">
+                  <path d={popPath} fill="none" stroke="#fb923c" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
+                  <span>{formatMiniDateTime(popStart?.timestamp)}</span>
+                  <span>{formatMiniDateTime(popMidTs)}</span>
+                  <span>{formatMiniDateTime(popEnd?.timestamp)}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
+                  <span>{popStart?.players ?? 0}{'\u4eba'}</span>
+                  <span>{popEnd?.players ?? 0}{'\u4eba'}</span>
+                </div>
+                {!popHasFullThreeDay && (
+                  <div className="text-xs text-gray-500 mt-2">
+                    {'\u5f53\u524d\u5df2\u91c7\u6837\u7ea6 '}{popCoverageHours}{'\u5c0f\u65f6\uff0c\u6ee1 72 \u5c0f\u65f6\u540e\u66f4\u5b8c\u6574'}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-sm text-gray-400">{'\u5728\u7ebf\u66f2\u7ebf\u91c7\u6837\u4e2d\uff08\u81f3\u5c112\u4e2a\u91c7\u6837\u70b9\u540e\u663e\u793a\uff0c\u6ee172\u5c0f\u65f6\u66f4\u5b8c\u6574\uff09'}</div>
+            )}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
           {/* 左列：清档 & 地图信息 */}

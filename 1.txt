@@ -1,0 +1,1 @@
+ssh rust-bot-prod "rustbot-update main"
