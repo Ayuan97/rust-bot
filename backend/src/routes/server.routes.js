@@ -130,22 +130,30 @@ router.get('/', async (req, res) => {
 
     // 添加连接状态
     const rustPlusService = getUserRustPlusService(req.user.id);
-    const serversWithStatus = servers.map(server => ({
-      id: server.id,
-      name: server.name,
-      ip: server.ip,
-      port: server.port,
-      playerId: server.playerId,
-      playerToken: server.playerToken,
-      battlemetricsId: server.battlemetricsId,
-      img: server.img,
-      logo: server.logo,
-      url: server.url,
-      description: server.description,
-      isActive: !!server.isActive,
-      createdAt: server.createdAt,
-      connected: rustPlusService ? rustPlusService.isConnected(server.id) : false
-    }));
+    const serversWithStatus = servers.map(server => {
+      const connectionState = rustPlusService
+        ? rustPlusService.getServerConnectionState(server.id)
+        : 'DISCONNECTED';
+
+      return {
+        id: server.id,
+        name: server.name,
+        ip: server.ip,
+        port: server.port,
+        playerId: server.playerId,
+        playerToken: server.playerToken,
+        battlemetricsId: server.battlemetricsId,
+        img: server.img,
+        logo: server.logo,
+        url: server.url,
+        description: server.description,
+        isActive: !!server.isActive,
+        createdAt: server.createdAt,
+        connected: connectionState === 'CONNECTED',
+        connectionState,
+        canDisconnect: connectionState !== 'DISCONNECTED'
+      };
+    });
 
     res.json({ success: true, servers: serversWithStatus });
   } catch (error) {
@@ -173,6 +181,10 @@ router.get('/:id', async (req, res) => {
 
     const rustPlusService = getUserRustPlusService(req.user.id);
 
+    const connectionState = rustPlusService
+      ? rustPlusService.getServerConnectionState(server.id)
+      : 'DISCONNECTED';
+
     res.json({
       success: true,
       server: {
@@ -189,7 +201,9 @@ router.get('/:id', async (req, res) => {
         description: server.description,
         isActive: !!server.isActive,
         createdAt: server.createdAt,
-        connected: rustPlusService ? rustPlusService.isConnected(server.id) : false
+        connected: connectionState === 'CONNECTED',
+        connectionState,
+        canDisconnect: connectionState !== 'DISCONNECTED'
       }
     });
   } catch (error) {
@@ -301,20 +315,30 @@ router.post('/:id/disconnect', async (req, res) => {
 
     const rustPlusService = getUserRustPlusService(req.user.id);
     if (!rustPlusService) {
-      // 用户服务未运行时视为已断开，避免前端卡死在“连接中”状态。
       return res.json({
         success: true,
         disconnected: false,
-        message: '用户服务未运行，服务器已视为断开'
+        cancelledQueue: 0,
+        message: '当前没有活动连接'
       });
     }
 
-    await rustPlusService.disconnect(serverId);
+    const result = await rustPlusService.disconnect(serverId);
+    const cancelledQueue = Number(result?.cancelledQueue || 0);
+    const disconnected = result?.closed === true;
+
+    let message = '当前没有活动连接';
+    if (disconnected) {
+      message = `已断开 ${server.name} 的连接`;
+    } else if (cancelledQueue > 0) {
+      message = `已取消 ${server.name} 的连接请求`;
+    }
 
     return res.json({
       success: true,
-      disconnected: true,
-      message: `已断开 ${server.name} 的连接`
+      disconnected,
+      cancelledQueue,
+      message
     });
   } catch (error) {
     console.error('断开服务器失败:', error);

@@ -38,6 +38,10 @@ function App() {
   const [mapFocusTarget, setMapFocusTarget] = useState(null);
   const [fcmStatus, setFcmStatus] = useState({ isListening: false, hasCredentials: false });
   const [wipeCountdownTick, setWipeCountdownTick] = useState(0);
+  const pendingConnectionStates = new Set(['QUEUED', 'ASSIGNED', 'CONNECTING']);
+  const activeConnectionState = activeServer?.connectionState || 'DISCONNECTED';
+  const isActiveServerPending = pendingConnectionStates.has(activeConnectionState);
+  const canDisconnectActiveServer = activeServer?.canDisconnect === true;
 
   // 倒计时定时器 (每秒更新)
   useEffect(() => {
@@ -155,11 +159,15 @@ function App() {
     try {
       const res = await connectServer(server.id);
       if (res.data.success) {
-        toast.success(`远程链路已激活: ${server.name}`);
+        if (res.data.queued) {
+          toast.info(`连接请求已提交：${server.name}`);
+        } else {
+          toast.success(`远程链路已激活：${server.name}`);
+        }
         fetchServers();
       }
     } catch (e) {
-      toast.error('远程链路建立失败，请检查服务器 token');
+      toast.error(e.response?.data?.error || '建立连接失败');
     } finally {
       setConnectionLoading(false);
     }
@@ -172,6 +180,9 @@ function App() {
       const res = await disconnectServer(activeServer.id);
       if (res.data.success) {
         toast.success(res.data.message || `已断开 ${activeServer.name} 的连接`);
+        setTeamData(null);
+        setWipeInfo(null);
+        setMapFocusTarget(null);
         fetchServers();
       }
     } catch (e) {
@@ -237,7 +248,18 @@ function App() {
 
     // 如果选择了服务器但未连接
     if (activeServer && !activeServer.connected && activeView === 'hud') {
-      return <DisconnectedView server={activeServer} onConnect={() => handleConnect(activeServer)} loading={connectionLoading} fcmStatus={fcmStatus} isSubscriptionExpired={isSubscriptionExpired} />;
+      return (
+        <DisconnectedView
+          server={activeServer}
+          onConnect={() => handleConnect(activeServer)}
+          onDisconnect={handleDisconnect}
+          loading={connectionLoading}
+          fcmStatus={fcmStatus}
+          isSubscriptionExpired={isSubscriptionExpired}
+          isPending={isActiveServerPending}
+          connectionState={activeConnectionState}
+        />
+      );
     }
 
     // 根据当前视图渲染内容，每个子组件内部处理自己的“无数据/演示”状态
@@ -376,9 +398,17 @@ function App() {
               <div className="flex flex-col">
                 <span className="text-[10px] text-gray-700 font-black uppercase tracking-widest leading-none mb-1">远程链路 (WS)</span>
                 <div className="flex items-center gap-2">
-                  <div className={`w-1.5 h-1.5 rounded-full ${activeServer?.connected ? 'bg-[#3b82f6] shadow-[0_0_8px_#3b82f6]' : 'bg-gray-800'}`} />
-                  <span className={`text-[9px] font-black uppercase ${activeServer?.connected ? 'text-gray-300' : 'text-gray-600'}`}>
-                    {activeServer?.connected ? '已连接' : '未建立'}
+                  <div className={`w-1.5 h-1.5 rounded-full ${
+                    activeServer?.connected
+                      ? 'bg-[#3b82f6] shadow-[0_0_8px_#3b82f6]'
+                      : isActiveServerPending
+                        ? 'bg-yellow-500 animate-pulse shadow-[0_0_8px_#eab308]'
+                        : 'bg-gray-800'
+                  }`} />
+                  <span className={`text-[9px] font-black uppercase ${
+                    activeServer?.connected || isActiveServerPending ? 'text-gray-300' : 'text-gray-600'
+                  }`}>
+                    {activeServer?.connected ? '已连接' : isActiveServerPending ? '连接中' : '未建立'}
                   </span>
                 </div>
               </div>
@@ -390,7 +420,7 @@ function App() {
               <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest leading-none mb-1">强制清档倒计时</span>
               <span className="text-xs font-mono font-black text-[#cd5241]">{wipeCountdown}</span>
             </div>
-            {activeServer?.connected && (
+            {canDisconnectActiveServer && (
               <button
                 onClick={handleDisconnect}
                 disabled={connectionLoading}
@@ -400,7 +430,7 @@ function App() {
                     : 'bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-400 hover:text-red-300'
                 }`}
               >
-                断开连接
+                {isActiveServerPending ? '取消连接' : '断开连接'}
               </button>
             )}
             <button
@@ -605,8 +635,19 @@ function QuickToggle({ active, pro, disabled }) {
   );
 }
 
-function DisconnectedView({ server, onConnect, loading, fcmStatus, isSubscriptionExpired }) {
-  const isDisabled = loading || isSubscriptionExpired;
+function DisconnectedView({
+  server,
+  onConnect,
+  onDisconnect,
+  loading,
+  fcmStatus,
+  isSubscriptionExpired,
+  isPending = false,
+  connectionState = 'DISCONNECTED'
+}) {
+  const isDisabled = loading || (isSubscriptionExpired && !isPending);
+  const actionText = isPending ? '取消连接请求' : '建立卫星远程连接';
+  const loadingText = isPending ? '正在取消连接...' : '正在握手加密协议...';
 
   return (
     <div className="h-full flex items-center justify-center animate-fade-in relative overflow-hidden font-sans">
@@ -621,7 +662,7 @@ function DisconnectedView({ server, onConnect, loading, fcmStatus, isSubscriptio
               {fcmStatus?.isListening && <div className="absolute top-0 right-0 w-2 h-2 bg-[#a3e635] rounded-full shadow-[0_0_5px_#a3e635]" />}
             </div>
             <div className="w-20 h-20 bg-[#cd5241]/10 border border-[#cd5241]/20 tactic-cut flex flex-col items-center justify-center relative scale-110">
-              <FaSatellite className={`text-3xl ${loading ? 'animate-spin' : 'text-gray-700'} ${server.connected ? 'text-[#a3e635]' : ''}`} />
+              <FaSatellite className={`text-3xl ${loading ? 'animate-spin' : 'text-gray-700'} ${isPending ? 'text-yellow-400' : ''}`} />
               <span className="text-[8px] font-black mt-1 uppercase text-[#cd5241]">Satellite</span>
             </div>
           </div>
@@ -630,14 +671,16 @@ function DisconnectedView({ server, onConnect, loading, fcmStatus, isSubscriptio
           <div className="flex items-center justify-center gap-3 mb-10">
             <span className="text-gray-500 font-mono text-xs uppercase tracking-widest">{server.ip}:{server.port}</span>
             <span className="w-1.5 h-1.5 bg-gray-800 rounded-full" />
-            <span className="text-[#cd5241] font-black text-xs uppercase italic">卫星链路未建立</span>
+            <span className={`font-black text-xs uppercase italic ${isPending ? 'text-yellow-500' : 'text-[#cd5241]'}`}>
+              {isPending ? `链路建立中 (${connectionState})` : '卫星链路未建立'}
+            </span>
           </div>
 
           <div className="bg-white/[0.02] border border-white/5 p-5 tactic-cut mb-10 text-left">
             <div className="flex justify-between items-center mb-4">
               <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest">系统就绪状态</span>
               <span className="text-[10px] text-[#cd5241] font-black uppercase italic">
-                {isSubscriptionExpired ? '服务已暂停' : '等待远程授权'}
+                {isPending ? '连接中，可取消' : isSubscriptionExpired ? '服务已暂停' : '等待远程授权'}
               </span>
             </div>
             <div className="space-y-4">
@@ -650,29 +693,34 @@ function DisconnectedView({ server, onConnect, loading, fcmStatus, isSubscriptio
               <div className="flex items-start gap-3">
                 <div className="mt-1 w-1.5 h-1.5 rounded-full bg-gray-800" />
                 <p className="text-[9px] text-gray-500 font-medium leading-normal">
-                  <span className="text-gray-300 font-bold">实时链路 (WS):</span> 需要您手动启动"远程连接"来激活此服务器的实时控制面板。
+                  <span className="text-gray-300 font-bold">实时链路 (WS):</span>{' '}
+                  {isPending
+                    ? '连接请求已提交，可点击下方按钮立即取消。'
+                    : '需要您手动启动“远程连接”来激活此服务器的实时控制面板。'}
                 </p>
               </div>
             </div>
           </div>
 
           <button
-            onClick={onConnect}
+            onClick={isPending ? onDisconnect : onConnect}
             disabled={isDisabled}
-            title={isSubscriptionExpired ? '续费后可连接服务器' : ''}
+            title={isSubscriptionExpired && !isPending ? '续费后可连接服务器' : ''}
             className={`w-full tactic-cut py-6 font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-4 group text-lg ${isDisabled
               ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
-              : 'bg-[#cd5241] hover:bg-[#b04537] shadow-2xl shadow-[#cd5241]/20'
+              : isPending
+                ? 'bg-red-500/70 hover:bg-red-500 shadow-2xl shadow-red-500/20'
+                : 'bg-[#cd5241] hover:bg-[#b04537] shadow-2xl shadow-[#cd5241]/20'
               }`}
           >
             {loading ? (
-              <>正在握手加密协议...</>
-            ) : isSubscriptionExpired ? (
+              <>{loadingText}</>
+            ) : isSubscriptionExpired && !isPending ? (
               <>服务已暂停 · 续费后可用</>
             ) : (
               <>
-                <FaPlay className="text-xs group-hover:scale-110 transition-transform" />
-                建立卫星远程连接
+                {isPending ? <FaTimes className="text-xs group-hover:scale-110 transition-transform" /> : <FaPlay className="text-xs group-hover:scale-110 transition-transform" />}
+                {actionText}
               </>
             )}
           </button>

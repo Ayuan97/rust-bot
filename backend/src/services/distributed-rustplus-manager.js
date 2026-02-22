@@ -353,7 +353,7 @@ class DistributedRustPlusManager extends EventEmitter {
   }
 
   async disconnect(serverId) {
-    await distributedSessionService.closeSession({
+    const closeResult = await distributedSessionService.closeSession({
       userId: this.userId,
       serverId,
       reason: 'manual_disconnect',
@@ -368,6 +368,8 @@ class DistributedRustPlusManager extends EventEmitter {
     if (queueState?.timeout) clearTimeout(queueState.timeout);
     this.chatQueues.delete(serverId);
     this.messagesSentByBot.delete(serverId);
+
+    return closeResult;
   }
 
   async disconnectAll() {
@@ -632,6 +634,23 @@ class DistributedRustPlusManager extends EventEmitter {
 
   isConnected(serverId) {
     return this.connections.has(serverId);
+  }
+
+  getServerConnectionState(serverId) {
+    if (this.connections.has(serverId)) {
+      return 'CONNECTED';
+    }
+
+    const state = this.sessionStates.get(serverId)?.status;
+    if (state === 'QUEUED' || state === 'ASSIGNED' || state === 'CONNECTING') {
+      return state;
+    }
+
+    return 'DISCONNECTED';
+  }
+
+  canDisconnect(serverId) {
+    return this.getServerConnectionState(serverId) !== 'DISCONNECTED';
   }
 
   getStats() {
