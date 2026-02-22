@@ -45,3 +45,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 tmpclaude-*
+
+# Local scratch files
+/nul
+/temp/
