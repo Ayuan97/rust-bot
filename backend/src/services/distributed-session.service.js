@@ -873,47 +873,62 @@ class DistributedSessionService extends EventEmitter {
 
   async claimCommandsForNode(nodeId, limit = 20) {
     const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
-    const [rows] = await db.query(
-      `SELECT
-         c.id,
-         c.sessionId,
-         c.userId,
-         c.serverId,
-         c.action,
-         c.payload,
-         c.createdAt
-       FROM session_commands c
-       INNER JOIN connection_sessions s ON s.id = c.sessionId
-       WHERE s.nodeId = ?
-         AND c.status = 'PENDING'
-         AND s.status IN (${SESSION_CONNECTED_STATUS_SQL})
-       ORDER BY c.createdAt ASC
-       LIMIT ?`,
-      [nodeId, safeLimit]
-    );
+    const conn = await db.getConnection();
 
-    if (rows.length === 0) {
-      return [];
+    try {
+      await conn.beginTransaction();
+
+      const [rows] = await conn.query(
+        `SELECT
+           c.id,
+           c.sessionId,
+           c.userId,
+           c.serverId,
+           c.action,
+           c.payload,
+           c.createdAt
+         FROM session_commands c
+         INNER JOIN connection_sessions s ON s.id = c.sessionId
+         WHERE s.nodeId = ?
+           AND c.status = 'PENDING'
+           AND s.status IN (${SESSION_CONNECTED_STATUS_SQL})
+         ORDER BY c.createdAt ASC
+         LIMIT ?
+         FOR UPDATE`,
+        [nodeId, safeLimit]
+      );
+
+      if (rows.length === 0) {
+        await conn.commit();
+        return [];
+      }
+
+      const ids = rows.map((row) => row.id);
+      await conn.query(
+        `UPDATE session_commands
+         SET status = 'CLAIMED', claimedAt = NOW(), updatedAt = NOW()
+         WHERE id IN (${ids.map(() => '?').join(',')})
+           AND status = 'PENDING'`,
+        ids
+      );
+
+      await conn.commit();
+
+      return rows.map((row) => ({
+        id: row.id,
+        sessionId: row.sessionId,
+        userId: row.userId,
+        serverId: row.serverId,
+        action: row.action,
+        payload: parseJson(row.payload, {}),
+        createdAt: row.createdAt,
+      }));
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
     }
-
-    const ids = rows.map((row) => row.id);
-    await db.query(
-      `UPDATE session_commands
-       SET status = 'CLAIMED', claimedAt = NOW(), updatedAt = NOW()
-       WHERE id IN (${ids.map(() => '?').join(',')})
-         AND status = 'PENDING'`,
-      ids
-    );
-
-    return rows.map((row) => ({
-      id: row.id,
-      sessionId: row.sessionId,
-      userId: row.userId,
-      serverId: row.serverId,
-      action: row.action,
-      payload: parseJson(row.payload, {}),
-      createdAt: row.createdAt,
-    }));
   }
 
   async completeCommandForNode({ nodeId, commandId, success, result = null, error = null }) {

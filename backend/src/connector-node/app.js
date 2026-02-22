@@ -38,6 +38,7 @@ let heartbeatTimer = null;
 let assignmentTimer = null;
 let commandTimer = null;
 let controlPlaneTimer = null;
+let isPollingCommands = false;
 let lastControlPlaneSuccessAt = Date.now();
 let staleDisconnectTriggered = false;
 let stopped = false;
@@ -266,7 +267,8 @@ async function executeCommand(command) {
 }
 
 async function pollCommands() {
-  if (stopped) return;
+  if (stopped || isPollingCommands) return;
+  isPollingCommands = true;
   try {
     const res = await apiGet('/session/commands', { nodeId: NODE_ID, limit: 20 });
     const commands = res.commands || [];
@@ -289,6 +291,8 @@ async function pollCommands() {
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('[connector-node] poll commands failed:', error.message);
+  } finally {
+    isPollingCommands = false;
   }
 }
 

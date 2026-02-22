@@ -63,8 +63,16 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
-// 全局速率限制
-app.use('/api', apiLimiter);
+// 内部控制平面接口（连接节点使用），不走公网速率限制
+app.use('/api/internal', internalRoutes);
+
+// 全局速率限制（排除 /api/internal）
+app.use('/api', (req, res, next) => {
+  if (req.path === '/internal' || req.path.startsWith('/internal/')) {
+    return next();
+  }
+  return apiLimiter(req, res, next);
+});
 
 // 路由
 app.use('/api/auth', authRoutes);
@@ -76,7 +84,6 @@ app.use('/api/pairing', pairingRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/fcm', fcmRoutes);
 app.use('/api/tracking', trackingRoutes);
-app.use('/api/internal', internalRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {
