@@ -394,11 +394,34 @@ function DeviceControl({ serverId, isReadOnly = false }) {
         fetchDevices();
       }
     };
+    const handleAlarmTriggered = (data) => {
+      if (String(data.serverId) !== String(serverId)) {
+        return;
+      }
+
+      const changedEntityId = Number.parseInt(data.entityId, 10);
+      if (!Number.isNaN(changedEntityId)) {
+        setDevices((prev) => prev.map((d) => (
+          Number.parseInt(d.entityId, 10) === changedEntityId
+            ? {
+              ...d,
+              lastTrigger: data.time || Date.now(),
+              message: data.message || d.message || null
+            }
+            : d
+        )));
+      }
+
+      const deviceName = data.deviceName || data.name || `警报 ${data.entityId || ''}`;
+      toast.warning(`警报触发: ${deviceName}`);
+    };
     socketService.on('entity:changed', handleEntityChanged);
     socketService.on('device:paired', handleDevicePaired);
+    socketService.on('alarm:triggered', handleAlarmTriggered);
     return () => {
       socketService.off('entity:changed', handleEntityChanged);
       socketService.off('device:paired', handleDevicePaired);
+      socketService.off('alarm:triggered', handleAlarmTriggered);
     };
   }, [serverId]);
 

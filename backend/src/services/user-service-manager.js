@@ -46,6 +46,9 @@ class UserServiceManager extends EventEmitter {
 
     // 待确认的服务器配对数据（单服务器限制）
     this.pendingServerPairing = null;
+    this.recentAlarmTriggers = new Map();
+    this.ALARM_DEDUP_WINDOW_MS = 5000;
+    this.ALARM_DEDUP_RETENTION_MS = 60000;
 
     console.log(`👤 UserServiceManager 已创建 (userId: ${userId})`);
   }
@@ -289,8 +292,8 @@ class UserServiceManager extends EventEmitter {
         if (data.value === true) {
           try {
             const [deviceRows] = await db.query(
-              'SELECT * FROM devices WHERE serverId = ? AND entityId = ?',
-              [data.serverId, parseInt(data.entityId)]
+              'SELECT * FROM devices WHERE serverId = ? AND userId = ? AND entityId = ?',
+              [data.serverId, this.userId, parseInt(data.entityId)]
             );
 
             const device = deviceRows[0];
@@ -317,8 +320,8 @@ class UserServiceManager extends EventEmitter {
           // 状态变为关闭也记录日志
           try {
             const [deviceRows] = await db.query(
-              'SELECT * FROM devices WHERE serverId = ? AND entityId = ?',
-              [data.serverId, parseInt(data.entityId)]
+              'SELECT * FROM devices WHERE serverId = ? AND userId = ? AND entityId = ?',
+              [data.serverId, this.userId, parseInt(data.entityId)]
             );
             const device = deviceRows[0];
             await this.eventMonitorService.saveEventLog(data.serverId, 'entity:changed', {
@@ -808,6 +811,35 @@ class UserServiceManager extends EventEmitter {
     return null;
   }
 
+  /**
+   * Deduplicate alarm triggers reported by FCM and Rust+ in a short window.
+   * @private
+   */
+  _isDuplicateAlarmTrigger(serverId, entityId, triggerTime) {
+    const parsedEntityId = Number.parseInt(entityId, 10);
+    if (serverId === null || serverId === undefined || Number.isNaN(parsedEntityId)) {
+      return false;
+    }
+
+    const now = Number.isFinite(triggerTime) ? triggerTime : Date.now();
+    const cacheKey = `${String(serverId)}:${parsedEntityId}`;
+    const lastTriggerAt = this.recentAlarmTriggers.get(cacheKey);
+
+    // Cleanup old cache entries to avoid unbounded growth.
+    for (const [key, ts] of this.recentAlarmTriggers.entries()) {
+      if (now - ts > this.ALARM_DEDUP_RETENTION_MS) {
+        this.recentAlarmTriggers.delete(key);
+      }
+    }
+
+    if (lastTriggerAt && now - lastTriggerAt < this.ALARM_DEDUP_WINDOW_MS) {
+      return true;
+    }
+
+    this.recentAlarmTriggers.set(cacheKey, now);
+    return false;
+  }
+
   _resolveTrackingNotifyServerId(data) {
     const connectedServerIds = this.rustPlusService?.getConnectedServers?.() || [];
     if (connectedServerIds.length === 0) {
@@ -1251,7 +1283,13 @@ class UserServiceManager extends EventEmitter {
    */
   async _handleAlarmTriggered(data) {
     try {
-      const { serverId, entityId, time } = data;
+      const { serverId, entityId } = data;
+      const triggerTime = Number.parseInt(data.time, 10) || Date.now();
+
+      if (this._isDuplicateAlarmTrigger(serverId, entityId, triggerTime)) {
+        this.log('ALARM', `Duplicate alarm ignored: serverId=${serverId}, entityId=${entityId}`, 'DEBUG');
+        return;
+      }
 
       this.log('ALARM', `警报触发: serverId=${serverId}, entityId=${entityId}`);
 
@@ -1282,7 +1320,7 @@ class UserServiceManager extends EventEmitter {
       // 2. 更新 lastTrigger 时间
       await db.query(
         'UPDATE devices SET lastTrigger = ?, updatedAt = NOW() WHERE id = ?',
-        [new Date(time), device.id]
+        [new Date(triggerTime), device.id]
       );
 
       // 3. 构建警报消息
@@ -1308,7 +1346,7 @@ class UserServiceManager extends EventEmitter {
         entityId,
         deviceName,
         message: customMessage,
-        time
+        time: triggerTime
       });
 
       // 6. 发出事件（用于前端 WebSocket 通知）
@@ -1318,7 +1356,7 @@ class UserServiceManager extends EventEmitter {
         entityId,
         deviceName,
         message: customMessage,
-        time
+        time: triggerTime
       });
 
       this.log('ALARM', `警报处理完成: ${deviceName}`);
