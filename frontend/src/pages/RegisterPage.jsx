@@ -11,6 +11,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const redirectParam = new URLSearchParams(location.search).get('redirect');
   const redirectPath = redirectParam && redirectParam.startsWith('/') ? redirectParam : '/dashboard';
+  const loginPath = `/login?redirect=${encodeURIComponent(redirectPath)}`;
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -18,9 +19,9 @@ export default function RegisterPage() {
   };
 
   const validateForm = () => {
-    if (formData.username.length < 3) { setError('校验错误：用户名长度至少为 3 位'); return false; }
-    if (formData.password.length < 6) { setError('校验错误：密码长度至少为 6 位'); return false; }
-    if (formData.password !== formData.confirmPassword) { setError('校验错误：两次输入的密码不一致'); return false; }
+    if (formData.username.length < 3) { setError('用户名长度至少为 3 位'); return false; }
+    if (formData.password.length < 6) { setError('密码长度至少为 6 位'); return false; }
+    if (formData.password !== formData.confirmPassword) { setError('两次输入的密码不一致'); return false; }
     return true;
   };
 
@@ -76,20 +77,20 @@ export default function RegisterPage() {
             <FaUserPlus className="text-white text-2xl" />
           </div>
           <h1 className="text-2xl font-black uppercase tracking-widest glow-text italic">创建账号</h1>
-          <p className="text-[10px] text-[#cd5241] uppercase tracking-[0.4em] mt-2 font-mono">// NEW ACCOUNT //</p>
+          <p className="text-xs text-[#f2998f] mt-2">3 分钟完成注册并进入控制台</p>
         </div>
 
         <div className="tactic-border tactic-cut p-1 bg-black/40 backdrop-blur-xl">
           <div className="bg-black/40 p-8">
             {error && (
-              <div className="mb-6 p-3 bg-red-500/10 border border-red-500/30 text-red-500 text-[10px] font-bold uppercase tracking-widest tactic-cut animate-pulse">
-                {">"} {error}
+              <div className="mb-6 p-3 bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-bold tactic-cut">
+                {error}
               </div>
             )}
 
             {redirectParam && (
               <div className="mb-6 p-3 bg-blue-500/10 border border-blue-500/30 text-blue-300 text-[11px] tactic-cut">
-                注册成功后将回到你刚才查看的页面
+                注册成功后会自动回到你刚才查看的页面
               </div>
             )}
 
@@ -100,12 +101,12 @@ export default function RegisterPage() {
                   <FaClock className="text-xs" />
                   <span className="text-[10px] font-black uppercase tracking-widest">新用户试用</span>
                </div>
-               <p className="text-[9px] text-gray-500 mt-1 uppercase">注册后自动开通 7 天试用期</p>
-            </div>
+                <p className="text-[11px] text-gray-400 mt-1">注册后自动开通 7 天试用期</p>
+             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-[#cd5241] pl-2">用户名</label>
+                <label className="block text-[11px] font-black text-gray-400 mb-2 border-l-2 border-[#cd5241] pl-2">用户名</label>
                 <div className="relative">
                   <input
                     type="text"
@@ -113,15 +114,16 @@ export default function RegisterPage() {
                     value={formData.username}
                     onChange={handleChange}
                     required
-                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-800"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/5 tactic-cut text-sm text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-500"
                     placeholder="请输入一个唯一的用户名"
                   />
                   <FaUserPlus className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
                 </div>
+                <p className="mt-2 text-[11px] text-gray-500">建议使用便于队友识别的昵称</p>
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-[#cd5241] pl-2">密码</label>
+                <label className="block text-[11px] font-black text-gray-400 mb-2 border-l-2 border-[#cd5241] pl-2">密码</label>
                 <div className="relative">
                   <input
                     type="password"
@@ -129,7 +131,7 @@ export default function RegisterPage() {
                     value={formData.password}
                     onChange={handleChange}
                     required
-                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-800"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/5 tactic-cut text-sm text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-500"
                     placeholder="密码至少 6 位"
                   />
                   <FaLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
@@ -137,7 +139,7 @@ export default function RegisterPage() {
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-[#cd5241] pl-2">确认密码</label>
+                <label className="block text-[11px] font-black text-gray-400 mb-2 border-l-2 border-[#cd5241] pl-2">确认密码</label>
                 <div className="relative">
                   <input
                     type="password"
@@ -145,7 +147,7 @@ export default function RegisterPage() {
                     value={formData.confirmPassword}
                     onChange={handleChange}
                     required
-                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-800"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/5 tactic-cut text-sm text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-500"
                     placeholder="请再次输入您的密码"
                   />
                   <FaLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
@@ -158,25 +160,26 @@ export default function RegisterPage() {
                 className="w-full tactic-cut bg-[#cd5241] hover:bg-[#b04537] py-4 text-[11px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-2 group mt-4 shadow-lg shadow-[#cd5241]/10"
               >
                 {loading ? '注册中...' : (
-                  <>注册并进入控制台 <FaArrowRight className="group-hover:translate-x-1 transition-transform" /></>
+                  <>注册并继续 <FaArrowRight className="group-hover:translate-x-1 transition-transform" /></>
                 )}
               </button>
             </form>
 
             <div className="mt-8 text-center border-t border-white/5 pt-6">
-              <p className="text-gray-600 text-[10px] uppercase tracking-widest">
+              <p className="text-gray-400 text-xs">
                 已有账号？{' '}
-                <Link to="/login" className="text-blue-500 hover:text-white transition-colors font-black">
-                  [ 立即登录 ]
+                <Link to={loginPath} className="text-blue-400 hover:text-white transition-colors font-black">
+                  立即登录
                 </Link>
               </p>
             </div>
           </div>
         </div>
 
-        <div className="mt-8 text-center opacity-30">
-          <Link to="/privacy" className="text-[8px] text-gray-500 hover:text-[#cd5241] transition-colors uppercase tracking-widest">
-            [ 隐私策略 ]
+        <div className="mt-8 text-center">
+          <div className="text-[11px] text-gray-500">注册即表示你同意平台服务协议与隐私政策</div>
+          <Link to="/privacy" className="text-[11px] text-gray-400 hover:text-[#cd5241] transition-colors mt-2 inline-block">
+            查看隐私政策
           </Link>
         </div>
       </div>

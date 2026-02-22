@@ -13,6 +13,7 @@ export default function LoginPage() {
   const [capsLockOn, setCapsLockOn] = useState(false);
   const redirectParam = new URLSearchParams(location.search).get('redirect');
   const redirectPath = redirectParam && redirectParam.startsWith('/') ? redirectParam : '/dashboard';
+  const registerPath = `/register?redirect=${encodeURIComponent(redirectPath)}`;
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -76,26 +77,26 @@ export default function LoginPage() {
             <FaSignInAlt className="text-white text-2xl" />
           </div>
           <h1 className="text-2xl font-black uppercase tracking-widest glow-text italic">欢迎回来</h1>
-          <p className="text-[10px] text-blue-400 uppercase tracking-[0.4em] mt-2 font-mono">// SECURE LOGIN //</p>
+          <p className="text-xs text-blue-300 mt-2">登录后即可继续你的控制台操作</p>
         </div>
 
         <div className="tactic-border tactic-cut p-1 bg-black/40 backdrop-blur-xl">
           <div className="bg-black/40 p-8">
             {error && (
-              <div className="mb-6 p-3 bg-red-500/10 border border-red-500/30 text-red-500 text-[10px] font-bold uppercase tracking-widest tactic-cut animate-pulse">
-                {">"} {error}
+              <div className="mb-6 p-3 bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-bold tactic-cut">
+                {error}
               </div>
             )}
 
             {redirectParam && (
               <div className="mb-6 p-3 bg-blue-500/10 border border-blue-500/30 text-blue-300 text-[11px] tactic-cut">
-                登录后将回到你刚才查看的页面
+                登录成功后会自动回到你刚才查看的页面
               </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-blue-600 pl-2">
+                <label className="block text-[11px] font-black text-gray-400 mb-2 border-l-2 border-blue-600 pl-2">
                   账号（邮箱或用户名）
                 </label>
                 <div className="relative">
@@ -105,15 +106,16 @@ export default function LoginPage() {
                     value={formData.email}
                     onChange={handleChange}
                     required
-                    className="w-full pl-10 pr-4 py-3 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-blue-600/50 outline-none transition-all placeholder-gray-800"
-                    placeholder="请输入您的邮箱或用户名"
+                    className="w-full pl-10 pr-4 py-3 bg-white/[0.03] border border-white/5 tactic-cut text-sm text-white focus:border-blue-600/50 outline-none transition-all placeholder-gray-500"
+                    placeholder="请输入邮箱或用户名"
                   />
                   <FaShieldAlt className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
                 </div>
+                <p className="mt-2 text-[11px] text-gray-500">支持用户名或邮箱登录</p>
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 border-l-2 border-blue-600 pl-2">
+                <label className="block text-[11px] font-black text-gray-400 mb-2 border-l-2 border-blue-600 pl-2">
                   密码
                 </label>
                 <div className="relative">
@@ -125,7 +127,7 @@ export default function LoginPage() {
                     onKeyUp={handlePasswordKeyEvent}
                     onKeyDown={handlePasswordKeyEvent}
                     required
-                    className="w-full pl-10 pr-10 py-3 bg-white/[0.03] border border-white/5 tactic-cut text-xs text-white focus:border-blue-600/50 outline-none transition-all placeholder-gray-800"
+                    className="w-full pl-10 pr-10 py-3 bg-white/[0.03] border border-white/5 tactic-cut text-sm text-white focus:border-blue-600/50 outline-none transition-all placeholder-gray-500"
                     placeholder="••••••••"
                   />
                   <FaKey className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
@@ -139,7 +141,7 @@ export default function LoginPage() {
                   </button>
                 </div>
                 {capsLockOn && (
-                  <p className="mt-2 text-[10px] text-yellow-400">检测到大写锁定已开启，请确认密码输入</p>
+                  <p className="mt-2 text-[11px] text-yellow-400">检测到大写锁定已开启，请确认密码输入</p>
                 )}
               </div>
 
@@ -149,26 +151,26 @@ export default function LoginPage() {
                 className="w-full tactic-cut bg-blue-600 hover:bg-blue-700 py-4 text-[11px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-2 group shadow-lg shadow-blue-600/10"
               >
                 {loading ? '登录中...' : (
-                  <>登录并进入控制台 <FaArrowRight className="group-hover:translate-x-1 transition-transform" /></>
+                  <>登录并继续 <FaArrowRight className="group-hover:translate-x-1 transition-transform" /></>
                 )}
               </button>
             </form>
 
             <div className="mt-8 text-center border-t border-white/5 pt-6">
-              <p className="text-gray-600 text-[10px] uppercase tracking-widest">
+              <p className="text-gray-400 text-xs">
                 还没有账号？{' '}
-                <Link to="/register" className="text-[#cd5241] hover:text-white transition-colors font-black">
-                  [ 立即注册 ]
+                <Link to={registerPath} className="text-[#cd5241] hover:text-white transition-colors font-black">
+                  立即注册
                 </Link>
               </p>
             </div>
           </div>
         </div>
 
-        <div className="mt-8 text-center opacity-30">
-           <div className="text-[8px] text-gray-500 uppercase tracking-[0.5em] font-mono">Unauthorized_access_prohibited</div>
-           <Link to="/privacy" className="text-[8px] text-gray-500 hover:text-[#cd5241] transition-colors uppercase tracking-widest mt-2 inline-block">
-             [ 隐私策略 ]
+        <div className="mt-8 text-center">
+           <div className="text-[11px] text-gray-500">登录即表示你同意平台服务协议与隐私政策</div>
+           <Link to="/privacy" className="text-[11px] text-gray-400 hover:text-[#cd5241] transition-colors mt-2 inline-block">
+             查看隐私政策
            </Link>
         </div>
       </div>

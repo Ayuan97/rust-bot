@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FaTerminal, FaShieldAlt, FaChartLine, FaCogs, FaChevronRight, FaPlay, FaLock, FaUsers, FaQuestionCircle, FaMoneyBillWave } from 'react-icons/fa';
+import { FaTerminal, FaShieldAlt, FaChartLine, FaCogs, FaChevronRight, FaPlay, FaUsers, FaQuestionCircle, FaMoneyBillWave } from 'react-icons/fa';
 import api from '../services/api';
 
 export default function HomePage() {
@@ -178,6 +178,45 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section className="px-6 pb-20">
+        <div className="max-w-7xl mx-auto">
+          <div className="mb-8 text-center">
+            <h2 className="text-3xl md:text-4xl font-black italic mb-3">第一次使用怎么走</h2>
+            <p className="text-gray-400 text-sm">按这 4 步操作，基本不会走弯路</p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <GettingStartedStep
+              step="01"
+              title="先体验控制台"
+              desc="不登录也能看完整界面，先理解功能分区。"
+              actionLabel="打开演示页"
+              actionTo="/demo"
+            />
+            <GettingStartedStep
+              step="02"
+              title="注册或登录"
+              desc="注册后自动进入试用期，可直接进入个人控制台。"
+              actionLabel="立即注册"
+              actionTo="/register"
+            />
+            <GettingStartedStep
+              step="03"
+              title="完成 Edge 配对"
+              desc="配对凭证需通过 Edge 插件生成并粘贴保存。"
+              actionLabel="查看配对说明"
+              actionTo="/demo?tab=hud"
+            />
+            <GettingStartedStep
+              step="04"
+              title="游戏内点击 Pair"
+              desc="在 Rust 游戏内完成 Pair 后，即可实时连接与控制。"
+              actionLabel="登录控制台"
+              actionTo="/login"
+            />
+          </div>
+        </div>
+      </section>
+
       {/* 功能特性 */}
       <section id="features" className="py-32 bg-white/[0.02] border-y border-white/5 px-6">
         <div className="max-w-7xl mx-auto">
@@ -336,6 +375,23 @@ function QuickUseCard({ icon, title, desc }) {
         <span className="text-sm font-black">{title}</span>
       </div>
       <p className="text-xs text-gray-400 leading-relaxed">{desc}</p>
+    </div>
+  );
+}
+
+function GettingStartedStep({ step, title, desc, actionLabel, actionTo }) {
+  return (
+    <div className="tactic-cut border border-white/10 bg-white/[0.02] p-4 flex flex-col">
+      <div className="text-[10px] font-black text-[#cd5241] tracking-widest mb-2">STEP {step}</div>
+      <h3 className="text-base font-black mb-2">{title}</h3>
+      <p className="text-xs text-gray-400 leading-relaxed flex-1">{desc}</p>
+      <Link
+        to={actionTo}
+        className="mt-4 inline-flex items-center gap-2 text-[11px] font-black text-white bg-white/5 hover:bg-white/10 border border-white/10 tactic-cut px-3 py-2 w-fit transition-all"
+      >
+        {actionLabel}
+        <FaChevronRight className="text-[10px]" />
+      </Link>
     </div>
   );
 }
