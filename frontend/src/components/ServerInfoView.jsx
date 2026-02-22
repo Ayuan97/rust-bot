@@ -13,6 +13,9 @@ import socketService from '../services/socket';
 
 const POP_CURVE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const POP_CURVE_FULL_TOLERANCE_MS = 20 * 60 * 1000;
+const POP_CHART_WIDTH = 840;
+const POP_CHART_HEIGHT = 180;
+const POP_CHART_PADDING = 10;
 
 function formatMiniDateTime(timestamp) {
   if (!timestamp) return '--';
@@ -43,6 +46,26 @@ function buildPopulationPath(points, width, height, padding = 10) {
     const y = height - padding - ((point.players - minPlayers) / playerRange) * (height - padding * 2);
     return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
   }).join(' ');
+}
+
+function buildPopulationPoints(points, width, height, padding = 10) {
+  if (!Array.isArray(points) || points.length === 0) {
+    return [];
+  }
+
+  const minPlayers = Math.min(...points.map((point) => point.players));
+  const maxPlayers = Math.max(...points.map((point) => point.players));
+  const playerRange = Math.max(1, maxPlayers - minPlayers);
+
+  const minTs = points[0].timestamp;
+  const maxTs = points[points.length - 1].timestamp;
+  const tsRange = Math.max(1, maxTs - minTs);
+
+  return points.map((point) => ({
+    ...point,
+    x: padding + ((point.timestamp - minTs) / tsRange) * (width - padding * 2),
+    y: height - padding - ((point.players - minPlayers) / playerRange) * (height - padding * 2)
+  }));
 }
 
 // 状态卡片组件
@@ -137,6 +160,7 @@ function ServerInfoView({ server, onBack }) {
   const [onlineSearch, setOnlineSearch] = useState('');
   const [allOnlineSearch, setAllOnlineSearch] = useState('');
   const [nowTs, setNowTs] = useState(Date.now());
+  const [popHoverIndex, setPopHoverIndex] = useState(null);
   const serverId = server?.id || null;
 
   // 追踪玩家
@@ -348,7 +372,12 @@ function ServerInfoView({ server, onBack }) {
       : []
   ), [runtimeInfo?.popSeries]);
   const canShowPopCurve = popSeries.length >= 2;
-  const popPath = canShowPopCurve ? buildPopulationPath(popSeries, 840, 180) : '';
+  const popPath = canShowPopCurve
+    ? buildPopulationPath(popSeries, POP_CHART_WIDTH, POP_CHART_HEIGHT, POP_CHART_PADDING)
+    : '';
+  const popChartPoints = canShowPopCurve
+    ? buildPopulationPoints(popSeries, POP_CHART_WIDTH, POP_CHART_HEIGHT, POP_CHART_PADDING)
+    : [];
   const popMin = canShowPopCurve ? Math.min(...popSeries.map((point) => point.players)) : 0;
   const popMax = canShowPopCurve ? Math.max(...popSeries.map((point) => point.players)) : 0;
   const popStart = canShowPopCurve ? popSeries[0] : null;
@@ -363,6 +392,54 @@ function ServerInfoView({ server, onBack }) {
   const popHasFullThreeDay = canShowPopCurve && popCoverageMs >= (POP_CURVE_WINDOW_MS - POP_CURVE_FULL_TOLERANCE_MS);
   const popTrendDiff = Number(runtimeInfo?.popTrend?.diff) || 0;
   const showPopTrend = Boolean(runtimeInfo?.popTrend?.hasBaseline) && popTrendDiff !== 0;
+  const hoveredPopPoint = popHoverIndex !== null ? popChartPoints[popHoverIndex] : null;
+  const popTooltipLeft = hoveredPopPoint
+    ? Math.min(92, Math.max(8, (hoveredPopPoint.x / POP_CHART_WIDTH) * 100))
+    : 50;
+  const popTooltipTop = hoveredPopPoint
+    ? Math.min(80, Math.max(16, (hoveredPopPoint.y / POP_CHART_HEIGHT) * 100))
+    : 50;
+
+  useEffect(() => {
+    setPopHoverIndex(null);
+  }, [serverId, popSeries.length]);
+
+  const updatePopHoverByClientX = useCallback((clientX, target) => {
+    if (!canShowPopCurve || popChartPoints.length === 0 || !target) {
+      setPopHoverIndex(null);
+      return;
+    }
+
+    const rect = target.getBoundingClientRect();
+    if (!rect.width) {
+      return;
+    }
+
+    const ratioX = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const chartX = ratioX * POP_CHART_WIDTH;
+
+    let nearestIndex = 0;
+    let nearestDist = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < popChartPoints.length; i += 1) {
+      const dist = Math.abs(popChartPoints[i].x - chartX);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestIndex = i;
+      }
+    }
+
+    setPopHoverIndex(nearestIndex);
+  }, [canShowPopCurve, popChartPoints]);
+
+  const handlePopChartMouseMove = useCallback((event) => {
+    updatePopHoverByClientX(event.clientX, event.currentTarget);
+  }, [updatePopHoverByClientX]);
+
+  const handlePopChartTouchMove = useCallback((event) => {
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    updatePopHoverByClientX(touch.clientX, event.currentTarget);
+  }, [updatePopHoverByClientX]);
 
   if (!serverId) {
     return (
@@ -600,9 +677,54 @@ function ServerInfoView({ server, onBack }) {
                   <span>{'\u8fd13\u5929\u5728\u7ebf\u66f2\u7ebf'}</span>
                   <span>MIN {popMin} / MAX {popMax}</span>
                 </div>
-                <svg viewBox="0 0 840 180" className="w-full h-40">
-                  <path d={popPath} fill="none" stroke="#fb923c" strokeWidth="3" strokeLinecap="round" />
-                </svg>
+                <div className="relative">
+                  <svg
+                    viewBox={`0 0 ${POP_CHART_WIDTH} ${POP_CHART_HEIGHT}`}
+                    className="w-full h-40 cursor-crosshair"
+                    onMouseMove={handlePopChartMouseMove}
+                    onMouseLeave={() => setPopHoverIndex(null)}
+                    onTouchMove={handlePopChartTouchMove}
+                    onTouchStart={handlePopChartTouchMove}
+                    onTouchEnd={() => setPopHoverIndex(null)}
+                  >
+                    <path d={popPath} fill="none" stroke="#fb923c" strokeWidth="3" strokeLinecap="round" />
+                    {hoveredPopPoint && (
+                      <>
+                        <line
+                          x1={hoveredPopPoint.x}
+                          y1={POP_CHART_PADDING}
+                          x2={hoveredPopPoint.x}
+                          y2={POP_CHART_HEIGHT - POP_CHART_PADDING}
+                          stroke="rgba(251,146,60,0.45)"
+                          strokeWidth="1.5"
+                          strokeDasharray="4 3"
+                        />
+                        <circle
+                          cx={hoveredPopPoint.x}
+                          cy={hoveredPopPoint.y}
+                          r="5"
+                          fill="#fb923c"
+                          stroke="#111827"
+                          strokeWidth="2"
+                        />
+                      </>
+                    )}
+                  </svg>
+                  {hoveredPopPoint && (
+                    <div
+                      className="absolute pointer-events-none z-10 bg-black/85 border border-rust-orange/40 rounded-md px-2 py-1 text-xs text-white shadow-lg"
+                      style={{
+                        left: `${popTooltipLeft}%`,
+                        top: `${popTooltipTop}%`,
+                        transform: 'translate(-50%, -115%)'
+                      }}
+                    >
+                      <div className="text-[11px] text-gray-300">{formatMiniDateTime(hoveredPopPoint.timestamp)}</div>
+                      <div className="font-semibold">{hoveredPopPoint.players} 人</div>
+                    </div>
+                  )}
+                </div>
+                <div className="text-xs text-gray-500 mt-2">鼠标悬停可查看对应时间点在线人数</div>
                 <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
                   <span>{formatMiniDateTime(popStart?.timestamp)}</span>
                   <span>{formatMiniDateTime(popMidTs)}</span>

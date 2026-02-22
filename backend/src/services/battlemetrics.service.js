@@ -71,6 +71,40 @@ class BattlemetricsService extends EventEmitter {
     return 0;
   }
 
+  _isPortCompatible(leftPort, rightPort) {
+    const left = Number.parseInt(leftPort, 10);
+    const right = Number.parseInt(rightPort, 10);
+    if (!Number.isFinite(left) || !Number.isFinite(right)) {
+      return false;
+    }
+
+    // Rust+ 端口通常是游戏端口 + 67，匹配时需要同时兼容两种口径。
+    return left === right || Math.abs(left - right) === 67;
+  }
+
+  async _searchServersByKeyword(keyword, axiosConfig, label, { maxPages = 3, pageSize = 50 } = {}) {
+    if (!keyword) return [];
+
+    const escapedKeyword = encodeURIComponent(String(keyword)).replace(/%23/g, '*');
+    let url = `https://api.battlemetrics.com/servers?filter[search]=${escapedKeyword}&filter[game]=rust&page[size]=${pageSize}`;
+    const results = [];
+    const visited = new Set();
+    let pageCount = 0;
+
+    while (url && pageCount < maxPages && !visited.has(url)) {
+      visited.add(url);
+      pageCount += 1;
+
+      const response = await axios.get(url, axiosConfig);
+      const currentRows = Array.isArray(response.data?.data) ? response.data.data : [];
+      results.push(...currentRows);
+      url = response.data?.links?.next || null;
+    }
+
+    console.log(`   📈 ${label} 搜索累计返回 ${results.length} 个结果 (${pageCount} 页)`);
+    return results;
+  }
+
   isLikelyServerMatch(targetServer, candidateServer) {
     if (!targetServer || !candidateServer) {
       return false;
@@ -82,7 +116,7 @@ class BattlemetricsService extends EventEmitter {
     const candidatePort = Number.parseInt(candidateServer.port, 10);
 
     const ipMatched = Boolean(targetIp && candidateIp && targetIp === candidateIp);
-    const portMatched = Number.isFinite(targetPort) && Number.isFinite(candidatePort) && targetPort === candidatePort;
+    const portMatched = this._isPortCompatible(targetPort, candidatePort);
     const nameScore = this._nameMatchScore(targetServer.name, candidateServer.name);
 
     if (ipMatched && (portMatched || nameScore >= 75)) {
@@ -147,32 +181,23 @@ class BattlemetricsService extends EventEmitter {
       // 定义搜索任务
       const tasks = [];
 
-      // 任务 1: IP 搜索 (扩大范围到 50 条)
+      // 任务 1: IP 搜索（默认最多翻 3 页）
       tasks.push((async () => {
         try {
           console.log(`🔍 [1/2] 正在通过 IP 搜索...`);
-          const url = `https://api.battlemetrics.com/servers?filter[search]=${ip}&filter[game]=rust&page[size]=50`;
-          const response = await axios.get(url, axiosConfig);
-          console.log(`   📈 IP 搜索返回 ${response.data.data.length} 个结果`);
-          return response.data.data;
+          return await this._searchServersByKeyword(ip, axiosConfig, 'IP');
         } catch (e) {
           console.error(`   ❌ IP 搜索失败: ${e.message}`);
           return [];
         }
       })());
 
-      // 任务 2: 名称搜索 (如果有)
+      // 任务 2: 名称搜索（默认最多翻 3 页）
       if (serverName) {
         tasks.push((async () => {
           try {
             console.log(`🔍 [2/2] 正在通过名称搜索...`);
-            // 去除冒号后的部分(有时是端口)，去除特殊符号，只搜核心名称
-            // 但为了保险，还是搜完整名称，依赖 BM 的搜索引擎
-            const encodedName = encodeURI(serverName).replace('#', '*');
-            const url = `https://api.battlemetrics.com/servers?filter[search]=${encodedName}&filter[game]=rust&page[size]=50`;
-            const response = await axios.get(url, axiosConfig);
-            console.log(`   📈 名称 搜索返回 ${response.data.data.length} 个结果`);
-            return response.data.data;
+            return await this._searchServersByKeyword(serverName, axiosConfig, '名称');
           } catch (e) {
             console.error(`   ❌ 名称搜索失败: ${e.message}`);
             return [];
@@ -196,17 +221,30 @@ class BattlemetricsService extends EventEmitter {
       // 匹配逻辑
       // ---------------------------------------------------------
 
-      // 1. 尝试寻找 IP 和 Port 完美匹配
+      // 1. 尝试寻找 IP + 端口匹配（兼容 Rust+ 端口与游戏端口差值 67）
+      const exactMatches = [];
       for (const server of candidates.values()) {
         const attrs = server.attributes || {};
         const serverIp = attrs.ip;
         const serverPort = Number.parseInt(attrs.port, 10);
-        if (serverIp === ip && serverPort === targetPort) {
-          console.log(`✅ ✅ 找到完美匹配 (IP + Port)!`);
-          console.log(`   服务器: ${attrs.name}`);
-          console.log(`   ID: ${server.id}`);
-          return server.id;
+        if (serverIp === ip && this._isPortCompatible(targetPort, serverPort)) {
+          exactMatches.push({
+            server,
+            nameScore: this._nameMatchScore(serverName, attrs.name),
+            updatedAtTs: attrs.updatedAt ? new Date(attrs.updatedAt).getTime() : 0
+          });
         }
+      }
+      if (exactMatches.length > 0) {
+        exactMatches.sort((a, b) => {
+          if (b.nameScore !== a.nameScore) return b.nameScore - a.nameScore;
+          return b.updatedAtTs - a.updatedAtTs;
+        });
+        const best = exactMatches[0].server;
+        console.log(`✅ ✅ 找到 IP + 端口匹配 (${exactMatches.length} 个候选，已选最优)`); 
+        console.log(`   服务器: ${best.attributes?.name}`);
+        console.log(`   ID: ${best.id}`);
+        return best.id;
       }
 
       // 2. 尝试通过 IP + 名称进行高置信匹配
