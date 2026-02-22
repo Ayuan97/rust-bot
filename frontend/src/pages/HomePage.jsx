@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FaTerminal, FaShieldAlt, FaChartLine, FaCogs, FaChevronRight, FaPlay, FaLock, FaUsers, FaQuestionCircle, FaMoneyBillWave } from 'react-icons/fa';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+import api from '../services/api';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -20,8 +19,8 @@ export default function HomePage() {
   useEffect(() => {
     const fetchPlans = async () => {
       try {
-        const res = await fetch(`${API_URL}/payment/plans`);
-        const data = await res.json();
+        const res = await api.get('/payment/plans');
+        const data = res.data;
         if (data.success && data.plans) {
           setPlans(data.plans);
         }
@@ -84,6 +83,9 @@ export default function HomePage() {
 
           {/* 右侧按钮 */}
           <div className="flex gap-4 items-center">
+            <Link to="/demo" className="hidden sm:inline-flex text-sm font-bold text-gray-300 hover:text-white transition-colors">
+              体验控制台
+            </Link>
             <Link to="/login" className="text-sm font-bold text-blue-500 hover:text-blue-400 transition-colors">
               登录
             </Link>
@@ -107,10 +109,17 @@ export default function HomePage() {
             </h1>
             <p className="text-gray-400 text-lg mb-12 max-w-md border-l-4 border-[#cd5241] pl-6 leading-relaxed">
               在 Rust 的残酷世界里，离线不代表防御停止。通过我们的系统，实现基地全自动监控、远程报警与设备集群控制。
+              配对凭证通过 Microsoft Edge 插件获取，流程清晰、上手更快。
             </p>
             <div className="flex flex-wrap gap-4">
+              <Link to="/demo" className="tactic-cut bg-white text-black px-10 py-5 font-black flex items-center gap-3 group text-lg hover:bg-gray-200 transition-all">
+                先体验控制台 <FaPlay className="group-hover:translate-x-1 transition-transform" />
+              </Link>
               <Link to="/register" className="tactic-cut bg-[#cd5241] text-white px-10 py-5 font-black flex items-center gap-3 group shadow-xl shadow-[#cd5241]/20 text-lg">
-                立即部署系统 <FaChevronRight className="group-hover:translate-x-1 transition-transform" />
+                注册并开始使用 <FaChevronRight className="group-hover:translate-x-1 transition-transform" />
+              </Link>
+              <Link to="/login" className="tactic-cut bg-white/5 border border-white/10 px-8 py-5 text-white text-sm font-black hover:bg-white/10 transition-all">
+                已有账号，直接登录
               </Link>
             </div>
           </div>
@@ -144,6 +153,27 @@ export default function HomePage() {
               </div>
             </div>
             <div className="absolute -z-10 w-80 h-80 bg-[#cd5241]/10 blur-[120px] animate-pulse"></div>
+          </div>
+        </div>
+      </section>
+
+      <section className="px-6 pb-20">
+        <div className="max-w-7xl mx-auto">
+          <div className="tactic-border tactic-cut p-1 bg-black/40">
+            <div className="bg-black/40 p-6 md:p-8">
+              <h2 className="text-2xl md:text-3xl font-black italic mb-6">你可以直接做到这些</h2>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <QuickUseCard icon={<FaShieldAlt />} title="离线报警" desc="核心区被打、报警触发时立刻通知" />
+                <QuickUseCard icon={<FaUsers />} title="队友动态" desc="在线状态、阵亡位置、回归提醒" />
+                <QuickUseCard icon={<FaCogs />} title="设备控制" desc="大门、电力、炮塔可远程联动" />
+                <QuickUseCard icon={<FaChartLine />} title="事件监控" desc="货船、油井、直升机事件跟踪" />
+                <QuickUseCard icon={<FaQuestionCircle />} title="玩家追踪" desc="重点玩家动向与历史轨迹记录" />
+                <QuickUseCard icon={<FaMoneyBillWave />} title="订阅管理" desc="套餐、订单、续费状态一目了然" />
+              </div>
+              <div className="mt-6 p-4 tactic-cut border border-yellow-500/30 bg-yellow-500/10 text-sm text-yellow-100">
+                首次上手建议：先体验控制台界面，再登录完成 Edge 插件配对。
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -236,7 +266,7 @@ export default function HomePage() {
           <div className="space-y-4">
             <FAQItem
               question="什么是 Rust+ 配对？"
-              answer="Rust+ 是 Rust 游戏官方推出的手机 App 功能。通过配对，我们的系统可以连接到你的游戏服务器，实现离线监控、远程控制等功能。"
+              answer="Rust+ 是 Rust 游戏官方推出的功能。完成配对后，我们的系统即可连接你的服务器，实现离线监控和远程控制。当前需通过 Microsoft Edge 插件获取配对凭证。"
             />
             <FAQItem
               question="配对安全吗？会被封号吗？"
@@ -294,6 +324,18 @@ function FeatureCard({ icon, title, desc }) {
       <div className="text-4xl text-[#cd5241] mb-8 group-hover:scale-110 transition-transform">{icon}</div>
       <h3 className="text-2xl font-black mb-4 italic">{title}</h3>
       <p className="text-gray-500 leading-relaxed font-medium">{desc}</p>
+    </div>
+  );
+}
+
+function QuickUseCard({ icon, title, desc }) {
+  return (
+    <div className="tactic-cut border border-white/10 bg-white/[0.02] p-4">
+      <div className="flex items-center gap-3 mb-2">
+        <span className="text-[#cd5241]">{icon}</span>
+        <span className="text-sm font-black">{title}</span>
+      </div>
+      <p className="text-xs text-gray-400 leading-relaxed">{desc}</p>
     </div>
   );
 }

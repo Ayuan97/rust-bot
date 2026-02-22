@@ -33,7 +33,7 @@ export default function AccountPage() {
       const ordersResult = await paymentApi.getOrders({ limit: 10 });
       if (ordersResult.success) setOrders(ordersResult.orders);
     } catch (err) {
-      setError('获取档案失败：无法检索指挥官数据');
+      setError('获取账户信息失败，请稍后重试');
     } finally {
       setLoading(false);
     }
@@ -42,18 +42,18 @@ export default function AccountPage() {
   const handlePasswordChange = async (e) => {
     e.preventDefault();
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setPasswordStatus({ type: 'error', msg: '校验错误：新密码两次输入不一致' });
+      setPasswordStatus({ type: 'error', msg: '两次输入的新密码不一致' });
       return;
     }
     setPasswordLoading(true);
     try {
       const result = await userApi.changePassword(passwordForm.oldPassword, passwordForm.newPassword);
       if (result.success) {
-        setPasswordStatus({ type: 'success', msg: '更新成功：密钥已轮换' });
+        setPasswordStatus({ type: 'success', msg: '密码修改成功' });
         setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
       } else throw new Error(result.error);
     } catch (err) {
-      setPasswordStatus({ type: 'error', msg: '更新失败：' + (err.message || '未知错误') });
+      setPasswordStatus({ type: 'error', msg: '修改失败：' + (err.message || '未知错误') });
     } finally { setPasswordLoading(false); }
   };
 
@@ -69,24 +69,24 @@ export default function AccountPage() {
   );
 
   return (
-    <div className="min-h-screen bg-[#0d0e10] text-[#e0e0e0] font-sans p-6 relative overflow-hidden">
+    <div className="min-h-screen bg-[#0d0e10] text-[#e0e0e0] font-sans p-4 md:p-6 relative overflow-hidden">
       <div className="fixed inset-0 pointer-events-none z-50 opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_4px,3px_100%]"></div>
       
       <div className="max-w-5xl mx-auto">
         {/* 顶部标题 */}
-        <header className="flex justify-between items-center mb-10 border-b border-white/5 pb-6">
+        <header className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-10 border-b border-white/5 pb-6">
           <div className="flex items-center gap-4">
             <button onClick={() => navigate('/dashboard')} className="w-10 h-10 tactic-cut border border-white/10 flex items-center justify-center hover:bg-[#cd5241] transition-all">
               <FaArrowLeft className="text-xs" />
             </button>
             <div>
               <h1 className="text-xl font-black uppercase tracking-widest glow-text italic">指挥官档案</h1>
-              <p className="text-[10px] text-gray-600 uppercase tracking-[0.4em]">个人身份识别与授权记录</p>
+              <p className="text-[10px] text-gray-600 uppercase tracking-[0.4em]">账户信息与订阅管理</p>
             </div>
           </div>
           <div className="flex items-center gap-6">
             <div className="text-right hidden sm:block">
-               <div className="text-[10px] font-bold text-[#cd5241] uppercase">状态: 正在服役</div>
+               <div className="text-[10px] font-bold text-[#cd5241] uppercase">状态: 正常</div>
                <div className="text-[8px] text-gray-700 font-mono mt-1 uppercase">识别号: {user?.id?.slice(0,8) || 'Unknown'}</div>
             </div>
             <button
@@ -100,13 +100,13 @@ export default function AccountPage() {
         </header>
 
         {/* Tab 模块选择 */}
-        <div className="flex gap-1 p-1 bg-black/40 tactic-cut border border-white/5 mb-8 w-fit">
+        <div className="flex flex-wrap gap-1 p-1 bg-black/40 tactic-cut border border-white/5 mb-8 w-fit">
            <TabBtn active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<FaUserSecret />} label="个人档案" />
            <TabBtn active={activeTab === 'orders'} onClick={() => setActiveTab('orders')} icon={<FaHistory />} label="订阅记录" />
            <TabBtn active={activeTab === 'security'} onClick={() => setActiveTab('security')} icon={<FaShieldAlt />} label="安全设置" />
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-8">
+        <div className="grid lg:grid-cols-3 gap-6 md:gap-8">
           {/* 左侧个人信息卡片 (始终显示) */}
           <div className="lg:col-span-1">
              <div className="tactic-border tactic-cut p-1 bg-[#cd5241]/5 shadow-lg shadow-[#cd5241]/5">
@@ -121,10 +121,10 @@ export default function AccountPage() {
                    </div>
                    
                    <div className="space-y-4 border-t border-white/5 pt-6">
-                      <DataEntry label="权限等级" value={subscription?.planType === 'TRIAL' ? '新兵 (试用)' : (subscription ? '专业指挥官' : '未授权')} highlight />
-                      <DataEntry label="加入日期" value={formatDate(user?.createdAt)} />
-                      <DataEntry label="最后登录" value="节点_HK_04" />
-                   </div>
+                       <DataEntry label="订阅等级" value={subscription?.planType === 'TRIAL' ? '试用中' : (subscription ? '已订阅' : '未订阅')} highlight />
+                       <DataEntry label="加入日期" value={formatDate(user?.createdAt)} />
+                       <DataEntry label="账户状态" value={subscription ? '服务可用' : '待开通'} />
+                    </div>
                 </div>
              </div>
           </div>
@@ -132,12 +132,12 @@ export default function AccountPage() {
           {/* 右侧动态内容区 */}
           <div className="lg:col-span-2">
              <div className="tactic-border tactic-cut p-1 bg-black/20 min-h-[400px]">
-                <div className="bg-black/40 p-8 h-full">
+                <div className="bg-black/40 p-4 md:p-8 h-full">
                    {activeTab === 'profile' && (
                      <div className="animate-fade-in space-y-8">
                         <div className="flex justify-between items-center">
                            <h3 className="text-sm font-black uppercase tracking-widest text-[#cd5241]">授权状态</h3>
-                           <button onClick={() => navigate('/payment')} className="text-[10px] px-4 py-1.5 bg-[#cd5241] text-white tactic-cut uppercase font-black hover:bg-[#b04537] transition-all">申请补给</button>
+                           <button onClick={() => navigate('/payment')} className="text-[10px] px-4 py-1.5 bg-[#cd5241] text-white tactic-cut uppercase font-black hover:bg-[#b04537] transition-all">去续费</button>
                         </div>
                         
                         {subscription ? (
@@ -170,11 +170,11 @@ export default function AccountPage() {
                      </div>
                    )}
 
-                   {activeTab === 'orders' && (
-                     <div className="animate-fade-in space-y-4">
-                        <h3 className="text-sm font-black uppercase tracking-widest text-[#cd5241] mb-6">补给流水记录</h3>
+                    {activeTab === 'orders' && (
+                      <div className="animate-fade-in space-y-4">
+                        <h3 className="text-sm font-black uppercase tracking-widest text-[#cd5241] mb-6">订单记录</h3>
                         {orders.length === 0 ? (
-                          <p className="text-[10px] text-gray-600 uppercase text-center py-12">未发现任何补给包记录</p>
+                          <p className="text-[10px] text-gray-600 uppercase text-center py-12">暂无订单记录</p>
                         ) : (
                           <div className="space-y-3">
                              {orders.map(order => (
@@ -201,10 +201,10 @@ export default function AccountPage() {
                      </div>
                    )}
 
-                   {activeTab === 'security' && (
+                    {activeTab === 'security' && (
                      <div className="animate-fade-in space-y-10">
                         <section>
-                           <h3 className="text-sm font-black uppercase tracking-widest text-[#cd5241] mb-6">密钥轮换服务 (更改密码)</h3>
+                           <h3 className="text-sm font-black uppercase tracking-widest text-[#cd5241] mb-6">更改密码</h3>
                            <form onSubmit={handlePasswordChange} className="space-y-4 max-w-sm">
                               <SecurityInput label="当前密钥" type="password" value={passwordForm.oldPassword} onChange={v => setPasswordForm({...passwordForm, oldPassword: v})} />
                               <SecurityInput label="新密钥" type="password" value={passwordForm.newPassword} onChange={v => setPasswordForm({...passwordForm, newPassword: v})} />
@@ -226,7 +226,7 @@ export default function AccountPage() {
                            <h3 className="text-sm font-black uppercase tracking-widest text-red-500 mb-4 flex items-center gap-2">
                               <FaExclamationTriangle /> 危险区域：注销账户
                            </h3>
-                           <p className="text-[10px] text-gray-600 uppercase mb-6 leading-relaxed">警告：注销账户是永久性的，将清除所有档案记录和补给历史，且不可撤销。</p>
+                           <p className="text-[10px] text-gray-600 uppercase mb-6 leading-relaxed">警告：注销账户是永久操作，将清除所有数据且不可撤销。</p>
                            {!showDeleteConfirm ? (
                              <button onClick={() => setShowDeleteConfirm(true)} className="text-[10px] font-black text-red-500 uppercase border border-red-500/30 px-6 py-2 tactic-cut hover:bg-red-500/10">注销指挥官档案</button>
                            ) : (

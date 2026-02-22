@@ -5,6 +5,7 @@ import {
   FaTimes, FaExpandArrowsAlt, FaPlay, FaRobot, FaBolt, FaLightbulb, FaCrosshairs, FaDoorOpen, FaChartLine,
   FaGlobe, FaTools, FaBell, FaServer
 } from 'react-icons/fa';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import api, { getServers, connectServer, disconnectServer, getMapInfo, getTeamInfo } from './services/api';
 import { useToast } from './components/Toast';
@@ -22,8 +23,13 @@ import AdminPage from './pages/AdminPage';
 import MapView from './components/MapView';
 import ServerInfoView from './components/ServerInfoView';
 import TrackingView from './components/TrackingView';
+import {
+  CONNECTION_STATES,
+  getConnectionStateMeta
+} from './constants/connection.constants';
 
 function App() {
+  const location = useLocation();
   const { user, logout, isSubscriptionExpired } = useAuth();
   const toast = useToast();
 
@@ -38,10 +44,13 @@ function App() {
   const [mapFocusTarget, setMapFocusTarget] = useState(null);
   const [fcmStatus, setFcmStatus] = useState({ isListening: false, hasCredentials: false });
   const [wipeCountdownTick, setWipeCountdownTick] = useState(0);
-  const pendingConnectionStates = new Set(['QUEUED', 'ASSIGNED', 'CONNECTING']);
-  const activeConnectionState = activeServer?.connectionState || 'DISCONNECTED';
-  const isActiveServerPending = pendingConnectionStates.has(activeConnectionState);
-  const canDisconnectActiveServer = activeServer?.canDisconnect === true;
+  const activeConnectionState = activeServer?.connectionState || CONNECTION_STATES.DISCONNECTED;
+  const activeConnectionMeta = getConnectionStateMeta(activeConnectionState);
+  const canDisconnectActiveServer = Boolean(activeServer) && activeConnectionState !== CONNECTION_STATES.DISCONNECTED;
+  const allowedViews = useMemo(
+    () => new Set(['hud', 'team', 'map', 'devices', 'tracking', 'serverinfo', 'settings', 'pairing', 'admin']),
+    []
+  );
 
   // 倒计时定时器 (每秒更新)
   useEffect(() => {
@@ -89,6 +98,13 @@ function App() {
       fetchTeamData(activeServer.id);
     }
   }, [activeServer?.id]);
+
+  useEffect(() => {
+    const view = new URLSearchParams(location.search).get('view');
+    if (view && allowedViews.has(view)) {
+      setActiveView(view);
+    }
+  }, [location.search, allowedViews]);
 
   const fetchTeamData = async (serverId) => {
     try {
@@ -210,6 +226,16 @@ function App() {
     setActiveView('map');
   };
 
+  const handleSwitchServer = (serverId) => {
+    const nextServer = servers.find((item) => String(item.id) === String(serverId));
+    if (!nextServer) return;
+
+    setActiveServer(nextServer);
+    setTeamData(null);
+    setWipeInfo(null);
+    setMapFocusTarget(null);
+  };
+
   // 计算倒计时
   const wipeCountdown = useMemo(() => {
     if (!activeServer || !wipeInfo?.nextWipe) return '--:--:--'; // 无服务器或无数据时显示占位符
@@ -253,10 +279,10 @@ function App() {
           server={activeServer}
           onConnect={() => handleConnect(activeServer)}
           onDisconnect={handleDisconnect}
+          onPair={() => setActiveView('pairing')}
           loading={connectionLoading}
           fcmStatus={fcmStatus}
           isSubscriptionExpired={isSubscriptionExpired}
-          isPending={isActiveServerPending}
           connectionState={activeConnectionState}
         />
       );
@@ -322,7 +348,7 @@ function App() {
       {alertLevel === 'critical' && <div className="alert-pulse" />}
 
       {/* 左侧导航轨 (Navigation Rail) - 悬停展开 */}
-      <nav className="group/nav h-full flex flex-col py-6 bg-[#090a0c] border-r border-white/5 z-50 shrink-0 w-20 hover:w-52 transition-all duration-300 ease-out overflow-hidden">
+      <nav className="group/nav h-full flex flex-col py-6 bg-[#090a0c] border-r border-white/5 z-50 shrink-0 w-16 md:w-20 hover:w-16 md:hover:w-52 transition-all duration-300 ease-out overflow-hidden">
         <div className="mb-8 px-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 p-1 bg-[#cd5241] tactic-cut flex items-center justify-center shadow-lg shadow-[#cd5241]/20 shrink-0">
@@ -371,21 +397,38 @@ function App() {
         <div className="scanline"></div>
 
         {/* 顶部状态栏 */}
-        <header className="h-16 flex items-center justify-between px-8 bg-black/20 border-b border-white/5 backdrop-blur-md relative z-40">
-          <div className="flex items-center gap-6">
-            <div className="flex flex-col">
-              <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest leading-none mb-1">活跃节点</span>
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-black text-white uppercase italic tracking-tight truncate max-w-[150px]">
-                  {activeServer ? activeServer.name : '未选择服务器'}
-                </span>
-                <div className={`w-1.5 h-1.5 rounded-full ${activeServer?.connected ? 'bg-[#a3e635] shadow-[0_0_8px_#a3e635]' : 'bg-gray-800'}`} />
-              </div>
+        <header className="min-h-16 flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-3 md:px-8 py-3 md:py-0 bg-black/20 border-b border-white/5 backdrop-blur-md relative z-40">
+          <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
+            <div className="flex flex-col min-w-0 md:min-w-[260px]">
+              <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest leading-none mb-1">
+                当前服务器
+              </span>
+              {servers.length > 0 ? (
+                <div className="flex items-center gap-2 min-w-0">
+                  <select
+                    value={activeServer?.id || ''}
+                    onChange={(e) => handleSwitchServer(e.target.value)}
+                    className="min-w-0 w-full md:w-[280px] bg-black/50 border border-white/10 tactic-cut px-3 py-2 text-xs font-bold text-white outline-none focus:border-[#cd5241]/50"
+                  >
+                    {servers.map((server) => {
+                      const stateMeta = getConnectionStateMeta(server.connectionState);
+                      return (
+                        <option key={server.id} value={server.id}>
+                          {`${server.name} · ${stateMeta.label}`}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <div className={`w-2 h-2 rounded-full ${activeConnectionMeta.dotClass}`} />
+                </div>
+              ) : (
+                <span className="text-xs text-gray-500">暂无服务器</span>
+              )}
             </div>
 
-            <div className="h-6 w-px bg-white/5 mx-2" />
+            <div className="hidden md:block h-6 w-px bg-white/5 mx-1" />
 
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4 md:gap-6">
               <div className="flex flex-col">
                 <span className="text-[10px] text-gray-700 font-black uppercase tracking-widest leading-none mb-1">推送链路 (FCM)</span>
                 <div className="flex items-center gap-2">
@@ -398,25 +441,19 @@ function App() {
               <div className="flex flex-col">
                 <span className="text-[10px] text-gray-700 font-black uppercase tracking-widest leading-none mb-1">远程链路 (WS)</span>
                 <div className="flex items-center gap-2">
-                  <div className={`w-1.5 h-1.5 rounded-full ${
-                    activeServer?.connected
-                      ? 'bg-[#3b82f6] shadow-[0_0_8px_#3b82f6]'
-                      : isActiveServerPending
-                        ? 'bg-yellow-500 animate-pulse shadow-[0_0_8px_#eab308]'
-                        : 'bg-gray-800'
-                  }`} />
+                  <div className={`w-1.5 h-1.5 rounded-full ${activeConnectionMeta.dotClass}`} />
                   <span className={`text-[9px] font-black uppercase ${
-                    activeServer?.connected || isActiveServerPending ? 'text-gray-300' : 'text-gray-600'
+                    activeConnectionState === CONNECTION_STATES.DISCONNECTED ? 'text-gray-600' : 'text-gray-300'
                   }`}>
-                    {activeServer?.connected ? '已连接' : isActiveServerPending ? '连接中' : '未建立'}
+                    {activeConnectionMeta.summary}
                   </span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-8">
-            <div className="hidden md:flex flex-col items-end">
+          <div className="w-full md:w-auto flex items-center justify-between md:justify-end gap-3 md:gap-6">
+            <div className="hidden sm:flex flex-col items-end">
               <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest leading-none mb-1">强制清档倒计时</span>
               <span className="text-xs font-mono font-black text-[#cd5241]">{wipeCountdown}</span>
             </div>
@@ -424,13 +461,13 @@ function App() {
               <button
                 onClick={handleDisconnect}
                 disabled={connectionLoading}
-                className={`px-4 py-2 border tactic-cut text-[10px] font-black uppercase tracking-widest flex items-center gap-3 transition-all ${
+                className={`px-3 md:px-4 py-2 border tactic-cut text-[10px] font-black uppercase tracking-widest flex items-center gap-2 md:gap-3 transition-all ${
                   connectionLoading
                     ? 'bg-white/5 border-white/10 text-gray-500 cursor-not-allowed'
                     : 'bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-400 hover:text-red-300'
                 }`}
               >
-                {isActiveServerPending ? '取消连接' : '断开连接'}
+                {connectionLoading ? activeConnectionMeta.loadingLabel : activeConnectionMeta.actionLabel}
               </button>
             )}
             <button
@@ -438,7 +475,7 @@ function App() {
                 setMapFocusTarget(null);
                 setActiveView('map');
               }}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 tactic-cut text-[10px] font-black uppercase tracking-widest flex items-center gap-3 transition-all"
+              className="px-3 md:px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 tactic-cut text-[10px] font-black uppercase tracking-widest flex items-center gap-2 md:gap-3 transition-all"
             >
               <FaMapMarkedAlt className="text-[#cd5241]" /> 实时地图
             </button>
@@ -446,7 +483,7 @@ function App() {
         </header>
 
         {/* 视图内容 */}
-        <div className="flex-1 overflow-hidden p-8 relative">
+        <div className="flex-1 overflow-hidden p-3 md:p-8 relative">
           {renderView()}
         </div>
       </main>
@@ -639,15 +676,36 @@ function DisconnectedView({
   server,
   onConnect,
   onDisconnect,
+  onPair,
   loading,
   fcmStatus,
   isSubscriptionExpired,
-  isPending = false,
   connectionState = 'DISCONNECTED'
 }) {
-  const isDisabled = loading || (isSubscriptionExpired && !isPending);
-  const actionText = isPending ? '取消连接请求' : '建立卫星远程连接';
-  const loadingText = isPending ? '正在取消连接...' : '正在握手加密协议...';
+  const connectionMeta = getConnectionStateMeta(connectionState);
+  const isDisabled = loading || (isSubscriptionExpired && !connectionMeta.isPending);
+  const actionText = connectionMeta.actionLabel;
+  const loadingText = connectionMeta.loadingLabel;
+  const fcmReady = Boolean(fcmStatus?.isListening);
+  const nextStep = !fcmReady
+    ? {
+      title: '先完成 Edge 配对',
+      desc: '当前 FCM 未就绪，先去配对向导完成凭证配置，再回来连接服务器。'
+    }
+    : connectionMeta.isPending
+      ? {
+        title: '连接请求已发出',
+        desc: '你可以继续等待，也可以点击下方按钮取消，再重新发起连接。'
+      }
+      : isSubscriptionExpired
+        ? {
+          title: '服务当前已暂停',
+          desc: '订阅恢复后即可继续连接服务器并使用实时控制能力。'
+        }
+        : {
+          title: '可直接开始连接',
+          desc: 'FCM 与服务器信息已就绪，点击下方按钮即可进入实时控制台。'
+        };
 
   return (
     <div className="h-full flex items-center justify-center animate-fade-in relative overflow-hidden font-sans">
@@ -662,7 +720,7 @@ function DisconnectedView({
               {fcmStatus?.isListening && <div className="absolute top-0 right-0 w-2 h-2 bg-[#a3e635] rounded-full shadow-[0_0_5px_#a3e635]" />}
             </div>
             <div className="w-20 h-20 bg-[#cd5241]/10 border border-[#cd5241]/20 tactic-cut flex flex-col items-center justify-center relative scale-110">
-              <FaSatellite className={`text-3xl ${loading ? 'animate-spin' : 'text-gray-700'} ${isPending ? 'text-yellow-400' : ''}`} />
+              <FaSatellite className={`text-3xl ${loading ? 'animate-spin' : 'text-gray-700'} ${connectionMeta.isPending ? 'text-yellow-400' : ''}`} />
               <span className="text-[8px] font-black mt-1 uppercase text-[#cd5241]">Satellite</span>
             </div>
           </div>
@@ -671,8 +729,8 @@ function DisconnectedView({
           <div className="flex items-center justify-center gap-3 mb-10">
             <span className="text-gray-500 font-mono text-xs uppercase tracking-widest">{server.ip}:{server.port}</span>
             <span className="w-1.5 h-1.5 bg-gray-800 rounded-full" />
-            <span className={`font-black text-xs uppercase italic ${isPending ? 'text-yellow-500' : 'text-[#cd5241]'}`}>
-              {isPending ? `链路建立中 (${connectionState})` : '卫星链路未建立'}
+            <span className={`font-black text-xs uppercase italic ${connectionMeta.isPending ? 'text-yellow-500' : 'text-[#cd5241]'}`}>
+              {connectionMeta.isPending ? `链路建立中 (${connectionMeta.label})` : '卫星链路未建立'}
             </span>
           </div>
 
@@ -680,7 +738,7 @@ function DisconnectedView({
             <div className="flex justify-between items-center mb-4">
               <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest">系统就绪状态</span>
               <span className="text-[10px] text-[#cd5241] font-black uppercase italic">
-                {isPending ? '连接中，可取消' : isSubscriptionExpired ? '服务已暂停' : '等待远程授权'}
+                {connectionMeta.isPending ? '连接中，可取消' : isSubscriptionExpired ? '服务已暂停' : '等待远程授权'}
               </span>
             </div>
             <div className="space-y-4">
@@ -694,7 +752,7 @@ function DisconnectedView({
                 <div className="mt-1 w-1.5 h-1.5 rounded-full bg-gray-800" />
                 <p className="text-[9px] text-gray-500 font-medium leading-normal">
                   <span className="text-gray-300 font-bold">实时链路 (WS):</span>{' '}
-                  {isPending
+                  {connectionMeta.isPending
                     ? '连接请求已提交，可点击下方按钮立即取消。'
                     : '需要您手动启动“远程连接”来激活此服务器的实时控制面板。'}
                 </p>
@@ -702,28 +760,43 @@ function DisconnectedView({
             </div>
           </div>
 
+          <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/20 tactic-cut text-left">
+            <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest mb-1">建议下一步</p>
+            <p className="text-sm text-blue-100 font-bold">{nextStep.title}</p>
+            <p className="text-[11px] text-blue-100/80 leading-relaxed mt-1">{nextStep.desc}</p>
+          </div>
+
           <button
-            onClick={isPending ? onDisconnect : onConnect}
+            onClick={connectionMeta.isPending ? onDisconnect : onConnect}
             disabled={isDisabled}
-            title={isSubscriptionExpired && !isPending ? '续费后可连接服务器' : ''}
+            title={isSubscriptionExpired && !connectionMeta.isPending ? '续费后可连接服务器' : ''}
             className={`w-full tactic-cut py-6 font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-4 group text-lg ${isDisabled
               ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
-              : isPending
+              : connectionMeta.isPending
                 ? 'bg-red-500/70 hover:bg-red-500 shadow-2xl shadow-red-500/20'
                 : 'bg-[#cd5241] hover:bg-[#b04537] shadow-2xl shadow-[#cd5241]/20'
               }`}
           >
             {loading ? (
               <>{loadingText}</>
-            ) : isSubscriptionExpired && !isPending ? (
+            ) : isSubscriptionExpired && !connectionMeta.isPending ? (
               <>服务已暂停 · 续费后可用</>
             ) : (
               <>
-                {isPending ? <FaTimes className="text-xs group-hover:scale-110 transition-transform" /> : <FaPlay className="text-xs group-hover:scale-110 transition-transform" />}
+                {connectionMeta.isPending ? <FaTimes className="text-xs group-hover:scale-110 transition-transform" /> : <FaPlay className="text-xs group-hover:scale-110 transition-transform" />}
                 {actionText}
               </>
             )}
           </button>
+
+          {!fcmStatus?.isListening && (
+            <button
+              onClick={onPair}
+              className="w-full mt-3 py-3 border border-yellow-500/30 text-yellow-300 text-[11px] font-black uppercase tactic-cut hover:bg-yellow-500/10 transition-all"
+            >
+              去完成配对（FCM 未就绪）
+            </button>
+          )}
         </div>
       </div>
 
@@ -737,6 +810,20 @@ function DisconnectedView({
 
 function EmptyState({ onPair, fcmStatus, isSubscriptionExpired }) {
   const hasCredentials = fcmStatus?.hasCredentials || fcmStatus?.hasStoredCredentials;
+  const onboardingTip = !hasCredentials
+    ? {
+      title: '第一步：先准备 Edge 插件凭证',
+      desc: '进入配对向导后，按提示完成插件安装、复制 /credentials add 命令并保存。'
+    }
+    : isSubscriptionExpired
+      ? {
+        title: '凭证已就绪，等待恢复服务',
+        desc: '你已经可以接收配对推送，续费后即可继续连接服务器并启用控制。'
+      }
+      : {
+        title: '最后一步：在游戏内完成 Pair',
+        desc: '打开 Rust 游戏中的 Rust+ 配对，完成后服务器会自动出现在控制台。'
+      };
 
   return (
     <div className="h-full flex flex-col items-center justify-center relative animate-fade-in font-sans">
@@ -755,6 +842,12 @@ function EmptyState({ onPair, fcmStatus, isSubscriptionExpired }) {
         <p className="text-gray-500 text-sm mb-8 leading-relaxed font-medium">
           系统处于待机模式，添加服务器开启远程监控
         </p>
+
+        <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/20 tactic-cut text-left max-w-sm mx-auto">
+          <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest mb-1">新手引导</p>
+          <p className="text-sm text-blue-100 font-bold">{onboardingTip.title}</p>
+          <p className="text-[11px] text-blue-100/80 leading-relaxed mt-1">{onboardingTip.desc}</p>
+        </div>
 
         {/* 状态卡片 */}
         <div className="mb-8 p-4 bg-white/[0.02] border border-white/5 tactic-cut text-left max-w-sm mx-auto">
@@ -798,7 +891,7 @@ function EmptyState({ onPair, fcmStatus, isSubscriptionExpired }) {
           className="group relative px-12 py-5 bg-[#cd5241] text-white font-black uppercase italic tactic-cut hover:scale-105 transition-all shadow-2xl shadow-[#cd5241]/30 overflow-hidden text-lg"
         >
           <span className="relative z-10 flex items-center gap-3">
-            <FaPlus /> 添加服务器
+            <FaPlus /> 打开配对向导
           </span>
         </button>
       </div>

@@ -1,29 +1,22 @@
 import { useState, useEffect } from 'react';
 import {
-  FaChrome, FaEdge, FaExternalLinkAlt, FaPuzzlePiece, FaSteam,
+  FaEdge, FaExternalLinkAlt, FaPuzzlePiece, FaSteam,
   FaCheck, FaLock, FaArrowLeft, FaArrowRight, FaSpinner,
   FaSatellite, FaGamepad, FaCheckCircle, FaRocket, FaShieldAlt,
-  FaKey, FaTerminal, FaPlay, FaStop, FaTimes, FaInfoCircle,
+  FaKey, FaPlay, FaStop, FaTimes, FaInfoCircle,
   FaExclamationTriangle, FaCreditCard
 } from 'react-icons/fa';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from './Toast';
 import { getPairingStatus, startPairing, stopPairing, registerSimple } from '../services/pairing';
 import socketService from '../services/socket';
-
-// 插件商店链接
-const STORE_LINKS = {
-  chrome: 'https://chromewebstore.google.com/detail/rust-credentials-helper/YOUR_CHROME_EXTENSION_ID',
-  edge: 'https://microsoftedge.microsoft.com/addons/detail/rust-credentials-helper/cbfnmldjlldpknjbfcmmlgfbakofhcil'
-};
-
-// 检测浏览器类型
-function detectBrowser() {
-  const ua = navigator.userAgent;
-  if (ua.includes('Edg/')) return 'edge';
-  if (ua.includes('Chrome/')) return 'chrome';
-  return 'chrome';
-}
+import {
+  EDGE_EXTENSION_URL,
+  STEAM_LOGIN_URL,
+  REQUIRED_PLUGIN_BROWSER,
+  detectBrowser,
+  isEdgeBrowser
+} from '../constants/pairing.constants';
 
 /**
  * PairingWizard - 服务器配对向导
@@ -33,6 +26,7 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
   const { isSubscriptionExpired, user } = useAuth();
   const toast = useToast();
   const [browser] = useState(detectBrowser);
+  const isUsingEdge = isEdgeBrowser(browser);
 
   // 状态
   const [fcmStatus, setFcmStatus] = useState(initialFcmStatus || {
@@ -48,10 +42,10 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
 
   // 步骤定义
   const steps = [
-    { id: 1, label: '安装插件', icon: FaPuzzlePiece },
-    { id: 2, label: 'FCM 授权', icon: FaKey },
-    { id: 3, label: '游戏配对', icon: FaGamepad },
-    { id: 4, label: '完成', icon: FaCheckCircle }
+    { id: 1, label: '安装 Edge 插件', icon: FaPuzzlePiece },
+    { id: 2, label: '获取凭证', icon: FaKey },
+    { id: 3, label: '启动监听', icon: FaGamepad },
+    { id: 4, label: '完成配对', icon: FaCheckCircle }
   ];
 
   // 根据状态计算初始步骤
@@ -104,6 +98,10 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
       return;
     }
 
+    if (!isUsingEdge) {
+      toast.warning(`当前浏览器不是 ${REQUIRED_PLUGIN_BROWSER}，请确保凭证来自 Edge 插件`);
+    }
+
     setLoading(true);
     try {
       const res = await registerSimple(credentialsInput);
@@ -114,7 +112,13 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
       }
     } catch (err) {
       const errorMsg = err.response?.data?.error || err.message || '授权失败';
-      toast.error(`凭证配置失败: ${errorMsg}`);
+      if (errorMsg.includes('gcm_android_id') || errorMsg.includes('gcm_security_token')) {
+        toast.error('凭证格式错误：请从 Edge 插件复制完整 /credentials add 命令');
+      } else if (errorMsg.includes('过期')) {
+        toast.error('凭证已过期：请在 Edge 中重新登录并复制最新命令');
+      } else {
+        toast.error(`凭证配置失败: ${errorMsg}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -163,6 +167,9 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
     if (stepId === currentStep) return 'active';
     return 'pending';
   };
+
+  const hasCredentials = fcmStatus.hasCredentials || fcmStatus.hasStoredCredentials;
+  const isPairingListening = isListening || fcmStatus.isListening;
 
   // 订阅过期锁定态
   if (isSubscriptionExpired) {
@@ -221,32 +228,45 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
         <WizardContainer>
           <WizardHeader steps={steps} currentStep={currentStep} getStepStatus={getStepStatus} />
 
-          {/* FCM 状态提示条 */}
-          {(fcmStatus.hasCredentials || fcmStatus.hasStoredCredentials) && currentStep < 4 && (
-            <div className="mx-6 mt-6 p-3 bg-green-500/10 border border-green-500/20 tactic-cut">
-              <div className="flex items-center gap-3 text-sm">
-                <FaCheck className="text-green-500" />
-                <span className="text-green-400">FCM 凭证已配置</span>
-                <span className="text-gray-600">|</span>
-                <span className="text-gray-500">Steam: {fcmStatus.steamId || '未知'}</span>
-                {fcmStatus.isListening && (
-                  <>
-                    <span className="text-gray-600">|</span>
-                    <span className="text-green-400 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-                      监听中
-                    </span>
-                  </>
-                )}
-              </div>
+          {!isUsingEdge && currentStep < 4 && (
+            <div className="mx-6 mt-6">
+              <EdgeRequiredNotice compact />
             </div>
           )}
+
+          <div className="mx-6 mt-6 p-4 bg-white/[0.02] border border-white/10 tactic-cut">
+            <div className="flex flex-wrap items-center gap-3 text-[11px]">
+              <StatusPill
+                label="Edge 插件"
+                active={isUsingEdge}
+                activeText="当前为 Edge"
+                inactiveText="当前非 Edge（可继续，但凭证必须来自 Edge 插件）"
+              />
+              <StatusPill
+                label="FCM 凭证"
+                active={hasCredentials}
+                activeText="已配置"
+                inactiveText="未配置"
+              />
+              <StatusPill
+                label="监听状态"
+                active={isPairingListening}
+                activeText="监听中"
+                inactiveText="未启动"
+              />
+            </div>
+            {hasCredentials && (
+              <div className="mt-3 text-[10px] text-gray-500 uppercase tracking-wider">
+                Steam ID: {fcmStatus.steamId || '未知'}
+              </div>
+            )}
+          </div>
 
           {/* 步骤内容 */}
           <div className="p-6">
             {currentStep === 1 && (
               <Step1InstallPlugin
-                browser={browser}
+                isUsingEdge={isUsingEdge}
                 onNext={() => setCurrentStep(2)}
                 onSkip={() => setCurrentStep(2)}
               />
@@ -260,6 +280,7 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
                 onSubmit={handleSubmitCredentials}
                 onBack={() => setCurrentStep(1)}
                 fcmStatus={fcmStatus}
+                isUsingEdge={isUsingEdge}
                 onSkipToStep3={() => setCurrentStep(3)}
               />
             )}
@@ -384,50 +405,29 @@ function WizardFooter({ children }) {
 
 // ============ 步骤组件 ============
 
-function Step1InstallPlugin({ browser, onNext, onSkip }) {
+function Step1InstallPlugin({ isUsingEdge, onNext, onSkip }) {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="p-4 bg-blue-500/5 border border-blue-500/20 tactic-cut">
         <div className="flex items-start gap-3">
           <FaInfoCircle className="text-blue-400 mt-0.5" />
           <p className="text-xs text-gray-300 leading-relaxed">
-            为了自动获取 Steam 凭证，建议先安装我们的浏览器插件。
-            插件会在你登录 Steam 时自动提取并显示凭证信息。
+            获取 FCM 凭证必须使用 {REQUIRED_PLUGIN_BROWSER} 插件。
+            你仍可继续后续步骤，但只有来自 Edge 插件的凭证才能成功配对。
           </p>
         </div>
       </div>
 
+      {!isUsingEdge && <EdgeRequiredNotice />}
+
       <div className="space-y-3">
         <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-l-2 border-[#cd5241] pl-2">
-          选择你的浏览器安装插件
+          安装 {REQUIRED_PLUGIN_BROWSER} 插件
         </p>
 
-        {/* Chrome 插件暂时隐藏，待上架后恢复 */}
-        {/* <button
-          onClick={() => window.open(STORE_LINKS.chrome, '_blank')}
-          className={`w-full p-4 tactic-cut flex items-center gap-4 transition-all border ${
-            browser === 'chrome'
-              ? 'bg-[#4285f4]/10 border-[#4285f4]/30'
-              : 'bg-white/5 border-white/10 hover:border-white/20'
-          }`}
-        >
-          <div className="w-10 h-10 bg-[#4285f4]/20 rounded-lg flex items-center justify-center">
-            <FaChrome className="text-[#4285f4] text-xl" />
-          </div>
-          <div className="text-left flex-1">
-            <div className="font-bold text-sm text-white">Google Chrome</div>
-            <div className="text-[10px] text-gray-500">Chrome 网上应用店</div>
-          </div>
-          <FaExternalLinkAlt className="text-gray-600" />
-        </button> */}
-
         <button
-          onClick={() => window.open(STORE_LINKS.edge, '_blank')}
-          className={`w-full p-4 tactic-cut flex items-center gap-4 transition-all border ${
-            browser === 'edge'
-              ? 'bg-[#0078d4]/10 border-[#0078d4]/30'
-              : 'bg-white/5 border-white/10 hover:border-white/20'
-          }`}
+          onClick={() => window.open(EDGE_EXTENSION_URL, '_blank')}
+          className="w-full p-4 tactic-cut flex items-center gap-4 transition-all border bg-[#0078d4]/10 border-[#0078d4]/30 hover:bg-[#0078d4]/20"
         >
           <div className="w-10 h-10 bg-[#0078d4]/20 rounded-lg flex items-center justify-center">
             <FaEdge className="text-[#0078d4] text-xl" />
@@ -443,7 +443,9 @@ function Step1InstallPlugin({ browser, onNext, onSkip }) {
       <div className="p-3 bg-yellow-500/5 border border-yellow-500/20 tactic-cut">
         <p className="text-[10px] text-gray-400 leading-relaxed">
           <span className="text-yellow-400 font-bold">提示：</span>
-          安装完成后，浏览器右上角会出现插件图标。确认安装成功后点击下方按钮继续。
+          安装后请在 Edge 中打开插件并登录 Steam，确认能复制
+          <span className="text-[#cd5241] font-mono"> /credentials add ... </span>
+          命令再继续。
         </p>
       </div>
 
@@ -466,11 +468,22 @@ function Step1InstallPlugin({ browser, onNext, onSkip }) {
   );
 }
 
-function Step2FcmAuth({ credentialsInput, setCredentialsInput, loading, onSubmit, onBack, fcmStatus, onSkipToStep3 }) {
+function Step2FcmAuth({
+  credentialsInput,
+  setCredentialsInput,
+  loading,
+  onSubmit,
+  onBack,
+  fcmStatus,
+  isUsingEdge,
+  onSkipToStep3
+}) {
   const hasCredentials = fcmStatus.hasCredentials || fcmStatus.hasStoredCredentials;
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {!isUsingEdge && <EdgeRequiredNotice />}
+
       {/* 如果已有凭证，显示跳过选项 */}
       {hasCredentials && (
         <div className="p-4 bg-green-500/10 border border-green-500/20 tactic-cut">
@@ -494,15 +507,15 @@ function Step2FcmAuth({ credentialsInput, setCredentialsInput, loading, onSubmit
           <FaInfoCircle /> 获取凭证步骤
         </h3>
         <div className="space-y-3">
-          <GuideStep num="1" text="点击下方按钮，打开 Steam 官方授权页面" />
-          <GuideStep num="2" text="使用 Steam 账号登录完成身份验证" />
-          <GuideStep num="3" text="登录成功后，插件会自动显示凭证信息" />
-          <GuideStep num="4" text="复制完整的 /credentials 指令粘贴到下方" />
+          <GuideStep num="1" text={`在 ${REQUIRED_PLUGIN_BROWSER} 中安装并启用插件`} />
+          <GuideStep num="2" text="点击下方按钮，打开 Steam 官方授权页面并登录" />
+          <GuideStep num="3" text="登录成功后，插件页面复制完整凭证命令" />
+          <GuideStep num="4" text="将 /credentials add ... 命令粘贴到下方并提交" />
         </div>
       </div>
 
       <button
-        onClick={() => window.open('https://companion-rust.facepunch.com/login', '_blank')}
+        onClick={() => window.open(STEAM_LOGIN_URL, '_blank')}
         className="w-full p-4 bg-[#1b2838] border border-[#66c0f4]/30 tactic-cut flex items-center justify-center gap-3 hover:bg-[#2a475e] transition-all group"
       >
         <FaSteam className="text-2xl text-[#66c0f4]" />
@@ -555,9 +568,9 @@ function Step3GamePairing({ isListening, loading, onStartListening, onStopListen
             <div className="w-16 h-16 bg-[#cd5241]/10 border border-[#cd5241]/30 tactic-cut flex items-center justify-center mx-auto mb-4">
               <FaGamepad className="text-2xl text-[#cd5241]" />
             </div>
-            <h3 className="text-lg font-black uppercase italic text-white mb-2">准备就绪</h3>
+            <h3 className="text-lg font-black uppercase italic text-white mb-2">启动监听</h3>
             <p className="text-xs text-gray-500 max-w-sm mx-auto">
-              FCM 凭证已配置，点击下方按钮开始监听游戏内的配对信号
+              凭证就绪后，先启动监听，再回到游戏里发起 Pair。
             </p>
           </div>
 
@@ -567,15 +580,15 @@ function Step3GamePairing({ isListening, loading, onStartListening, onStopListen
             className="w-full tactic-cut bg-[#cd5241] py-5 text-[11px] font-black uppercase tracking-[0.2em] hover:bg-[#b04537] transition-all flex items-center justify-center gap-3 shadow-lg shadow-[#cd5241]/20"
           >
             {loading ? <FaSpinner className="animate-spin" /> : <FaPlay />}
-            {loading ? '启动中...' : '开始监听配对信号'}
-          </button>
+              {loading ? '启动中...' : '开始监听'}
+            </button>
         </>
       ) : (
         <>
           <div className="p-4 bg-green-500/10 border border-green-500/20 tactic-cut">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-sm font-bold text-green-400">正在监听配对信号...</span>
+              <span className="text-sm font-bold text-green-400">监听已启动，等待游戏内 Pair...</span>
             </div>
             <p className="text-[10px] text-gray-500 uppercase tracking-widest">
               等待 Rust 游戏内发起配对请求
@@ -655,6 +668,34 @@ function Step4Complete({ pairedServer, onFinish }) {
       >
         <FaRocket /> 进入控制台
       </button>
+    </div>
+  );
+}
+
+function EdgeRequiredNotice({ compact = false }) {
+  return (
+    <div className={`tactic-cut border border-yellow-500/30 bg-yellow-500/10 ${compact ? 'p-3' : 'p-4'}`}>
+      <div className="flex items-start gap-3">
+        <FaExclamationTriangle className="text-yellow-400 mt-0.5" />
+        <p className="text-[11px] text-yellow-100/90 leading-relaxed">
+          FCM 凭证需通过 <strong>{REQUIRED_PLUGIN_BROWSER} 插件</strong> 获取。当前可继续流程，
+          但请确保最终粘贴的命令来自 Edge 插件。
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function StatusPill({ label, active, activeText, inactiveText }) {
+  return (
+    <div className={`px-2.5 py-1.5 tactic-cut border text-[10px] uppercase tracking-wider ${
+      active
+        ? 'bg-green-500/10 border-green-500/30 text-green-400'
+        : 'bg-white/5 border-white/10 text-gray-500'
+    }`}>
+      <span className="font-black">{label}</span>
+      <span className="mx-1 text-gray-600">·</span>
+      <span>{active ? activeText : inactiveText}</span>
     </div>
   );
 }

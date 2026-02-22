@@ -57,24 +57,24 @@ export default function PaymentPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0d0e10] text-[#e0e0e0] font-sans p-6 relative overflow-hidden flex flex-col items-center">
+    <div className="min-h-screen bg-[#0d0e10] text-[#e0e0e0] font-sans p-4 md:p-6 relative overflow-hidden flex flex-col items-center">
       <div className="scanline"></div>
       
       {/* 头部状态 */}
-      <header className="w-full max-w-5xl flex justify-between items-center mb-12 border-b border-white/5 pb-6">
+      <header className="w-full max-w-5xl flex flex-col md:flex-row justify-between md:items-center gap-4 mb-8 md:mb-12 border-b border-white/5 pb-6">
         <div className="flex items-center gap-4">
           <button onClick={() => navigate('/dashboard')} className="w-10 h-10 tactic-cut border border-white/10 flex items-center justify-center hover:bg-[#cd5241] transition-all">
             <FaArrowLeft className="text-xs" />
           </button>
           <div>
-            <h1 className="text-2xl font-black uppercase tracking-widest glow-text italic">开通高级订阅</h1>
-            <p className="text-[10px] text-gray-600 uppercase tracking-[0.4em] font-bold">获取 24/7 基地报警与远程控制权限</p>
+            <h1 className="text-2xl font-black uppercase tracking-widest glow-text italic">订阅与续费</h1>
+            <p className="text-[10px] text-gray-600 uppercase tracking-[0.3em] font-bold">开通实时报警与远程控制能力</p>
           </div>
         </div>
         <div className="flex items-center gap-6">
           <div className="hidden md:flex gap-6 text-[10px] font-bold text-gray-500 uppercase">
             <span>安全连接: 已加密</span>
-            <span>节点: HK-PAY-01</span>
+            <span>支付通道: 支付宝</span>
           </div>
           <button
             onClick={logout}
@@ -129,10 +129,10 @@ export default function PaymentPage() {
 
             {/* 确认操作 */}
             <div className="tactic-border tactic-cut p-1 bg-black/40 max-w-2xl mx-auto shadow-2xl">
-               <div className="bg-black/40 p-8 flex flex-col md:flex-row items-center justify-between gap-8">
+              <div className="bg-black/40 p-8 flex flex-col md:flex-row items-center justify-between gap-8">
                   <div>
                     <div className="text-[10px] text-gray-500 font-bold mb-1 uppercase tracking-widest">当前选择的级别</div>
-                    <div className="text-2xl font-black text-[#cd5241] uppercase tracking-tighter">{PLANS[selectedPlan].level} 远程权限</div>
+                    <div className="text-2xl font-black text-[#cd5241] uppercase tracking-tighter">{PLANS[selectedPlan].level}</div>
                   </div>
                   <button 
                     onClick={handleCreateOrder}
@@ -142,7 +142,7 @@ export default function PaymentPage() {
                     {loading ? '正在获取支付信息...' : (
                       <>
                         <FaQrcode className="group-hover:scale-110 transition-transform" />
-                        立即扫码开通
+                        立即扫码支付
                       </>
                     )}
                   </button>
@@ -156,7 +156,7 @@ export default function PaymentPage() {
               <div className="bg-[#121417] p-12 text-center relative overflow-hidden">
                 <div className="scanline"></div>
                 <h2 className="text-2xl font-black uppercase tracking-widest mb-2 glow-text italic">安全支付终端</h2>
-                <p className="text-[10px] text-gray-600 uppercase tracking-[0.4em] mb-12">正在通过支付宝加密链路建立交易...</p>
+                <p className="text-[10px] text-gray-600 uppercase tracking-[0.3em] mb-12">请使用支付宝扫码完成支付</p>
 
                 <div className="relative inline-block mb-12 p-6 tactic-border tactic-cut bg-white/[0.03] shadow-inner">
                   {qrCode ? (

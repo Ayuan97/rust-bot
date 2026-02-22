@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   FaBell, FaCheck, FaExclamationTriangle, FaTimes,
-  FaTrash, FaSync, FaSearch, FaInfoCircle, FaClipboard, FaTerminal, FaSave, FaLock, FaPlug
+  FaTrash, FaSync, FaSearch, FaInfoCircle, FaSave, FaLock, FaPlug
 } from 'react-icons/fa';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmModal';
@@ -14,6 +14,7 @@ import {
   verifyCredentials,
   startPairing
 } from '../services/pairing';
+import { EDGE_EXTENSION_URL, STEAM_LOGIN_URL, REQUIRED_PLUGIN_BROWSER } from '../constants/pairing.constants';
 
 /**
  * FCM 配置组件 - 用于管理和诊断 FCM 凭证
@@ -495,7 +496,8 @@ function FCMSettings({ onNavigateToPairing }) {
               <p><strong>关于 FCM 凭证:</strong></p>
               <ul className="list-disc list-inside text-gray-400 space-y-1">
                 <li>FCM 用于接收游戏中的配对推送（在游戏中点击 Pair）</li>
-                <li>凭证从 <a href="https://companion-rust.facepunch.com/login" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">companion-rust.facepunch.com</a> 获取</li>
+                <li>凭证建议使用 {REQUIRED_PLUGIN_BROWSER} 插件生成并复制</li>
+                <li>登录页：<a href={STEAM_LOGIN_URL} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">companion-rust.facepunch.com</a></li>
                 <li>凭证有有效期，过期后需要重新获取</li>
                 <li>如果连接循环或无法接收推送，尝试更新凭证或重置</li>
               </ul>
@@ -535,9 +537,25 @@ function FCMSettings({ onNavigateToPairing }) {
                   <div className="flex gap-4">
                     <div className="w-6 h-6 tactic-cut bg-[#cd5241]/20 text-[#cd5241] flex items-center justify-center text-xs font-black shrink-0 mt-0.5">1</div>
                     <div>
-                      <p className="text-gray-300 text-sm">点击下方链接登录 Rust+ 官网</p>
+                      <p className="text-gray-300 text-sm">
+                        先在 {REQUIRED_PLUGIN_BROWSER} 安装插件并确认已启用
+                      </p>
                       <a
-                        href="https://companion-rust.facepunch.com/login"
+                        href={EDGE_EXTENSION_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#cd5241] hover:underline text-sm inline-flex items-center gap-1 mt-1 font-bold"
+                      >
+                        打开 Edge 插件商店 <FaExternalLinkIcon />
+                      </a>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-6 h-6 tactic-cut bg-[#cd5241]/20 text-[#cd5241] flex items-center justify-center text-xs font-black shrink-0 mt-0.5">2</div>
+                    <div>
+                      <p className="text-gray-300 text-sm">在 Edge 中打开 Rust+ 登录页并完成 Steam 登录</p>
+                      <a
+                        href={STEAM_LOGIN_URL}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-[#cd5241] hover:underline text-sm inline-flex items-center gap-1 mt-1 font-bold"
@@ -547,42 +565,16 @@ function FCMSettings({ onNavigateToPairing }) {
                     </div>
                   </div>
                   <div className="flex gap-4">
-                    <div className="w-6 h-6 tactic-cut bg-[#cd5241]/20 text-[#cd5241] flex items-center justify-center text-xs font-black shrink-0 mt-0.5">2</div>
-                    <div>
-                      <p className="text-gray-300 text-sm">登录成功后，打开浏览器控制台 (F12)</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
                     <div className="w-6 h-6 tactic-cut bg-[#cd5241]/20 text-[#cd5241] flex items-center justify-center text-xs font-black shrink-0 mt-0.5">3</div>
                     <div>
-                      <p className="text-gray-300 text-sm">
-                        复制以下代码在控制台运行，然后将生成的 <code className="bg-white/10 px-1 py-0.5 tactic-cut text-xs text-[#cd5241]">/credentials add ...</code> 命令粘贴到下方
-                      </p>
-                      <div className="mt-2 bg-black/50 p-3 tactic-cut border border-white/5 text-xs font-mono text-gray-400 overflow-x-auto relative group">
-                        <code>
-                          {`copy(\`/credentials add gcm_android_id:\${localStorage.gcm_android_id} gcm_security_token:\${localStorage.gcm_security_token} steam_id:\${localStorage.steam_id} fcm_token:\${localStorage.fcm_token} auth_token:\${localStorage.auth_token} expire_date:\${localStorage.expire_date}\`)`}
-                        </code>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(`copy(\`/credentials add gcm_android_id:\${localStorage.gcm_android_id} gcm_security_token:\${localStorage.gcm_security_token} steam_id:\${localStorage.steam_id} fcm_token:\${localStorage.fcm_token} auth_token:\${localStorage.auth_token} expire_date:\${localStorage.expire_date}\`)`);
-                            toast.success('代码已复制');
-                          }}
-                          className="absolute right-2 top-2 p-1.5 tactic-cut bg-white/10 hover:bg-[#cd5241]/30 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="复制代码"
-                        >
-                          <FaClipboard />
-                        </button>
-                      </div>
+                      <p className="text-gray-300 text-sm">在插件结果页复制完整的 <code className="bg-white/10 px-1 py-0.5 tactic-cut text-xs text-[#cd5241]">/credentials add ...</code> 命令，粘贴到下方保存</p>
                     </div>
                   </div>
                 </div>
 
                 {/* 输入区域 */}
                 <div className="space-y-2">
-                  <label className="text-xs font-black text-gray-300 uppercase tracking-widest flex items-center gap-2">
-                    <FaTerminal className="text-[#cd5241]" />
-                    粘贴凭证命令
-                  </label>
+                  <label className="text-xs font-black text-gray-300 uppercase tracking-widest">粘贴凭证命令</label>
                   <textarea
                     value={updateCommand}
                     onChange={(e) => setUpdateCommand(e.target.value)}
