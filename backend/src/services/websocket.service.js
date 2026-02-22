@@ -444,7 +444,21 @@ class WebSocketService {
 
           const userService = getUserService();
           const info = await userService.rustPlusService.getServerInfo(serverId);
-          socket.emit('server:info:success', { serverId, info });
+          const payloadInfo = { ...info };
+
+          if (userService.commandsService) {
+            const now = Date.now();
+            const players = Number.parseInt(payloadInfo.players, 10) || 0;
+            userService.commandsService.recordPopSample(serverId, players, now);
+            payloadInfo.popTrend = userService.commandsService.getPopulationTrend(serverId, players, now);
+            payloadInfo.popSeries = userService.commandsService.getPopulationSeries(serverId, {
+              now,
+              windowMs: userService.commandsService.POP_CURVE_WINDOW_MS,
+              maxPoints: 240
+            });
+          }
+
+          socket.emit('server:info:success', { serverId, info: payloadInfo });
         } catch (error) {
           socket.emit('server:info:error', {
             serverId,

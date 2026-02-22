@@ -10,6 +10,39 @@ import { getBattlemetricsInfo } from '../services/api';
 import { useToast } from './Toast';
 import { formatGameTime, isDaytime, formatTimeAgo } from '../utils/time';
 
+const POP_CURVE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+const POP_CURVE_FULL_TOLERANCE_MS = 20 * 60 * 1000;
+
+function formatMiniTime(timestamp) {
+  if (!timestamp) return '--';
+  const date = new Date(timestamp);
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  const hour = `${date.getHours()}`.padStart(2, '0');
+  const minute = `${date.getMinutes()}`.padStart(2, '0');
+  return `${month}-${day} ${hour}:${minute}`;
+}
+
+function buildPopulationPath(points, width, height, padding = 4) {
+  if (!Array.isArray(points) || points.length === 0) {
+    return '';
+  }
+
+  const minPlayers = Math.min(...points.map((point) => point.players));
+  const maxPlayers = Math.max(...points.map((point) => point.players));
+  const playerRange = Math.max(1, maxPlayers - minPlayers);
+
+  const minTs = points[0].timestamp;
+  const maxTs = points[points.length - 1].timestamp;
+  const tsRange = Math.max(1, maxTs - minTs);
+
+  return points.map((point, index) => {
+    const x = padding + ((point.timestamp - minTs) / tsRange) * (width - padding * 2);
+    const y = height - padding - ((point.players - minPlayers) / playerRange) * (height - padding * 2);
+    return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
+  }).join(' ');
+}
+
 function ServerCard({ server, onDelete, onSelect, isActive }) {
   const [serverInfo, setServerInfo] = useState(null);
   const [timeInfo, setTimeInfo] = useState(null);
@@ -110,6 +143,27 @@ function ServerCard({ server, onDelete, onSelect, isActive }) {
   };
 
   const percentage = getPlayerPercentage();
+  const popSeries = Array.isArray(serverInfo?.popSeries)
+    ? serverInfo.popSeries
+      .map((point) => ({
+        timestamp: Number(point?.timestamp) || 0,
+        players: Number(point?.players) || 0
+      }))
+      .filter((point) => point.timestamp > 0)
+      .sort((a, b) => a.timestamp - b.timestamp)
+    : [];
+  const canShowPopCurve = popSeries.length >= 2;
+  const popPath = canShowPopCurve ? buildPopulationPath(popSeries, 220, 54) : '';
+  const popMin = canShowPopCurve ? Math.min(...popSeries.map((point) => point.players)) : 0;
+  const popMax = canShowPopCurve ? Math.max(...popSeries.map((point) => point.players)) : 0;
+  const popStart = canShowPopCurve ? popSeries[0] : null;
+  const popEnd = canShowPopCurve ? popSeries[popSeries.length - 1] : null;
+  const popMidTs = (canShowPopCurve && popStart && popEnd)
+    ? Math.floor((popStart.timestamp + popEnd.timestamp) / 2)
+    : null;
+  const popCoverageMs = (canShowPopCurve && popStart && popEnd) ? Math.max(0, popEnd.timestamp - popStart.timestamp) : 0;
+  const popCoverageHours = Math.max(1, Math.round(popCoverageMs / (60 * 60 * 1000)));
+  const popHasFullThreeDay = canShowPopCurve && popCoverageMs >= (POP_CURVE_WINDOW_MS - POP_CURVE_FULL_TOLERANCE_MS);
 
   return (
     <div
@@ -285,11 +339,47 @@ function ServerCard({ server, onDelete, onSelect, isActive }) {
                       <FaUsers className="text-gray-500" />
                       <span>在线: {serverInfo.players}/{serverInfo.maxPlayers}</span>
                     </div>
+                    {serverInfo.popTrend?.hasBaseline && Number(serverInfo.popTrend?.diff) !== 0 && (
+                      <div className="flex items-center gap-2 text-gray-300">
+                        <FaSignal className={Number(serverInfo.popTrend?.diff) > 0 ? 'text-emerald-400' : 'text-red-400'} />
+                        <span>
+                          1小时变化:
+                          <span className={Number(serverInfo.popTrend?.diff) > 0 ? 'text-emerald-400 ml-1' : 'text-red-400 ml-1'}>
+                            {Number(serverInfo.popTrend?.diff) > 0 ? '+' : ''}{Number(serverInfo.popTrend?.diff)}
+                          </span>
+                        </span>
+                      </div>
+                    )}
                     {serverInfo.queuedPlayers > 0 && (
                       <div className="flex items-center gap-2 text-gray-300">
                         <FaClock className="text-gray-500" />
                         <span>排队: {serverInfo.queuedPlayers}人</span>
                       </div>
+                    )}
+                    {canShowPopCurve ? (
+                      <div className="mt-2 p-2 rounded-md border border-white/10 bg-black/40">
+                        <div className="flex items-center justify-between text-[10px] text-gray-500 mb-1">
+                          <span>近3天在线曲线</span>
+                          <span>MIN {popMin} / MAX {popMax}</span>
+                        </div>
+                        <svg viewBox="0 0 220 54" className="w-full h-14">
+                          <path d={popPath} fill="none" stroke="#fb923c" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                        <div className="flex items-center justify-between text-[10px] text-gray-500 mt-1">
+                          <span>{formatMiniTime(popStart?.timestamp)}</span>
+                          <span>{formatMiniTime(popMidTs)}</span>
+                          <span>{formatMiniTime(popEnd?.timestamp)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-gray-500 mt-1">
+                          <span>{popStart?.players ?? 0}人</span>
+                          <span>{popEnd?.players ?? 0}人</span>
+                        </div>
+                        {!popHasFullThreeDay && (
+                          <div className="text-[10px] text-gray-500 mt-1">当前已采样约 {popCoverageHours} 小时，满 72 小时后更完整</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-gray-500">在线曲线采样中（至少2个采样点后显示，满72小时更完整）</div>
                     )}
                   </>
                 )}

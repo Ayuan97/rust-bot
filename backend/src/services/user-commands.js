@@ -16,6 +16,8 @@ import { getLanguageCode } from '../utils/languages.js';
 
 const SHOP_SEARCH_CHINESE_REGEX = /[\u3400-\u9FFF]/;
 const SHOP_TRANSLATION_CACHE_LIMIT = 200;
+const POP_SAMPLING_INTERVAL_MS = 60 * 1000;
+const POP_CURVE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const SHOP_SEARCH_ALIAS_MAP = new Map([
   ['金属门', ['door.hinged.metal', 'sheet metal door', 'metal door', '铁门']],
   ['铁门', ['door.hinged.metal', 'sheet metal door', 'metal door']],
@@ -60,14 +62,162 @@ class UserCommands extends EventEmitter {
     this.TIME_CACHE_TTL = 5 * 60 * 1000; // 5分钟刷新一次配置
     this.popHistory = new Map(); // serverId -> [{ timestamp, players }]
     this.POP_HISTORY_WINDOW_MS = 60 * 60 * 1000; // 过去一小时
-    this.POP_HISTORY_RETENTION_MS = 2 * 60 * 60 * 1000; // 最多保留两小时样本
+    this.POP_CURVE_WINDOW_MS = POP_CURVE_WINDOW_MS; // 近三天曲线
+    this.POP_HISTORY_RETENTION_MS = this.POP_CURVE_WINDOW_MS + (24 * 60 * 60 * 1000); // 最多保留四天样本
     this.POP_BASELINE_TOLERANCE_MS = 5 * 60 * 1000; // 基线允许误差，超出则不展示一小时变化
-    this.POP_MIN_DIFF_WINDOW_MS = 5 * 60 * 1000; // 样本窗口不足 5 分钟时不展示涨跌
-    this.POP_HISTORY_MAX_POINTS = 240; // 防止极端刷屏导致内存增长
+    this.POP_HISTORY_MAX_POINTS = Math.ceil(this.POP_HISTORY_RETENTION_MS / POP_SAMPLING_INTERVAL_MS) + 120; // 防止极端刷屏导致内存增长
+    this.popSamplingTimer = null;
+    this.isCollectingPopSamples = false;
     this.shopSearchTranslationCache = new Map();
 
     // 注册内置命令
     this.registerBuiltInCommands();
+    this.startPopSampling();
+  }
+
+  startPopSampling() {
+    if (this.popSamplingTimer) {
+      return;
+    }
+
+    this.popSamplingTimer = setInterval(() => {
+      this.collectPopSamples().catch((error) => {
+        logger.debug(`[pop] 定时采样失败 (userId=${this.userId}): ${error.message}`);
+      });
+    }, POP_SAMPLING_INTERVAL_MS);
+
+    this.collectPopSamples().catch((error) => {
+      logger.debug(`[pop] 初始化采样失败 (userId=${this.userId}): ${error.message}`);
+    });
+  }
+
+  async collectPopSamples() {
+    if (this.isCollectingPopSamples) {
+      return;
+    }
+
+    const connectedServers = typeof this.rustPlusService.getConnectedServers === 'function'
+      ? this.rustPlusService.getConnectedServers()
+      : [];
+
+    if (!connectedServers.length) {
+      return;
+    }
+
+    this.isCollectingPopSamples = true;
+    try {
+      for (const serverId of connectedServers) {
+        try {
+          const info = await this.rustPlusService.getServerInfo(serverId);
+          if (!info) {
+            continue;
+          }
+
+          const players = Number.parseInt(info.players, 10) || 0;
+          this.recordPopSample(serverId, players, Date.now());
+        } catch (error) {
+          logger.debug(`[pop] 采样失败 serverId=${serverId}: ${error.message}`);
+        }
+      }
+    } finally {
+      this.isCollectingPopSamples = false;
+    }
+  }
+
+  recordPopSample(serverId, players, timestamp = Date.now()) {
+    const history = this.popHistory.get(serverId) || [];
+    const retained = history.filter((point) => point.timestamp >= timestamp - this.POP_HISTORY_RETENTION_MS);
+    const numericPlayers = Number.parseInt(players, 10) || 0;
+    const lastPoint = retained[retained.length - 1];
+
+    // WebSocket 刷新和定时采样可能会在短时间内重复写入，合并为单点避免 3 天数据膨胀
+    if (lastPoint && (timestamp - lastPoint.timestamp) < (POP_SAMPLING_INTERVAL_MS * 0.9)) {
+      lastPoint.timestamp = Math.max(lastPoint.timestamp, timestamp);
+      lastPoint.players = numericPlayers;
+    } else {
+      retained.push({ timestamp, players: numericPlayers });
+    }
+
+    if (retained.length > this.POP_HISTORY_MAX_POINTS) {
+      retained.splice(0, retained.length - this.POP_HISTORY_MAX_POINTS);
+    }
+
+    this.popHistory.set(serverId, retained);
+    return retained;
+  }
+
+  getPopulationTrend(serverId, currentPlayers, now = Date.now()) {
+    const history = this.popHistory.get(serverId) || [];
+    const retained = history.filter((point) => point.timestamp >= now - this.POP_HISTORY_RETENTION_MS);
+    const windowStart = now - this.POP_HISTORY_WINDOW_MS;
+
+    let baselinePoint = null;
+    let baselineGap = Number.POSITIVE_INFINITY;
+    for (const point of retained) {
+      const gap = Math.abs(point.timestamp - windowStart);
+      if (gap <= this.POP_BASELINE_TOLERANCE_MS && gap < baselineGap) {
+        baselinePoint = point;
+        baselineGap = gap;
+      }
+    }
+
+    if (!baselinePoint) {
+      return {
+        hasBaseline: false,
+        diff: null,
+        baselineTime: null,
+        windowMinutes: 60
+      };
+    }
+
+    const baselinePlayers = Number.parseInt(baselinePoint.players, 10) || 0;
+    const current = Number.parseInt(currentPlayers, 10) || 0;
+
+    return {
+      hasBaseline: true,
+      diff: current - baselinePlayers,
+      baselineTime: baselinePoint.timestamp,
+      windowMinutes: 60
+    };
+  }
+
+  getPopulationSeries(serverId, options = {}) {
+    const {
+      now = Date.now(),
+      windowMs = this.POP_HISTORY_WINDOW_MS,
+      maxPoints = 120
+    } = options;
+
+    const history = this.popHistory.get(serverId) || [];
+    const windowStart = now - windowMs;
+    const windowPoints = history.filter((point) => point.timestamp >= windowStart);
+
+    if (windowPoints.length <= maxPoints) {
+      return windowPoints.map((point) => ({
+        timestamp: point.timestamp,
+        players: Number.parseInt(point.players, 10) || 0
+      }));
+    }
+
+    const step = Math.ceil(windowPoints.length / maxPoints);
+    const sampled = [];
+    for (let i = 0; i < windowPoints.length; i += step) {
+      const point = windowPoints[i];
+      sampled.push({
+        timestamp: point.timestamp,
+        players: Number.parseInt(point.players, 10) || 0
+      });
+    }
+
+    const lastPoint = windowPoints[windowPoints.length - 1];
+    if (sampled[sampled.length - 1]?.timestamp !== lastPoint.timestamp) {
+      sampled.push({
+        timestamp: lastPoint.timestamp,
+        players: Number.parseInt(lastPoint.players, 10) || 0
+      });
+    }
+
+    return sampled;
   }
 
   /**
@@ -661,62 +811,19 @@ class UserCommands extends EventEmitter {
         return cmd('pop', 'error');
       }
 
-      const current = info.players || 0;
-      const max = info.maxPlayers || 0;
-      const queued = info.queuedPlayers || 0;
+      const current = Number.parseInt(info.players, 10) || 0;
+      const max = Number.parseInt(info.maxPlayers, 10) || 0;
+      const queued = Number.parseInt(info.queuedPlayers, 10) || 0;
       const now = Date.now();
-      const history = this.popHistory.get(serverId) || [];
-      const retained = history.filter((point) => point.timestamp >= now - this.POP_HISTORY_RETENTION_MS);
-      const windowStart = now - this.POP_HISTORY_WINDOW_MS;
-
-      // 优先寻找“接近一小时前”的样本（允许前后 5 分钟误差）
-      let oneHourBaseline = null;
-      let oneHourBaselineGap = Number.POSITIVE_INFINITY;
-      for (const point of retained) {
-        const gap = Math.abs(point.timestamp - windowStart);
-        if (gap <= this.POP_BASELINE_TOLERANCE_MS && gap < oneHourBaselineGap) {
-          oneHourBaseline = point;
-          oneHourBaselineGap = gap;
-        }
-      }
-
-      // 如果没有可靠的一小时基线，退化为“最近 N 分钟”基线，避免一直不显示涨跌
-      let diff = null;
-      let diffWindowLabel = null;
-      if (oneHourBaseline) {
-        diff = current - oneHourBaseline.players;
-        diffWindowLabel = '过去一小时内';
-      } else {
-        const fallbackBaseline = retained.find((point) => point.timestamp >= windowStart) || retained[0] || null;
-        if (fallbackBaseline) {
-          const spanMs = now - fallbackBaseline.timestamp;
-          if (spanMs >= this.POP_MIN_DIFF_WINDOW_MS) {
-            diff = current - fallbackBaseline.players;
-            const spanMinutes = Math.max(1, Math.floor(spanMs / 60000));
-            diffWindowLabel = `最近${spanMinutes}分钟内`;
-          }
-        }
-      }
-
-      const diffText = diff === null ? '' : `${diff >= 0 ? '+' : ''}${diff}`;
-      const baseText = (diff === null || diffWindowLabel === null || diff === 0)
+      const trend = this.getPopulationTrend(serverId, current, now);
+      const diffText = trend.hasBaseline ? `${trend.diff >= 0 ? '+' : ''}${trend.diff}` : '';
+      const baseText = (!trend.hasBaseline || trend.diff === 0)
         ? `当前服务器在线人数为${current} / ${max}玩家`
-        : `当前服务器在线人数为${current} / ${max}玩家（${diffWindowLabel}为${diffText}玩家）`;
+        : `当前服务器在线人数为${current} / ${max}玩家（过去一小时内为${diffText}玩家）`;
 
       const output = queued > 0 ? `${baseText}，排队${queued}人` : baseText;
 
-      const lastPoint = retained[retained.length - 1];
-      if (lastPoint && now - lastPoint.timestamp < 30000) {
-        lastPoint.timestamp = now;
-        lastPoint.players = current;
-      } else {
-        retained.push({ timestamp: now, players: current });
-      }
-
-      if (retained.length > this.POP_HISTORY_MAX_POINTS) {
-        retained.splice(0, retained.length - this.POP_HISTORY_MAX_POINTS);
-      }
-      this.popHistory.set(serverId, retained);
+      this.recordPopSample(serverId, current, now);
 
       return output;
 
@@ -1356,6 +1463,11 @@ class UserCommands extends EventEmitter {
    * 销毁服务，清理资源
    */
   destroy() {
+    if (this.popSamplingTimer) {
+      clearInterval(this.popSamplingTimer);
+      this.popSamplingTimer = null;
+    }
+    this.isCollectingPopSamples = false;
     this.commands.clear();
     this.deviceCommandsCache.clear();
     this.timeCache.clear();
