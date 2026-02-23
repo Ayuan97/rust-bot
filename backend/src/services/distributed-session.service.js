@@ -45,7 +45,21 @@ class DistributedSessionService extends EventEmitter {
     this.queueExpireMinutes = Number(process.env.DISTRIBUTED_QUEUE_EXPIRE_MINUTES || 10);
     this.commandPollIntervalMs = Number(process.env.DISTRIBUTED_COMMAND_POLL_MS || 250);
     this.commandTimeoutMs = Number(process.env.DISTRIBUTED_COMMAND_TIMEOUT_MS || 25000);
+    this.backgroundIntervalMs = Math.max(2000, Number(process.env.DISTRIBUTED_BACKGROUND_INTERVAL_MS || 10000));
+    this.expireCleanupBatchSize = Math.min(
+      2000,
+      Math.max(50, Number(process.env.DISTRIBUTED_EXPIRE_CLEANUP_BATCH_SIZE || 300))
+    );
+    this.expireCleanupMaxBatches = Math.min(
+      20,
+      Math.max(1, Number(process.env.DISTRIBUTED_EXPIRE_CLEANUP_MAX_BATCHES || 8))
+    );
+    this.commandReuseWindowMs = Math.min(
+      5000,
+      Math.max(0, Number(process.env.DISTRIBUTED_COMMAND_REUSE_WINDOW_MS || 1500))
+    );
     this.backgroundTimer = null;
+    this.backgroundTickRunning = false;
     this.autoscaler = null;
   }
 
@@ -62,17 +76,15 @@ class DistributedSessionService extends EventEmitter {
       return;
     }
     this.backgroundTimer = setInterval(() => {
-      this.cleanupExpiredRecords().catch((error) => {
-        logger.error('[distributed-session] 清理过期数据失败:', error.message);
+      this.runBackgroundTick().catch((error) => {
+        logger.error('[distributed-session] background tick failed:', error.message);
       });
-      this.tryAssignQueuedSessions().catch((error) => {
-        logger.error('[distributed-session] 队列调度失败:', error.message);
-      });
-      this.reconcileOfflineNodesAndFailoverSessions().catch((error) => {
-        logger.error('[distributed-session] failover reconcile failed:', error.message);
-      });
-    }, 10000);
+    }, this.backgroundIntervalMs);
     this.backgroundTimer.unref?.();
+
+    this.runBackgroundTick().catch((error) => {
+      logger.error('[distributed-session] initial background tick failed:', error.message);
+    });
   }
 
   shutdown() {
@@ -80,23 +92,103 @@ class DistributedSessionService extends EventEmitter {
       clearInterval(this.backgroundTimer);
       this.backgroundTimer = null;
     }
+    this.backgroundTickRunning = false;
+  }
+
+  async runBackgroundTick() {
+    if (this.backgroundTickRunning) {
+      return;
+    }
+
+    this.backgroundTickRunning = true;
+    try {
+      try {
+        await this.cleanupExpiredRecords();
+      } catch (error) {
+        logger.error('[distributed-session] cleanup expired records failed:', error.message);
+      }
+
+      try {
+        await this.tryAssignQueuedSessions();
+      } catch (error) {
+        logger.error('[distributed-session] assign queued sessions failed:', error.message);
+      }
+
+      try {
+        await this.reconcileOfflineNodesAndFailoverSessions();
+      } catch (error) {
+        logger.error('[distributed-session] failover reconcile failed:', error.message);
+      }
+    } finally {
+      this.backgroundTickRunning = false;
+    }
   }
 
   async cleanupExpiredRecords() {
-    await db.query(
-      `UPDATE connection_queue
-       SET status = 'EXPIRED', updatedAt = NOW()
-       WHERE status = 'PENDING' AND expiresAt IS NOT NULL AND expiresAt < NOW()`
+    const queueLimit = this.expireCleanupBatchSize;
+    const commandLimit = this.expireCleanupBatchSize;
+
+    for (let i = 0; i < this.expireCleanupMaxBatches; i += 1) {
+      const [queueResult] = await db.query(
+        `UPDATE connection_queue
+         SET status = 'EXPIRED', updatedAt = NOW()
+         WHERE status = 'PENDING'
+           AND expiresAt IS NOT NULL
+           AND expiresAt < NOW()
+         ORDER BY expiresAt ASC, id ASC
+         LIMIT ${queueLimit}`
+      );
+      if ((queueResult?.affectedRows || 0) < queueLimit) {
+        break;
+      }
+    }
+
+    for (let i = 0; i < this.expireCleanupMaxBatches; i += 1) {
+      const [commandResult] = await db.query(
+        `UPDATE session_commands
+         SET status = 'EXPIRED', error = ?, updatedAt = NOW()
+         WHERE status IN (${COMMAND_PENDING_STATUS_SQL})
+           AND expiresAt IS NOT NULL
+           AND expiresAt < NOW()
+         ORDER BY expiresAt ASC, id ASC
+         LIMIT ${commandLimit}`,
+        ['command timeout']
+      );
+      if ((commandResult?.affectedRows || 0) < commandLimit) {
+        break;
+      }
+    }
+  }
+
+  async findReusablePendingCommand({ sessionId, action, payload }) {
+    if (this.commandReuseWindowMs <= 0) {
+      return null;
+    }
+
+    const notBefore = new Date(Date.now() - this.commandReuseWindowMs);
+    const [rows] = await db.query(
+      `SELECT id, payload
+       FROM session_commands
+       WHERE sessionId = ?
+         AND action = ?
+         AND status IN (${COMMAND_PENDING_STATUS_SQL})
+         AND createdAt >= ?
+       ORDER BY createdAt DESC, id DESC
+       LIMIT 5`,
+      [sessionId, action, notBefore]
     );
 
-    await db.query(
-      `UPDATE session_commands
-       SET status = 'EXPIRED', error = ?, updatedAt = NOW()
-       WHERE status IN (${COMMAND_PENDING_STATUS_SQL})
-         AND expiresAt IS NOT NULL
-         AND expiresAt < NOW()`,
-      ['command timeout']
-    );
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const payloadStr = stringifyJson(payload);
+    for (const row of rows) {
+      if (stringifyJson(parseJson(row.payload, {})) === payloadStr) {
+        return row.id;
+      }
+    }
+    return null;
   }
 
   async getServerOwnedByUser(userId, serverId) {
@@ -826,13 +918,23 @@ class DistributedSessionService extends EventEmitter {
       return { status: 'missing_session', reason: 'SESSION_NOT_FOUND' };
     }
 
+    const reusableCommandId = await this.findReusablePendingCommand({
+      sessionId: session.id,
+      action,
+      payload,
+    });
+    if (reusableCommandId) {
+      return this.waitForCommandResult(reusableCommandId, timeoutMs);
+    }
+
     const commandId = uuidv4();
     const expiresAt = new Date(Date.now() + timeoutMs);
+    const payloadJson = stringifyJson(payload);
     await db.query(
       `INSERT INTO session_commands (
          id, sessionId, userId, serverId, action, payload, status, expiresAt, createdAt, updatedAt
        ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, NOW(), NOW())`,
-      [commandId, session.id, userId, serverId, action, stringifyJson(payload), expiresAt]
+      [commandId, session.id, userId, serverId, action, payloadJson, expiresAt]
     );
 
     return this.waitForCommandResult(commandId, timeoutMs);
@@ -892,7 +994,7 @@ class DistributedSessionService extends EventEmitter {
          WHERE s.nodeId = ?
            AND c.status = 'PENDING'
            AND s.status IN (${SESSION_CONNECTED_STATUS_SQL})
-         ORDER BY c.createdAt ASC
+         ORDER BY c.createdAt ASC, c.id ASC
          LIMIT ?
          FOR UPDATE`,
         [nodeId, safeLimit]

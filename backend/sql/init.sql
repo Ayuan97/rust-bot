@@ -395,6 +395,7 @@ CREATE TABLE IF NOT EXISTS `connection_queue` (
   `updatedAt` DATETIME(3) NOT NULL,
   PRIMARY KEY (`id`),
   INDEX `connection_queue_status_createdAt_idx` (`status`, `createdAt`),
+  INDEX `connection_queue_status_expiresAt_idx` (`status`, `expiresAt`),
   INDEX `connection_queue_serverKey_status_idx` (`serverKey`, `status`),
   INDEX `connection_queue_userId_status_idx` (`userId`, `status`),
   CONSTRAINT `connection_queue_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -435,6 +436,9 @@ CREATE TABLE IF NOT EXISTS `session_commands` (
   INDEX `session_commands_sessionId_status_idx` (`sessionId`, `status`),
   INDEX `session_commands_userId_status_idx` (`userId`, `status`),
   INDEX `session_commands_serverId_status_idx` (`serverId`, `status`),
+  INDEX `session_commands_status_expiresAt_idx` (`status`, `expiresAt`),
+  INDEX `session_commands_status_createdAt_idx` (`status`, `createdAt`),
+  INDEX `session_commands_session_action_status_createdAt_idx` (`sessionId`, `action`, `status`, `createdAt`),
   CONSTRAINT `session_commands_sessionId_fkey` FOREIGN KEY (`sessionId`) REFERENCES `connection_sessions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `session_commands_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `session_commands_serverId_fkey` FOREIGN KEY (`serverId`) REFERENCES `servers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
