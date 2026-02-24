@@ -131,12 +131,13 @@ class UserRustPlusManager extends EventEmitter {
       });
 
       rustplus.on('disconnected', () => {
+        const wasConnected = this.connections.has(serverId);
         logger.server(serverId, `❌ 用户 ${this.userId} 已断开`);
         this.connections.delete(serverId);
         this.emit('server:disconnected', { userId: this.userId, serverId });
 
-        // 自动重连逻辑（仅在非手动断开时触发）
-        if (!this.manualDisconnect.has(serverId)) {
+        // 握手失败也会触发 disconnected。仅对已建立过的连接自动重连，避免无限重试风暴。
+        if (wasConnected && !this.manualDisconnect.has(serverId)) {
           this.scheduleReconnect(serverId);
         }
       });

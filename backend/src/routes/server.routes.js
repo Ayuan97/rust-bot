@@ -1792,12 +1792,16 @@ router.get('/:id/battlemetrics', async (req, res) => {
             description: safeString(freshData.description, null, null),
             url: safeString(freshData.url, 255, null)
           };
+          const upsertColumns = Object.keys(upsertData);
+          const escapedUpsertColumns = upsertColumns.map(column => `\`${column}\``);
+          const upsertValues = upsertColumns.map(column => upsertData[column]);
 
           if (bmInfo) {
             // Update
-            const updateParts = Object.keys(upsertData).map(k => `${k} = ?`);
+            // Use escaped identifiers to avoid SQL keyword conflicts (e.g. `rank`).
+            const updateParts = escapedUpsertColumns.map(column => `${column} = ?`);
             updateParts.push('updatedAt = ?');
-            const updateParams = [...Object.values(upsertData), now, battlemetricsId];
+            const updateParams = [...upsertValues, now, battlemetricsId];
             await db.query(
               `UPDATE public_servers SET ${updateParts.join(', ')} WHERE battlemetricsId = ?`,
               updateParams
@@ -1805,9 +1809,9 @@ router.get('/:id/battlemetrics', async (req, res) => {
           } else {
             // Insert
             await db.query(
-              `INSERT INTO public_servers (battlemetricsId, ${Object.keys(upsertData).join(', ')}, createdAt, updatedAt)
-               VALUES (?, ${Object.keys(upsertData).map(() => '?').join(', ')}, ?, ?)`,
-              [battlemetricsId, ...Object.values(upsertData), now, now]
+              `INSERT INTO public_servers (battlemetricsId, ${escapedUpsertColumns.join(', ')}, createdAt, updatedAt)
+               VALUES (?, ${upsertColumns.map(() => '?').join(', ')}, ?, ?)`,
+              [battlemetricsId, ...upsertValues, now, now]
             );
           }
 

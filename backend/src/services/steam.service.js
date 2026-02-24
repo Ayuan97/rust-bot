@@ -6,6 +6,8 @@ const REQUEST_DELAY = 200;
 
 // 速率限制错误静默期（毫秒）
 const RATE_LIMIT_SILENCE_PERIOD = 60000;
+// 单个玩家同类状态错误静默期（毫秒），避免日志刷屏
+const PLAYER_STATUS_SILENCE_PERIOD = 6 * 60 * 60 * 1000;
 
 class SteamService {
     constructor() {
@@ -13,6 +15,7 @@ class SteamService {
         this.baseUrl = 'https://api.steampowered.com';
         this.rustAppId = '252490';
         this.lastRateLimitLog = 0; // 上次记录 429 错误的时间
+        this.lastPlayerStatusLog = new Map(); // key: `${steamId}:${status}` -> ts
 
         if (!this.apiKey) {
             logger.warn('STEAM_API_KEY is not defined in .env file. Steam integration will not work.');
@@ -24,6 +27,17 @@ class SteamService {
      */
     delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    shouldLogPlayerStatus(steamId, status) {
+        const key = `${steamId}:${status}`;
+        const now = Date.now();
+        const last = this.lastPlayerStatusLog.get(key) || 0;
+        if (now - last < PLAYER_STATUS_SILENCE_PERIOD) {
+            return false;
+        }
+        this.lastPlayerStatusLog.set(key, now);
+        return true;
     }
 
     /**
@@ -87,8 +101,18 @@ class SteamService {
                 playtime_2weeks: game.playtime_2weeks || 0
             } : null;
         } catch (error) {
+            const status = error.response?.status;
+
+            // 私密资料、无权限或不存在：按“不可获取”处理，避免高频报错
+            if (status === 400 || status === 401 || status === 403 || status === 404 || status === 500) {
+                if (this.shouldLogPlayerStatus(steamId, status)) {
+                    logger.warn(`[Steam] 玩家 ${steamId} 游戏时长暂不可获取 (status=${status})`);
+                }
+                return null;
+            }
+
             // 429 错误限制日志频率，避免刷屏
-            if (error.response?.status === 429) {
+            if (status === 429) {
                 const now = Date.now();
                 if (now - this.lastRateLimitLog > RATE_LIMIT_SILENCE_PERIOD) {
                     logger.warn(`[Steam] API 速率限制触发，部分玩家数据暂时无法获取`);
@@ -124,14 +148,26 @@ class SteamService {
 
             return stats;
         } catch (error) {
-            // 403/500 通常意味着资料/统计是私密的
-            if (error.response?.status === 403 || error.response?.status === 500) {
+            const status = error.response?.status;
+
+            // 私密资料、无权限或接口拒绝时，按 private 处理，避免每轮都报错
+            if (status === 400 || status === 401 || status === 403 || status === 404 || status === 500) {
+                if (this.shouldLogPlayerStatus(steamId, status)) {
+                    logger.warn(`[Steam] 玩家 ${steamId} 游戏统计暂不可获取 (status=${status})`);
+                }
                 return { private: true };
             }
+
             // 429 错误限制日志频率
-            if (error.response?.status === 429) {
+            if (status === 429) {
+                const now = Date.now();
+                if (now - this.lastRateLimitLog > RATE_LIMIT_SILENCE_PERIOD) {
+                    logger.warn(`[Steam] API 速率限制触发，统计数据暂时无法获取`);
+                    this.lastRateLimitLog = now;
+                }
                 return null;
             }
+
             logger.error(`[Steam] 获取游戏统计失败 ${steamId}: ${error.message}`);
             return null;
         }

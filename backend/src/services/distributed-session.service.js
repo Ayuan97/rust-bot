@@ -19,6 +19,18 @@ const NODE_EVENT_ALLOWLIST = new Set([
   'camera:render',
   'camera:rays',
 ]);
+const DEADLOCK_RETRY_MAX_ATTEMPTS = 3;
+const DEADLOCK_RETRY_BASE_DELAY_MS = 120;
+
+function isDeadlockError(error) {
+  if (!error) return false;
+  if (error.code === 'ER_LOCK_DEADLOCK') return true;
+  return /deadlock found when trying to get lock/i.test(error.message || '');
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 function stringifyJson(value) {
   return JSON.stringify(value, (_, v) => (typeof v === 'bigint' ? v.toString() : v));
@@ -129,7 +141,7 @@ class DistributedSessionService extends EventEmitter {
     const commandLimit = this.expireCleanupBatchSize;
 
     for (let i = 0; i < this.expireCleanupMaxBatches; i += 1) {
-      const [queueResult] = await db.query(
+      const [queueResult] = await this.queryWithDeadlockRetry(
         `UPDATE connection_queue
          SET status = 'EXPIRED', updatedAt = NOW()
          WHERE status = 'PENDING'
@@ -144,7 +156,7 @@ class DistributedSessionService extends EventEmitter {
     }
 
     for (let i = 0; i < this.expireCleanupMaxBatches; i += 1) {
-      const [commandResult] = await db.query(
+      const [commandResult] = await this.queryWithDeadlockRetry(
         `UPDATE session_commands
          SET status = 'EXPIRED', error = ?, updatedAt = NOW()
          WHERE status IN (${COMMAND_PENDING_STATUS_SQL})
@@ -156,6 +168,22 @@ class DistributedSessionService extends EventEmitter {
       );
       if ((commandResult?.affectedRows || 0) < commandLimit) {
         break;
+      }
+    }
+  }
+
+  async queryWithDeadlockRetry(sql, params = []) {
+    let attempt = 0;
+
+    while (true) {
+      try {
+        return await db.query(sql, params);
+      } catch (error) {
+        attempt += 1;
+        if (!isDeadlockError(error) || attempt >= DEADLOCK_RETRY_MAX_ATTEMPTS) {
+          throw error;
+        }
+        await delay(DEADLOCK_RETRY_BASE_DELAY_MS * attempt);
       }
     }
   }

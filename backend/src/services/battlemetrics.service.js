@@ -1,11 +1,16 @@
 import axios from 'axios';
 import EventEmitter from 'events';
 
+const ACTIVE_SESSIONS_TIMEOUT_RETRY = 1;
+const ACTIVE_SESSIONS_TIMEOUT_RETRY_DELAY_MS = 400;
+const ACTIVE_SESSIONS_ERROR_SILENCE_MS = 5 * 60 * 1000;
+
 class BattlemetricsService extends EventEmitter {
   constructor() {
     super();
     this.servers = new Map(); // serverId -> battlemetrics data
     this.apiToken = process.env.BATTLEMETRICS_API_TOKEN || null;
+    this.lastActiveSessionsErrorLog = new Map();
 
     if (this.apiToken) {
       console.log('✅ Battlemetrics API Token 已配置 (300 请求/分钟)');
@@ -446,6 +451,91 @@ class BattlemetricsService extends EventEmitter {
     return Array.from(onlinePlayers.values());
   }
 
+  _shouldLogActiveSessionsError(serverId, errorKey) {
+    const key = `${serverId}:${errorKey}`;
+    const now = Date.now();
+    const last = this.lastActiveSessionsErrorLog.get(key) || 0;
+
+    if (now - last < ACTIVE_SESSIONS_ERROR_SILENCE_MS) {
+      return false;
+    }
+
+    this.lastActiveSessionsErrorLog.set(key, now);
+    return true;
+  }
+
+  _logActiveSessionsError(serverId, error) {
+    if (!error) return;
+
+    if (error.response) {
+      const status = error.response.status;
+      if (this._shouldLogActiveSessionsError(serverId, `status:${status}`)) {
+        console.warn(`[BATTLEMETRICS] 获取在线会话失败 server=${serverId} status=${status}`);
+      }
+      return;
+    }
+
+    const key = error.code ? `code:${error.code}` : `msg:${error.message || 'unknown'}`;
+    if (this._shouldLogActiveSessionsError(serverId, key)) {
+      console.warn(`[BATTLEMETRICS] 获取在线会话失败 server=${serverId}: ${error.message}`);
+    }
+  }
+
+  _requestServerSessions(serverId, start, stop) {
+    const url = `https://api.battlemetrics.com/servers/${serverId}/relationships/sessions?start=${encodeURIComponent(start.toISOString())}&stop=${encodeURIComponent(stop.toISOString())}`;
+    return axios.get(url, this._getAxiosConfig());
+  }
+
+  _buildOnlinePlayersFromSessionPayload(payload) {
+    const sessions = Array.isArray(payload?.data) ? payload.data : [];
+
+    // 某些返回不会包含 included，优先用 session.attributes.name 兜底
+    const playerMap = new Map();
+    if (Array.isArray(payload?.included)) {
+      for (const item of payload.included) {
+        if (item.type === 'player') {
+          playerMap.set(item.id, {
+            id: item.id,
+            name: item.attributes?.name || 'Unknown',
+            updatedAt: item.attributes?.updatedAt,
+            private: item.attributes?.private ?? null
+          });
+        }
+      }
+    }
+
+    const onlinePlayers = new Map();
+    for (const session of sessions) {
+      if (session.type !== 'session') continue;
+
+      const sessionStart = session.attributes?.start || null;
+      const sessionStop = session.attributes?.stop || null;
+      if (sessionStop) continue; // 仅保留当前在线会话
+
+      const playerRelation = session.relationships?.player?.data;
+      const playerId = playerRelation?.id || `SESSION_${session.id}`;
+      if (onlinePlayers.has(playerId)) continue;
+
+      const fromIncluded = playerMap.get(playerId);
+      const onlineDurationSec = sessionStart
+        ? Math.max(0, Math.floor((Date.now() - new Date(sessionStart).getTime()) / 1000))
+        : null;
+
+      onlinePlayers.set(playerId, {
+        id: playerId,
+        name: fromIncluded?.name || session.attributes?.name || 'Unknown',
+        updatedAt: fromIncluded?.updatedAt || sessionStart,
+        private: fromIncluded?.private ?? session.attributes?.private ?? null,
+        sessionId: session.id,
+        sessionStart,
+        sessionStop,
+        onlineDurationSec
+      });
+    }
+
+    return Array.from(onlinePlayers.values());
+  }
+
   /**
    * 获取服务器最近时间窗口内的活动会话（在线玩家）
    * Battlemetrics 新版接口要求必须带 start/stop，且时间跨度不能过大
@@ -454,81 +544,40 @@ class BattlemetricsService extends EventEmitter {
    * @private
    */
   async _getServerActiveSessions(serverId) {
-    try {
-      const now = new Date();
-      const rawWindowMinutes = Number(process.env.BATTLEMETRICS_ONLINE_WINDOW_MINUTES || 39);
-      const windowMinutes = Number.isFinite(rawWindowMinutes)
-        ? Math.min(39, Math.max(5, Math.floor(rawWindowMinutes)))
-        : 39;
-      const start = new Date(now.getTime() - windowMinutes * 60 * 1000);
+    const rawWindowMinutes = Number(process.env.BATTLEMETRICS_ONLINE_WINDOW_MINUTES || 39);
+    const windowMinutes = Number.isFinite(rawWindowMinutes)
+      ? Math.min(39, Math.max(5, Math.floor(rawWindowMinutes)))
+      : 39;
 
-      const url = `https://api.battlemetrics.com/servers/${serverId}/relationships/sessions?start=${encodeURIComponent(start.toISOString())}&stop=${encodeURIComponent(now.toISOString())}`;
-      const response = await axios.get(url, this._getAxiosConfig());
+    let lastError = null;
+    for (let attempt = 0; attempt <= ACTIVE_SESSIONS_TIMEOUT_RETRY; attempt += 1) {
+      try {
+        const stop = new Date();
+        const start = new Date(stop.getTime() - windowMinutes * 60 * 1000);
+        const response = await this._requestServerSessions(serverId, start, stop);
 
-      if (response.status !== 200) {
-        return [];
-      }
-
-      const sessions = Array.isArray(response.data?.data) ? response.data.data : [];
-
-      // 某些返回不会包含 included，优先用 session.attributes.name 兜底
-      const playerMap = new Map();
-      if (Array.isArray(response.data?.included)) {
-        for (const item of response.data.included) {
-          if (item.type === 'player') {
-            playerMap.set(item.id, {
-              id: item.id,
-              name: item.attributes?.name || 'Unknown',
-              updatedAt: item.attributes?.updatedAt,
-              private: item.attributes?.private ?? null
-            });
-          }
+        if (response.status !== 200) {
+          return [];
         }
+
+        return this._buildOnlinePlayersFromSessionPayload(response.data);
+      } catch (error) {
+        lastError = error;
+        const isTimeout = error.code === 'ECONNABORTED' || /timeout/i.test(error.message || '');
+        if (isTimeout && attempt < ACTIVE_SESSIONS_TIMEOUT_RETRY) {
+          await new Promise(resolve => setTimeout(resolve, ACTIVE_SESSIONS_TIMEOUT_RETRY_DELAY_MS));
+          continue;
+        }
+        break;
       }
-
-      const onlinePlayers = new Map();
-      for (const session of sessions) {
-        if (session.type !== 'session') continue;
-
-        const sessionStart = session.attributes?.start || null;
-        const sessionStop = session.attributes?.stop || null;
-        if (sessionStop) continue; // 仅保留当前在线会话
-
-        const playerRelation = session.relationships?.player?.data;
-        const playerId = playerRelation?.id || `SESSION_${session.id}`;
-        if (onlinePlayers.has(playerId)) continue;
-
-        const fromIncluded = playerMap.get(playerId);
-        const onlineDurationSec = sessionStart
-          ? Math.max(0, Math.floor((Date.now() - new Date(sessionStart).getTime()) / 1000))
-          : null;
-
-        onlinePlayers.set(playerId, {
-          id: playerId,
-          name: fromIncluded?.name || session.attributes?.name || 'Unknown',
-          updatedAt: fromIncluded?.updatedAt || sessionStart,
-          private: fromIncluded?.private ?? session.attributes?.private ?? null,
-          sessionId: session.id,
-          sessionStart,
-          sessionStop,
-          onlineDurationSec
-        });
-      }
-
-      return Array.from(onlinePlayers.values());
-    } catch (error) {
-      if (error.response) {
-        console.warn(`[BATTLEMETRICS] 获取在线会话失败 server=${serverId} status=${error.response.status}`);
-      } else {
-        console.warn(`[BATTLEMETRICS] 获取在线会话失败 server=${serverId}: ${error.message}`);
-      }
-
-      const cached = this.servers.get(serverId);
-      if (cached?.onlinePlayers?.length) {
-        return cached.onlinePlayers;
-      }
-      return [];
     }
+
+    this._logActiveSessionsError(serverId, lastError);
+    const cached = this.servers.get(serverId);
+    if (cached?.onlinePlayers?.length) {
+      return cached.onlinePlayers;
+    }
+    return [];
   }
 
   /**
