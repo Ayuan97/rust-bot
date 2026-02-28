@@ -4,6 +4,7 @@ import EventEmitter from 'events';
 const ACTIVE_SESSIONS_TIMEOUT_RETRY = 1;
 const ACTIVE_SESSIONS_TIMEOUT_RETRY_DELAY_MS = 400;
 const ACTIVE_SESSIONS_ERROR_SILENCE_MS = 5 * 60 * 1000;
+const ACTIVE_SESSIONS_403_SILENCE_MS = 60 * 60 * 1000; // 403 无权限，1小时内不再重试
 
 class BattlemetricsService extends EventEmitter {
   constructor() {
@@ -548,6 +549,13 @@ class BattlemetricsService extends EventEmitter {
     const windowMinutes = Number.isFinite(rawWindowMinutes)
       ? Math.min(39, Math.max(5, Math.floor(rawWindowMinutes)))
       : 39;
+
+    // 如果该服务器上次因 403 被禁，跳过请求
+    const silenceKey = `${serverId}:status:403`;
+    const lastLog = this.lastActiveSessionsErrorLog.get(silenceKey) || 0;
+    if (Date.now() - lastLog < ACTIVE_SESSIONS_403_SILENCE_MS) {
+      return this.servers.get(serverId)?.onlinePlayers || [];
+    }
 
     let lastError = null;
     for (let attempt = 0; attempt <= ACTIVE_SESSIONS_TIMEOUT_RETRY; attempt += 1) {

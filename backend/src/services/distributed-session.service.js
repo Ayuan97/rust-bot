@@ -977,7 +977,7 @@ class DistributedSessionService extends EventEmitter {
     const commandId = uuidv4();
     const expiresAt = new Date(Date.now() + timeoutMs);
     const payloadJson = stringifyJson(payload);
-    await db.query(
+    await this.queryWithDeadlockRetry(
       `INSERT INTO session_commands (
          id, sessionId, userId, serverId, action, payload, status, expiresAt, createdAt, updatedAt
        ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, NOW(), NOW())`,
