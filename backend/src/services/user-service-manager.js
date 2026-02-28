@@ -235,10 +235,27 @@ class UserServiceManager extends EventEmitter {
       this.rustPlusService.on('server:connected', (data) => {
         // this.log('RUST+', `服务器 ${data.serverId} 已连接`);
         this.emit('server:connected', data);
+        // 重连时重新启动该服务器的轮询（初始连接由初始化流程负责，此处处理后续重连）
+        if (this.eventMonitorService && !this.eventMonitorService.pollIntervals.has(data.serverId)) {
+          this.eventMonitorService.start(data.serverId).catch(err => {
+            console.error(`事件监控重启失败 ${data.serverId}:`, err.message);
+          });
+        }
+        if (this.dayNightNotifier && !this.dayNightNotifier.timers.has(data.serverId)) {
+          this.dayNightNotifier.start(data.serverId).catch(err => {
+            console.error(`昼夜提醒重启失败 ${data.serverId}:`, err.message);
+          });
+        }
       });
 
       this.rustPlusService.on('server:disconnected', (data) => {
         // this.log('RUST+', `服务器 ${data.serverId} 已断开`, 'WARN');
+        if (this.eventMonitorService) {
+          this.eventMonitorService.stop(data.serverId);
+        }
+        if (this.dayNightNotifier) {
+          this.dayNightNotifier.stop(data.serverId);
+        }
         this.emit('server:disconnected', data);
       });
 
