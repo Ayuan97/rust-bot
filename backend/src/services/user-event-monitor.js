@@ -266,13 +266,9 @@ class UserEventMonitor extends EventEmitter {
       try {
         await this.checkMapMarkers(serverId);
       } catch (error) {
-        const errorStr = JSON.stringify(error) || String(error);
-        if (errorStr.includes('not_found')) {
-          return;
-        }
-
-        const errorMessage = error?.message || errorStr;
-        if (errorMessage.includes('Timeout reached') ||
+        const errorMessage = error?.message || String(error);
+        if (errorMessage.includes('not_found') ||
+          errorMessage.includes('Timeout reached') ||
           errorMessage.includes('服务器未连接')) {
           return;
         }
@@ -2015,11 +2011,11 @@ class UserEventMonitor extends EventEmitter {
       // 同步到扩展队友列表（只添加不删除）
       await this.syncExtendedTeammates(serverId, teamInfo);
     } catch (error) {
-      const errorStr = JSON.stringify(error) || String(error);
+      const errorStr = error?.message || String(error);
       if (errorStr.includes('not_found') || errorStr.includes('Timeout') || errorStr.includes('未连接')) {
         return;
       }
-      logger.debug(`队伍轮询失败 (用户 ${this.userId}): ${error?.message || errorStr}`);
+      logger.debug(`队伍轮询失败 (用户 ${this.userId}): ${errorStr}`);
     }
   }
 
