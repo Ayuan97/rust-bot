@@ -268,6 +268,7 @@ class UserEventMonitor extends EventEmitter {
       } catch (error) {
         const errorMessage = error?.message || String(error);
         if (errorMessage.includes('not_found') ||
+          errorMessage.includes('session closed') ||
           errorMessage.includes('Timeout reached') ||
           errorMessage.includes('服务器未连接')) {
           return;
