@@ -70,6 +70,10 @@ class DistributedSessionService extends EventEmitter {
       5000,
       Math.max(0, Number(process.env.DISTRIBUTED_COMMAND_REUSE_WINDOW_MS || 1500))
     );
+    this.commandRetentionMs = Math.max(
+      60 * 1000,
+      Number(process.env.DISTRIBUTED_COMMAND_RETENTION_MS || 60 * 60 * 1000)
+    );
     this.backgroundTimer = null;
     this.backgroundTickRunning = false;
     this.autoscaler = null;
@@ -167,6 +171,21 @@ class DistributedSessionService extends EventEmitter {
         ['command timeout']
       );
       if ((commandResult?.affectedRows || 0) < commandLimit) {
+        break;
+      }
+    }
+
+    const retentionCutoff = new Date(Date.now() - this.commandRetentionMs);
+    for (let i = 0; i < this.expireCleanupMaxBatches; i += 1) {
+      const [deleteResult] = await this.queryWithDeadlockRetry(
+        `DELETE FROM session_commands
+         WHERE status IN ('DONE', 'FAILED', 'EXPIRED')
+           AND updatedAt < ?
+         ORDER BY updatedAt ASC, id ASC
+         LIMIT ${commandLimit}`,
+        [retentionCutoff]
+      );
+      if ((deleteResult?.affectedRows || 0) < commandLimit) {
         break;
       }
     }
