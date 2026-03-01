@@ -272,16 +272,35 @@ class DistributedRustPlusManager extends EventEmitter {
   }
 
   async _ensureServerConfig(serverId, config = null) {
-    if (config && config.serverId) {
-      this.serverConfigs.set(serverId, config);
-      return config;
+    const hasValue = (value) => value !== undefined && value !== null;
+    const hasCompleteRuntimeFields = (candidate) =>
+      hasValue(candidate?.ip) &&
+      hasValue(candidate?.port) &&
+      hasValue(candidate?.playerId) &&
+      hasValue(candidate?.playerToken);
+
+    if (config && config.serverId && hasCompleteRuntimeFields(config)) {
+      // Merge to avoid dropping existing fields (e.g. name/battlemetrics cache keys).
+      const merged = {
+        ...(this.serverConfigs.get(serverId) || {}),
+        ...config,
+        serverId,
+      };
+      this.serverConfigs.set(serverId, merged);
+      return merged;
     }
+
     const cached = this.serverConfigs.get(serverId);
-    if (cached) return cached;
+    if (cached && hasCompleteRuntimeFields(cached)) return cached;
 
     const loaded = await this._loadServerConfig(serverId);
-    this.serverConfigs.set(serverId, loaded);
-    return loaded;
+    const merged = {
+      ...(cached || {}),
+      ...loaded,
+      serverId,
+    };
+    this.serverConfigs.set(serverId, merged);
+    return merged;
   }
 
   async connect(config = {}) {
