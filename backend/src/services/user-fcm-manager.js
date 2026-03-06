@@ -619,6 +619,10 @@ class UserFCMManager extends EventEmitter {
 
       // 智能警报推送
       else if (data.channelId === 'alarm') {
+        // [DEBUG] 打印原始 payload，用于诊断 entityId 字段名
+        logger.info(`[ALARM-DEBUG] 用户 ${this.userId} 原始 FCM alarm payload keys: ${Object.keys(payload).join(', ')}`);
+        logger.info(`[ALARM-DEBUG] 原始 payload 完整内容: ${JSON.stringify(payload)}`);
+
         const entityId = parseIntSafe(pickField('entityId', 'entity_id', 'entityID', 'entityid', 'entity'));
         const timestamp = Number(pickField('time', 'timestamp', 'ts')) || Date.now();
         const alarmInfo = {
