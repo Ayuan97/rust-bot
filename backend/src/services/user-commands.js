@@ -1348,7 +1348,7 @@ class UserCommands extends EventEmitter {
       return `[翻译] ${result}`;
 
     } catch (error) {
-      logger.error('翻译失败:', error);
+      logger.warn('翻译失败:', error.message);
       if (error.message?.includes('language')) {
         return `[翻译] 不支持的语言: ${args[0]}`;
       }
@@ -1374,7 +1374,7 @@ class UserCommands extends EventEmitter {
       return `[翻译] ${result}`;
 
     } catch (error) {
-      logger.error('翻译失败:', error);
+      logger.warn('翻译失败:', error.message);
       // 尝试从错误信息中提取不支持的语言
       const match = error.message?.match(/language "(.+?)"/);
       if (match) {
@@ -1394,6 +1394,7 @@ class UserCommands extends EventEmitter {
       // 获取队伍信息
       const teamInfo = await this.rustPlusService.getTeamInfo(serverId);
       if (!teamInfo || !teamInfo.members) {
+        logger.warn(`[leader] getTeamInfo 返回空 (server=${serverId}, user=${this.userId})`);
         return cmd('leader', 'error') || '[错误] 获取队伍信息失败';
       }
 
@@ -1403,12 +1404,9 @@ class UserCommands extends EventEmitter {
       }
 
       const leaderSteamId = teamInfo.leaderSteamId?.toString();
-      const botSteamId = this.rustPlusService.getPlayerId(serverId);
+      const botSteamId = this.rustPlusService.getPlayerId(serverId)?.toString();
 
-      // 检查当前机器人账号是否是队长
-      if (leaderSteamId !== botSteamId?.toString()) {
-        return cmd('leader', 'not_leader') || '[错误] 移交失败: 当前账号不是队长';
-      }
+      logger.debug(`[leader] server=${serverId} leader=${leaderSteamId} bot=${botSteamId} members=${members.length} caller=${context.steamId}`);
 
       let targetPlayer;
 
@@ -1448,14 +1446,25 @@ class UserCommands extends EventEmitter {
         }
       }
 
+      // 检查当前机器人账号是否是队长
+      if (leaderSteamId !== botSteamId) {
+        logger.warn(`[leader] 当前账号不是队长 (server=${serverId}, leader=${leaderSteamId}, bot=${botSteamId})`);
+        return cmd('leader', 'not_leader') || '[错误] 移交失败: 当前账号不是队长';
+      }
+
       // 移交队长权限
+      logger.debug(`[leader] 调用 promoteToLeader target=${targetPlayer.steamId} name=${targetPlayer.name}`);
       await this.rustPlusService.promoteToLeader(serverId, targetPlayer.steamId);
 
       return cmd('leader', 'msg', { name: targetPlayer.name }) || `[队长] 已将队长移交给 ${targetPlayer.name}`;
 
     } catch (error) {
-      logger.error('移交队长失败:', error);
-      return cmd('leader', 'error') || '[错误] 移交队长失败';
+      const msg = error?.message || String(error);
+      logger.warn(`[leader] 异常 (server=${serverId}, user=${this.userId}): ${msg}`);
+      if (msg.includes('timeout') || msg.includes('Timeout')) {
+        return '[错误] 移交队长超时，请稍后重试';
+      }
+      return cmd('leader', 'error') || `[错误] 移交队长失败: ${msg}`;
     }
   }
 
