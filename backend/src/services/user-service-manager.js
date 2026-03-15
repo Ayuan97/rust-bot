@@ -405,7 +405,12 @@ class UserServiceManager extends EventEmitter {
 
       this.fcmService.on('alarm', async (data) => {
         try {
-          const resolvedServerId = await this._resolveScopedServerIdForAlarm(data.serverId, data.entityId);
+          const resolvedServerId = await this._resolveScopedServerIdForAlarm(
+            data.serverId,
+            data.entityId,
+            data.ip,
+            data.port
+          );
           if (!resolvedServerId) {
             this.log('ALARM', `FCM 警报无法匹配服务器: serverId=${data.serverId}, entityId=${data.entityId}`, 'WARN');
             this.emit('alarm:triggered', {
@@ -832,14 +837,39 @@ class UserServiceManager extends EventEmitter {
    * Deduplicate alarm triggers reported by FCM and Rust+ in a short window.
    * @private
    */
-  _isDuplicateAlarmTrigger(serverId, entityId, triggerTime) {
+  _normalizeAlarmText(text) {
+    if (typeof text !== 'string') {
+      return '';
+    }
+
+    return text.trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  _buildAlarmDedupKey(serverId, entityId, message = '') {
+    if (serverId === null || serverId === undefined || serverId === '') {
+      return null;
+    }
+
     const parsedEntityId = Number.parseInt(entityId, 10);
-    if (serverId === null || serverId === undefined || Number.isNaN(parsedEntityId)) {
+    if (!Number.isNaN(parsedEntityId)) {
+      return `${String(serverId)}:${parsedEntityId}`;
+    }
+
+    const normalizedMessage = this._normalizeAlarmText(message);
+    if (normalizedMessage) {
+      return `${String(serverId)}:message:${normalizedMessage}`;
+    }
+
+    return `${String(serverId)}:unknown`;
+  }
+
+  _isDuplicateAlarmTrigger(serverId, entityId, triggerTime, message = '') {
+    const cacheKey = this._buildAlarmDedupKey(serverId, entityId, message);
+    if (!cacheKey) {
       return false;
     }
 
     const now = Number.isFinite(triggerTime) ? triggerTime : Date.now();
-    const cacheKey = `${String(serverId)}:${parsedEntityId}`;
     const lastTriggerAt = this.recentAlarmTriggers.get(cacheKey);
 
     // Cleanup old cache entries to avoid unbounded growth.
@@ -855,6 +885,86 @@ class UserServiceManager extends EventEmitter {
 
     this.recentAlarmTriggers.set(cacheKey, now);
     return false;
+  }
+
+  async _resolveAlarmDeviceFallback(serverId, incomingMessage) {
+    if (!serverId) {
+      return { device: null, reason: 'missing_server' };
+    }
+
+    const [deviceRows] = await db.query(
+      `SELECT * FROM devices
+       WHERE serverId = ? AND userId = ? AND type = 'ALARM' AND isActive = 1
+       ORDER BY updatedAt DESC`,
+      [serverId, this.userId]
+    );
+
+    if (deviceRows.length === 0) {
+      return { device: null, reason: 'no_alarm_devices' };
+    }
+
+    if (deviceRows.length === 1) {
+      return { device: deviceRows[0], reason: 'single_alarm_device' };
+    }
+
+    const normalizedMessage = this._normalizeAlarmText(incomingMessage);
+    if (normalizedMessage) {
+      const exactMessageMatches = deviceRows.filter(
+        (device) => this._normalizeAlarmText(device.message) === normalizedMessage
+      );
+      if (exactMessageMatches.length === 1) {
+        return { device: exactMessageMatches[0], reason: 'message_exact_match' };
+      }
+
+      const exactNameMatches = deviceRows.filter(
+        (device) => this._normalizeAlarmText(device.name) === normalizedMessage
+      );
+      if (exactNameMatches.length === 1) {
+        return { device: exactNameMatches[0], reason: 'name_exact_match' };
+      }
+
+      const fuzzyMatches = deviceRows.filter((device) => {
+        const deviceMessage = this._normalizeAlarmText(device.message);
+        const deviceName = this._normalizeAlarmText(device.name);
+        return (
+          (deviceMessage && (normalizedMessage.includes(deviceMessage) || deviceMessage.includes(normalizedMessage))) ||
+          (deviceName && (normalizedMessage.includes(deviceName) || deviceName.includes(normalizedMessage)))
+        );
+      });
+      if (fuzzyMatches.length === 1) {
+        return { device: fuzzyMatches[0], reason: 'message_fuzzy_match' };
+      }
+    }
+
+    if (!this.rustPlusService?.isConnected?.(serverId)) {
+      return { device: null, reason: 'not_connected', candidates: deviceRows.length };
+    }
+
+    const activeDevices = [];
+    for (const device of deviceRows) {
+      try {
+        const info = await this.rustPlusService.getEntityInfo(serverId, device.entityId);
+        if (info?.payload?.value === true) {
+          activeDevices.push(device);
+        }
+      } catch (error) {
+        this.log(
+          'ALARM',
+          `查询警报设备状态失败: serverId=${serverId}, entityId=${device.entityId}, error=${error.message}`,
+          'DEBUG'
+        );
+      }
+    }
+
+    if (activeDevices.length === 1) {
+      return { device: activeDevices[0], reason: 'active_alarm_device' };
+    }
+
+    if (activeDevices.length > 1) {
+      return { device: null, reason: 'multiple_active_alarm_devices', candidates: activeDevices.length };
+    }
+
+    return { device: null, reason: 'ambiguous_alarm_device', candidates: deviceRows.length };
   }
 
   _resolveTrackingNotifyServerId(data) {
@@ -1258,7 +1368,7 @@ class UserServiceManager extends EventEmitter {
    * 将 FCM 推送里的服务器标识解析为当前用户作用域的 serverId
    * @private
    */
-  async _resolveScopedServerIdForAlarm(rawServerId, entityId) {
+  async _resolveScopedServerIdForAlarm(rawServerId, entityId, serverIp = null, serverPort = null) {
     if (rawServerId !== null && rawServerId !== undefined && rawServerId !== '') {
       const directServerId = String(rawServerId);
       const [directRows] = await db.query(
@@ -1276,6 +1386,16 @@ class UserServiceManager extends EventEmitter {
       );
       if (scopedRows.length > 0) {
         return scopedServerId;
+      }
+    }
+
+    if (serverIp && serverPort) {
+      const [serverRows] = await db.query(
+        'SELECT id FROM servers WHERE userId = ? AND ip = ? AND port = ? LIMIT 1',
+        [this.userId, serverIp, String(serverPort)]
+      );
+      if (serverRows.length > 0) {
+        return serverRows[0].id;
       }
     }
 
@@ -1303,92 +1423,92 @@ class UserServiceManager extends EventEmitter {
       const { serverId, entityId } = data;
       const triggerTime = Number.parseInt(data.time, 10) || Date.now();
       const incomingMessage = typeof data.message === 'string' ? data.message.trim() : '';
-      const parsedEntityId = Number.parseInt(entityId, 10);
-
-      if (this._isDuplicateAlarmTrigger(serverId, entityId, triggerTime)) {
-        this.log('ALARM', `Duplicate alarm ignored: serverId=${serverId}, entityId=${entityId}`, 'DEBUG');
-        return;
-      }
+      let resolvedEntityId = Number.parseInt(entityId, 10);
+      let device = null;
+      let fallbackReason = null;
 
       this.log('ALARM', `警报触发: serverId=${serverId}, entityId=${entityId}`);
 
-      if (Number.isNaN(parsedEntityId)) {
-        this.log('ALARM', `FCM 警报缺少 entityId，跳过设备查询: serverId=${serverId}`, 'WARN');
-        this.emit('alarm:triggered', {
-          ...data,
-          userId: this.userId,
-          serverId: serverId || null,
-          entityId: null,
-          deviceName: data.deviceName || data.name || null,
-          message: incomingMessage || null,
-          time: triggerTime
-        });
-        return;
-      }
+      if (Number.isNaN(resolvedEntityId)) {
+        const fallbackResult = await this._resolveAlarmDeviceFallback(serverId, incomingMessage);
+        device = fallbackResult.device;
+        fallbackReason = fallbackResult.reason;
 
-      // 1. 从数据库查询设备信息
-      const [deviceRows] = await db.query(
-        'SELECT * FROM devices WHERE serverId = ? AND userId = ? AND entityId = ?',
-        [serverId, this.userId, parsedEntityId]
-      );
-
-      const device = deviceRows[0];
-
-      if (!device || device.type !== 'ALARM') {
-        if (!device) {
-          this.log('ALARM', `未找到设备记录: entityId=${entityId}`, 'WARN');
-        } else {
-          this.log('ALARM', `设备类型不是警报器 (type=${device.type})，忽略触发逻辑`, 'DEBUG');
-          return;
+        if (device) {
+          resolvedEntityId = Number.parseInt(device.entityId, 10);
+          this.log(
+            'ALARM',
+            `FCM 警报缺少 entityId，已按 ${fallbackReason} 匹配设备: serverId=${serverId}, entityId=${resolvedEntityId}`
+          );
         }
-        // 对于未记录的设备，如果确实收到了警报请求（虽然现在流程上应该不会了），仍发出基础事件但不发消息
-        this.emit('alarm:triggered', {
-          ...data,
-          userId: this.userId,
-          entityId: parsedEntityId,
-          deviceName: data.deviceName || data.name || `设备 ${parsedEntityId}`,
-          message: incomingMessage || null,
-          time: triggerTime
-        });
+      }
+
+      if (this._isDuplicateAlarmTrigger(serverId, resolvedEntityId, triggerTime, incomingMessage)) {
+        this.log('ALARM', `Duplicate alarm ignored: serverId=${serverId}, entityId=${resolvedEntityId}`, 'DEBUG');
         return;
       }
 
-      // 2. 更新 lastTrigger 时间
-      await db.query(
-        'UPDATE devices SET lastTrigger = ?, updatedAt = NOW() WHERE id = ?',
-        [new Date(triggerTime), device.id]
-      );
+      if (!device && !Number.isNaN(resolvedEntityId)) {
+        const [deviceRows] = await db.query(
+          'SELECT * FROM devices WHERE serverId = ? AND userId = ? AND entityId = ?',
+          [serverId, this.userId, resolvedEntityId]
+        );
+        device = deviceRows[0] || null;
+      }
 
-      // 3. 构建警报消息
-      const deviceName = device.name || `警报 ${parsedEntityId}`;
-      const webMessage = typeof device.message === 'string' ? device.message.trim() : '';
-      // 优先使用 Rust 游戏内警报内容，缺失时回退到网页配置消息。
+      if (device && device.type !== 'ALARM') {
+        this.log('ALARM', `设备类型不是警报器 (type=${device.type})，忽略触发逻辑`, 'DEBUG');
+        return;
+      }
+
+      if (!device) {
+        const fallbackLabel = fallbackReason ? `, reason=${fallbackReason}` : '';
+        this.log(
+          'ALARM',
+          `未能匹配具体警报设备: serverId=${serverId}, entityId=${resolvedEntityId}${fallbackLabel}`,
+          'WARN'
+        );
+      }
+
+      if (device) {
+        await db.query(
+          'UPDATE devices SET lastTrigger = ?, updatedAt = NOW() WHERE id = ?',
+          [new Date(triggerTime), device.id]
+        );
+      }
+
+      const deviceName = device?.name
+        || data.deviceName
+        || data.name
+        || (Number.isNaN(resolvedEntityId) ? '智能警报' : `设备 ${resolvedEntityId}`);
+      const webMessage = typeof device?.message === 'string' ? device.message.trim() : '';
       const notifyMessage = incomingMessage || webMessage || null;
-
-      // 游戏内消息格式
       const chatMessage = `[警报] ${notifyMessage || deviceName}`;
 
-      // 4. 发送游戏内聊天消息
-      try {
-        await this.rustPlusService.sendTeamMessage(serverId, chatMessage, { isBot: true });
-        this.log('ALARM', `已发送警报消息到游戏: ${chatMessage}`);
-      } catch (chatError) {
-        this.log('ALARM', `发送警报消息失败: ${chatError.message}`, 'ERROR');
+      if (serverId) {
+        try {
+          await this.rustPlusService.sendTeamMessage(serverId, chatMessage, { isBot: true });
+          this.log('ALARM', `已发送警报消息到游戏: ${chatMessage}`);
+        } catch (chatError) {
+          this.log('ALARM', `发送警报消息失败: ${chatError.message}`, 'ERROR');
+        }
+      } else {
+        this.log('ALARM', '警报缺少 serverId，无法发送游戏内消息', 'WARN');
       }
 
-      // 5. 保存到历史记录
-      await this.eventMonitorService.saveEventLog(serverId, 'alarm:triggered', {
-        entityId: parsedEntityId,
-        deviceName,
-        message: notifyMessage,
-        time: triggerTime
-      });
+      if (serverId) {
+        await this.eventMonitorService.saveEventLog(serverId, 'alarm:triggered', {
+          entityId: Number.isNaN(resolvedEntityId) ? null : resolvedEntityId,
+          deviceName,
+          message: notifyMessage,
+          time: triggerTime
+        });
+      }
 
-      // 6. 发出事件（用于前端 WebSocket 通知）
       this.emit('alarm:triggered', {
         userId: this.userId,
-        serverId,
-        entityId: parsedEntityId,
+        serverId: serverId || null,
+        entityId: Number.isNaN(resolvedEntityId) ? null : resolvedEntityId,
         deviceName,
         message: notifyMessage,
         time: triggerTime

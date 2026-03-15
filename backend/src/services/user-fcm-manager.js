@@ -630,6 +630,9 @@ class UserFCMManager extends EventEmitter {
           title: data.title,
           message: pickField('message') || data.message || data.body,
           serverId: pickField('id', 'serverId', 'server_id'),
+          serverName: pickField('name', 'serverName') || null,
+          ip: pickField('ip', 'serverIp', 'server_ip') || null,
+          port: pickField('port', 'serverPort', 'server_port') || null,
           entityId,
           time: timestamp,
           type: 'alarm'
