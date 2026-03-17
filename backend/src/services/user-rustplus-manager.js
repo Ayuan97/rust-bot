@@ -729,11 +729,12 @@ class UserRustPlusManager extends EventEmitter {
   /**
    * 获取设备状态
    */
-  async getEntityInfo(serverId, entityId) {
+  async getEntityInfo(serverId, entityId, options = {}) {
     const rustplus = this.connections.get(serverId);
     if (!rustplus) throw new Error('服务器未连接');
 
-    const res = await rustplus.sendRequestAsync({ entityId, getEntityInfo: {} });
+    const timeoutMs = Number.isFinite(options?.timeoutMs) ? Number(options.timeoutMs) : undefined;
+    const res = await rustplus.sendRequestAsync({ entityId, getEntityInfo: {} }, timeoutMs);
     return res.entityInfo;
   }
 

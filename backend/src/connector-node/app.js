@@ -226,7 +226,9 @@ async function executeCommand(command) {
     case 'setEntityValue':
       return rustManager.setEntityValue(sessionId, payload.entityId, payload.value);
     case 'getEntityInfo':
-      return rustManager.getEntityInfo(sessionId, payload.entityId);
+      return rustManager.getEntityInfo(sessionId, payload.entityId, {
+        timeoutMs: payload.timeoutMs,
+      });
     case 'getServerInfo':
       return rustManager.getServerInfo(sessionId);
     case 'getTeamInfo':

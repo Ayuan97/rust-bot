@@ -509,8 +509,12 @@ class DistributedRustPlusManager extends EventEmitter {
     return result?.messages || result || [];
   }
 
-  async getEntityInfo(serverId, entityId) {
-    return this._dispatch(serverId, 'getEntityInfo', { entityId });
+  async getEntityInfo(serverId, entityId, options = {}) {
+    const payload = { entityId };
+    if (Number.isFinite(options?.timeoutMs)) {
+      payload.timeoutMs = Number(options.timeoutMs);
+    }
+    return this._dispatch(serverId, 'getEntityInfo', payload);
   }
 
   async getTime(serverId) {

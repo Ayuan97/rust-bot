@@ -48,7 +48,9 @@ class UserServiceManager extends EventEmitter {
     this.pendingServerPairing = null;
     this.recentAlarmTriggers = new Map();
     this.ALARM_DEDUP_WINDOW_MS = 5000;
-    this.ALARM_DEDUP_RETENTION_MS = 60000;
+    this.ALARM_NOTIFICATION_DEDUP_WINDOW_MS = 10 * 60 * 1000;
+    this.ALARM_DEDUP_RETENTION_MS = this.ALARM_NOTIFICATION_DEDUP_WINDOW_MS;
+    this.ALARM_ENTITY_INFO_TIMEOUT_MS = 2500;
 
     console.log(`👤 UserServiceManager 已创建 (userId: ${userId})`);
   }
@@ -845,9 +847,13 @@ class UserServiceManager extends EventEmitter {
     return text.trim().toLowerCase().replace(/\s+/g, ' ');
   }
 
-  _buildAlarmDedupKey(serverId, entityId, message = '') {
+  _buildAlarmDedupKey(serverId, entityId, message = '', notificationId = null) {
     if (serverId === null || serverId === undefined || serverId === '') {
       return null;
+    }
+
+    if (notificationId) {
+      return `${String(serverId)}:notification:${String(notificationId)}`;
     }
 
     const parsedEntityId = Number.parseInt(entityId, 10);
@@ -863,8 +869,8 @@ class UserServiceManager extends EventEmitter {
     return `${String(serverId)}:unknown`;
   }
 
-  _isDuplicateAlarmTrigger(serverId, entityId, triggerTime, message = '') {
-    const cacheKey = this._buildAlarmDedupKey(serverId, entityId, message);
+  _isDuplicateAlarmTrigger(serverId, entityId, triggerTime, message = '', notificationId = null) {
+    const cacheKey = this._buildAlarmDedupKey(serverId, entityId, message, notificationId);
     if (!cacheKey) {
       return false;
     }
@@ -879,7 +885,11 @@ class UserServiceManager extends EventEmitter {
       }
     }
 
-    if (lastTriggerAt && now - lastTriggerAt < this.ALARM_DEDUP_WINDOW_MS) {
+    const dedupWindowMs = notificationId
+      ? this.ALARM_NOTIFICATION_DEDUP_WINDOW_MS
+      : this.ALARM_DEDUP_WINDOW_MS;
+
+    if (lastTriggerAt && now - lastTriggerAt < dedupWindowMs) {
       return true;
     }
 
@@ -940,21 +950,24 @@ class UserServiceManager extends EventEmitter {
       return { device: null, reason: 'not_connected', candidates: deviceRows.length };
     }
 
-    const activeDevices = [];
-    for (const device of deviceRows) {
-      try {
-        const info = await this.rustPlusService.getEntityInfo(serverId, device.entityId);
-        if (info?.payload?.value === true) {
-          activeDevices.push(device);
+    // Rust+ 的 FCM alarm 往往缺少 entityId，状态回查需要尽快完成，否则短暂触发会被拖成未知状态。
+    const activeDevices = (
+      await Promise.all(deviceRows.map(async (device) => {
+        try {
+          const info = await this.rustPlusService.getEntityInfo(serverId, device.entityId, {
+            timeoutMs: this.ALARM_ENTITY_INFO_TIMEOUT_MS
+          });
+          return info?.payload?.value === true ? device : null;
+        } catch (error) {
+          this.log(
+            'ALARM',
+            `查询警报设备状态失败: serverId=${serverId}, entityId=${device.entityId}, error=${error.message}`,
+            'DEBUG'
+          );
+          return null;
         }
-      } catch (error) {
-        this.log(
-          'ALARM',
-          `查询警报设备状态失败: serverId=${serverId}, entityId=${device.entityId}, error=${error.message}`,
-          'DEBUG'
-        );
-      }
-    }
+      }))
+    ).filter(Boolean);
 
     if (activeDevices.length === 1) {
       return { device: activeDevices[0], reason: 'active_alarm_device' };
@@ -1423,6 +1436,7 @@ class UserServiceManager extends EventEmitter {
       const { serverId, entityId } = data;
       const triggerTime = Number.parseInt(data.time, 10) || Date.now();
       const incomingMessage = typeof data.message === 'string' ? data.message.trim() : '';
+      const notificationId = data.notificationId ? String(data.notificationId) : null;
       let resolvedEntityId = Number.parseInt(entityId, 10);
       let device = null;
       let fallbackReason = null;
@@ -1443,7 +1457,13 @@ class UserServiceManager extends EventEmitter {
         }
       }
 
-      if (this._isDuplicateAlarmTrigger(serverId, resolvedEntityId, triggerTime, incomingMessage)) {
+      if (this._isDuplicateAlarmTrigger(
+        serverId,
+        resolvedEntityId,
+        triggerTime,
+        incomingMessage,
+        notificationId
+      )) {
         this.log('ALARM', `Duplicate alarm ignored: serverId=${serverId}, entityId=${resolvedEntityId}`, 'DEBUG');
         return;
       }
@@ -1511,7 +1531,8 @@ class UserServiceManager extends EventEmitter {
         entityId: Number.isNaN(resolvedEntityId) ? null : resolvedEntityId,
         deviceName,
         message: notifyMessage,
-        time: triggerTime
+        time: triggerTime,
+        notificationId
       });
 
       this.log('ALARM', `警报处理完成: ${deviceName}`);

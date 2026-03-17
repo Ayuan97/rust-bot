@@ -625,11 +625,13 @@ class UserFCMManager extends EventEmitter {
 
         const entityId = parseIntSafe(pickField('entityId', 'entity_id', 'entityID', 'entityid', 'entity'));
         const timestamp = Number(pickField('time', 'timestamp', 'ts')) || Date.now();
+        const notificationId = pickField('notificationId', 'notification_id', 'id') || null;
         const alarmInfo = {
           userId: this.userId,
           title: data.title,
           message: pickField('message') || data.message || data.body,
-          serverId: pickField('id', 'serverId', 'server_id'),
+          notificationId,
+          serverId: pickField('serverId', 'server_id', 'serverID') || null,
           serverName: pickField('name', 'serverName') || null,
           ip: pickField('ip', 'serverIp', 'server_ip') || null,
           port: pickField('port', 'serverPort', 'server_port') || null,
