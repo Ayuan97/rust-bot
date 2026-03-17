@@ -32,6 +32,39 @@ const SHOP_SEARCH_ALIAS_MAP = new Map([
   ['金属碎片', ['metal.fragments', 'metal fragments']]
 ]);
 
+const LEADER_NOT_ALLOWED_PATTERNS = [
+  'not leader',
+  'not_leader',
+  'not the leader',
+  '当前账号不是队长',
+  '不是队长',
+];
+
+function getCommandErrorMessage(error) {
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  if (error instanceof Error) {
+    return error.message || String(error);
+  }
+
+  if (error && typeof error.message === 'string') {
+    return error.message;
+  }
+
+  return String(error || '');
+}
+
+function isLeaderPermissionError(message) {
+  if (!message) {
+    return false;
+  }
+
+  const normalized = String(message).toLowerCase();
+  return LEADER_NOT_ALLOWED_PATTERNS.some(pattern => normalized.includes(pattern.toLowerCase()));
+}
+
 class UserCommands extends EventEmitter {
   constructor(userId, rustPlusService, eventMonitorService = null) {
     super();
@@ -1405,7 +1438,6 @@ class UserCommands extends EventEmitter {
 
       const leaderSteamId = teamInfo.leaderSteamId?.toString();
       const botSteamId = this.rustPlusService.getPlayerId(serverId)?.toString();
-
       logger.debug(`[leader] server=${serverId} leader=${leaderSteamId} bot=${botSteamId} members=${members.length} caller=${context.steamId}`);
 
       let targetPlayer;
@@ -1446,25 +1478,51 @@ class UserCommands extends EventEmitter {
         }
       }
 
-      // 检查当前机器人账号是否是队长
       if (leaderSteamId !== botSteamId) {
-        logger.warn(`[leader] 当前账号不是队长 (server=${serverId}, leader=${leaderSteamId}, bot=${botSteamId})`);
+        logger.warn(`[leader] bot is not leader (server=${serverId}, leader=${leaderSteamId || 'null'}, bot=${botSteamId || 'null'}, caller=${context.steamId || 'null'})`);
         return cmd('leader', 'not_leader') || '[错误] 移交失败: 当前账号不是队长';
       }
 
-      // 移交队长权限
       logger.debug(`[leader] 调用 promoteToLeader target=${targetPlayer.steamId} name=${targetPlayer.name}`);
-      await this.rustPlusService.promoteToLeader(serverId, targetPlayer.steamId);
+      try {
+        await this.rustPlusService.promoteToLeader(serverId, targetPlayer.steamId);
+      } catch (error) {
+        const errorMessage = getCommandErrorMessage(error);
+
+        if (isLeaderPermissionError(errorMessage)) {
+          logger.warn(`[leader] promote rejected by server (server=${serverId}, target=${targetPlayer.steamId}, bot=${botSteamId || 'null'}): ${errorMessage}`);
+          return cmd('leader', 'not_leader') || '[错误] 移交失败: 当前账号不是队长';
+        }
+
+        try {
+          const latestTeamInfo = await this.rustPlusService.getTeamInfo(serverId);
+          const latestLeaderSteamId = latestTeamInfo?.leaderSteamId?.toString();
+
+          if (latestLeaderSteamId && latestLeaderSteamId === targetPlayer.steamId?.toString()) {
+            logger.warn(`[leader] promote completed externally (server=${serverId}, target=${targetPlayer.steamId}, msg=${errorMessage})`);
+            return cmd('leader', 'msg', { name: targetPlayer.name }) || `[队长] 已将队长移交给 ${targetPlayer.name}`;
+          }
+
+          if (latestLeaderSteamId && latestLeaderSteamId !== botSteamId) {
+            logger.warn(`[leader] leader changed during promote (server=${serverId}, latestLeader=${latestLeaderSteamId}, bot=${botSteamId || 'null'}, msg=${errorMessage})`);
+            return cmd('leader', 'not_leader') || '[错误] 移交失败: 当前账号不是队长';
+          }
+        } catch (refreshError) {
+          logger.warn(`[leader] refresh team info after promote failed (server=${serverId}): ${getCommandErrorMessage(refreshError)}`);
+        }
+
+        throw error;
+      }
 
       return cmd('leader', 'msg', { name: targetPlayer.name }) || `[队长] 已将队长移交给 ${targetPlayer.name}`;
 
     } catch (error) {
-      const msg = error?.message || String(error);
-      logger.warn(`[leader] 异常 (server=${serverId}, user=${this.userId}): ${msg}`);
-      if (msg.includes('timeout') || msg.includes('Timeout')) {
+      const errorMessage = getCommandErrorMessage(error);
+      logger.warn(`[leader] 异常 (server=${serverId}, user=${this.userId}): ${errorMessage}`);
+      if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
         return '[错误] 移交队长超时，请稍后重试';
       }
-      return cmd('leader', 'error') || `[错误] 移交队长失败: ${msg}`;
+      return cmd('leader', 'error') || `[错误] 移交队长失败: ${errorMessage}`;
     }
   }
 
