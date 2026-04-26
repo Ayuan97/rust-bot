@@ -49,3 +49,16 @@ tmpclaude-*
 # Local scratch files
 /nul
 /temp/
+
+# Rust+ protocol drift checker - downloaded tools and binaries
+tools/Il2CppDumper/
+tools/Il2CppDumper-win.zip
+tools/steamcmd/
+tools/steamcmd.zip
+tools/steamcmd.log
+tools/rust-server/
+tools/lib/
+tools/dump-output/
+# Generated protocol artifacts (regenerated each run)
+tools/extracted.proto
+tools/extracted.json
