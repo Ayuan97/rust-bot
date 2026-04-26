@@ -26,13 +26,13 @@ export const EventTiming = {
   HARBOR_CARGO_SHIP_DOCK_DISTANCE: 100,             // 港口停靠距离 100米
 
   // 油井
+  // 油井解锁 = HackableLockedCrate.requiredHackSeconds = 900 秒 (15 分钟, 反编译确认)
   OIL_RIG_LOCKED_CRATE_UNLOCK_TIME: 15 * 60 * 1000, // 15分钟
-  OIL_RIG_CRATE_WARNING_TIME: 3 * 60 * 1000,        // 箱子解锁前3分钟警告
-  OIL_RIG_CHINOOK_MAX_SPAWN_DISTANCE: 550,          // CH47最大刷新距离 550米
-  OIL_RIG_RADIATION_START_TIME: 45 * 60 * 1000,     // 45分钟 - 辐射开始上升
-  OIL_RIG_RADIATION_WARNING_TIME: 3 * 60 * 1000,    // 3分钟 - 辐射警告提前量
-  OIL_RIG_RESET_TIME: 50 * 60 * 1000,               // 50分钟 - 辐射达到最大/重置
-  OIL_RIG_RESET_WARNING_TIME: 3 * 60 * 1000,        // 3分钟 - 重置警告提前量
+  OIL_RIG_CRATE_WARNING_TIME: 3 * 60 * 1000,        // 箱子解锁前3分钟警告 (产品决策)
+  OIL_RIG_CHINOOK_MAX_SPAWN_DISTANCE: 550,          // CH47最大刷新距离 550米 (启发式)
+  // 注: 油井 puzzle 重置由 ConVar.Server.monumentPuzzleResetRadiationPlayerEmptyTime (120s)
+  //     + monumentPuzzleResetRadiationPreResetTime (300s) 触发, 不是固定时间.
+  //     如未来要做"油井重置预警", 应监听玩家是否离开 + 走那两个 cvar, 而不是固定 50 分钟定时器.
 
   // 直升机
   PATROL_HELICOPTER_DOWNED_RADIUS: 400,             // 击落半径 400米

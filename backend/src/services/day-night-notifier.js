@@ -157,7 +157,8 @@ class DayNightNotifier {
     const currentTime = timeInfo.time || 0;
     const sunrise = timeInfo.sunrise || 6;
     const sunset = timeInfo.sunset || 18;
-    const dayLengthMinutes = timeInfo.dayLengthMinutes || 45;
+    // 兜底默认 60: Rust 官服 TOD_Time.DayLengthInMinutes 默认 60 (一个游戏日 = 60 真实分钟)
+    const dayLengthMinutes = timeInfo.dayLengthMinutes || 60;
 
     const isDaytime = currentTime >= sunrise && currentTime < sunset;
 

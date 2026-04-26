@@ -250,38 +250,32 @@ function getNearestMonument(x, y, monuments) {
  * @returns {string} 格式化的坐标字符串
  */
 function formatPosition(x, y, mapSize, includeSubGrid = true, includeCoords = false, monuments = null, oceanMargin = 0) {
-  // 直接使用原始 mapSize，内部 getGridPos 会进行一次校正
-  const adjX = Math.max(0, Math.min(x, mapSize));
-  const adjY = Math.max(0, Math.min(y, mapSize));
-
-  const grid = getGridPos(adjX, adjY, mapSize, includeSubGrid);
-
-  // 检查是否在古迹附近（使用原始坐标）
+  // 古迹优先 (使用原始坐标, 古迹有自己的半径范围, 跟网格无关)
   let monumentName = null;
   if (monuments) {
     monumentName = getNearestMonument(x, y, monuments);
   }
 
+  // 地图外坐标 (典型: 货船刷在 mapSize+500m 海洋边缘) 不算网格, 用方向描述更诚实
+  // 旧实现 clamp 到 [0, mapSize] 后总能算出 grid, 海上目标会被错误标在地图角落 (Z26 等)
+  const correctedMapSize = getCorrectedMapSize(mapSize);
+  if (isOutsideGridSystem(x, y, correctedMapSize)) {
+    if (monumentName) return monumentName;
+    return `地图${getDirection(x, y, mapSize)}边界`;
+  }
+
+  const grid = getGridPos(x, y, mapSize, includeSubGrid);
   if (grid) {
-    if (monumentName) {
-      // 有古迹名称时：古迹名(网格)
-      return `${monumentName}(${grid})`;
-    } else if (includeCoords) {
-      // 包含精确坐标
-      const coords = `(${Math.round(adjX)},${Math.round(adjY)})`;
-      return `${grid}${coords}`;
+    if (monumentName) return `${monumentName}(${grid})`;
+    if (includeCoords) {
+      return `${grid}(${Math.round(x)},${Math.round(y)})`;
     }
     return grid;
   }
 
-  // 如果没有网格位置
-  if (monumentName) {
-    return monumentName;
-  }
-
-  // 兜底：使用方向描述
-  const direction = getDirection(x, y, mapSize);
-  return `地图${direction}边界`;
+  // 极少数兜底 (应该不会走到, isOutsideGridSystem 已拦)
+  if (monumentName) return monumentName;
+  return `地图${getDirection(x, y, mapSize)}边界`;
 }
 
 export {
