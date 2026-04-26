@@ -12,7 +12,8 @@ export const AppMarkerType = {
   CargoShip: 5,         // 货船
   Crate: 6,             // 上锁箱子
   GenericRadius: 7,
-  PatrolHelicopter: 8   // 武装直升机
+  PatrolHelicopter: 8,  // 武装直升机
+  TravellingVendor: 9   // 流浪商人 (2024-07 Road Renegades 加入)
 };
 
 // 事件时间常量（毫秒）
@@ -52,6 +53,10 @@ export const EventTiming = {
   // 爆炸
   EXPLOSION_RAID_TIME_WINDOW: 5 * 60 * 1000,       // 袭击检测时间窗口 5分钟
   EXPLOSION_RAID_MIN_COUNT: 3,                      // 最少爆炸次数判定为袭击
+
+  // 流浪商人 (Travelling Vendor) - 来自反编译 convar travellingvendor.alive_time_seconds=1800
+  TRAVELLING_VENDOR_LIFETIME: 30 * 60 * 1000,       // 30分钟存活时间
+  TRAVELLING_VENDOR_LEAVE_WARNING_TIME: 5 * 60 * 1000, // 离场前5分钟警告
 
   // 轮询
   MAP_MARKERS_POLL_INTERVAL: 5000,                  // 5秒轮询一次
@@ -102,6 +107,11 @@ export const EventType = {
   VENDING_MACHINE_REMOVED: 'vending_machine:removed',
   VENDING_MACHINE_STOCK_CHANGE: 'vending_machine:stock_change',
   VENDING_MACHINE_ORDER_CHANGE: 'vending_machine:order_change',
+
+  // 流浪商人 (Travelling Vendor)
+  TRAVELLING_VENDOR_SPAWN: 'travelling_vendor:spawn',
+  TRAVELLING_VENDOR_LEAVE_WARNING: 'travelling_vendor:leave_warning',
+  TRAVELLING_VENDOR_LEAVE: 'travelling_vendor:leave',
 
   // 爆炸
   EXPLOSION_DETECTED: 'explosion:detected',

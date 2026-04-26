@@ -23,7 +23,9 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   player_afk: true,
   cargo_spawn: true,
   heli_spawn: true,
-  oil_rig_triggered: true
+  oil_rig_triggered: true,
+  travelling_vendor_spawn: true,
+  travelling_vendor_leave_warning: true
 };
 
 // 所有管理接口都需要管理员权限

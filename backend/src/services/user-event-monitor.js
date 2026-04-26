@@ -164,6 +164,8 @@ class UserEventMonitor extends EventEmitter {
       'small_oil_rig:crate_unlocked': 'OIL_RIG_UNLOCKED',
       'large_oil_rig:crate_unlocked': 'OIL_RIG_UNLOCKED',
       'ch47:spawn': 'CHINOOK_SPAWN',
+      'travelling_vendor:spawn': 'TRAVELLING_VENDOR_SPAWN',
+      'travelling_vendor:leave': 'TRAVELLING_VENDOR_LEAVE',
       'alarm:triggered': 'ALARM_TRIGGERED',
       'entity:changed': 'ENTITY_CHANGED',
       'server:connected': 'SERVER_CONNECTED',
@@ -243,8 +245,10 @@ class UserEventMonitor extends EventEmitter {
         ch47Spawn: null,
         ch47CrateDrop: null,          // CH47 投放箱子时间
         lockedCrateSpawn: null,
-        bradleyDestroyed: null        // 坦克被摧毁时间
+        bradleyDestroyed: null,       // 坦克被摧毁时间
+        travellingVendorSpawn: null   // 流浪商人出现时间
       },
+      knownTravellingVendors: new Map(),  // 已追踪的流浪商人 marker
       knownVendingMachines: new Map(),
       isFirstPoll: true,
       teamMembers: new Map(),
@@ -438,6 +442,7 @@ class UserEventMonitor extends EventEmitter {
     await this.checkLockedCrates(serverId, currentMarkers, previousMarkers);
     await this.checkVendingMachines(serverId, currentMarkers, previousMarkers);
     await this.checkExplosions(serverId, currentMarkers, previousMarkers);
+    await this.checkTravellingVendors(serverId, currentMarkers, previousMarkers);
     await this.checkTeamInfo(serverId);
 
     // 更新缓存
@@ -1605,6 +1610,147 @@ class UserEventMonitor extends EventEmitter {
       if (data.time < expiryTime) {
         eventData.knownExplosions.delete(id);
       }
+    }
+  }
+
+  /**
+   * 检测流浪商人 (Travelling Vendor) - AppMarkerType=9
+   * 行为: 大图(4250+ 含环形公路)随机刷新, 沿环形公路走 30 分钟后离场
+   * 注意: 协议不下发 sellOrders, 只能拿位置和方向
+   */
+  async checkTravellingVendors(serverId, currentMarkers, previousMarkers) {
+    const currentVendors = currentMarkers.filter(m => m.type === AppMarkerType.TravellingVendor);
+    const previousVendors = previousMarkers.filter(m => m.type === AppMarkerType.TravellingVendor);
+    const eventData = this.eventData.get(serverId);
+    if (!eventData) return;
+
+    // 新刷新的流浪商人
+    const newVendors = currentVendors.filter(c =>
+      !previousVendors.some(p => p.id === c.id)
+    );
+
+    for (const vendor of newVendors) {
+      // 首次轮询跳过, 避免服务重启时把已存在的商人误判为新刷
+      if (eventData.isFirstPoll) {
+        eventData.knownTravellingVendors.set(vendor.id, { x: vendor.x, y: vendor.y, time: Date.now() });
+        continue;
+      }
+
+      const mapSize = this.rustPlusService.getMapSize(serverId);
+      const position = formatPosition(vendor.x, vendor.y, mapSize);
+      const direction = getDirection(vendor.x, vendor.y, mapSize);
+      const now = Date.now();
+
+      logger.server(serverId, `流浪商人出现 @ ${position} ${direction}`);
+
+      eventData.lastEvents.travellingVendorSpawn = now;
+      eventData.knownTravellingVendors.set(vendor.id, { x: vendor.x, y: vendor.y, time: now });
+
+      const eventPayload = {
+        userId: this.userId,
+        serverId,
+        markerId: vendor.id,
+        x: vendor.x,
+        y: vendor.y,
+        position,
+        direction,
+        time: now
+      };
+
+      this.emit(EventType.TRAVELLING_VENDOR_SPAWN, eventPayload);
+      await this.saveEventLog(serverId, EventType.TRAVELLING_VENDOR_SPAWN, eventPayload);
+
+      // 发送游戏内通知
+      if (this.isNotificationEnabled('travelling_vendor_spawn')) {
+        try {
+          const msg = notify('travelling_vendor_spawn', { position, direction });
+          if (msg) {
+            await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+          }
+        } catch (e) {
+          logger.debug(`发送流浪商人刷新通知失败: ${e.message}`);
+        }
+      }
+
+      // 启动 30 分钟离场计时器（兜底, 实际离场以 marker 消失为准）
+      const leaveTimer = EventTimerManager.startTimer(
+        `travelling_vendor_leave_${vendor.id}`,
+        serverId,
+        EventTiming.TRAVELLING_VENDOR_LIFETIME,
+        () => {
+          // 兜底逻辑: 30 分钟后还在就不再触发离场, 实际离场由 marker 消失检测
+        }
+      );
+
+      // 离场前 5 分钟预警
+      leaveTimer.addWarning(EventTiming.TRAVELLING_VENDOR_LEAVE_WARNING_TIME, async (timeLeft) => {
+        const known = eventData.knownTravellingVendors.get(vendor.id);
+        const currentPos = known ? formatPosition(known.x, known.y, mapSize) : position;
+        const minutesLeft = Math.floor(timeLeft / 60000);
+
+        const payload = {
+          userId: this.userId,
+          serverId,
+          markerId: vendor.id,
+          position: currentPos,
+          minutesLeft,
+          time: Date.now()
+        };
+
+        this.emit(EventType.TRAVELLING_VENDOR_LEAVE_WARNING, payload);
+
+        if (this.isNotificationEnabled('travelling_vendor_leave_warning')) {
+          try {
+            const msg = notify('travelling_vendor_leave_warning', { minutes: minutesLeft, position: currentPos });
+            if (msg) {
+              await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+            }
+          } catch (e) {
+            logger.debug(`发送流浪商人离场预警失败: ${e.message}`);
+          }
+        }
+      });
+    }
+
+    // 更新位置追踪 (用于离场预警时显示最后位置)
+    for (const vendor of currentVendors) {
+      eventData.knownTravellingVendors.set(vendor.id, { x: vendor.x, y: vendor.y, time: Date.now() });
+    }
+
+    // 检测离场: previous 有但 current 无
+    const leftVendors = previousVendors.filter(p =>
+      !currentVendors.some(c => c.id === p.id)
+    );
+
+    for (const vendor of leftVendors) {
+      if (eventData.isFirstPoll) continue;
+
+      logger.server(serverId, `流浪商人已离开`);
+
+      const payload = {
+        userId: this.userId,
+        serverId,
+        markerId: vendor.id,
+        time: Date.now()
+      };
+
+      this.emit(EventType.TRAVELLING_VENDOR_LEAVE, payload);
+      await this.saveEventLog(serverId, EventType.TRAVELLING_VENDOR_LEAVE, payload);
+
+      if (this.isNotificationEnabled('travelling_vendor_leave')) {
+        try {
+          const msg = notify('travelling_vendor_leave', {});
+          if (msg) {
+            await this.rustPlusService.sendTeamMessage(serverId, msg, { isBot: true });
+          }
+        } catch (e) {
+          logger.debug(`发送流浪商人离开通知失败: ${e.message}`);
+        }
+      }
+
+      // 清理状态
+      eventData.knownTravellingVendors.delete(vendor.id);
+      EventTimerManager.stopTimer(`travelling_vendor_leave_${vendor.id}`, serverId);
     }
   }
 

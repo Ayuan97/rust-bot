@@ -44,9 +44,7 @@
 
 
 ## 枚举新增值
-### `enum AppMarkerType`
-- `TravellingVendor` = 9
-
+_无_
 
 ## 字段类型/tag 变更（可能要小心）
 ### `ClanInfo`

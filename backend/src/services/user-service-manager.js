@@ -480,6 +480,18 @@ class UserServiceManager extends EventEmitter {
         this.emit('cargo:leave', data);
       });
 
+      this.eventMonitorService.on('travelling_vendor:spawn', (data) => {
+        this.emit('travelling_vendor:spawn', data);
+      });
+
+      this.eventMonitorService.on('travelling_vendor:leave_warning', (data) => {
+        this.emit('travelling_vendor:leave_warning', data);
+      });
+
+      this.eventMonitorService.on('travelling_vendor:leave', (data) => {
+        this.emit('travelling_vendor:leave', data);
+      });
+
       this.eventMonitorService.on('heli:spawn', (data) => {
         this.emit('heli:spawn', data);
       });

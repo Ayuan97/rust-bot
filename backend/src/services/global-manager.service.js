@@ -505,6 +505,18 @@ class GlobalServiceManager extends EventEmitter {
       this.emit('cargo:leave', data);
     });
 
+    userService.on('travelling_vendor:spawn', (data) => {
+      this.emit('travelling_vendor:spawn', data);
+    });
+
+    userService.on('travelling_vendor:leave_warning', (data) => {
+      this.emit('travelling_vendor:leave_warning', data);
+    });
+
+    userService.on('travelling_vendor:leave', (data) => {
+      this.emit('travelling_vendor:leave', data);
+    });
+
     userService.on('heli:spawn', (data) => {
       this.emit('heli:spawn', data);
     });

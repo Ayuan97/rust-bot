@@ -695,6 +695,18 @@ class WebSocketService {
       this.io.to(`user:${data.userId}`).emit('cargo:leave', data);
     });
 
+    addListener('travelling_vendor:spawn', (data) => {
+      this.io.to(`user:${data.userId}`).emit('travelling_vendor:spawn', data);
+    });
+
+    addListener('travelling_vendor:leave_warning', (data) => {
+      this.io.to(`user:${data.userId}`).emit('travelling_vendor:leave_warning', data);
+    });
+
+    addListener('travelling_vendor:leave', (data) => {
+      this.io.to(`user:${data.userId}`).emit('travelling_vendor:leave', data);
+    });
+
     addListener('heli:spawn', (data) => {
       this.io.to(`user:${data.userId}`).emit('heli:spawn', data);
     });
