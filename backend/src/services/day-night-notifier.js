@@ -155,8 +155,9 @@ class DayNightNotifier {
 
     const timeInfo = await this.rustPlusService.getTime(serverId);
     const currentTime = timeInfo.time || 0;
-    const sunrise = timeInfo.sunrise || 6;
-    const sunset = timeInfo.sunset || 18;
+    // TOD_Sky 默认 SunriseTime≈7.40, SunsetTime≈19.73 (反编译 + uMod 实测交叉验证)
+    const sunrise = timeInfo.sunrise || 7.4;
+    const sunset = timeInfo.sunset || 19.73;
     // 兜底默认 60: Rust 官服 TOD_Time.DayLengthInMinutes 默认 60 (一个游戏日 = 60 真实分钟)
     const dayLengthMinutes = timeInfo.dayLengthMinutes || 60;
 
@@ -182,7 +183,17 @@ class DayNightNotifier {
     const gameTimeDiff = nextChangeTime - currentTime;
 
     // 转换为真实时间（分钟）
-    const realMinutes = Math.floor(gameTimeDiff * (dayLengthMinutes / 24));
+    // 关键: TOD_Sky 的 game-hour tick 速率不均匀, 白天慢黑夜快
+    //       60 分钟周期里 50 min 真实=白天(12.33 game-h), 10 min 真实=黑夜(11.67 game-h)
+    //       原算法 dayLengthMinutes/24 假设均匀, 会让昼夜提醒分钟数严重偏小
+    const dayGameHours = sunset - sunrise;
+    const nightGameHours = 24 - dayGameHours;
+    const dayRealMinutes = dayLengthMinutes * (50 / 60);
+    const nightRealMinutes = dayLengthMinutes * (10 / 60);
+    const realMinutesPerGameHour = isDaytime
+      ? dayRealMinutes / dayGameHours
+      : nightRealMinutes / nightGameHours;
+    const realMinutes = Math.floor(gameTimeDiff * realMinutesPerGameHour);
 
     // 根据类型获取通知开始时间
     const notifyStart = changeType === 'day' ? config.dayNotifyStart : config.nightNotifyStart;

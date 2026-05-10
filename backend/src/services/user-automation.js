@@ -150,8 +150,9 @@ class UserAutomation extends EventEmitter {
 
     // 检测日夜变化
     const prevState = this.previousTimeState.get(serverId) || { isDay: null };
-    const sunrise = timeInfo.sunrise || 6.5;
-    const sunset = timeInfo.sunset || 18.5;
+    // TOD_Sky 默认 SunriseTime≈7.40, SunsetTime≈19.73 (反编译 + uMod 实测交叉验证)
+    const sunrise = timeInfo.sunrise || 7.4;
+    const sunset = timeInfo.sunset || 19.73;
     const currentTime = timeInfo.time || 0;
     const isDay = currentTime >= sunrise && currentTime < sunset;
     const turnedDay = prevState.isDay === false && isDay === true;

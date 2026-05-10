@@ -760,10 +760,11 @@ class UserCommands extends EventEmitter {
 
   /**
    * !time - 游戏时间
-   * Rust 默认时间机制：
-   * - 整个周期 dayLengthMinutes (默认 60 分钟)
-   * - 白天占 75% 真实时间 (默认 45 分钟)
-   * - 黑夜占 25% 真实时间 (默认 15 分钟)
+   * Rust 默认时间机制 (反编译 Time of Day Unity asset + uMod 实测交叉验证):
+   * - 整个周期 dayLengthMinutes (默认 60 分钟; TOD_Time 类源码默认 30, Unity scene 覆盖到 60)
+   * - 白天 50 分钟真实时间 (≈83.3%)
+   * - 黑夜 10 分钟真实时间 (≈16.7%)
+   * - 默认 sunrise≈7.40, sunset≈19.73 (game-hour tick 不均匀: 白天慢, 黑夜快)
    */
   async handleTime(serverId, args, context) {
     try {
@@ -771,8 +772,8 @@ class UserCommands extends EventEmitter {
       const timeInfo = await this.rustPlusService.getTime(serverId);
 
       const currentTime = timeInfo.time || 0;
-      const sunrise = timeInfo.sunrise || 7;
-      const sunset = timeInfo.sunset || 20;
+      const sunrise = timeInfo.sunrise || 7.4;
+      const sunset = timeInfo.sunset || 19.73;
       const dayLengthMinutes = timeInfo.dayLengthMinutes || 60;
 
       // 格式化时间 HH:MM
@@ -797,13 +798,14 @@ class UserCommands extends EventEmitter {
         }
       }
 
-      // Rust 默认时间比例：白天 75%，黑夜 25%
-      // 参考: https://gamerant.com/rust-day-night-cycle-length-detailed-explained/
-      const dayGameHours = sunset - sunrise;       // 白天游戏小时 (默认约 13h)
-      const nightGameHours = 24 - dayGameHours;    // 黑夜游戏小时 (默认约 11h)
+      // 关键: TOD_Sky 的 game-hour tick 速率不均匀, 白天慢黑夜快
+      //       60 分钟周期里 50 min 真实=白天 (12.33 game-h), 10 min 真实=黑夜 (11.67 game-h)
+      // 来源: Time.realtimeSinceStartup vs TOD_Sky.Cycle.Hour 实测日志 (umod.org/community/rust/13769)
+      const dayGameHours = sunset - sunrise;       // 白天游戏小时 (默认约 12.33h)
+      const nightGameHours = 24 - dayGameHours;    // 黑夜游戏小时 (默认约 11.67h)
 
-      const dayRealMinutes = dayLengthMinutes * 0.75;   // 白天真实分钟
-      const nightRealMinutes = dayLengthMinutes * 0.25; // 黑夜真实分钟
+      const dayRealMinutes = dayLengthMinutes * (50 / 60);   // 白天真实分钟 (≈83.3%)
+      const nightRealMinutes = dayLengthMinutes * (10 / 60); // 黑夜真实分钟 (≈16.7%)
 
       let minutesUntil;
       if (isDay) {
