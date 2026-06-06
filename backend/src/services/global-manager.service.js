@@ -6,6 +6,7 @@
 import { EventEmitter } from 'events';
 import db from '../lib/db.js';
 import UserServiceManager from './user-service-manager.js';
+import notificationService from './notification.service.js';
 
 class GlobalServiceManager extends EventEmitter {
   constructor() {
@@ -429,6 +430,10 @@ class GlobalServiceManager extends EventEmitter {
 
     userService.on('alarm:triggered', (data) => {
       this.emit('alarm:triggered', data);
+      // 外部强提醒（Bark 等），失败不阻塞主流程
+      notificationService.notifyAlarm(data).catch((err) => {
+        console.error('❌ 警报外部通知失败:', err.message);
+      });
     });
 
     userService.on('clan:changed', (data) => {
