@@ -42,10 +42,10 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
 
   // 步骤定义
   const steps = [
-    { id: 1, label: '安装 Edge 插件', icon: FaPuzzlePiece },
-    { id: 2, label: '获取凭证', icon: FaKey },
-    { id: 3, label: '启动监听', icon: FaGamepad },
-    { id: 4, label: '完成配对', icon: FaCheckCircle }
+    { id: 1, label: 'INSTALL', title: '安装 Edge 插件', icon: FaPuzzlePiece },
+    { id: 2, label: 'CREDENTIALS', title: '获取凭证', icon: FaKey },
+    { id: 3, label: 'LISTEN', title: '启动监听', icon: FaGamepad },
+    { id: 4, label: 'PAIRED', title: '完成配对', icon: FaCheckCircle }
   ];
 
   // 根据状态计算初始步骤
@@ -174,36 +174,42 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
   // 订阅过期锁定态
   if (isSubscriptionExpired) {
     return (
-      <div className="h-full flex items-center justify-center animate-fade-in">
+      <div className="h-full flex items-center justify-center animate-fade-in p-6">
         <div className="max-w-lg w-full">
           <WizardContainer>
             <WizardHeader steps={steps} currentStep={0} getStepStatus={() => 'locked'} />
 
             <div className="p-8">
               <div className="text-center py-12">
-                <div className="w-20 h-20 bg-yellow-500/10 border border-yellow-500/30 tactic-cut flex items-center justify-center mx-auto mb-6">
-                  <FaLock className="text-3xl text-yellow-500" />
+                <div className="w-20 h-20 bg-hazard-dim border border-hazard/40 flex items-center justify-center mx-auto mb-6">
+                  <FaLock className="text-3xl text-hazard" />
                 </div>
 
-                <h3 className="text-2xl font-black uppercase italic text-white mb-3">
+                <div className="tac-label mb-2">SUBSCRIPTION EXPIRED</div>
+                <h3 className="text-2xl font-extrabold text-fg mb-3">
                   服务已暂停
                 </h3>
-                <p className="text-gray-500 text-sm mb-8 max-w-sm mx-auto">
+                <p className="text-fg-dim text-sm mb-8 max-w-sm mx-auto leading-relaxed">
                   您的订阅已过期，续费后即可继续使用配对功能
                 </p>
 
-                <div className="p-4 bg-yellow-500/5 border border-yellow-500/20 tactic-cut mb-8">
-                  <div className="flex items-center justify-center gap-3 text-yellow-500 text-sm">
-                    <FaExclamationTriangle />
-                    <span>订阅过期时间: {user?.subscriptionEndDate ? new Date(user.subscriptionEndDate).toLocaleDateString() : '未知'}</span>
+                <div className="p-4 bg-hazard-dim border border-hazard/40 mb-8">
+                  <div className="flex items-center justify-center gap-3 text-fg text-sm">
+                    <FaExclamationTriangle className="text-hazard" />
+                    <span>
+                      订阅过期时间：
+                      <span className="font-mono tabular-nums text-fg ml-1">
+                        {user?.subscriptionEndDate ? new Date(user.subscriptionEndDate).toLocaleDateString() : '未知'}
+                      </span>
+                    </span>
                   </div>
                 </div>
 
                 <button
                   onClick={() => window.location.href = '/account'}
-                  className="px-8 py-4 bg-yellow-500 text-black font-black uppercase tactic-cut hover:bg-yellow-400 transition-all flex items-center gap-3 mx-auto"
+                  className="tac-btn tac-btn-primary mx-auto"
                 >
-                  <FaCreditCard /> 立即续费
+                  <FaCreditCard /> 立即续费 // RENEW
                 </button>
               </div>
             </div>
@@ -211,7 +217,7 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
             <WizardFooter>
               <button
                 onClick={onCancel}
-                className="px-6 py-3 tactic-cut border border-white/10 text-gray-500 text-xs font-black uppercase hover:text-white hover:bg-white/5 transition-all flex items-center gap-2"
+                className="tac-btn tac-btn-ghost"
               >
                 <FaArrowLeft /> 返回首页
               </button>
@@ -234,30 +240,31 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
             </div>
           )}
 
-          <div className="mx-6 mt-6 p-4 bg-white/[0.02] border border-white/10 tactic-cut">
-            <div className="flex flex-wrap items-center gap-3 text-[11px]">
+          <div className="mx-6 mt-6 p-4 bg-ink-800 border border-ink-line">
+            <div className="flex flex-wrap items-center gap-2.5 text-[11px]">
               <StatusPill
-                label="Edge 插件"
+                label="EDGE"
                 active={isUsingEdge}
                 activeText="当前为 Edge"
                 inactiveText="当前非 Edge（可继续，但凭证必须来自 Edge 插件）"
               />
               <StatusPill
-                label="FCM 凭证"
+                label="FCM"
                 active={hasCredentials}
                 activeText="已配置"
                 inactiveText="未配置"
               />
               <StatusPill
-                label="监听状态"
+                label="LISTEN"
                 active={isPairingListening}
                 activeText="监听中"
                 inactiveText="未启动"
               />
             </div>
             {hasCredentials && (
-              <div className="mt-3 text-[10px] text-gray-500 uppercase tracking-wider">
-                Steam ID: {fcmStatus.steamId || '未知'}
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="tac-label">STEAM ID</span>
+                <span className="font-mono text-xs tabular-nums text-fg-dim">{fcmStatus.steamId || '未知'}</span>
               </div>
             )}
           </div>
@@ -307,14 +314,14 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
           <WizardFooter>
             <button
               onClick={onCancel}
-              className="px-6 py-3 tactic-cut border border-white/10 text-gray-500 text-xs font-black uppercase hover:text-white hover:bg-white/5 transition-all flex items-center gap-2"
+              className="tac-btn tac-btn-ghost"
             >
               <FaArrowLeft /> 返回首页
             </button>
 
             {currentStep < 4 && (
-              <div className="text-[10px] text-gray-600 uppercase tracking-widest">
-                步骤 {currentStep} / 4
+              <div className="tac-label flex items-center gap-1.5">
+                STEP <span className="font-mono tabular-nums text-fg">{currentStep}</span> / 4
               </div>
             )}
           </WizardFooter>
@@ -328,29 +335,24 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
 
 function WizardContainer({ children }) {
   return (
-    <div className="tactic-border tactic-cut p-1 bg-black/60 shadow-2xl relative">
-      <div className="scanline" />
-      <div className="bg-black/80 relative z-10">
-        {children}
-      </div>
+    <div className="tac-panel tac-corners relative">
+      {children}
     </div>
   );
 }
 
 function WizardHeader({ steps, currentStep, getStepStatus }) {
   return (
-    <div className="p-6 border-b border-white/5">
+    <div className="p-6 border-b border-ink-line">
       <div className="flex items-center gap-4 mb-6">
-        <div className="w-12 h-12 bg-[#cd5241]/20 tactic-cut flex items-center justify-center text-[#cd5241]">
-          <FaSatellite className="text-xl animate-pulse" />
+        <div className="w-12 h-12 bg-hazard-dim border border-hazard/40 flex items-center justify-center text-hazard">
+          <FaSatellite className="text-xl" />
         </div>
         <div>
-          <h2 className="text-xl font-black uppercase italic text-white tracking-tighter">
+          <div className="tac-label mb-1">SERVER PAIRING WIZARD</div>
+          <h2 className="text-xl font-extrabold text-fg tracking-tight">
             服务器配对向导
           </h2>
-          <p className="text-[10px] text-gray-500 uppercase tracking-[0.3em]">
-            Server Pairing Wizard
-          </p>
         </div>
       </div>
 
@@ -365,26 +367,29 @@ function WizardHeader({ steps, currentStep, getStepStatus }) {
             <div key={step.id} className="flex items-center flex-1">
               <div className="flex flex-col items-center">
                 <div className={`
-                  w-10 h-10 tactic-cut flex items-center justify-center font-black transition-all duration-300 border
-                  ${status === 'completed' ? 'bg-green-500 border-green-500 text-white' :
-                    status === 'active' ? 'bg-[#cd5241] border-[#cd5241] text-white shadow-lg shadow-[#cd5241]/30' :
-                    status === 'locked' ? 'bg-gray-800 border-gray-700 text-gray-600' :
-                    'bg-black/40 border-white/10 text-gray-600'}
+                  w-10 h-10 flex items-center justify-center font-mono tabular-nums text-sm font-bold transition-colors duration-150 border
+                  ${status === 'completed' ? 'bg-ink-800 border-terminal/40 text-terminal' :
+                    status === 'active' ? 'bg-hazard border-hazard text-white' :
+                    status === 'locked' ? 'bg-ink-800 border-ink-line text-fg-mute' :
+                    'bg-ink-850 border-ink-line text-fg-mute'}
                 `}>
-                  {status === 'completed' ? <FaCheck /> :
+                  {status === 'completed' ? <FaCheck className="text-xs" /> :
                    status === 'locked' ? <FaLock className="text-xs" /> :
+                   status === 'active' ? <span>{step.id}</span> :
                    <Icon className="text-sm" />}
                 </div>
-                <span className={`text-[9px] font-black uppercase tracking-widest mt-2 ${
-                  status === 'active' ? 'text-white' : 'text-gray-600'
+                <span className={`tac-label mt-2 text-[9px] ${
+                  status === 'active' ? 'text-fg' :
+                  status === 'completed' ? 'text-fg-dim' :
+                  'text-fg-mute'
                 }`}>
                   {step.label}
                 </span>
               </div>
 
               {!isLast && (
-                <div className={`flex-1 h-px mx-3 transition-all duration-500 ${
-                  getStepStatus(step.id + 1) !== 'pending' ? 'bg-green-500' : 'bg-white/10'
+                <div className={`flex-1 h-px mx-3 transition-colors duration-150 ${
+                  getStepStatus(step.id + 1) !== 'pending' ? 'bg-hazard' : 'bg-ink-line'
                 }`} />
               )}
             </div>
@@ -397,7 +402,7 @@ function WizardHeader({ steps, currentStep, getStepStatus }) {
 
 function WizardFooter({ children }) {
   return (
-    <div className="p-4 border-t border-white/5 flex items-center justify-between bg-black/40">
+    <div className="p-4 border-t border-ink-line flex items-center justify-between bg-ink-850">
       {children}
     </div>
   );
@@ -408,10 +413,10 @@ function WizardFooter({ children }) {
 function Step1InstallPlugin({ isUsingEdge, onNext, onSkip }) {
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="p-4 bg-blue-500/5 border border-blue-500/20 tactic-cut">
+      <div className="p-4 bg-ink-800 border border-ink-line">
         <div className="flex items-start gap-3">
-          <FaInfoCircle className="text-blue-400 mt-0.5" />
-          <p className="text-xs text-gray-300 leading-relaxed">
+          <FaInfoCircle className="text-fg-dim mt-0.5 shrink-0" />
+          <p className="text-xs text-fg-dim leading-relaxed">
             获取 FCM 凭证必须使用 {REQUIRED_PLUGIN_BROWSER} 插件。
             你仍可继续后续步骤，但只有来自 Edge 插件的凭证才能成功配对。
           </p>
@@ -421,30 +426,30 @@ function Step1InstallPlugin({ isUsingEdge, onNext, onSkip }) {
       {!isUsingEdge && <EdgeRequiredNotice />}
 
       <div className="space-y-3">
-        <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-l-2 border-[#cd5241] pl-2">
-          安装 {REQUIRED_PLUGIN_BROWSER} 插件
-        </p>
+        <div className="tac-label border-l-2 border-hazard pl-2">
+          INSTALL PLUGIN // 安装 {REQUIRED_PLUGIN_BROWSER} 插件
+        </div>
 
         <button
           onClick={() => window.open(EDGE_EXTENSION_URL, '_blank')}
-          className="w-full p-4 tactic-cut flex items-center gap-4 transition-all border bg-[#0078d4]/10 border-[#0078d4]/30 hover:bg-[#0078d4]/20"
+          className="w-full p-4 flex items-center gap-4 transition-colors duration-150 border border-ink-line bg-ink-800 hover:border-hazard/50"
         >
-          <div className="w-10 h-10 bg-[#0078d4]/20 rounded-lg flex items-center justify-center">
-            <FaEdge className="text-[#0078d4] text-xl" />
+          <div className="w-10 h-10 bg-hazard-dim border border-hazard/40 flex items-center justify-center">
+            <FaEdge className="text-hazard text-xl" />
           </div>
           <div className="text-left flex-1">
-            <div className="font-bold text-sm text-white">Microsoft Edge</div>
-            <div className="text-[10px] text-gray-500">Edge 加载项商店</div>
+            <div className="font-bold text-sm text-fg">Microsoft Edge</div>
+            <div className="text-[11px] text-fg-dim">Edge 加载项商店</div>
           </div>
-          <FaExternalLinkAlt className="text-gray-600" />
+          <FaExternalLinkAlt className="text-fg-mute" />
         </button>
       </div>
 
-      <div className="p-3 bg-yellow-500/5 border border-yellow-500/20 tactic-cut">
-        <p className="text-[10px] text-gray-400 leading-relaxed">
-          <span className="text-yellow-400 font-bold">提示：</span>
+      <div className="p-3 bg-hazard-dim border border-hazard/30">
+        <p className="text-[11px] text-fg-dim leading-relaxed">
+          <span className="font-mono text-hazard-bright text-[10px] uppercase tracking-wider mr-1">TIP</span>
           安装后请在 Edge 中打开插件并登录 Steam，确认能复制
-          <span className="text-[#cd5241] font-mono"> /credentials add ... </span>
+          <span className="text-hazard font-mono"> /credentials add ... </span>
           命令再继续。
         </p>
       </div>
@@ -452,7 +457,7 @@ function Step1InstallPlugin({ isUsingEdge, onNext, onSkip }) {
       <div className="flex gap-3">
         <button
           onClick={onNext}
-          className="flex-1 tactic-cut bg-[#cd5241] py-4 text-[11px] font-black uppercase tracking-[0.15em] hover:bg-[#b04537] transition-all flex items-center justify-center gap-3"
+          className="flex-1 tac-btn tac-btn-primary"
         >
           <FaCheck /> 已完成安装，继续
         </button>
@@ -460,7 +465,7 @@ function Step1InstallPlugin({ isUsingEdge, onNext, onSkip }) {
 
       <button
         onClick={onSkip}
-        className="w-full py-3 border border-white/10 tactic-cut text-gray-600 text-[10px] font-black uppercase hover:text-white transition-all"
+        className="w-full tac-btn tac-btn-ghost !py-3"
       >
         跳过（我已安装或稍后安装）
       </button>
@@ -486,26 +491,26 @@ function Step2FcmAuth({
 
       {/* 如果已有凭证，显示跳过选项 */}
       {hasCredentials && (
-        <div className="p-4 bg-green-500/10 border border-green-500/20 tactic-cut">
-          <div className="flex items-center justify-between">
+        <div className="p-4 bg-ink-800 border border-terminal/30">
+          <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <FaCheck className="text-green-500" />
-              <span className="text-sm text-green-400">检测到已有 FCM 凭证</span>
+              <span className="w-1.5 h-1.5 bg-terminal" />
+              <span className="text-sm text-fg">检测到已有 FCM 凭证</span>
             </div>
             <button
               onClick={onSkipToStep3}
-              className="px-4 py-2 bg-green-500/20 text-green-400 text-xs font-bold tactic-cut hover:bg-green-500/30 transition-all"
+              className="tac-btn tac-btn-ghost !py-2 !px-4 shrink-0"
             >
-              使用现有凭证 <FaArrowRight className="inline ml-1" />
+              使用现有凭证 <FaArrowRight className="text-[10px]" />
             </button>
           </div>
         </div>
       )}
 
-      <div className="p-4 bg-white/[0.02] border border-white/5 tactic-cut">
-        <h3 className="text-xs font-black text-[#cd5241] uppercase tracking-widest mb-4 flex items-center gap-2">
-          <FaInfoCircle /> 获取凭证步骤
-        </h3>
+      <div className="p-4 bg-ink-800 border border-ink-line">
+        <div className="tac-label mb-4 flex items-center gap-2">
+          <FaInfoCircle className="text-hazard" /> GET CREDENTIALS // 获取凭证步骤
+        </div>
         <div className="space-y-3">
           <GuideStep num="1" text={`在 ${REQUIRED_PLUGIN_BROWSER} 中安装并启用插件`} />
           <GuideStep num="2" text="点击下方按钮，打开 Steam 官方授权页面并登录" />
@@ -516,19 +521,19 @@ function Step2FcmAuth({
 
       <button
         onClick={() => window.open(STEAM_LOGIN_URL, '_blank')}
-        className="w-full p-4 bg-[#1b2838] border border-[#66c0f4]/30 tactic-cut flex items-center justify-center gap-3 hover:bg-[#2a475e] transition-all group"
+        className="w-full p-4 bg-ink-800 border border-ink-line flex items-center justify-center gap-3 hover:border-hazard/50 transition-colors duration-150 group"
       >
-        <FaSteam className="text-2xl text-[#66c0f4]" />
-        <span className="font-bold text-white">打开 Steam 登录页面</span>
-        <FaExternalLinkAlt className="text-gray-500 group-hover:text-[#66c0f4] transition-colors" />
+        <FaSteam className="text-2xl text-fg" />
+        <span className="font-bold text-fg">打开 Steam 登录页面</span>
+        <FaExternalLinkAlt className="text-fg-mute group-hover:text-hazard transition-colors" />
       </button>
 
       <div className="space-y-2">
-        <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest border-l-2 border-[#cd5241] pl-2">
-          粘贴凭证命令
+        <label className="block tac-label border-l-2 border-hazard pl-2">
+          PASTE COMMAND // 粘贴凭证命令
         </label>
         <textarea
-          className="w-full bg-black/40 border border-white/10 tactic-cut p-4 text-[11px] font-mono text-[#cd5241] h-28 outline-none focus:border-[#cd5241]/50 transition-all custom-scrollbar placeholder:text-gray-700"
+          className="tac-input h-28 font-mono text-[11px] text-hazard custom-scrollbar placeholder:text-fg-mute resize-none"
           placeholder="/credentials add gcm_android_id:xxx gcm_security_token:xxx ..."
           value={credentialsInput}
           onChange={(e) => setCredentialsInput(e.target.value)}
@@ -538,21 +543,17 @@ function Step2FcmAuth({
       <div className="flex gap-3">
         <button
           onClick={onBack}
-          className="px-6 py-4 tactic-cut border border-white/10 text-gray-500 text-[10px] font-black uppercase hover:text-white transition-all flex items-center gap-2"
+          className="tac-btn tac-btn-ghost"
         >
           <FaArrowLeft /> 上一步
         </button>
         <button
           onClick={onSubmit}
           disabled={loading || !credentialsInput.trim()}
-          className={`flex-1 tactic-cut py-4 text-[11px] font-black uppercase tracking-[0.15em] transition-all flex items-center justify-center gap-3 ${
-            loading || !credentialsInput.trim()
-              ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
-              : 'bg-[#cd5241] hover:bg-[#b04537]'
-          }`}
+          className="flex-1 tac-btn tac-btn-primary"
         >
           {loading ? <FaSpinner className="animate-spin" /> : <FaShieldAlt />}
-          {loading ? '验证中...' : '提交凭证'}
+          {loading ? '验证中 // VERIFYING...' : '提交凭证 // SUBMIT'}
         </button>
       </div>
     </div>
@@ -565,11 +566,12 @@ function Step3GamePairing({ isListening, loading, onStartListening, onStopListen
       {!isListening && !fcmStatus.isListening ? (
         <>
           <div className="text-center py-6">
-            <div className="w-16 h-16 bg-[#cd5241]/10 border border-[#cd5241]/30 tactic-cut flex items-center justify-center mx-auto mb-4">
-              <FaGamepad className="text-2xl text-[#cd5241]" />
+            <div className="w-16 h-16 bg-hazard-dim border border-hazard/40 flex items-center justify-center mx-auto mb-4">
+              <FaGamepad className="text-2xl text-hazard" />
             </div>
-            <h3 className="text-lg font-black uppercase italic text-white mb-2">启动监听</h3>
-            <p className="text-xs text-gray-500 max-w-sm mx-auto">
+            <div className="tac-label mb-2">START LISTENING</div>
+            <h3 className="text-lg font-extrabold text-fg mb-2">启动监听</h3>
+            <p className="text-xs text-fg-dim max-w-sm mx-auto leading-relaxed">
               凭证就绪后，先启动监听，再回到游戏里发起 Pair。
             </p>
           </div>
@@ -577,28 +579,26 @@ function Step3GamePairing({ isListening, loading, onStartListening, onStopListen
           <button
             onClick={onStartListening}
             disabled={loading}
-            className="w-full tactic-cut bg-[#cd5241] py-5 text-[11px] font-black uppercase tracking-[0.2em] hover:bg-[#b04537] transition-all flex items-center justify-center gap-3 shadow-lg shadow-[#cd5241]/20"
+            className="w-full tac-btn tac-btn-primary !py-5"
           >
             {loading ? <FaSpinner className="animate-spin" /> : <FaPlay />}
-              {loading ? '启动中...' : '开始监听'}
-            </button>
+            {loading ? '启动中 // STARTING...' : '开始监听 // START'}
+          </button>
         </>
       ) : (
         <>
-          <div className="p-4 bg-green-500/10 border border-green-500/20 tactic-cut">
+          <div className="p-4 bg-hazard-dim border border-hazard/40">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-sm font-bold text-green-400">监听已启动，等待游戏内 Pair...</span>
+              <span className="w-1.5 h-1.5 bg-hazard animate-tac-blink" />
+              <span className="text-sm font-bold text-fg">监听已启动，等待游戏内 Pair...</span>
             </div>
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest">
-              等待 Rust 游戏内发起配对请求
-            </p>
+            <div className="tac-label">WAITING FOR IN-GAME PAIR REQUEST</div>
           </div>
 
-          <div className="p-4 bg-white/[0.02] border border-white/5 tactic-cut space-y-3">
-            <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-l-2 border-[#cd5241] pl-2">
-              在游戏中完成以下操作
-            </p>
+          <div className="p-4 bg-ink-800 border border-ink-line space-y-3">
+            <div className="tac-label border-l-2 border-hazard pl-2">
+              IN-GAME STEPS // 在游戏中完成以下操作
+            </div>
             <GuideStep num="1" text="在 Rust 游戏中按下 [ESC] 键" />
             <GuideStep num="2" text="点击右下角的 Rust+ 图标" />
             <GuideStep num="3" text="点击 'Pair with Server' 发送配对信号" />
@@ -607,25 +607,25 @@ function Step3GamePairing({ isListening, loading, onStartListening, onStopListen
 
           <div className="flex items-center justify-center py-8">
             <div className="relative">
-              <div className="w-20 h-20 border-2 border-[#cd5241]/20 rounded-full" />
-              <div className="absolute inset-0 w-20 h-20 border-t-2 border-[#cd5241] rounded-full animate-spin" />
-              <FaSatellite className="absolute inset-0 m-auto text-[#cd5241] text-2xl" />
+              <div className="w-20 h-20 border-2 border-hazard/20" />
+              <div className="absolute inset-0 w-20 h-20 border-t-2 border-hazard animate-spin" />
+              <FaSatellite className="absolute inset-0 m-auto text-hazard text-2xl" />
             </div>
           </div>
 
           <button
             onClick={onStopListening}
             disabled={loading}
-            className="w-full py-3 border border-red-500/30 text-red-500 text-[10px] font-black uppercase tactic-cut hover:bg-red-500/10 transition-all flex items-center justify-center gap-2"
+            className="w-full tac-btn tac-btn-ghost !py-3"
           >
-            <FaStop /> 停止监听
+            <FaStop /> 停止监听 // STOP
           </button>
         </>
       )}
 
       <button
         onClick={onBack}
-        className="w-full py-3 border border-white/10 tactic-cut text-gray-600 text-[10px] font-black uppercase hover:text-white transition-all flex items-center justify-center gap-2"
+        className="w-full tac-btn tac-btn-ghost !py-3"
       >
         <FaArrowLeft /> 返回上一步
       </button>
@@ -636,27 +636,27 @@ function Step3GamePairing({ isListening, loading, onStartListening, onStopListen
 function Step4Complete({ pairedServer, onFinish }) {
   return (
     <div className="text-center py-8 animate-fade-in">
-      <div className="w-20 h-20 bg-green-500/10 border border-green-500/30 tactic-cut flex items-center justify-center mx-auto mb-6">
-        <FaCheckCircle className="text-4xl text-green-500" />
+      <div className="w-20 h-20 bg-ink-800 border border-terminal/40 flex items-center justify-center mx-auto mb-6">
+        <FaCheckCircle className="text-4xl text-terminal" />
       </div>
 
-      <h3 className="text-2xl font-black uppercase italic text-green-400 mb-2">
+      <div className="tac-label mb-2 flex items-center justify-center gap-2">
+        <span className="w-1.5 h-1.5 bg-terminal" /> SERVER SUCCESSFULLY PAIRED
+      </div>
+      <h3 className="text-2xl font-extrabold text-fg mb-8">
         配对成功
       </h3>
-      <p className="text-[10px] text-gray-500 uppercase tracking-[0.2em] mb-8">
-        Server Successfully Paired
-      </p>
 
       {pairedServer && (
-        <div className="p-4 bg-white/[0.02] border border-white/5 tactic-cut mb-8 text-left max-w-sm mx-auto">
+        <div className="p-4 bg-ink-800 border border-ink-line mb-8 text-left max-w-sm mx-auto">
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-500">服务器名称</span>
-              <span className="text-white font-bold">{pairedServer.name}</span>
+            <div className="flex justify-between items-baseline">
+              <span className="text-fg-dim">服务器名称</span>
+              <span className="text-fg font-bold">{pairedServer.name}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">地址</span>
-              <span className="text-gray-300 font-mono">{pairedServer.ip}:{pairedServer.port}</span>
+            <div className="flex justify-between items-baseline">
+              <span className="text-fg-dim">地址</span>
+              <span className="text-fg-dim font-mono tabular-nums">{pairedServer.ip}:{pairedServer.port}</span>
             </div>
           </div>
         </div>
@@ -664,9 +664,9 @@ function Step4Complete({ pairedServer, onFinish }) {
 
       <button
         onClick={onFinish}
-        className="px-12 py-4 bg-[#cd5241] text-white font-black uppercase tactic-cut hover:bg-[#b04537] transition-all flex items-center gap-3 mx-auto shadow-lg shadow-[#cd5241]/20"
+        className="tac-btn tac-btn-primary mx-auto !px-12 !py-4"
       >
-        <FaRocket /> 进入控制台
+        <FaRocket /> 进入控制台 // LAUNCH
       </button>
     </div>
   );
@@ -674,10 +674,10 @@ function Step4Complete({ pairedServer, onFinish }) {
 
 function EdgeRequiredNotice({ compact = false }) {
   return (
-    <div className={`tactic-cut border border-yellow-500/30 bg-yellow-500/10 ${compact ? 'p-3' : 'p-4'}`}>
+    <div className={`border border-hazard/40 bg-hazard-dim ${compact ? 'p-3' : 'p-4'}`}>
       <div className="flex items-start gap-3">
-        <FaExclamationTriangle className="text-yellow-400 mt-0.5" />
-        <p className="text-[11px] text-yellow-100/90 leading-relaxed">
+        <FaExclamationTriangle className="text-hazard mt-0.5 shrink-0" />
+        <p className="text-[11px] text-fg leading-relaxed">
           FCM 凭证需通过 <strong>{REQUIRED_PLUGIN_BROWSER} 插件</strong> 获取。当前可继续流程，
           但请确保最终粘贴的命令来自 Edge 插件。
         </p>
@@ -688,14 +688,15 @@ function EdgeRequiredNotice({ compact = false }) {
 
 function StatusPill({ label, active, activeText, inactiveText }) {
   return (
-    <div className={`px-2.5 py-1.5 tactic-cut border text-[10px] uppercase tracking-wider ${
+    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 border text-[10px] ${
       active
-        ? 'bg-green-500/10 border-green-500/30 text-green-400'
-        : 'bg-white/5 border-white/10 text-gray-500'
+        ? 'bg-ink-850 border-terminal/30 text-terminal'
+        : 'bg-ink-850 border-ink-line text-fg-mute'
     }`}>
-      <span className="font-black">{label}</span>
-      <span className="mx-1 text-gray-600">·</span>
-      <span>{active ? activeText : inactiveText}</span>
+      <span className={`w-1.5 h-1.5 ${active ? 'bg-terminal animate-tac-blink' : 'bg-fg-mute'}`} />
+      <span className="font-mono uppercase tracking-wider font-bold">{label}</span>
+      <span className="text-fg-mute">·</span>
+      <span className="text-fg-dim">{active ? activeText : inactiveText}</span>
     </div>
   );
 }
@@ -703,10 +704,10 @@ function StatusPill({ label, active, activeText, inactiveText }) {
 function GuideStep({ num, text }) {
   return (
     <div className="flex items-start gap-3">
-      <span className="text-[10px] font-mono font-black text-[#cd5241] bg-[#cd5241]/10 px-1.5 py-0.5 tactic-cut">
+      <span className="text-[10px] font-mono tabular-nums font-bold text-hazard bg-hazard-dim border border-hazard/30 px-1.5 py-0.5">
         {num}
       </span>
-      <span className="text-[11px] text-gray-400 leading-relaxed">{text}</span>
+      <span className="text-[11px] text-fg-dim leading-relaxed">{text}</span>
     </div>
   );
 }

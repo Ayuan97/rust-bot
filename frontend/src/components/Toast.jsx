@@ -4,35 +4,35 @@ import { FaCheckCircle, FaExclamationCircle, FaInfoCircle, FaExclamationTriangle
 // Toast Context
 const ToastContext = createContext(null);
 
-// Toast 类型配置
+// Toast 类型配置（色彩收敛：成功=terminal 单点，错误/警告=hazard，提示=中性）
 const toastConfig = {
   success: {
     icon: FaCheckCircle,
-    bgColor: 'bg-green-500/10',
-    borderColor: 'border-green-500/30',
-    iconColor: 'text-green-400',
-    progressColor: 'bg-green-500'
+    bgColor: 'bg-ink-850',
+    borderColor: 'border-terminal/30',
+    iconColor: 'text-terminal',
+    progressColor: 'bg-terminal'
   },
   error: {
     icon: FaExclamationCircle,
-    bgColor: 'bg-red-500/10',
-    borderColor: 'border-red-500/30',
-    iconColor: 'text-red-400',
-    progressColor: 'bg-red-500'
+    bgColor: 'bg-hazard-dim',
+    borderColor: 'border-hazard/40',
+    iconColor: 'text-hazard-bright',
+    progressColor: 'bg-hazard'
   },
   warning: {
     icon: FaExclamationTriangle,
-    bgColor: 'bg-yellow-500/10',
-    borderColor: 'border-yellow-500/30',
-    iconColor: 'text-yellow-400',
-    progressColor: 'bg-yellow-500'
+    bgColor: 'bg-ink-850',
+    borderColor: 'border-hazard/30',
+    iconColor: 'text-hazard',
+    progressColor: 'bg-hazard'
   },
   info: {
     icon: FaInfoCircle,
-    bgColor: 'bg-blue-500/10',
-    borderColor: 'border-blue-500/30',
-    iconColor: 'text-blue-400',
-    progressColor: 'bg-blue-500'
+    bgColor: 'bg-ink-850',
+    borderColor: 'border-ink-line',
+    iconColor: 'text-fg-dim',
+    progressColor: 'bg-fg-dim'
   }
 };
 
@@ -67,7 +67,7 @@ function ToastItem({ toast, onRemove }) {
 
   return (
     <div
-      className={`relative overflow-hidden rounded-lg border backdrop-blur-md shadow-lg transition-all duration-200 ${
+      className={`relative overflow-hidden border transition-all duration-200 ${
         isExiting ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0'
       } ${config.bgColor} ${config.borderColor}`}
     >
@@ -75,20 +75,20 @@ function ToastItem({ toast, onRemove }) {
         <Icon className={`text-lg flex-shrink-0 mt-0.5 ${config.iconColor}`} />
         <div className="flex-1 min-w-0">
           {toast.title && (
-            <p className="font-semibold text-white text-sm mb-1">{toast.title}</p>
+            <p className="font-semibold text-fg text-sm mb-1">{toast.title}</p>
           )}
-          <p className="text-sm text-gray-300">{toast.message}</p>
+          <p className="text-sm text-fg-dim">{toast.message}</p>
         </div>
         <button
           onClick={handleClose}
-          className="text-gray-500 hover:text-white transition-colors flex-shrink-0"
+          className="text-fg-mute hover:text-fg transition-colors flex-shrink-0"
         >
           <FaTimes className="text-sm" />
         </button>
       </div>
 
       {/* 进度条 */}
-      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black/20">
+      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ink-line">
         <div
           className={`h-full transition-all duration-50 ${config.progressColor}`}
           style={{ width: `${progress}%` }}

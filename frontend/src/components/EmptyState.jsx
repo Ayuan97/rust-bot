@@ -12,8 +12,8 @@ function EmptyState({ type = 'default', title, message, action, showTips = true 
   const configs = {
     chat: {
       icon: FaComments,
-      iconColor: 'text-blue-400',
-      iconBg: 'bg-blue-500/10',
+      en: 'NO COMMS',
+      iconColor: 'text-fg-dim',
       defaultTitle: '暂无消息',
       defaultMessage: '队伍聊天消息将在这里显示',
       tips: [
@@ -24,8 +24,8 @@ function EmptyState({ type = 'default', title, message, action, showTips = true 
     },
     devices: {
       icon: FaLightbulb,
-      iconColor: 'text-yellow-400',
-      iconBg: 'bg-yellow-500/10',
+      en: 'NO DEVICES',
+      iconColor: 'text-hazard',
       defaultTitle: '暂无设备',
       defaultMessage: '在游戏中配对设备后自动添加到这里',
       tips: [
@@ -36,8 +36,8 @@ function EmptyState({ type = 'default', title, message, action, showTips = true 
     },
     events: {
       icon: FaClock,
-      iconColor: 'text-green-400',
-      iconBg: 'bg-green-500/10',
+      en: 'NO EVENTS',
+      iconColor: 'text-fg-dim',
       defaultTitle: '当前没有活跃事件',
       defaultMessage: '游戏内事件发生时会在这里显示',
       tips: [
@@ -48,8 +48,8 @@ function EmptyState({ type = 'default', title, message, action, showTips = true 
     },
     history: {
       icon: FaClock,
-      iconColor: 'text-purple-400',
-      iconBg: 'bg-purple-500/10',
+      en: 'NO LOGS',
+      iconColor: 'text-fg-dim',
       defaultTitle: '暂无历史记录',
       defaultMessage: '游戏事件的历史记录将保存在这里',
       tips: [
@@ -60,8 +60,8 @@ function EmptyState({ type = 'default', title, message, action, showTips = true 
     },
     server: {
       icon: FaServer,
-      iconColor: 'text-rust-accent',
-      iconBg: 'bg-rust-accent/10',
+      en: 'NO LINK',
+      iconColor: 'text-hazard',
       defaultTitle: '请选择服务器',
       defaultMessage: '在左侧列表中选择一个服务器开始',
       tips: [
@@ -72,8 +72,8 @@ function EmptyState({ type = 'default', title, message, action, showTips = true 
     },
     default: {
       icon: FaInbox,
-      iconColor: 'text-gray-400',
-      iconBg: 'bg-dark-700',
+      en: 'NO DATA',
+      iconColor: 'text-fg-mute',
       defaultTitle: '暂无数据',
       defaultMessage: '这里还没有任何内容',
       tips: []
@@ -86,17 +86,20 @@ function EmptyState({ type = 'default', title, message, action, showTips = true 
   return (
     <div className="flex-1 flex flex-col items-center justify-center py-12 px-4">
       {/* 图标 */}
-      <div className={`w-20 h-20 rounded-2xl ${config.iconBg} flex items-center justify-center mb-6 border border-white/5`}>
-        <Icon className={`text-4xl ${config.iconColor} opacity-60`} />
+      <div className="w-20 h-20 bg-ink-800 border border-ink-line flex items-center justify-center mb-6">
+        <Icon className={`text-4xl ${config.iconColor} opacity-70`} />
       </div>
 
+      {/* 英文遥测标签 */}
+      <div className="tac-label mb-2">{config.en}</div>
+
       {/* 标题 */}
-      <h3 className="text-lg font-semibold text-gray-300 mb-2 text-center">
+      <h3 className="text-lg font-bold text-fg mb-2 text-center">
         {title || config.defaultTitle}
       </h3>
 
       {/* 描述 */}
-      <p className="text-sm text-gray-500 text-center max-w-xs mb-6">
+      <p className="text-sm text-fg-dim text-center max-w-xs mb-6 leading-relaxed">
         {message || config.defaultMessage}
       </p>
 
@@ -109,15 +112,15 @@ function EmptyState({ type = 'default', title, message, action, showTips = true 
 
       {/* 提示信息 */}
       {showTips && config.tips && config.tips.length > 0 && (
-        <div className="mt-4 p-4 bg-dark-800/50 border border-white/5 rounded-xl max-w-sm">
-          <div className="flex items-center gap-2 text-gray-400 text-xs font-medium mb-3">
-            <FaQuestionCircle />
+        <div className="mt-4 p-4 bg-ink-850 border border-ink-line max-w-sm">
+          <div className="flex items-center gap-2 text-fg-dim text-xs font-bold mb-3">
+            <FaQuestionCircle className="text-hazard" />
             <span>使用提示</span>
           </div>
           <ul className="space-y-2">
             {config.tips.map((tip, index) => (
-              <li key={index} className="flex items-start gap-2 text-xs text-gray-500">
-                <span className="w-4 h-4 rounded-full bg-dark-700 flex items-center justify-center flex-shrink-0 mt-0.5 text-[10px] text-gray-400">
+              <li key={index} className="flex items-start gap-2 text-xs text-fg-dim">
+                <span className="w-4 h-4 bg-ink-800 border border-ink-line flex items-center justify-center flex-shrink-0 mt-0.5 text-[10px] font-mono text-fg-dim tabular-nums">
                   {index + 1}
                 </span>
                 <span>{tip}</span>

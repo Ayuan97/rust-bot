@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { FaPaperPlane, FaComments, FaArrowDown, FaHistory, FaExclamationTriangle, FaTerminal } from 'react-icons/fa';
+import { FaPaperPlane, FaComments, FaArrowDown, FaHistory, FaTerminal } from 'react-icons/fa';
 import socketService from '../services/socket';
 import { useToast } from './Toast';
 import { formatTime } from '../utils/time';
-import EmptyState from './EmptyState';
 
 const MAX_MESSAGE_LENGTH = 128; // Rust+ 消息长度限制
 
@@ -24,7 +23,6 @@ function ChatPanel({ serverId, isReadOnly = false }) {
   const toast = useToast();
 
   const isMessageTooLong = inputMessage.length > MAX_MESSAGE_LENGTH;
-  const estimatedParts = Math.ceil(inputMessage.length / MAX_MESSAGE_LENGTH);
 
   const checkIfAtBottom = useCallback(() => {
     const container = messagesContainerRef.current;
@@ -133,54 +131,51 @@ function ChatPanel({ serverId, isReadOnly = false }) {
 
   return (
     <div className="h-full flex flex-col font-mono">
-      {/* 战术标题栏 */}
-      <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-2">
+      {/* 标题栏 */}
+      <div className="flex items-center justify-between mb-3 border-b border-ink-line pb-2.5">
         <div className="flex items-center gap-2">
-          <FaTerminal className="text-[#cd5241] text-xs" />
-          <h2 className="text-xs font-black uppercase tracking-widest text-gray-300">Team_Comm_Terminal</h2>
+          <FaTerminal className="text-hazard text-xs" />
+          <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-fg-dim">TEAM COMM // 队伍通讯</span>
         </div>
         <button
           onClick={loadChatHistory}
           disabled={loadingHistory}
-          className="text-[10px] text-gray-400 hover:text-white flex items-center gap-1 transition-colors uppercase font-bold"
+          className="text-[10px] text-fg-mute hover:text-fg flex items-center gap-1.5 transition-colors uppercase tracking-wider"
         >
           <FaHistory className={loadingHistory ? 'animate-spin' : ''} />
-          {loadingHistory ? 'Syncing...' : 'Sync_History'}
+          {loadingHistory ? 'SYNCING' : 'SYNC HISTORY'}
         </button>
       </div>
 
-      {/* 终端消息流 */}
-      <div className="flex-1 relative min-h-0 bg-black/20 tactic-border tactic-cut p-1 overflow-hidden">
-        <div className="scanline"></div>
+      {/* 消息流 */}
+      <div className="flex-1 relative min-h-0 border border-ink-line bg-ink-900 overflow-hidden">
         <div
           ref={messagesContainerRef}
           onScroll={handleScroll}
-          className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 space-y-2"
+          className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 space-y-2.5"
         >
           {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center opacity-20 grayscale">
-              <FaComments className="text-4xl mb-4" />
-              <div className="text-[10px] tracking-[0.5em] uppercase">No_Data_Packets</div>
+            <div className="h-full flex flex-col items-center justify-center text-fg-mute">
+              <FaComments className="text-3xl mb-3 opacity-40" />
+              <div className="text-[10px] tracking-[0.4em] uppercase">NO MESSAGES</div>
             </div>
           ) : (
             messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex flex-col ${msg.isMe ? 'items-end' : 'items-start'} ${msg.isHistory ? 'opacity-40' : ''}`}
+                className={`flex flex-col ${msg.isMe ? 'items-end' : 'items-start'} ${msg.isHistory ? 'opacity-50' : ''}`}
               >
                 <div className={`flex items-center gap-2 mb-1 text-[10px] ${msg.isMe ? 'flex-row-reverse' : ''}`}>
-                  <span className={`font-black uppercase tracking-tighter ${msg.isMe ? 'text-[#cd5241]' : 'text-gray-400'}`}>
-                    {msg.isMe ? 'local_user' : msg.name}
+                  <span className={`uppercase tracking-wider font-bold ${msg.isMe ? 'text-hazard' : 'text-fg-dim'}`}>
+                    {msg.isMe ? 'YOU' : msg.name}
                   </span>
-                  <span className="text-[9px] text-gray-500 font-mono">
-                    [{formatTime(msg.time)}]
-                  </span>
+                  <span className="text-[9px] text-fg-mute">[{formatTime(msg.time)}]</span>
                 </div>
-                <div className={`px-3 py-2 tactic-cut max-w-[90%] border ${msg.isMe
-                  ? 'bg-[#cd5241]/10 border-[#cd5241]/30 text-white'
-                  : 'bg-white/[0.02] border-white/10 text-gray-300'
+                <div className={`px-3 py-2 max-w-[90%] border ${msg.isMe
+                  ? 'bg-hazard-dim border-hazard/40 text-fg'
+                  : 'border-ink-line bg-ink-850 text-fg-dim'
                   }`}>
-                  <p className="text-xs break-words leading-relaxed whitespace-pre-wrap">{msg.message}</p>
+                  <p className="text-xs break-words leading-relaxed whitespace-pre-wrap font-sans">{msg.message}</p>
                 </div>
               </div>
             ))
@@ -192,39 +187,39 @@ function ChatPanel({ serverId, isReadOnly = false }) {
         {showScrollButton && (
           <button
             onClick={scrollToBottom}
-            className="absolute bottom-4 right-4 z-10 flex items-center gap-2 px-4 py-1.5 bg-[#cd5241] text-white text-[10px] font-black tactic-cut shadow-lg animate-fade-in uppercase"
+            className="absolute bottom-4 right-4 z-10 flex items-center gap-2 px-4 py-1.5 bg-hazard text-white text-[10px] font-bold uppercase tracking-wider animate-fade-in"
           >
-            <FaArrowDown /> {newMessageCount > 0 ? `${newMessageCount} New_Packets` : 'Jump_to_Live'}
+            <FaArrowDown /> {newMessageCount > 0 ? `${newMessageCount} NEW` : 'JUMP TO LIVE'}
           </button>
         )}
       </div>
 
-      {/* 终端输入条 */}
-      <form onSubmit={handleSendMessage} className="mt-4">
+      {/* 输入条 */}
+      <form onSubmit={handleSendMessage} className="mt-3">
         {isReadOnly && (
-          <div className="mb-2 px-3 py-1 bg-red-500/10 border border-red-500/30 text-[10px] text-red-400 font-bold uppercase tracking-widest tactic-cut">
-            ⚠️ Connection_Expired: Read_Only_Mode
+          <div className="mb-2 px-3 py-1.5 bg-hazard-dim border border-hazard/30 text-[10px] text-hazard font-bold uppercase tracking-widest">
+            连接已过期 · 只读模式
           </div>
         )}
 
         <div className="relative">
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#cd5241] text-xs font-bold">{">"}</div>
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-hazard text-xs font-bold">{">"}</div>
           <input
             type="text"
-            className={`w-full pl-8 pr-20 py-3 bg-black/40 border border-white/10 text-xs text-white placeholder-gray-500 outline-none focus:border-[#cd5241]/50 transition-all tactic-cut ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
-            placeholder={isReadOnly ? "SYSTEM_LOCKED" : "Enter_Tactical_Comm..."}
+            className={`w-full pl-8 pr-20 py-3 bg-ink-700 border border-ink-line text-xs text-fg placeholder:text-fg-mute outline-none focus:border-hazard transition-colors font-sans ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+            placeholder={isReadOnly ? "系统已锁定" : "输入队伍消息..."}
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             disabled={sending || isReadOnly}
           />
           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-            <span className={`text-[10px] font-mono ${isMessageTooLong ? 'text-red-500' : 'text-gray-400'}`}>
+            <span className={`text-[10px] ${isMessageTooLong ? 'text-hazard' : 'text-fg-mute'}`}>
               {inputMessage.length}
             </span>
             <button
               type="submit"
               disabled={!inputMessage.trim() || sending || isReadOnly}
-              className={`text-[#cd5241] hover:text-white transition-colors p-1 ${(!inputMessage.trim() || sending || isReadOnly) ? 'opacity-20 grayscale' : ''}`}
+              className={`text-hazard hover:text-hazard-bright transition-colors p-1 ${(!inputMessage.trim() || sending || isReadOnly) ? 'opacity-30' : ''}`}
             >
               <FaPaperPlane className="text-xs" />
             </button>

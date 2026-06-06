@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  FaTerminal, FaSync, FaDownload, FaCircle,
+  FaTerminal, FaSync, FaDownload,
   FaSearch, FaTimes
 } from 'react-icons/fa';
 import api from '../../services/api';
@@ -134,26 +134,18 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
     setModuleFilter('');
   };
 
+  // 级别色收敛：error/warn=hazard 红，success/online=terminal 单点，info/普通=fg-dim
   const getLevelColor = (level) => {
     switch (level) {
-      case 'ERROR': return 'text-red-500';
-      case 'WARN': return 'text-yellow-500';
-      case 'SUCCESS': return 'text-green-500';
-      default: return 'text-blue-400';
+      case 'ERROR': return 'text-hazard-bright';
+      case 'WARN': return 'text-hazard';
+      case 'SUCCESS': return 'text-terminal';
+      default: return 'text-fg-dim';
     }
   };
 
-  const getModuleBg = (module) => {
-    switch (module) {
-      case 'RUST+': return 'bg-orange-600/20 text-orange-500';
-      case 'FCM': return 'bg-blue-600/20 text-blue-500';
-      case 'CHAT': return 'bg-purple-600/20 text-purple-500';
-      case 'SYSTEM': return 'bg-gray-600/20 text-gray-500';
-      case 'EVENT': return 'bg-green-600/20 text-green-500';
-      case 'AUTO': return 'bg-cyan-600/20 text-cyan-500';
-      default: return 'bg-white/10 text-gray-400';
-    }
-  };
+  // 模块标签统一中性发丝线底，不引入多色
+  const getModuleBg = (module) => 'bg-ink-700 text-fg-dim border border-ink-line';
 
   // 获取可用的模块列表
   const availableModules = [...new Set(logs.map(log => log.module))].filter(Boolean);
@@ -175,24 +167,24 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
   return (
     <div className="flex flex-col h-full min-h-[620px] space-y-4">
       <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center shrink-0">
-        <div>
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <FaTerminal className="text-orange-500" />
-            系统诊断控制台
-          </h2>
-          <p className="text-xs text-gray-500 mt-1">
+        <div className="min-w-0">
+          <div className="tac-label flex items-center gap-2">
+            <FaTerminal className="text-hazard" /> 系统诊断 // DIAGNOSTICS
+          </div>
+          <h2 className="text-xl font-extrabold text-fg mt-1">系统诊断控制台</h2>
+          <p className="text-xs text-fg-dim mt-1">
             {selectedUser ? `当前监听：${selectedUser.username}` : '请先选择活跃用户开始诊断'}
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2 md:justify-end">
           {/* 用户选择 */}
-          <div className="flex items-center gap-2 bg-[#121417] border border-gray-800 rounded px-3 py-1">
-            <span className="text-[10px] font-bold text-gray-500 uppercase">监听对象</span>
+          <div className="flex items-center gap-2 bg-ink-700 border border-ink-line px-3 py-1">
+            <span className="tac-label !text-[10px]">TARGET</span>
             <select
               value={selectedUserId}
               onChange={(e) => setSelectedUserId(e.target.value)}
-              className="bg-transparent text-gray-200 text-sm focus:outline-none py-1 min-w-[150px] font-mono cursor-pointer"
+              className="bg-transparent text-fg text-sm focus:outline-none py-1 min-w-[150px] font-mono tabular-nums cursor-pointer"
             >
               <option value="">-- 选择活跃幸存者 --</option>
               {users.map(u => (
@@ -205,8 +197,9 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
           <button
             onClick={handleExportLogs}
             disabled={filteredLogs.length === 0}
-            className="p-2 bg-gray-800 hover:bg-gray-700 rounded transition-colors text-gray-400 disabled:opacity-50"
+            className="tac-btn tac-btn-ghost !px-3"
             title="导出日志"
+            aria-label="导出日志"
           >
             <FaDownload />
           </button>
@@ -214,8 +207,9 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
           {/* 刷新按钮 */}
           <button
             onClick={() => { fetchActiveUsers(); fetchLogs(); }}
-            className="p-2 bg-gray-800 hover:bg-gray-700 rounded transition-colors text-gray-400"
+            className="tac-btn tac-btn-ghost !px-3"
             title="刷新"
+            aria-label="刷新"
           >
             <FaSync className={loading ? 'animate-spin' : ''} />
           </button>
@@ -224,17 +218,17 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
 
       {/* 筛选栏 */}
       {selectedUserId && (
-        <div className="bg-[#121417] border border-gray-800 rounded-lg p-3 shrink-0 space-y-3">
+        <div className="tac-panel p-3 shrink-0 space-y-3">
           <div className="flex flex-wrap gap-3 items-center">
           {/* 搜索 */}
           <div className="relative flex-1 min-w-[220px]">
-            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-xs" />
+            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-mute text-xs z-10" />
             <input
               type="text"
               placeholder="搜索日志内容..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-[#0D0E10] border border-gray-800 rounded px-8 py-1.5 text-xs focus:border-orange-500 outline-none"
+              className="tac-input w-full !pl-8 !py-1.5 text-xs"
             />
           </div>
 
@@ -242,7 +236,7 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
           <select
             value={levelFilter}
             onChange={(e) => setLevelFilter(e.target.value)}
-            className="bg-[#0D0E10] border border-gray-800 rounded px-3 py-1.5 text-xs focus:border-orange-500 outline-none cursor-pointer min-w-[110px]"
+            className="tac-input !py-1.5 text-xs cursor-pointer min-w-[110px]"
           >
             <option value="">全部级别</option>
             <option value="INFO">INFO</option>
@@ -255,7 +249,7 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
           <select
             value={moduleFilter}
             onChange={(e) => setModuleFilter(e.target.value)}
-            className="bg-[#0D0E10] border border-gray-800 rounded px-3 py-1.5 text-xs focus:border-orange-500 outline-none cursor-pointer min-w-[120px]"
+            className="tac-input !py-1.5 text-xs cursor-pointer min-w-[120px]"
           >
             <option value="">全部模块</option>
             {availableModules.map(mod => (
@@ -267,34 +261,37 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
           {(searchTerm || levelFilter || moduleFilter) && (
             <button
               onClick={handleClearFilters}
-              className="p-1.5 bg-gray-800 hover:bg-red-500/20 hover:text-red-400 rounded transition-all"
+              className="tac-btn tac-btn-ghost !p-1.5"
               title="清除筛选"
+              aria-label="清除筛选"
             >
               <FaTimes className="text-xs" />
             </button>
           )}
 
           {/* 显示筛选结果数量 */}
-          <span className="text-[10px] text-gray-600 font-mono">
+          <span className="text-[10px] text-fg-mute font-mono tabular-nums">
             {filteredLogs.length}/{logs.length}
           </span>
         </div>
           <div className="flex flex-wrap gap-2">
             {[
-              { key: 'ERROR', label: '错误', className: 'text-red-300 border-red-500/30 bg-red-500/10' },
-              { key: 'WARN', label: '告警', className: 'text-yellow-300 border-yellow-500/30 bg-yellow-500/10' },
-              { key: 'SUCCESS', label: '成功', className: 'text-green-300 border-green-500/30 bg-green-500/10' },
-              { key: 'INFO', label: '信息', className: 'text-blue-300 border-blue-500/30 bg-blue-500/10' }
+              { key: 'ERROR', label: '错误' },
+              { key: 'WARN', label: '告警' },
+              { key: 'SUCCESS', label: '成功' },
+              { key: 'INFO', label: '信息' }
             ].map((item) => (
               <button
                 key={item.key}
                 type="button"
                 onClick={() => setLevelFilter((prev) => (prev === item.key ? '' : item.key))}
-                className={`px-2.5 py-1 border rounded text-[11px] transition-colors ${
-                  levelFilter === item.key ? item.className : 'text-gray-400 border-white/10 bg-white/[0.02] hover:bg-white/[0.06]'
+                className={`px-2.5 py-1 border text-[11px] transition-colors ${
+                  levelFilter === item.key
+                    ? 'text-fg border-hazard/40 bg-hazard-dim'
+                    : 'text-fg-dim border-ink-line bg-ink-800 hover:bg-ink-700'
                 }`}
               >
-                {item.label} {levelSummary[item.key]}
+                {item.label} <span className="font-mono tabular-nums">{levelSummary[item.key]}</span>
               </button>
             ))}
           </div>
@@ -302,62 +299,63 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
       )}
 
       {fetchError && (
-        <div className="text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded px-3 py-2">
-          {fetchError}
+        <div className="px-3 py-2 bg-hazard-dim border border-hazard/40 text-fg text-xs flex items-start gap-2 shrink-0">
+          <span className="font-mono text-hazard-bright text-xs shrink-0">[ERR]</span>
+          <span>{fetchError}</span>
         </div>
       )}
 
-      <div className="flex-1 bg-[#050505] border border-gray-800 rounded-lg overflow-hidden flex flex-col relative shadow-inner">
+      <div className="flex-1 bg-ink-900 border border-ink-line overflow-hidden flex flex-col relative">
         {/* 终端头部状态 */}
-        <div className="px-4 py-2 bg-[#1A1C1F] border-b border-gray-800 flex justify-between items-center text-[10px] font-mono tracking-widest uppercase">
+        <div className="px-4 py-2 bg-ink-800 border-b border-ink-line flex justify-between items-center text-[10px] font-mono uppercase tracking-[0.18em]">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <FaCircle className={selectedUserId ? 'text-green-500 animate-pulse' : 'text-gray-700'} />
-              <span className={selectedUserId ? 'text-green-500' : 'text-gray-600'}>
-                {selectedUserId ? 'Log_Stream_Active' : 'Awaiting_Target...'}
+              <span className={`w-1.5 h-1.5 ${selectedUserId ? 'bg-terminal animate-tac-blink' : 'bg-fg-mute'}`} />
+              <span className={selectedUserId ? 'text-terminal' : 'text-fg-mute'}>
+                {selectedUserId ? 'LOG_STREAM_ACTIVE' : 'AWAITING_TARGET...'}
               </span>
             </div>
             {selectedUserId && (
-              <span className="text-gray-500">
-                Buffer: {logs.length}/{200} · {loading ? '同步中' : '实时'}
+              <span className="text-fg-dim tabular-nums">
+                BUFFER {logs.length}/{200} · {loading ? '同步中' : '实时'}
               </span>
             )}
           </div>
           <div className="flex items-center gap-4">
             <button
               onClick={() => setIsAutoScroll(!isAutoScroll)}
-              className={`hover:text-white transition-colors ${isAutoScroll ? 'text-orange-500' : 'text-gray-600'}`}
+              className={`hover:text-fg transition-colors ${isAutoScroll ? 'text-hazard' : 'text-fg-mute'}`}
             >
-              [ Auto_Scroll: {isAutoScroll ? 'ON' : 'OFF'} ]
+              [ AUTO_SCROLL: {isAutoScroll ? 'ON' : 'OFF'} ]
             </button>
-            <span className="text-gray-700 hidden sm:inline">ConVars_v1.0.4</span>
+            <span className="text-fg-mute hidden sm:inline">CONVARS_V1.0.4</span>
           </div>
         </div>
 
         {/* 日志内容区 */}
-        <div className="flex-1 overflow-auto p-4 font-mono text-xs space-y-1 scrollbar-thin scrollbar-thumb-gray-800">
+        <div className="flex-1 overflow-auto p-4 font-mono text-xs space-y-1 scrollbar-thin scrollbar-thumb-ink-700">
           {!selectedUserId ? (
-            <div className="h-full flex flex-col items-center justify-center text-gray-700 space-y-4">
+            <div className="h-full flex flex-col items-center justify-center text-fg-mute space-y-4">
               <FaTerminal size={48} className="opacity-10" />
               <div className="text-center">
                 <p>未选择监听对象</p>
-                <p className="text-[10px] mt-1 text-gray-800">Please_Select_A_Survivor_To_Start_Diagnostics</p>
+                <p className="tac-label !text-[10px] mt-2">SELECT A SURVIVOR TO START</p>
               </div>
             </div>
           ) : filteredLogs.length === 0 ? (
-            <div className="text-gray-600 italic">
+            <div className="text-fg-dim">
               {logs.length === 0
                 ? '正在扫描缓冲区，等待初始数据信号...'
                 : '没有匹配的日志记录'}
             </div>
           ) : (
             filteredLogs.map((log, i) => (
-              <div key={i} className="flex gap-4 hover:bg-white/5 py-0.5 px-2 rounded transition-colors group">
-                <span className="text-gray-700 shrink-0">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
-                <span className={`px-1.5 rounded-sm text-[9px] font-bold shrink-0 h-4 flex items-center ${getModuleBg(log.module)}`}>
+              <div key={i} className="flex gap-4 hover:bg-ink-800 py-0.5 px-2 transition-colors group">
+                <span className="text-fg-mute shrink-0 tabular-nums">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                <span className={`px-1.5 text-[9px] font-bold shrink-0 h-4 flex items-center ${getModuleBg(log.module)}`}>
                   {log.module}
                 </span>
-                <span className={`px-1 rounded-sm text-[9px] font-bold shrink-0 ${getLevelColor(log.level)}`}>
+                <span className={`px-1 text-[9px] font-bold shrink-0 ${getLevelColor(log.level)}`}>
                   {log.level}
                 </span>
                 <span className={`${getLevelColor(log.level)} break-all`}>
@@ -370,9 +368,9 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
         </div>
 
         {/* 终端底部命令行提示符 */}
-        <div className="px-4 py-2 border-t border-gray-900 bg-black/50 text-[10px] font-mono text-gray-600 flex items-center gap-2">
-          <span className="text-orange-500 font-bold tracking-tighter">ADMIN@TC_HUB:~$</span>
-          <span className="animate-pulse">_</span>
+        <div className="px-4 py-2 border-t border-ink-line bg-ink-850 text-[10px] font-mono text-fg-mute flex items-center gap-2">
+          <span className="text-hazard font-bold">ADMIN@TC_HUB:~$</span>
+          <span className="animate-tac-blink">_</span>
         </div>
       </div>
     </div>

@@ -15,7 +15,6 @@ import HUDView from './components/HUDView';
 import TeamView from './components/TeamView';
 import DeviceControl from './components/DeviceControl';
 import ChatPanel from './components/ChatPanel';
-import SubscriptionStatus from './components/SubscriptionStatus';
 import PairingWizard from './components/PairingWizard';
 import FCMSettings from './components/FCMSettings';
 import NotificationSettings from './components/NotificationSettings';
@@ -343,31 +342,32 @@ function App() {
   };
 
   return (
-    <div className={`flex h-screen bg-[#0D0E10] text-[#e0e0e0] overflow-hidden font-sans relative`}>
+    <div className="tac-fx flex h-screen bg-ink-900 text-fg overflow-hidden font-sans relative">
       {/* 全局警报特效 */}
       {alertLevel === 'critical' && <div className="alert-pulse" />}
 
       {/* 左侧导航轨 (Navigation Rail) - 悬停展开 */}
-      <nav className="group/nav h-full flex flex-col py-6 bg-[#090a0c] border-r border-white/5 z-50 shrink-0 w-16 md:w-20 hover:w-16 md:hover:w-52 transition-all duration-300 ease-out overflow-hidden">
+      <nav className="group/nav h-full flex flex-col py-5 bg-ink-900 border-r border-ink-line z-50 shrink-0 w-16 md:w-[68px] hover:w-16 md:hover:w-56 transition-all duration-300 ease-out overflow-hidden">
         <div className="mb-8 px-4">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 p-1 bg-[#cd5241] tactic-cut flex items-center justify-center shadow-lg shadow-[#cd5241]/20 shrink-0">
-              <img src="/logo.svg" alt="Rust+ Logo" className="w-full h-full object-contain filter drop-shadow-md" />
+            <div className="w-10 h-10 bg-hazard flex items-center justify-center shrink-0">
+              <img src="/logo.svg" alt="Rust+" className="w-6 h-6 object-contain" />
             </div>
-            <span className="text-sm font-black uppercase italic text-white tracking-tight opacity-0 group-hover/nav:opacity-100 transition-opacity duration-300 whitespace-nowrap">
-              Rust+
-            </span>
+            <div className="opacity-0 group-hover/nav:opacity-100 transition-opacity duration-300 whitespace-nowrap leading-tight">
+              <div className="font-mono text-sm font-bold tracking-[0.2em] text-fg">RUST+</div>
+              <div className="tac-label">OPS CONSOLE</div>
+            </div>
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-y-auto px-3">
+        <div className="flex-1 flex flex-col gap-1 min-h-0 overflow-y-auto px-3">
           <NavIcon id="hud" icon={<FaTerminal />} active={activeView} onClick={setActiveView} label="基地概览" />
           <NavIcon id="team" icon={<FaUsers />} active={activeView} onClick={setActiveView} label="队友动态" />
           <NavIcon id="map" icon={<FaMapMarkedAlt />} active={activeView} onClick={setActiveView} label="实时地图" />
           <NavIcon id="devices" icon={<FaCogs />} active={activeView} onClick={setActiveView} label="智能中控" />
           <NavIcon id="tracking" icon={<FaCrosshairs />} active={activeView} onClick={setActiveView} label="玩家追踪" />
           <NavIcon id="serverinfo" icon={<FaServer />} active={activeView} onClick={setActiveView} label="服务器信息" />
-          <div className="h-px bg-white/5 my-2 mx-1" />
+          <div className="h-px bg-ink-line my-2 mx-1" />
           <NavIcon id="settings" icon={<FaCog />} active={activeView} onClick={setActiveView} label="预警配置" />
           {user?.isAdmin && (
             <NavIcon id="admin" icon={<FaTools />} active={activeView} onClick={setActiveView} label="管理后台" />
@@ -378,15 +378,15 @@ function App() {
           {/* 用户信息 + 退出 */}
           <button
             onClick={logout}
-            className="w-full h-12 tactic-cut bg-white/5 hover:bg-[#ef4444]/20 flex items-center gap-3 px-3 transition-all group/logout"
+            className="w-full h-11 bg-ink-800 hover:bg-hazard-dim border border-ink-line hover:border-hazard/40 flex items-center gap-3 px-3 transition-colors group/logout"
             title="退出登录"
           >
             <div className="w-6 h-6 flex items-center justify-center shrink-0">
-              <FaSignOutAlt className="text-gray-600 group-hover/logout:text-[#ef4444] transition-colors" />
+              <FaSignOutAlt className="text-fg-mute group-hover/logout:text-hazard transition-colors" />
             </div>
             <div className="flex-1 text-left opacity-0 group-hover/nav:opacity-100 transition-opacity duration-300 overflow-hidden">
-              <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider truncate">{user?.username}</div>
-              <div className="text-[9px] text-gray-600 uppercase">退出登录</div>
+              <div className="text-[11px] text-fg font-bold truncate">{user?.username}</div>
+              <div className="font-mono text-[9px] uppercase tracking-wider text-fg-mute">LOGOUT</div>
             </div>
           </button>
         </div>
@@ -394,21 +394,17 @@ function App() {
 
       {/* 主内容区域 */}
       <main className="flex-1 flex flex-col min-w-0 relative">
-        <div className="scanline"></div>
-
         {/* 顶部状态栏 */}
-        <header className="min-h-16 flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-3 md:px-8 py-3 md:py-0 bg-black/20 border-b border-white/5 backdrop-blur-md relative z-40">
+        <header className="min-h-16 flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-3 md:px-6 py-3 md:py-0 bg-ink-900 border-b border-ink-line relative z-40">
           <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
             <div className="flex flex-col min-w-0 md:min-w-[260px]">
-              <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest leading-none mb-1">
-                当前服务器
-              </span>
+              <span className="tac-label mb-1.5">当前服务器 // SERVER</span>
               {servers.length > 0 ? (
                 <div className="flex items-center gap-2 min-w-0">
                   <select
                     value={activeServer?.id || ''}
                     onChange={(e) => handleSwitchServer(e.target.value)}
-                    className="min-w-0 w-full md:w-[280px] bg-black/50 border border-white/10 tactic-cut px-3 py-2 text-xs font-bold text-white outline-none focus:border-[#cd5241]/50"
+                    className="min-w-0 w-full md:w-[280px] bg-ink-700 border border-ink-line px-3 py-2 text-xs font-bold text-fg outline-none focus:border-hazard"
                   >
                     {servers.map((server) => {
                       const stateMeta = getConnectionStateMeta(server.connectionState);
@@ -419,31 +415,31 @@ function App() {
                       );
                     })}
                   </select>
-                  <div className={`w-2 h-2 rounded-full ${activeConnectionMeta.dotClass}`} />
+                  <div className={`w-2 h-2 ${activeConnectionMeta.dotClass}`} />
                 </div>
               ) : (
-                <span className="text-xs text-gray-500">暂无服务器</span>
+                <span className="text-xs text-fg-mute">暂无服务器</span>
               )}
             </div>
 
-            <div className="hidden md:block h-6 w-px bg-white/5 mx-1" />
+            <div className="hidden md:block h-8 w-px bg-ink-line" />
 
-            <div className="flex items-center gap-4 md:gap-6">
+            <div className="flex items-center gap-5 md:gap-6">
               <div className="flex flex-col">
-                <span className="text-[10px] text-gray-700 font-black uppercase tracking-widest leading-none mb-1">推送链路 (FCM)</span>
-                <div className="flex items-center gap-2">
-                  <div className={`w-1.5 h-1.5 rounded-full ${fcmStatus.isListening ? 'bg-[#a3e635] animate-pulse' : 'bg-gray-800'}`} />
-                  <span className={`text-[9px] font-black uppercase ${fcmStatus.isListening ? 'text-gray-300' : 'text-gray-600'}`}>
-                    {fcmStatus.isListening ? '在线 ON' : '离线 OFF'}
+                <span className="tac-label mb-1.5">推送 FCM</span>
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-1.5 h-1.5 ${fcmStatus.isListening ? 'bg-terminal animate-tac-blink' : 'bg-ink-line2'}`} />
+                  <span className={`font-mono text-[10px] uppercase tracking-wider ${fcmStatus.isListening ? 'text-fg' : 'text-fg-mute'}`}>
+                    {fcmStatus.isListening ? 'ONLINE' : 'OFFLINE'}
                   </span>
                 </div>
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] text-gray-700 font-black uppercase tracking-widest leading-none mb-1">远程链路 (WS)</span>
-                <div className="flex items-center gap-2">
-                  <div className={`w-1.5 h-1.5 rounded-full ${activeConnectionMeta.dotClass}`} />
-                  <span className={`text-[9px] font-black uppercase ${
-                    activeConnectionState === CONNECTION_STATES.DISCONNECTED ? 'text-gray-600' : 'text-gray-300'
+                <span className="tac-label mb-1.5">链路 WS</span>
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-1.5 h-1.5 ${activeConnectionMeta.dotClass}`} />
+                  <span className={`font-mono text-[10px] uppercase tracking-wider ${
+                    activeConnectionState === CONNECTION_STATES.DISCONNECTED ? 'text-fg-mute' : 'text-fg'
                   }`}>
                     {activeConnectionMeta.summary}
                   </span>
@@ -452,19 +448,19 @@ function App() {
             </div>
           </div>
 
-          <div className="w-full md:w-auto flex items-center justify-between md:justify-end gap-3 md:gap-6">
+          <div className="w-full md:w-auto flex items-center justify-between md:justify-end gap-3 md:gap-5">
             <div className="hidden sm:flex flex-col items-end">
-              <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest leading-none mb-1">强制清档倒计时</span>
-              <span className="text-xs font-mono font-black text-[#cd5241]">{wipeCountdown}</span>
+              <span className="tac-label mb-1.5">清档倒计时 // WIPE</span>
+              <span className="font-mono text-sm font-bold text-hazard tabular-nums">{wipeCountdown}</span>
             </div>
             {canDisconnectActiveServer && (
               <button
                 onClick={handleDisconnect}
                 disabled={connectionLoading}
-                className={`px-3 md:px-4 py-2 border tactic-cut text-[10px] font-black uppercase tracking-widest flex items-center gap-2 md:gap-3 transition-all ${
+                className={`tac-btn !py-2 ${
                   connectionLoading
-                    ? 'bg-white/5 border-white/10 text-gray-500 cursor-not-allowed'
-                    : 'bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-400 hover:text-red-300'
+                    ? 'border-ink-line text-fg-mute cursor-not-allowed'
+                    : 'border-hazard/40 text-hazard hover:bg-hazard-dim'
                 }`}
               >
                 {connectionLoading ? activeConnectionMeta.loadingLabel : activeConnectionMeta.actionLabel}
@@ -475,9 +471,9 @@ function App() {
                 setMapFocusTarget(null);
                 setActiveView('map');
               }}
-              className="px-3 md:px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 tactic-cut text-[10px] font-black uppercase tracking-widest flex items-center gap-2 md:gap-3 transition-all"
+              className="tac-btn tac-btn-ghost !py-2"
             >
-              <FaMapMarkedAlt className="text-[#cd5241]" /> 实时地图
+              <FaMapMarkedAlt className="text-hazard" /> 实时地图
             </button>
           </div>
         </header>
@@ -508,18 +504,15 @@ function NavIcon({ id, icon, active, onClick, label }) {
   return (
     <button
       onClick={() => onClick(id)}
-      className={`relative w-full h-11 tactic-cut flex items-center gap-3 px-3 transition-all duration-200 ${isActive ? 'bg-[#cd5241] text-white shadow-lg shadow-[#cd5241]/20' : 'bg-white/[0.02] text-gray-500 hover:bg-white/5 hover:text-gray-300'}`}
+      className={`relative w-full h-11 flex items-center gap-3 px-3 border-l-2 transition-colors duration-150 ${isActive ? 'bg-hazard-dim border-hazard text-fg' : 'border-transparent text-fg-dim hover:bg-ink-800 hover:text-fg'}`}
     >
-      {/* 左侧激活指示条 */}
-      <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 bg-white transition-all duration-300 ${isActive ? 'h-5' : 'h-0'}`} />
-
       {/* 图标 */}
       <div className="w-6 h-6 flex items-center justify-center shrink-0">
-        <span className="text-sm">{icon}</span>
+        <span className={`text-sm ${isActive ? 'text-hazard' : ''}`}>{icon}</span>
       </div>
 
       {/* 文字标签 - 跟随父级 nav 的 hover 状态显示 */}
-      <span className="text-[11px] font-bold uppercase tracking-wide whitespace-nowrap opacity-0 group-hover/nav:opacity-100 transition-opacity duration-300">
+      <span className="text-[13px] font-bold whitespace-nowrap opacity-0 group-hover/nav:opacity-100 transition-opacity duration-300">
         {label}
       </span>
     </button>
@@ -537,53 +530,51 @@ function ServerSettingsView({ server, onNavigateToPairing }) {
   ];
 
   return (
-    <div className="h-full flex gap-6 animate-fade-in font-sans">
+    <div className="h-full flex gap-5 animate-fade-in font-sans">
       {/* 左侧导航栏 */}
-      <div className="w-56 shrink-0 tactic-border tactic-cut p-1 bg-black/40">
-        <div className="bg-black/60 h-full flex flex-col">
-          {/* 标题 */}
-          <div className="p-5 border-b border-white/5">
-            <h3 className="text-lg font-black uppercase italic glow-text flex items-center gap-2">
-              <FaCog className="text-[#cd5241]" /> 系统配置
-            </h3>
-            {isDemo && (
-              <div className="mt-2 px-2 py-1 bg-[#cd5241]/10 border border-[#cd5241]/30 text-[#cd5241] text-[8px] font-black tactic-cut text-center">
-                演示模式
+      <div className="w-56 shrink-0 tac-panel flex flex-col">
+        {/* 标题 */}
+        <div className="p-5 border-b border-ink-line">
+          <div className="tac-label mb-1">SYSTEM CONFIG</div>
+          <h3 className="text-base font-extrabold text-fg flex items-center gap-2">
+            <FaCog className="text-hazard" /> 系统配置
+          </h3>
+          {isDemo && (
+            <div className="mt-2 font-mono text-[10px] text-hazard border border-hazard/30 bg-hazard-dim px-2 py-1 text-center uppercase tracking-wider">演示模式</div>
+          )}
+        </div>
+
+        {/* 导航项 */}
+        <div className="flex-1 p-2 space-y-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`w-full text-left p-3 border-l-2 transition-colors ${
+                activeTab === tab.id
+                  ? 'bg-hazard-dim border-hazard text-fg'
+                  : 'border-transparent hover:bg-ink-800 text-fg-dim hover:text-fg'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className={activeTab === tab.id ? 'text-hazard' : 'text-fg-mute'}>{tab.icon}</span>
+                <span className="text-sm font-bold">{tab.label}</span>
+                <span className="tac-label !text-[9px] ml-auto">{tab.en}</span>
               </div>
-            )}
-          </div>
+              <p className="text-[11px] text-fg-mute mt-1">{tab.desc}</p>
+            </button>
+          ))}
+        </div>
 
-          {/* 导航项 */}
-          <div className="flex-1 p-3 space-y-1">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`w-full text-left p-3 tactic-cut transition-all ${
-                  activeTab === tab.id
-                    ? 'bg-[#cd5241] text-white'
-                    : 'bg-white/[0.02] hover:bg-white/5 text-gray-400 hover:text-white'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className={activeTab === tab.id ? 'text-white' : 'text-gray-500'}>{tab.icon}</span>
-                  <span className="text-xs font-black uppercase tracking-tight">{tab.label}</span>
-                </div>
-                <p className="text-[9px] mt-1 opacity-60 uppercase tracking-wider">{tab.desc}</p>
-              </button>
-            ))}
-          </div>
-
-          {/* 底部信息 */}
-          <div className="p-4 border-t border-white/5 text-center">
-            <p className="text-[8px] text-gray-600 uppercase tracking-widest">Rust+ Dashboard v1.0</p>
-          </div>
+        {/* 底部信息 */}
+        <div className="p-4 border-t border-ink-line text-center">
+          <p className="font-mono text-[9px] text-fg-mute uppercase tracking-widest">RUST+ DASHBOARD v1.0</p>
         </div>
       </div>
 
       {/* 右侧内容区 */}
-      <div className="flex-1 tactic-border tactic-cut p-1 bg-black/40 overflow-hidden">
-        <div className="bg-black/40 h-full overflow-y-auto p-6">
+      <div className="flex-1 tac-panel overflow-hidden">
+        <div className="h-full overflow-y-auto p-6 custom-scrollbar">
           {/* FCM 配置 */}
           {activeTab === 'fcm' && <FCMSettings onNavigateToPairing={onNavigateToPairing} />}
 
@@ -592,10 +583,11 @@ function ServerSettingsView({ server, onNavigateToPairing }) {
 
           {/* 预警规则 */}
           {activeTab === 'alerts' && (
-            <div className="space-y-6">
-              <div className="mb-6">
-                <h4 className="text-lg font-black uppercase italic text-white mb-1">预警规则配置</h4>
-                <p className="text-[10px] text-gray-500 uppercase tracking-widest">自动化报警与防御联动</p>
+            <div className="space-y-5">
+              <div className="mb-2">
+                <div className="tac-label mb-1">ALERT RULES</div>
+                <h4 className="text-lg font-extrabold text-fg">预警规则配置</h4>
+                <p className="text-[13px] text-fg-dim mt-1">自动化报警与防御联动</p>
               </div>
 
               <SettingRow
@@ -622,8 +614,8 @@ function ServerSettingsView({ server, onNavigateToPairing }) {
               />
 
               {isDemo && (
-                <div className="mt-8 p-5 bg-white/[0.02] border border-dashed border-white/10 tactic-cut text-center">
-                  <p className="text-xs text-gray-600 italic">请先在左侧选择或添加一个活跃的服务器节点。</p>
+                <div className="mt-6 p-5 border border-dashed border-ink-line text-center">
+                  <p className="text-sm text-fg-mute">请先在左侧选择或添加一个活跃的服务器节点。</p>
                 </div>
               )}
             </div>
@@ -638,9 +630,10 @@ function ServerSettingsView({ server, onNavigateToPairing }) {
 function NotificationSettingsEmbed() {
   return (
     <div>
-      <div className="mb-6">
-        <h4 className="text-lg font-black uppercase italic text-white mb-1">通知设置</h4>
-        <p className="text-[10px] text-gray-500 uppercase tracking-widest">队伍聊天通知配置</p>
+      <div className="mb-5">
+        <div className="tac-label mb-1">NOTIFICATIONS</div>
+        <h4 className="text-lg font-extrabold text-fg">通知设置</h4>
+        <p className="text-[13px] text-fg-dim mt-1">队伍聊天通知配置</p>
       </div>
       <NotificationSettings />
     </div>
@@ -649,25 +642,25 @@ function NotificationSettingsEmbed() {
 
 function SettingRow({ title, desc, active, pro }) {
   return (
-    <div className="flex justify-between items-center group">
-      <div className="flex-1">
-        <div className="flex items-center gap-3">
-          <div className="text-sm font-black uppercase tracking-tight">{title}</div>
-          {pro && <span className="text-[8px] px-1.5 py-0.5 bg-[#cd5241] text-white font-black italic tactic-cut">PRO_ONLY</span>}
+    <div className="flex justify-between items-center gap-4 border border-ink-line p-4">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <div className="text-sm font-bold text-fg">{title}</div>
+          {pro && <span className="font-mono text-[9px] px-1.5 py-0.5 bg-hazard text-white uppercase tracking-wider">PRO</span>}
         </div>
-        <div className="text-[10px] text-gray-600 uppercase tracking-widest mt-1">{desc}</div>
+        <div className="text-[12px] text-fg-dim mt-1 leading-relaxed">{desc}</div>
       </div>
-      <div className={pro ? 'opacity-20 grayscale cursor-not-allowed' : ''}>
+      <div className={pro ? 'opacity-30 cursor-not-allowed' : ''}>
         <QuickToggle active={active} />
       </div>
     </div>
   );
 }
 
-function QuickToggle({ active, pro, disabled }) {
+function QuickToggle({ active, disabled }) {
   return (
-    <div className={`w-10 h-5 tactic-cut relative transition-all ${active ? 'bg-[#cd5241]' : 'bg-gray-800 shadow-inner'} ${disabled ? 'opacity-20 grayscale cursor-not-allowed' : ''}`}>
-      <div className={`absolute top-1 w-3 h-3 bg-white tactic-cut transition-all duration-300 ${active ? 'right-1 shadow-[0_0_8px_white]' : 'left-1'}`} />
+    <div className={`w-11 h-6 relative transition-colors border ${active ? 'bg-hazard-dim border-hazard/50' : 'bg-ink-700 border-ink-line'} ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}>
+      <div className={`absolute top-[3px] w-4 h-4 transition-all ${active ? 'right-[3px] bg-hazard' : 'left-[3px] bg-fg-mute'}`} />
     </div>
   );
 }
@@ -708,73 +701,73 @@ function DisconnectedView({
         };
 
   return (
-    <div className="h-full flex items-center justify-center animate-fade-in relative overflow-hidden font-sans">
-      <div className="max-w-md w-full tactic-border tactic-cut p-1 bg-black/40 relative z-10 shadow-2xl">
-        <div className="bg-black/40 p-10 text-center relative overflow-hidden">
-          <div className="scanline"></div>
-
-          <div className="flex justify-center mb-8 gap-4">
-            <div className="w-16 h-16 bg-gray-800/30 border border-white/5 tactic-cut flex flex-col items-center justify-center relative">
-              <FaBell className={`text-xl ${fcmStatus?.isListening ? 'text-[#a3e635]' : 'text-gray-700'}`} />
-              <span className="text-[7px] font-black mt-1 uppercase opacity-40">FCM</span>
-              {fcmStatus?.isListening && <div className="absolute top-0 right-0 w-2 h-2 bg-[#a3e635] rounded-full shadow-[0_0_5px_#a3e635]" />}
+    <div className="h-full flex items-center justify-center animate-fade-in relative font-sans px-4">
+      <div className="max-w-md w-full tac-panel tac-corners relative z-10">
+        <div className="p-8">
+          {/* 链路图标 */}
+          <div className="flex justify-center items-center gap-3 mb-7">
+            <div className="w-14 h-14 border border-ink-line flex flex-col items-center justify-center">
+              <FaBell className={`text-lg ${fcmReady ? 'text-terminal' : 'text-fg-mute'}`} />
+              <span className="font-mono text-[8px] uppercase mt-1 text-fg-mute">FCM</span>
             </div>
-            <div className="w-20 h-20 bg-[#cd5241]/10 border border-[#cd5241]/20 tactic-cut flex flex-col items-center justify-center relative scale-110">
-              <FaSatellite className={`text-3xl ${loading ? 'animate-spin' : 'text-gray-700'} ${connectionMeta.isPending ? 'text-yellow-400' : ''}`} />
-              <span className="text-[8px] font-black mt-1 uppercase text-[#cd5241]">Satellite</span>
+            <div className="font-mono text-fg-mute">· · ·</div>
+            <div className="w-16 h-16 border border-hazard/40 bg-hazard-dim flex flex-col items-center justify-center">
+              <FaSatellite className={`text-2xl ${loading ? 'animate-spin text-hazard' : connectionMeta.isPending ? 'text-hazard animate-pulse' : 'text-fg-mute'}`} />
+              <span className="font-mono text-[8px] uppercase mt-1 text-hazard">LINK</span>
             </div>
           </div>
 
-          <h2 className="text-3xl font-black mb-2 uppercase tracking-tighter glow-text italic">{server.name}</h2>
-          <div className="flex items-center justify-center gap-3 mb-10">
-            <span className="text-gray-500 font-mono text-xs uppercase tracking-widest">{server.ip}:{server.port}</span>
-            <span className="w-1.5 h-1.5 bg-gray-800 rounded-full" />
-            <span className={`font-black text-xs uppercase italic ${connectionMeta.isPending ? 'text-yellow-500' : 'text-[#cd5241]'}`}>
-              {connectionMeta.isPending ? `链路建立中 (${connectionMeta.label})` : '卫星链路未建立'}
-            </span>
+          {/* 服务器名 */}
+          <div className="text-center mb-6">
+            <div className="tac-label mb-2">
+              {connectionMeta.isPending ? `LINK ESTABLISHING · ${connectionMeta.label}` : 'LINK OFFLINE · 链路未建立'}
+            </div>
+            <h2 className="text-2xl font-extrabold text-fg tracking-tight truncate">{server.name}</h2>
+            <div className="font-mono text-xs text-fg-mute mt-1">{server.ip}:{server.port}</div>
           </div>
 
-          <div className="bg-white/[0.02] border border-white/5 p-5 tactic-cut mb-10 text-left">
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest">系统就绪状态</span>
-              <span className="text-[10px] text-[#cd5241] font-black uppercase italic">
-                {connectionMeta.isPending ? '连接中，可取消' : isSubscriptionExpired ? '服务已暂停' : '等待远程授权'}
+          {/* 就绪状态 */}
+          <div className="border border-ink-line mb-5">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-ink-line">
+              <span className="tac-label">系统就绪状态</span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-hazard">
+                {connectionMeta.isPending ? '连接中' : isSubscriptionExpired ? '已暂停' : '等待授权'}
               </span>
             </div>
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <div className={`mt-1 w-1.5 h-1.5 rounded-full ${fcmStatus?.isListening ? 'bg-[#a3e635]' : 'bg-gray-800'}`} />
-                <p className="text-[9px] text-gray-500 font-medium leading-normal">
-                  <span className="text-gray-300 font-bold">推送链路 (FCM):</span> {fcmStatus?.isListening ? '已就绪。系统已准备好接收游戏内配对推送。' : '未连接。您将无法在游戏中直接配对设备。'}
+            <div className="px-4 py-3 space-y-2.5">
+              <div className="flex items-start gap-2.5">
+                <span className={`mt-1 w-1.5 h-1.5 shrink-0 ${fcmReady ? 'bg-terminal' : 'bg-fg-mute'}`} />
+                <p className="text-[13px] text-fg-dim leading-snug">
+                  <span className="text-fg font-bold">推送 FCM:</span> {fcmReady ? '已就绪，可接收游戏内配对推送。' : '未连接，无法在游戏中直接配对设备。'}
                 </p>
               </div>
-              <div className="flex items-start gap-3">
-                <div className="mt-1 w-1.5 h-1.5 rounded-full bg-gray-800" />
-                <p className="text-[9px] text-gray-500 font-medium leading-normal">
-                  <span className="text-gray-300 font-bold">实时链路 (WS):</span>{' '}
-                  {connectionMeta.isPending
-                    ? '连接请求已提交，可点击下方按钮立即取消。'
-                    : '需要您手动启动“远程连接”来激活此服务器的实时控制面板。'}
+              <div className="flex items-start gap-2.5">
+                <span className="mt-1 w-1.5 h-1.5 shrink-0 bg-fg-mute" />
+                <p className="text-[13px] text-fg-dim leading-snug">
+                  <span className="text-fg font-bold">链路 WS:</span>{' '}
+                  {connectionMeta.isPending ? '连接请求已提交，可点击下方取消。' : '需手动启动远程连接以激活实时控制台。'}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/20 tactic-cut text-left">
-            <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest mb-1">建议下一步</p>
-            <p className="text-sm text-blue-100 font-bold">{nextStep.title}</p>
-            <p className="text-[11px] text-blue-100/80 leading-relaxed mt-1">{nextStep.desc}</p>
+          {/* 建议下一步 */}
+          <div className="mb-6 border border-hazard/30 bg-hazard-dim p-4">
+            <div className="tac-label !text-hazard mb-1.5">建议下一步 // NEXT</div>
+            <p className="text-sm text-fg font-bold">{nextStep.title}</p>
+            <p className="text-[13px] text-fg-dim leading-relaxed mt-1">{nextStep.desc}</p>
           </div>
 
+          {/* 连接按钮 */}
           <button
             onClick={connectionMeta.isPending ? onDisconnect : onConnect}
             disabled={isDisabled}
             title={isSubscriptionExpired && !connectionMeta.isPending ? '续费后可连接服务器' : ''}
-            className={`w-full tactic-cut py-6 font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-4 group text-lg ${isDisabled
-              ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
+            className={`tac-btn w-full !py-4 ${isDisabled
+              ? '!border-ink-line text-fg-mute cursor-not-allowed'
               : connectionMeta.isPending
-                ? 'bg-red-500/70 hover:bg-red-500 shadow-2xl shadow-red-500/20'
-                : 'bg-[#cd5241] hover:bg-[#b04537] shadow-2xl shadow-[#cd5241]/20'
+                ? 'bg-hazard-dim !border-hazard/50 text-hazard hover:bg-hazard/20'
+                : 'tac-btn-primary'
               }`}
           >
             {loading ? (
@@ -783,26 +776,21 @@ function DisconnectedView({
               <>服务已暂停 · 续费后可用</>
             ) : (
               <>
-                {connectionMeta.isPending ? <FaTimes className="text-xs group-hover:scale-110 transition-transform" /> : <FaPlay className="text-xs group-hover:scale-110 transition-transform" />}
+                {connectionMeta.isPending ? <FaTimes className="text-[10px]" /> : <FaPlay className="text-[10px]" />}
                 {actionText}
               </>
             )}
           </button>
 
-          {!fcmStatus?.isListening && (
+          {!fcmReady && (
             <button
               onClick={onPair}
-              className="w-full mt-3 py-3 border border-yellow-500/30 text-yellow-300 text-[11px] font-black uppercase tactic-cut hover:bg-yellow-500/10 transition-all"
+              className="tac-btn tac-btn-ghost w-full !py-3 mt-3 !border-hazard/30 !text-hazard hover:!bg-hazard-dim"
             >
               去完成配对（FCM 未就绪）
             </button>
           )}
         </div>
-      </div>
-
-      {/* 背景装饰 */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[12vw] font-black text-white/[0.02] pointer-events-none select-none italic uppercase">
-        Link_Offline
       </div>
     </div>
   );
@@ -826,75 +814,53 @@ function EmptyState({ onPair, fcmStatus, isSubscriptionExpired }) {
       };
 
   return (
-    <div className="h-full flex flex-col items-center justify-center relative animate-fade-in font-sans">
-      <div className="relative z-10 text-center max-w-xl">
+    <div className="h-full flex flex-col items-center justify-center relative animate-fade-in font-sans px-4">
+      <div className="relative z-10 w-full max-w-md">
         <div className="flex justify-center mb-8">
-          <div className="w-20 h-20 tactic-cut bg-[#cd5241]/10 border border-[#cd5241]/30 flex items-center justify-center relative group">
-            <FaSatellite className="text-3xl text-[#cd5241] animate-bounce" />
-            <div className="absolute -inset-4 border border-[#cd5241]/10 tactic-cut animate-ping" />
+          <div className="w-16 h-16 border border-hazard/40 bg-hazard-dim flex items-center justify-center">
+            <FaSatellite className="text-2xl text-hazard" />
           </div>
         </div>
 
-        <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-3 glow-text">
-          未检测到活跃服务器
-        </h2>
-
-        <p className="text-gray-500 text-sm mb-8 leading-relaxed font-medium">
-          系统处于待机模式，添加服务器开启远程监控
-        </p>
-
-        <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/20 tactic-cut text-left max-w-sm mx-auto">
-          <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest mb-1">新手引导</p>
-          <p className="text-sm text-blue-100 font-bold">{onboardingTip.title}</p>
-          <p className="text-[11px] text-blue-100/80 leading-relaxed mt-1">{onboardingTip.desc}</p>
+        <div className="text-center mb-8">
+          <div className="tac-label mb-2">NO ACTIVE SERVER</div>
+          <h2 className="text-2xl font-extrabold text-fg tracking-tight mb-2">未检测到活跃服务器</h2>
+          <p className="text-sm text-fg-dim">系统处于待机模式，配对服务器后开启远程监控</p>
         </div>
 
-        {/* 状态卡片 */}
-        <div className="mb-8 p-4 bg-white/[0.02] border border-white/5 tactic-cut text-left max-w-sm mx-auto">
-          <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-3 border-l-2 border-[#cd5241] pl-2">
-            当前状态
-          </p>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">FCM 凭证</span>
-              <span className={`flex items-center gap-2 ${hasCredentials ? 'text-green-400' : 'text-gray-600'}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${hasCredentials ? 'bg-green-400' : 'bg-gray-600'}`} />
-                {hasCredentials ? '已配置' : '未配置'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">服务器</span>
-              <span className="flex items-center gap-2 text-gray-600">
-                <span className="w-1.5 h-1.5 rounded-full bg-gray-600" />
-                未配对
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">订阅状态</span>
-              <span className={`flex items-center gap-2 ${isSubscriptionExpired ? 'text-yellow-500' : 'text-green-400'}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${isSubscriptionExpired ? 'bg-yellow-500' : 'bg-green-400'}`} />
-                {isSubscriptionExpired ? '已过期' : '有效'}
-              </span>
-            </div>
-          </div>
+        {/* 引导提示 */}
+        <div className="mb-5 border border-hazard/30 bg-hazard-dim p-4">
+          <div className="tac-label !text-hazard mb-1.5">新手引导 // SETUP</div>
+          <p className="text-sm text-fg font-bold">{onboardingTip.title}</p>
+          <p className="text-[13px] text-fg-dim leading-relaxed mt-1">{onboardingTip.desc}</p>
         </div>
 
-        {/* 提示文字 */}
-        {hasCredentials && !isSubscriptionExpired && (
-          <p className="text-xs text-green-400/80 mb-6">
-            ✓ FCM 已就绪，只需在游戏中配对即可
-          </p>
-        )}
+        {/* 状态卡 */}
+        <div className="mb-8 border border-ink-line">
+          <div className="tac-label px-4 py-2.5 border-b border-ink-line">当前状态 // STATUS</div>
+          <StatusRow label="FCM 凭证" ok={hasCredentials} okText="已配置" noText="未配置" />
+          <StatusRow label="服务器" ok={false} okText="已配对" noText="未配对" />
+          <StatusRow label="订阅状态" ok={!isSubscriptionExpired} okText="有效" noText="已过期" warn={isSubscriptionExpired} />
+        </div>
 
-        <button
-          onClick={onPair}
-          className="group relative px-12 py-5 bg-[#cd5241] text-white font-black uppercase italic tactic-cut hover:scale-105 transition-all shadow-2xl shadow-[#cd5241]/30 overflow-hidden text-lg"
-        >
-          <span className="relative z-10 flex items-center gap-3">
-            <FaPlus /> 打开配对向导
-          </span>
+        <button onClick={onPair} className="tac-btn tac-btn-primary w-full !py-4">
+          <FaPlus /> 打开配对向导
         </button>
       </div>
+    </div>
+  );
+}
+
+function StatusRow({ label, ok, okText, noText, warn }) {
+  const tone = ok ? 'text-terminal' : warn ? 'text-hazard' : 'text-fg-mute';
+  const dot = ok ? 'bg-terminal' : warn ? 'bg-hazard' : 'bg-fg-mute';
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 border-b border-ink-line last:border-0">
+      <span className="text-sm text-fg-dim">{label}</span>
+      <span className={`flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider ${tone}`}>
+        <span className={`w-1.5 h-1.5 ${dot}`} />
+        {ok ? okText : noText}
+      </span>
     </div>
   );
 }
@@ -984,39 +950,42 @@ function TacticalMapModal({ server, teamData, focusTarget, onClose }) {
 
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/95 flex flex-col animate-in fade-in zoom-in-95 duration-200">
-      <header className="h-14 bg-[#090a0c] border-b border-[#333] flex items-center justify-between px-6 z-50 shadow-2xl relative">
+    <div className="fixed inset-0 z-50 bg-black/95 flex flex-col animate-fade-in">
+      <header className="h-14 bg-ink-900 border-b border-ink-line flex items-center justify-between px-6 z-50 relative">
         <div className="flex items-center gap-4">
-          <FaMapMarkedAlt className="text-[#cd5241] text-2xl animate-pulse" />
+          <FaMapMarkedAlt className="text-hazard text-2xl" />
           <div>
-            <h2 className="text-lg font-black italic tracking-tighter text-white uppercase flex items-center gap-2">
+            <h2 className="text-lg font-extrabold tracking-tight text-fg flex items-center gap-2">
               集结与战术指挥地图
-              <span className="text-[10px] px-1.5 py-0.5 bg-[#cd5241] text-white rounded font-bold not-italic tracking-normal">LIVE</span>
+              <span className="font-mono text-[10px] px-1.5 py-0.5 bg-hazard text-white font-bold tracking-[0.15em] inline-flex items-center gap-1">
+                <span className="w-1 h-1 bg-white animate-tac-blink" />LIVE
+              </span>
             </h2>
-            <div className="text-[10px] text-gray-500 font-bold tracking-widest uppercase">
-              远程地理情报同步中 // [{server?.name}] {server?.type}
+            <div className="text-[10px] text-fg-dim font-mono tracking-wider">
+              远程地理情报同步中 // [<span className="text-fg">{server?.name}</span>] {server?.type}
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-6">
           {/* Controls */}
-          <div className="flex bg-black/50 rounded border border-white/10 overflow-hidden">
-            <button className="px-3 py-1 hover:bg-[#cd5241] text-white transition-colors" onClick={() => setTransform(p => ({ ...p, scale: Math.min(p.scale + 0.2, 5) }))}><FaPlus size={10} /></button>
-            <button className="px-3 py-1 hover:bg-[#cd5241] text-white transition-colors" onClick={() => setTransform(p => ({ ...p, scale: Math.max(p.scale - 0.2, 0.5) }))}><FaTimes className="rotate-45" size={10} /></button>
-            <button className="px-3 py-1 hover:bg-[#cd5241] text-white transition-colors" onClick={() => setTransform({ scale: 1, x: 0, y: 0 })}><FaExpandArrowsAlt size={10} /></button>
+          <div className="flex bg-ink-800 border border-ink-line overflow-hidden">
+            <button className="px-3 py-1 hover:bg-hazard text-fg hover:text-white transition-colors" onClick={() => setTransform(p => ({ ...p, scale: Math.min(p.scale + 0.2, 5) }))}><FaPlus size={10} /></button>
+            <button className="px-3 py-1 hover:bg-hazard text-fg hover:text-white transition-colors" onClick={() => setTransform(p => ({ ...p, scale: Math.max(p.scale - 0.2, 0.5) }))}><FaTimes className="rotate-45" size={10} /></button>
+            <button className="px-3 py-1 hover:bg-hazard text-fg hover:text-white transition-colors" onClick={() => setTransform({ scale: 1, x: 0, y: 0 })}><FaExpandArrowsAlt size={10} /></button>
           </div>
 
-          <div className="flex gap-4 text-[10px] font-bold text-gray-500 uppercase border-l border-white/10 pl-6">
-            <span>地图: <span className="text-white">{mapInfo.mapSize}M</span></span>
-            <span>Margin: <span className="text-white">{mapInfo.oceanMargin}</span></span>
-            <span>纪念碑: <span className="text-white">{mapInfo.monuments?.length || 0}</span></span>
-            <span>同队: <span className="text-white">{teamData?.members?.length || 0}</span></span>
+          <div className="flex gap-4 text-[10px] font-bold text-fg-dim border-l border-ink-line pl-6">
+            <span className="tac-label !text-[10px]">MAP <span className="text-fg font-mono tabular-nums normal-case tracking-normal">{mapInfo.mapSize}M</span></span>
+            <span className="tac-label !text-[10px]">MARGIN <span className="text-fg font-mono tabular-nums normal-case tracking-normal">{mapInfo.oceanMargin}</span></span>
+            <span className="tac-label !text-[10px]">MON <span className="text-fg font-mono tabular-nums normal-case tracking-normal">{mapInfo.monuments?.length || 0}</span></span>
+            <span className="tac-label !text-[10px]">SQUAD <span className="text-fg font-mono tabular-nums normal-case tracking-normal">{teamData?.members?.length || 0}</span></span>
           </div>
 
           <button
             onClick={() => onClose()}
-            className="w-8 h-8 flex items-center justify-center border border-white/10 hover:bg-[#cd5241] hover:border-[#cd5241] transition-all text-gray-400 hover:text-white ml-2 rounded"
+            className="w-8 h-8 flex items-center justify-center border border-ink-line hover:bg-hazard hover:border-hazard transition-colors text-fg-dim hover:text-white ml-2"
+            aria-label="关闭地图"
           >
             <FaTimes />
           </button>
@@ -1025,7 +994,7 @@ function TacticalMapModal({ server, teamData, focusTarget, onClose }) {
 
       <div
         ref={mapContainerRef}
-        className="flex-1 relative bg-[#090a0c] tactic-border tactic-cut overflow-hidden cursor-crosshair group shadow-inner"
+        className="flex-1 relative bg-ink-900 border border-ink-line overflow-hidden cursor-crosshair group"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -1057,8 +1026,8 @@ function TacticalMapModal({ server, teamData, focusTarget, onClose }) {
             const pos = getPos(mon.x, mon.y);
             return (
               <div key={`mon-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-10" style={pos}>
-                <div className="w-2 h-2 bg-gray-600/30 border border-gray-600/50 rotate-45" />
-                <div className="absolute top-3 left-1/2 -translate-x-1/2 text-[7px] text-gray-700 whitespace-nowrap font-black uppercase tracking-tighter">
+                <div className="w-2 h-2 bg-fg-mute/20 border border-fg-mute/40 rotate-45" />
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 text-[7px] text-fg-mute whitespace-nowrap font-mono font-bold uppercase tracking-tighter">
                   {mon.name}
                 </div>
               </div>
@@ -1070,8 +1039,8 @@ function TacticalMapModal({ server, teamData, focusTarget, onClose }) {
             const pos = getPos(marker.x, marker.y);
             return (
               <div key={`mark-${i}`} className="absolute w-2.5 h-2.5 -translate-x-1/2 -translate-y-1/2 z-20" style={pos}>
-                <div className="w-full h-full bg-[#cd5241]/20 rounded-full border border-[#cd5241]/40" />
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 text-[8px] text-[#cd5241] whitespace-nowrap font-bold uppercase tracking-tighter">
+                <div className="w-full h-full bg-hazard/20 border border-hazard/50 rotate-45" />
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 text-[8px] text-hazard whitespace-nowrap font-mono font-bold uppercase tracking-tighter">
                   {/* {marker.name || marker.type} */}
                   {/* 简化显示 */}
                 </div>
@@ -1079,16 +1048,16 @@ function TacticalMapModal({ server, teamData, focusTarget, onClose }) {
             );
           })}
 
-          {/* 锁定目标特效 */}
+          {/* 锁定目标特效（雷达锁定环：圆形为雷达扫描语义） */}
           {focusTarget && (
             <div className="absolute -translate-x-1/2 -translate-y-1/2 z-50 transition-all duration-500" style={getPos(focusTarget.x, focusTarget.y)}>
               <div className="relative">
-                <div className="absolute -inset-10 border border-[#cd5241] rounded-full animate-ping opacity-30" />
-                <div className="absolute -inset-6 border-2 border-dashed border-[#cd5241] rounded-full animate-spin-slow opacity-50" />
-                <div className="absolute w-20 h-px bg-[#cd5241]/50 -translate-x-1/2 left-1/2" />
-                <div className="absolute h-20 w-px bg-[#cd5241]/50 -translate-y-1/2 top-1/2" />
-                <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-[#cd5241] text-white text-[10px] font-black px-3 py-1 tactic-cut whitespace-nowrap shadow-xl">
-                  已锁定: {focusTarget.name}
+                <div className="absolute -inset-10 border border-hazard rounded-full animate-ping opacity-30" />
+                <div className="absolute -inset-6 border-2 border-dashed border-hazard rounded-full animate-spin-slow opacity-50" />
+                <div className="absolute w-20 h-px bg-hazard/50 -translate-x-1/2 left-1/2" />
+                <div className="absolute h-20 w-px bg-hazard/50 -translate-y-1/2 top-1/2" />
+                <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-hazard text-white text-[10px] font-bold px-3 py-1 whitespace-nowrap flex items-center gap-1.5">
+                  <span className="font-mono uppercase tracking-[0.15em]">LOCK</span> 已锁定: {focusTarget.name}
                 </div>
               </div>
             </div>
@@ -1100,14 +1069,14 @@ function TacticalMapModal({ server, teamData, focusTarget, onClose }) {
             return (
               <div key={member.steamId} className="absolute -translate-x-1/2 -translate-y-1/2 transition-all duration-1000 z-30" style={pos}>
                 <div className="relative">
-                  <div className={`w-5 h-5 tactic-cut animate-ping absolute opacity-40 ${member.isAlive ? 'bg-[#a3e635]' : 'bg-[#ef4444]'}`} />
-                  <div className={`w-5 h-5 tactic-cut relative z-10 border border-white/20 shadow-2xl ${!member.isAlive ? 'bg-[#ef4444] shadow-[#ef4444]/60' :
-                    member.isOnline ? 'bg-[#a3e635] shadow-[#a3e635]/60 animate-pulse' :
-                      'bg-gray-800'
+                  <div className={`w-5 h-5 animate-ping absolute opacity-40 ${member.isAlive ? 'bg-terminal' : 'bg-hazard'}`} />
+                  <div className={`w-5 h-5 relative z-10 border ${!member.isAlive ? 'bg-hazard border-hazard-bright' :
+                    member.isOnline ? 'bg-terminal border-terminal animate-tac-blink' :
+                      'bg-ink-700 border-ink-line2'
                     }`} />
-                  <div className="absolute top-7 left-1/2 -translate-x-1/2 bg-black/90 border border-white/10 px-2.5 py-1.5 tactic-cut whitespace-nowrap z-40 shadow-2xl">
-                    <span className="text-[10px] font-black text-white uppercase tracking-tighter flex items-center gap-2">
-                      {member.name} {!member.isAlive && <span className="text-[#ef4444]">[已阵亡]</span>}
+                  <div className="absolute top-7 left-1/2 -translate-x-1/2 bg-ink-900 border border-ink-line px-2.5 py-1.5 whitespace-nowrap z-40">
+                    <span className="text-[10px] font-bold text-fg flex items-center gap-2">
+                      {member.name} {!member.isAlive && <span className="text-hazard font-mono">[已阵亡]</span>}
                     </span>
                   </div>
                 </div>
@@ -1117,18 +1086,19 @@ function TacticalMapModal({ server, teamData, focusTarget, onClose }) {
         </div>
 
         {!server && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm z-50">
-            <div className="p-8 tactic-border tactic-cut bg-black/80 text-center max-w-sm">
-              <FaMapMarkedAlt className="text-4xl text-[#cd5241] mx-auto mb-4 animate-pulse" />
-              <h3 className="text-xl font-black uppercase italic mb-2">地图模块处于演示模式</h3>
-              <p className="text-[10px] text-gray-500 uppercase leading-relaxed">连接真实服务器后，系统将自动注入高精度地形情报与实时团队坐标。</p>
+          <div className="absolute inset-0 flex items-center justify-center bg-ink-900/70 z-50">
+            <div className="p-8 tac-panel tac-corners text-center max-w-sm">
+              <FaMapMarkedAlt className="text-4xl text-hazard mx-auto mb-4" />
+              <div className="tac-label mb-2">DEMO MODE</div>
+              <h3 className="text-xl font-extrabold text-fg mb-2">地图模块处于演示模式</h3>
+              <p className="text-xs text-fg-dim leading-relaxed">连接真实服务器后，系统将自动注入高精度地形情报与实时团队坐标。</p>
             </div>
           </div>
         )}
 
         <div className="absolute bottom-10 right-10 flex items-center gap-4 opacity-40 group-hover:opacity-100 transition-opacity">
-          <div className="flex items-center gap-3 text-xs text-gray-600 font-black uppercase italic tracking-widest">
-            正在整合实时地理情报...
+          <div className="flex items-center gap-3 text-xs text-fg-mute font-mono uppercase tracking-wider">
+            <span className="w-1.5 h-1.5 bg-hazard animate-tac-blink" /> SYNCING GEO-INTEL // 正在整合实时地理情报…
           </div>
         </div>
       </div>

@@ -36,22 +36,26 @@ export default function ServicePausedBanner() {
   };
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[100] bg-gradient-to-r from-[#1a1c20] to-[#252830] border-b border-[#cd5241]/30 px-4 py-2.5 shadow-lg">
-      <div className="max-w-7xl mx-auto flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <div className="fixed top-0 left-0 right-0 z-[100] bg-ink-850 border-b border-hazard/40 px-4 py-2.5">
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           {/* 图标 */}
-          <div className="flex items-center justify-center w-6 h-6 rounded bg-[#cd5241]/20">
-            <span className="text-[#cd5241] text-sm">
+          <div className="flex items-center justify-center w-6 h-6 bg-hazard-dim border border-hazard/40 shrink-0">
+            <span className="text-hazard-bright font-mono text-sm font-bold">
               {isNotActivated ? '!' : '||'}
             </span>
           </div>
 
           {/* 文字 */}
-          <div className="flex items-center gap-2">
-            <span className="text-[#cd5241] font-bold text-sm">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-1.5 h-1.5 bg-hazard animate-tac-blink shrink-0" />
+            <span className="tac-label !text-hazard hidden sm:inline">
+              {isNotActivated ? 'INACTIVE' : 'SUSPENDED'}
+            </span>
+            <span className="text-hazard font-bold text-sm truncate">
               {getStatusText()}
             </span>
-            <span className="text-gray-400 text-xs hidden sm:inline">
+            <span className="text-fg-dim text-xs hidden sm:inline truncate">
               {getSubText()}
             </span>
           </div>
@@ -60,7 +64,7 @@ export default function ServicePausedBanner() {
         {/* 按钮 */}
         <button
           onClick={() => navigate('/payment')}
-          className="px-4 py-1.5 bg-[#cd5241] hover:bg-[#b04537] text-white text-xs font-bold rounded transition-colors"
+          className="shrink-0 px-4 py-1.5 bg-hazard hover:bg-hazard-bright text-white text-xs font-bold transition-colors"
         >
           {isNotActivated ? '立即订阅' : '立即续费'}
         </button>

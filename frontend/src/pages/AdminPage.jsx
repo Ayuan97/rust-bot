@@ -17,36 +17,11 @@ import PlanManager from '../components/admin/PlanManager';
 import NodeMonitor from '../components/admin/NodeMonitor';
 
 const TAB_CONFIG = [
-  {
-    id: 'survivors',
-    label: '用户运营',
-    desc: '用户状态、资产、服务连通',
-    icon: FaUsers
-  },
-  {
-    id: 'trade',
-    label: '交易运营',
-    desc: '流水、订单、异常支付追踪',
-    icon: FaChartLine
-  },
-  {
-    id: 'plans',
-    label: '套餐策略',
-    desc: '价格、权益和启停管理',
-    icon: FaBoxOpen
-  },
-  {
-    id: 'nodes',
-    label: '节点运行',
-    desc: '分布式容量与健康状态',
-    icon: FaServer
-  },
-  {
-    id: 'logs',
-    label: '系统诊断',
-    desc: '按用户追踪实时日志',
-    icon: FaTerminal
-  }
+  { id: 'survivors', label: '用户运营', en: 'USERS', desc: '用户状态、资产、服务连通', icon: FaUsers },
+  { id: 'trade', label: '交易运营', en: 'TRADE', desc: '流水、订单、异常支付追踪', icon: FaChartLine },
+  { id: 'plans', label: '套餐策略', en: 'PLANS', desc: '价格、权益和启停管理', icon: FaBoxOpen },
+  { id: 'nodes', label: '节点运行', en: 'NODES', desc: '分布式容量与健康状态', icon: FaServer },
+  { id: 'logs', label: '系统诊断', en: 'LOGS', desc: '按用户追踪实时日志', icon: FaTerminal }
 ];
 
 function formatBytes(bytes = 0) {
@@ -66,18 +41,19 @@ function formatUptime(ms = 0) {
   return `${minute}分钟`;
 }
 
+// 健康指标配色收敛：healthy=terminal，warn/danger=hazard，neutral=中性
 function toneClass(tone) {
-  if (tone === 'healthy') return 'text-green-300 bg-green-500/10 border-green-500/30';
-  if (tone === 'warn') return 'text-yellow-300 bg-yellow-500/10 border-yellow-500/30';
-  if (tone === 'danger') return 'text-red-300 bg-red-500/10 border-red-500/30';
-  return 'text-gray-300 bg-white/[0.03] border-white/10';
+  if (tone === 'healthy') return 'text-terminal border-terminal/30 bg-ink-850';
+  if (tone === 'warn') return 'text-hazard border-hazard/30 bg-ink-850';
+  if (tone === 'danger') return 'text-hazard border-hazard/40 bg-hazard-dim';
+  return 'text-fg-dim border-ink-line bg-ink-850';
 }
 
 function HealthPill({ label, value, tone = 'neutral' }) {
   return (
-    <div className={`border rounded-lg px-3 py-2 ${toneClass(tone)}`}>
-      <div className="text-[10px] uppercase tracking-widest opacity-70">{label}</div>
-      <div className="text-sm font-bold mt-1">{value}</div>
+    <div className={`border px-3 py-2 ${toneClass(tone)}`}>
+      <div className="font-mono text-[9px] uppercase tracking-widest opacity-80">{label}</div>
+      <div className="font-mono text-sm font-bold mt-1 tabular-nums">{value}</div>
     </div>
   );
 }
@@ -141,33 +117,27 @@ const AdminPage = () => {
   };
 
   return (
-    <div className="h-full min-h-0 flex flex-col bg-[#0D0E10] text-gray-200">
-      <header className="shrink-0 border-b border-white/10 bg-[#121417]/95 px-3 md:px-6 py-3 md:py-4">
+    <div className="h-full min-h-0 flex flex-col bg-ink-900 text-fg">
+      <header className="shrink-0 border-b border-ink-line bg-ink-900 px-3 md:px-6 py-3 md:py-4">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-orange-400">
-              <FaTools />
-              <span className="text-xs uppercase tracking-widest font-black">运营后台</span>
+            <div className="tac-label flex items-center gap-2">
+              <FaTools className="text-hazard" /> 运营后台 // ADMIN
             </div>
-            <h1 className="text-lg md:text-xl font-black mt-1">TC Hub 控制台</h1>
-            <p className="text-xs text-gray-500 mt-1">
+            <h1 className="text-xl font-extrabold text-fg mt-1">运营控制台</h1>
+            <p className="text-[13px] text-fg-dim mt-1">
               当前模块：{activeTabConfig.label} · {activeTabConfig.desc}
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={fetchSystemStats}
-              disabled={loading}
-              className="px-3 py-2 border border-white/10 hover:border-orange-500/50 hover:bg-orange-500/10 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-60"
-            >
-              <span className="inline-flex items-center gap-2">
-                <FaSync className={loading ? 'animate-spin' : ''} />
-                刷新状态
-              </span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={fetchSystemStats}
+            disabled={loading}
+            className="tac-btn tac-btn-ghost !py-2.5 self-start"
+          >
+            <FaSync className={loading ? 'animate-spin' : ''} /> 刷新状态
+          </button>
         </div>
 
         {systemStats && (
@@ -190,7 +160,7 @@ const AdminPage = () => {
       </header>
 
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
-        <nav className="shrink-0 border-b lg:border-b-0 lg:border-r border-white/10 bg-[#0F1114] lg:w-64">
+        <nav className="shrink-0 border-b lg:border-b-0 lg:border-r border-ink-line bg-ink-900 lg:w-64">
           <div className="flex lg:flex-col gap-1 p-2 overflow-x-auto lg:overflow-x-visible">
             {TAB_CONFIG.map((tab) => {
               const Icon = tab.icon;
@@ -200,38 +170,37 @@ const AdminPage = () => {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`min-w-[150px] lg:min-w-0 text-left rounded-lg border px-3 py-2.5 transition-colors ${
+                  className={`min-w-[150px] lg:min-w-0 text-left border-l-2 px-3 py-2.5 transition-colors ${
                     isActive
-                      ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
-                      : 'border-white/5 bg-white/[0.02] text-gray-400 hover:text-white hover:bg-white/[0.05]'
+                      ? 'border-hazard bg-hazard-dim text-fg'
+                      : 'border-transparent text-fg-dim hover:text-fg hover:bg-ink-800'
                   }`}
                 >
                   <div className="flex items-center gap-2 text-sm font-bold">
-                    <Icon className="text-xs" />
+                    <Icon className={`text-xs ${isActive ? 'text-hazard' : ''}`} />
                     {tab.label}
+                    <span className="tac-label !text-[9px] ml-auto hidden lg:inline">{tab.en}</span>
                   </div>
-                  <p className="text-[11px] mt-1 text-gray-500 hidden lg:block">{tab.desc}</p>
+                  <p className="text-[11px] mt-1 text-fg-mute hidden lg:block">{tab.desc}</p>
                 </button>
               );
             })}
           </div>
 
           <div className="hidden lg:block p-3">
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-[11px] text-red-200">
-              <div className="inline-flex items-center gap-2 font-bold uppercase tracking-wider text-[10px]">
-                <FaExclamationTriangle />
-                操作审计开启
+            <div className="border border-hazard/30 bg-hazard-dim px-3 py-2.5">
+              <div className="tac-label !text-hazard flex items-center gap-2">
+                <FaExclamationTriangle /> 操作审计开启
               </div>
-              <p className="mt-1 text-red-200/80 leading-relaxed">
+              <p className="mt-1.5 text-[11px] text-fg-dim leading-relaxed">
                 高风险操作均会写入管理员日志，建议在操作前确认用户与订单归属。
               </p>
             </div>
           </div>
         </nav>
 
-        <main className="flex-1 min-h-0 overflow-auto relative">
-          <div className="absolute inset-0 scanline pointer-events-none opacity-5" />
-          <div className="relative p-3 md:p-6">{renderView()}</div>
+        <main className="flex-1 min-h-0 overflow-auto">
+          <div className="p-3 md:p-6">{renderView()}</div>
         </main>
       </div>
     </div>

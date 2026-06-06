@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FaTimes, FaSave, FaTerminal, FaRobot, FaClock, FaBell, FaEdit } from 'react-icons/fa';
+import { FaTimes, FaSave, FaSync, FaTerminal, FaRobot, FaClock, FaBell, FaEdit } from 'react-icons/fa';
 import { updateDevice } from '../services/api';
 import { useToast } from './Toast';
 
@@ -79,27 +79,25 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in"
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in"
       onClick={handleBackdropClick}
     >
-      <div className="relative bg-black/90 tactic-border tactic-cut w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.5)] transition-all">
-        {/* 顶部装饰光条 */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rust-orange via-orange-400 to-rust-orange opacity-80"></div>
-
+      <div className="relative tac-panel tac-corners w-full max-w-lg animate-scale-in">
         {/* 头部 */}
-        <div className="flex items-center justify-between p-6 border-b border-white/5 bg-white/[0.02]">
+        <div className="flex items-center justify-between p-6 border-b border-ink-line bg-ink-800">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 tactic-cut bg-rust-orange/20 flex items-center justify-center text-rust-orange border border-rust-orange/30">
+            <div className="w-9 h-9 bg-hazard-dim border border-hazard/40 flex items-center justify-center text-hazard">
               <FaEdit />
             </div>
             <div>
-              <h3 className="text-lg font-black text-white uppercase tracking-wider">配置设备</h3>
-              <p className="text-xs text-gray-500 font-mono">ID: {device.entityId}</p>
+              <div className="tac-label mb-1">编辑设备 // EDIT DEVICE</div>
+              <h3 className="text-lg font-extrabold text-fg leading-none">配置智能设备</h3>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-white hover:bg-white/10 tactic-cut transition-all"
+            className="w-8 h-8 flex items-center justify-center border border-ink-line text-fg-dim hover:text-fg hover:border-fg-dim transition-colors"
+            aria-label="关闭"
           >
             <FaTimes />
           </button>
@@ -110,10 +108,13 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
 
           {/* 设备名称输入 */}
           <div className="space-y-2">
-            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">设备名称</label>
+            <label className="flex items-baseline gap-2">
+              <span className="text-sm font-bold text-fg">设备名称</span>
+              <span className="tac-label">DEVICE NAME</span>
+            </label>
             <input
               type="text"
-              className="w-full bg-black/40 tactic-cut border border-white/10 py-3 px-4 text-white placeholder:text-gray-600 focus:border-rust-orange focus:ring-1 focus:ring-rust-orange/50 outline-none transition-all"
+              className="tac-input"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="输入易于识别的名称..."
@@ -122,38 +123,47 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-ink-line border border-ink-line">
             {/* 左侧：类型信息 */}
-            <div className="p-4 tactic-cut bg-blue-500/5 border border-blue-500/10 space-y-2">
-              <div className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
-                <FaRobot /> 设备类型
+            <div className="p-4 bg-ink-850 space-y-2">
+              <div className="tac-label flex items-center gap-2">
+                <FaRobot className="text-hazard" /> 设备类型 // TYPE
               </div>
-              <div className="text-lg font-mono text-white">{device.type}</div>
+              <div className="font-mono tabular-nums text-base text-fg tracking-[0.05em]">{device.type}</div>
             </div>
 
             {/* 右侧：状态信息 */}
             {device.type === 'ALARM' && (
-              <div className="p-4 tactic-cut bg-red-500/5 border border-red-500/10 space-y-2">
-                <div className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-2">
-                  <FaClock /> 上次触发
+              <div className="p-4 bg-ink-850 space-y-2">
+                <div className="tac-label flex items-center gap-2">
+                  <FaClock className="text-hazard" /> 上次触发 // LAST
                 </div>
-                <div className="text-lg font-mono text-white">{formatLastTrigger(device.lastTrigger)}</div>
+                <div className="font-mono tabular-nums text-base text-fg tracking-[0.05em]">{formatLastTrigger(device.lastTrigger)}</div>
               </div>
             )}
+          </div>
+
+          {/* 实体 ID */}
+          <div className="flex items-center justify-between border border-ink-line px-4 py-2.5">
+            <span className="tac-label">ENTITY ID · 实体编号</span>
+            <span className="font-mono tabular-nums text-sm text-fg">#{device.entityId}</span>
           </div>
 
           {/* 游戏内命令 (仅 Switch) */}
           {device.type === 'SWITCH' && (
             <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-                <span>游戏内指令</span>
-                <span className="text-[10px] text-gray-500 normal-case px-2 py-0.5 bg-white/5 tactic-cut">聊天输入 !指令 即可控制</span>
+              <label className="flex items-baseline justify-between gap-2">
+                <span className="flex items-baseline gap-2">
+                  <span className="text-sm font-bold text-fg">游戏内指令</span>
+                  <span className="tac-label">CHAT COMMAND</span>
+                </span>
+                <span className="font-mono text-[10px] text-fg-mute border border-ink-line px-2 py-0.5">聊天输入 !指令 即可控制</span>
               </label>
               <div className="relative group">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-rust-orange font-bold font-mono text-lg">!</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-hazard font-bold font-mono text-lg">!</span>
                 <input
                   type="text"
-                  className="w-full bg-black/40 tactic-cut border border-white/10 py-3 pl-8 pr-4 text-white font-mono placeholder:text-gray-600 focus:border-rust-orange focus:ring-1 focus:ring-rust-orange/50 outline-none transition-all"
+                  className="tac-input !pl-8 font-mono tabular-nums"
                   value={form.command}
                   onChange={(e) => setForm({ ...form, command: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
                   placeholder="command_name"
@@ -166,14 +176,15 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
           {/* 警报消息 (仅 Alarm) */}
           {device.type === 'ALARM' && (
             <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                警报通知消息
+              <label className="flex items-baseline gap-2">
+                <span className="text-sm font-bold text-fg">警报通知消息</span>
+                <span className="tac-label">ALARM MESSAGE</span>
               </label>
               <div className="relative">
-                <FaBell className="absolute left-4 top-3.5 text-yellow-500" />
+                <FaBell className="absolute left-4 top-1/2 -translate-y-1/2 text-hazard" />
                 <input
                   type="text"
-                  className="w-full bg-black/40 tactic-cut border border-white/10 py-3 pl-10 pr-4 text-white placeholder:text-gray-600 focus:border-yellow-500/50 focus:ring-1 focus:ring-yellow-500/30 outline-none transition-all"
+                  className="tac-input !pl-10"
                   value={form.message}
                   onChange={(e) => setForm({ ...form, message: e.target.value })}
                   placeholder="自定义通知内容..."
@@ -186,14 +197,17 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
           {/* 自动化设置 (非 Alarm) */}
           {device.type !== 'ALARM' && (
             <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">自动化逻辑</label>
-              <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+              <label className="flex items-baseline gap-2">
+                <span className="text-sm font-bold text-fg">自动化逻辑</span>
+                <span className="tac-label">AUTOMATION</span>
+              </label>
+              <div className="grid grid-cols-1 gap-px bg-ink-line border border-ink-line max-h-44 overflow-y-auto custom-scrollbar">
                 {AUTO_MODE_OPTIONS.map((opt) => (
                   <label
                     key={opt.value}
-                    className={`flex items-center p-3 tactic-cut border cursor-pointer transition-all ${form.autoMode === opt.value
-                      ? 'bg-rust-orange/10 border-rust-orange/50 shadow-[0_0_10px_rgba(205,82,65,0.1)]'
-                      : 'bg-black/20 border-white/5 hover:bg-white/5'
+                    className={`flex items-center p-3 cursor-pointer transition-colors ${form.autoMode === opt.value
+                      ? 'bg-hazard-dim border-l-2 border-hazard'
+                      : 'bg-ink-850 border-l-2 border-transparent hover:bg-ink-800'
                       }`}
                   >
                     <input
@@ -205,12 +219,12 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
                       className="hidden"
                     />
                     <div className="flex-1">
-                      <div className={`text-sm font-bold ${form.autoMode === opt.value ? 'text-rust-orange' : 'text-gray-300'}`}>
+                      <div className={`text-sm font-bold ${form.autoMode === opt.value ? 'text-hazard' : 'text-fg-dim'}`}>
                         {opt.label}
                       </div>
-                      <div className="text-xs text-gray-500">{opt.desc}</div>
+                      <div className="text-xs text-fg-mute">{opt.desc}</div>
                     </div>
-                    {form.autoMode === opt.value && <div className="w-2 h-2 tactic-cut bg-rust-orange shadow-[0_0_5px_rgba(205,82,65,1)]"></div>}
+                    {form.autoMode === opt.value && <div className="w-1.5 h-1.5 bg-hazard" />}
                   </label>
                 ))}
               </div>
@@ -218,22 +232,21 @@ function DeviceEditModal({ device, serverId, onClose, onSaved }) {
           )}
 
           {/* 底部按钮 */}
-          <div className="flex items-center gap-3 pt-4 mt-2 border-t border-white/5">
+          <div className="flex items-center gap-3 pt-4 border-t border-ink-line">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-gray-300 tactic-cut font-bold transition-all"
+              className="flex-1 tac-btn tac-btn-ghost"
             >
-              取消
+              取消 // CANCEL
             </button>
             <button
               type="submit"
               disabled={saving}
-              className={`flex-1 py-3 bg-gradient-to-r from-rust-dark to-rust-orange text-white tactic-cut font-bold shadow-lg shadow-rust-orange/20 flex items-center justify-center gap-2 hover:brightness-110 transition-all ${saving ? 'opacity-70 cursor-wait' : ''
-                }`}
+              className={`flex-1 tac-btn tac-btn-primary ${saving ? 'cursor-wait' : ''}`}
             >
-              {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <FaSave />}
-              保存配置
+              {saving ? <FaSync className="animate-spin" /> : <FaSave />}
+              {saving ? '保存中 // SAVING' : '保存配置 // SAVE'}
             </button>
           </div>
         </form>

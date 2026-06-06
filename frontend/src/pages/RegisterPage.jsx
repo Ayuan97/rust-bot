@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { authApi } from '../services/auth';
-import { FaUserPlus, FaLock, FaArrowRight, FaClock, FaArrowLeft } from 'react-icons/fa';
+import { FaArrowRight, FaArrowLeft } from 'react-icons/fa';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -58,131 +58,154 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0d0e10] text-[#e0e0e0] font-sans flex items-center justify-center p-4 md:p-6 relative overflow-hidden">
-      <div className="fixed inset-0 pointer-events-none z-50 opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_4px,3px_100%]"></div>
-
-      {/* 返回首页按钮 */}
-      <Link
-        to="/"
-        className="fixed top-6 left-6 z-50 flex items-center gap-2 text-gray-500 hover:text-white transition-colors group"
-      >
-        <FaArrowLeft className="group-hover:-translate-x-1 transition-transform" />
-        <span className="text-xs font-bold uppercase tracking-wider">返回首页</span>
-      </Link>
-
-      <div className="max-w-md w-full relative z-10 py-12">
-        <div className="text-center mb-10">
-          {/* 注册页特有的红色主题图标 */}
-          <div className="w-16 h-16 tactic-cut bg-[#cd5241] flex items-center justify-center mx-auto mb-6 shadow-lg shadow-[#cd5241]/20">
-            <FaUserPlus className="text-white text-2xl" />
-          </div>
-          <h1 className="text-2xl font-black uppercase tracking-widest glow-text italic">创建账号</h1>
-          <p className="text-xs text-[#f2998f] mt-2">3 分钟完成注册并进入控制台</p>
+    <div className="tac-fx min-h-[100dvh] bg-ink-900 text-fg font-sans flex">
+      {/* ============ 左：品牌 / 遥测视觉 ============ */}
+      <aside className="hidden lg:flex flex-col justify-between w-[52%] border-r border-ink-line p-12 relative overflow-hidden">
+        <div className="absolute -right-8 bottom-12 select-none pointer-events-none font-mono font-extrabold text-[17vw] leading-none text-fg/[0.035] tracking-tighter">
+          RUST+
         </div>
 
-        <div className="tactic-border tactic-cut p-1 bg-black/40 backdrop-blur-xl">
-          <div className="bg-black/40 p-8">
-            {error && (
-              <div className="mb-6 p-3 bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-bold tactic-cut">
-                {error}
-              </div>
-            )}
+        <div className="relative z-10 flex items-center gap-4">
+          <div className="w-11 h-11 bg-hazard flex items-center justify-center">
+            <img src="/logo.svg" alt="Rust+" className="w-7 h-7 object-contain" />
+          </div>
+          <div className="leading-tight">
+            <div className="font-mono text-sm font-bold tracking-[0.2em] text-fg">RUST+</div>
+            <div className="tac-label">TACTICAL OPS CONSOLE</div>
+          </div>
+        </div>
 
-            {redirectParam && (
-              <div className="mb-6 p-3 bg-blue-500/10 border border-blue-500/30 text-blue-300 text-[11px] tactic-cut">
-                注册成功后会自动回到你刚才查看的页面
-              </div>
-            )}
+        <div className="relative z-10">
+          <div className="tac-label mb-5 flex items-center gap-3">
+            <span className="w-8 h-px bg-hazard" /> NEW OPERATOR · 新成员注册
+          </div>
+          <h1 className="text-6xl font-extrabold text-fg leading-[0.95] tracking-tightest">
+            创建账号<br />加入网络
+          </h1>
+          <p className="mt-6 max-w-sm text-sm leading-relaxed text-fg-dim">
+            注册即开通 7 天试用，连接你的 Rust 服务器,体验完整的基地监控、队友追踪与战术指挥能力。
+          </p>
+        </div>
 
-            {/* 试用期提示 */}
-            <div className="mb-8 p-4 bg-[#a3e635]/5 border border-[#a3e635]/20 tactic-cut relative overflow-hidden group">
-               <div className="absolute top-0 right-0 w-16 h-16 bg-[#a3e635]/10 rotate-45 translate-x-8 -translate-y-8"></div>
-               <div className="flex items-center gap-3 text-[#a3e635]">
-                  <FaClock className="text-xs" />
-                  <span className="text-[10px] font-black uppercase tracking-widest">新用户试用</span>
-               </div>
-                <p className="text-[11px] text-gray-400 mt-1">注册后自动开通 7 天试用期</p>
-             </div>
+        <div className="relative z-10 space-y-5">
+          <div className="grid grid-cols-3 gap-px bg-ink-line border border-ink-line">
+            <Telemetry label="TRIAL" value="7 DAYS" live />
+            <Telemetry label="SETUP" value="3 MIN" />
+            <Telemetry label="NODES" value="07" />
+          </div>
+          <div className="h-6 tac-barcode opacity-25" />
+        </div>
+      </aside>
 
-             <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label className="block text-[11px] font-black text-gray-400 mb-2 border-l-2 border-[#cd5241] pl-2">用户名</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    name="username"
-                    value={formData.username}
-                    onChange={handleChange}
-                    required
-                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/5 tactic-cut text-sm text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-500"
-                    placeholder="请输入一个唯一的用户名"
-                  />
-                  <FaUserPlus className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
+      {/* ============ 右：注册面板 ============ */}
+      <main className="flex-1 flex flex-col min-w-0">
+        <div className="flex items-center justify-between px-6 md:px-10 h-14 border-b border-ink-line shrink-0">
+          <div className="tac-label flex items-center gap-2">
+            <span className="w-1.5 h-1.5 bg-terminal animate-tac-blink" /> NEW REGISTRATION // 0x2B
+          </div>
+          <Link to="/" className="tac-label hover:text-fg transition-colors flex items-center gap-2 group">
+            <FaArrowLeft className="text-[10px] group-hover:-translate-x-0.5 transition-transform" /> 返回首页
+          </Link>
+        </div>
+
+        <div className="flex-1 flex items-center justify-center px-6 md:px-10 py-10">
+          <div className="w-full max-w-md">
+            <div className="mb-8">
+              <div className="tac-label mb-2">OPERATOR REGISTER</div>
+              <h2 className="text-3xl font-extrabold text-fg tracking-tight">创建账号</h2>
+              <p className="mt-2 text-sm text-fg-dim">3 分钟完成注册并进入控制台</p>
+            </div>
+
+            <div className="tac-panel tac-corners p-7">
+              {error && (
+                <div className="mb-5 px-4 py-3 bg-hazard-dim border border-hazard/40 text-fg text-sm flex items-start gap-2.5">
+                  <span className="font-mono text-hazard-bright text-xs mt-0.5 shrink-0">[ERR]</span>
+                  <span>{error}</span>
                 </div>
-                <p className="mt-2 text-[11px] text-gray-500">建议使用便于队友识别的昵称</p>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-black text-gray-400 mb-2 border-l-2 border-[#cd5241] pl-2">密码</label>
-                <div className="relative">
-                  <input
-                    type="password"
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    required
-                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/5 tactic-cut text-sm text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-500"
-                    placeholder="密码至少 6 位"
-                  />
-                  <FaLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
+              )}
+              {redirectParam && (
+                <div className="mb-5 px-4 py-3 border border-ink-line text-fg-dim text-[13px] flex items-start gap-2.5">
+                  <span className="font-mono text-fg-mute text-xs mt-0.5 shrink-0">[i]</span>
+                  <span>注册成功后会自动回到你刚才查看的页面</span>
                 </div>
+              )}
+
+              {/* 7 天试用提示 */}
+              <div className="mb-6 flex items-center gap-3 px-4 py-3 border border-hazard/30 bg-hazard-dim">
+                <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-hazard shrink-0">TRIAL</span>
+                <span className="text-[13px] text-fg">
+                  注册后自动开通 <span className="font-mono text-terminal font-bold">7</span> 天试用期
+                </span>
               </div>
 
-              <div>
-                <label className="block text-[11px] font-black text-gray-400 mb-2 border-l-2 border-[#cd5241] pl-2">确认密码</label>
-                <div className="relative">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <label className="flex items-baseline gap-2 mb-2">
+                    <span className="text-sm font-bold text-fg">用户名</span>
+                    <span className="tac-label">USERNAME</span>
+                  </label>
                   <input
-                    type="password"
-                    name="confirmPassword"
-                    value={formData.confirmPassword}
-                    onChange={handleChange}
-                    required
-                    className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/5 tactic-cut text-sm text-white focus:border-[#cd5241]/50 outline-none transition-all placeholder-gray-500"
-                    placeholder="请再次输入您的密码"
+                    type="text" name="username" value={formData.username} onChange={handleChange} required
+                    className="tac-input" placeholder="一个唯一的用户名"
                   />
-                  <FaLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 text-xs" />
+                  <p className="mt-1.5 text-[11px] text-fg-mute">建议使用便于队友识别的昵称</p>
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full tactic-cut bg-[#cd5241] hover:bg-[#b04537] py-4 text-[11px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-2 group mt-4 shadow-lg shadow-[#cd5241]/10"
-              >
-                {loading ? '注册中...' : (
-                  <>注册并继续 <FaArrowRight className="group-hover:translate-x-1 transition-transform" /></>
-                )}
-              </button>
-            </form>
+                <div>
+                  <label className="flex items-baseline gap-2 mb-2">
+                    <span className="text-sm font-bold text-fg">密码</span>
+                    <span className="tac-label">PASSCODE</span>
+                  </label>
+                  <input
+                    type="password" name="password" value={formData.password} onChange={handleChange} required
+                    className="tac-input" placeholder="密码至少 6 位"
+                  />
+                </div>
 
-            <div className="mt-8 text-center border-t border-white/5 pt-6">
-              <p className="text-gray-400 text-xs">
-                已有账号？{' '}
-                <Link to={loginPath} className="text-blue-400 hover:text-white transition-colors font-black">
-                  立即登录
+                <div>
+                  <label className="flex items-baseline gap-2 mb-2">
+                    <span className="text-sm font-bold text-fg">确认密码</span>
+                    <span className="tac-label">CONFIRM</span>
+                  </label>
+                  <input
+                    type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} required
+                    className="tac-input" placeholder="请再次输入密码"
+                  />
+                </div>
+
+                <button type="submit" disabled={loading} className="tac-btn tac-btn-primary w-full !py-4 group">
+                  {loading ? '注册中 // CREATING...' : (
+                    <>创建账号 // REGISTER <FaArrowRight className="text-xs group-hover:translate-x-1 transition-transform" /></>
+                  )}
+                </button>
+              </form>
+
+              <div className="mt-6 pt-5 border-t border-ink-line flex items-center justify-between">
+                <span className="text-[13px] text-fg-dim">已有账号？</span>
+                <Link to={loginPath} className="font-mono text-xs uppercase tracking-[0.15em] text-hazard hover:text-hazard-bright transition-colors flex items-center gap-1.5">
+                  立即登录 <FaArrowRight className="text-[10px]" />
                 </Link>
-              </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-fg-mute">注册即代表同意服务协议</span>
+              <Link to="/privacy" className="font-mono text-[10px] uppercase tracking-wider text-fg-mute hover:text-fg-dim transition-colors">隐私政策 ↗</Link>
             </div>
           </div>
         </div>
+      </main>
+    </div>
+  );
+}
 
-        <div className="mt-8 text-center">
-          <div className="text-[11px] text-gray-500">注册即表示你同意平台服务协议与隐私政策</div>
-          <Link to="/privacy" className="text-[11px] text-gray-400 hover:text-[#cd5241] transition-colors mt-2 inline-block">
-            查看隐私政策
-          </Link>
-        </div>
+function Telemetry({ label, value, live }) {
+  return (
+    <div className="bg-ink-850 px-4 py-3">
+      <div className="tac-label mb-1.5 flex items-center gap-1.5">
+        {live && <span className="w-1 h-1 bg-terminal animate-tac-blink" />}{label}
       </div>
+      <div className="tac-readout font-bold">{value}</div>
     </div>
   );
 }
