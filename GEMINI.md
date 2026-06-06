@@ -68,6 +68,11 @@
 - Socket 调用统一通过 `frontend/src/services/socket.js`。
 - 鉴权依赖 localStorage token + Axios 拦截器，禁止破坏现有登录态流程。
 - 优先复用现有组件与样式体系，避免重复实现同类面板/弹窗。
+- **UI 一律遵循战术遥测设计系统（Tactical Telemetry），详见 `docs/DESIGN_SYSTEM.md`**。改前端必须复用设计 token（`ink/fg/hazard/terminal`）与 `.tac-*` 组件基类，不要手写一套。核心铁律：
+    - 唯一强调色 hazard 红（`#E0452E`），**禁蓝/紫/绿**（terminal 绿仅用于单点状态如 online）；
+    - 中文**绝不** `italic`/`uppercase`/`tracking-widest`，仅纯英文标签（FCM/LINK/ONLINE）用 mono + 大写 + 字距；
+    - 零圆角（直角 + 发丝线网格 + 四角角标），布局全屏铺满、不居中限宽；
+    - 内容结合 Rust 游戏实际（设备 = 智能开关/警报/储物监视器、TC 上料倒计时等）。
 
 ## 业务实现注意点
 - 用户注册默认创建订阅记录，但到期时间初始为当前时间；有效订阅才会拉起用户服务实例。
