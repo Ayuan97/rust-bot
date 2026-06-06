@@ -1,6 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FaTerminal, FaShieldAlt, FaChartLine, FaCogs, FaChevronRight, FaPlay, FaUsers, FaQuestionCircle, FaMoneyBillWave } from 'react-icons/fa';
+import {
+  FaServer,
+  FaComments,
+  FaCogs,
+  FaSatelliteDish,
+  FaCrosshairs,
+  FaMoneyBillWave,
+  FaArrowRight,
+  FaPlay,
+  FaLock,
+  FaShieldAlt,
+  FaBell,
+  FaWarehouse,
+  FaShip,
+  FaHelicopter,
+  FaBoxOpen,
+} from 'react-icons/fa';
 import api from '../services/api';
 
 export default function HomePage() {
@@ -40,151 +56,232 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0d0e10] text-[#e0e0e0] font-sans overflow-x-hidden relative">
-      {/* 背景装饰 */}
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-20">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-[#cd5241]/10 via-transparent to-transparent"></div>
-      </div>
-
-      {/* 导航栏 */}
-      <header className="fixed top-0 w-full z-50 border-b border-white/5 bg-black/60 backdrop-blur-lg px-6 py-4">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 tactic-cut bg-[#cd5241] flex items-center justify-center shadow-lg shadow-[#cd5241]/20">
-              <FaTerminal className="text-white text-lg" />
+    <div className="tac-fx min-h-screen bg-ink-900 text-fg font-sans overflow-x-hidden">
+      {/* ============ 导航栏 ============ */}
+      <header className="fixed top-0 w-full z-50 border-b border-ink-line bg-ink-900/90 backdrop-blur">
+        <div className="max-w-[1400px] mx-auto flex items-center justify-between gap-4 px-5 md:px-8 h-16">
+          <Link to="/" className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 bg-hazard flex items-center justify-center shrink-0">
+              <img src="/logo.svg" alt="Rust+" className="w-6 h-6 object-contain" />
             </div>
-            <span className="text-xl font-black italic tracking-tighter uppercase">Rust_Commander</span>
-          </div>
+            <div className="leading-tight min-w-0">
+              <div className="font-mono text-sm font-bold tracking-[0.2em] text-fg">RUST+</div>
+              <div className="tac-label hidden sm:block">TACTICAL OPS CONSOLE</div>
+            </div>
+          </Link>
 
           {/* 中间导航链接 */}
           <nav className="hidden md:flex items-center gap-8">
             <button
               onClick={() => scrollToSection('features')}
-              className="text-sm font-bold text-gray-400 hover:text-white transition-colors"
+              className="tac-label hover:text-hazard transition-colors"
             >
-              功能介绍
+              功能 // FEATURES
             </button>
             <button
               onClick={() => scrollToSection('pricing')}
-              className="text-sm font-bold text-gray-400 hover:text-white transition-colors"
+              className="tac-label hover:text-hazard transition-colors"
             >
-              价格方案
+              价格 // PRICING
             </button>
             <button
               onClick={() => scrollToSection('faq')}
-              className="text-sm font-bold text-gray-400 hover:text-white transition-colors"
+              className="tac-label hover:text-hazard transition-colors"
             >
-              常见问题
+              问答 // FAQ
             </button>
-            <Link to="/privacy" className="text-sm font-bold text-gray-400 hover:text-white transition-colors">
-              隐私政策
+            <Link to="/privacy" className="tac-label hover:text-hazard transition-colors">
+              隐私 // PRIVACY
             </Link>
           </nav>
 
           {/* 右侧按钮 */}
-          <div className="flex gap-4 items-center">
-            <Link to="/demo" className="hidden sm:inline-flex text-sm font-bold text-gray-300 hover:text-white transition-colors">
+          <div className="flex items-center gap-2 md:gap-3 shrink-0">
+            <Link to="/demo" className="hidden sm:inline-flex tac-label hover:text-fg transition-colors">
               体验控制台
             </Link>
-            <Link to="/login" className="text-sm font-bold text-blue-500 hover:text-blue-400 transition-colors">
-              登录
-            </Link>
-            <Link to="/register" className="tactic-cut bg-[#cd5241] px-6 py-2 text-sm font-black text-white hover:bg-[#b04537] transition-all">
-              免费注册
-            </Link>
+            <Link to="/login" className="tac-btn tac-btn-ghost !px-3 md:!px-4 !py-2.5">登录</Link>
+            <Link to="/register" className="tac-btn tac-btn-primary !px-3 md:!px-4 !py-2.5">免费注册</Link>
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative pt-48 pb-32 px-6 max-w-7xl mx-auto">
-        <div className="grid lg:grid-cols-2 gap-16 items-center">
-          <div className="relative z-10">
-            <div className="inline-block px-3 py-1 bg-[#cd5241]/10 border border-[#cd5241]/30 text-[#cd5241] text-xs font-bold mb-8 tactic-cut">
-              RUST 远程基地中控系统 v2.0
-            </div>
-            <h1 className="text-5xl md:text-7xl font-black mb-8 leading-[1.1] tracking-tighter glow-text">
-              随时随地 <br />
-              <span className="text-[#cd5241]">掌控</span> 你的基地
-            </h1>
-            <p className="text-gray-400 text-lg mb-12 max-w-md border-l-4 border-[#cd5241] pl-6 leading-relaxed">
-              在 Rust 的残酷世界里，离线不代表防御停止。通过我们的系统，实现基地全自动监控、远程报警与设备集群控制。
-              配对凭证通过 Microsoft Edge 插件获取，流程清晰、上手更快。
-            </p>
-            <div className="flex flex-wrap gap-4">
-              <Link to="/demo" className="tactic-cut bg-white text-black px-10 py-5 font-black flex items-center gap-3 group text-lg hover:bg-gray-200 transition-all">
-                先体验控制台 <FaPlay className="group-hover:translate-x-1 transition-transform" />
-              </Link>
-              <Link to="/register" className="tactic-cut bg-[#cd5241] text-white px-10 py-5 font-black flex items-center gap-3 group shadow-xl shadow-[#cd5241]/20 text-lg">
-                注册并开始使用 <FaChevronRight className="group-hover:translate-x-1 transition-transform" />
-              </Link>
-              <Link to="/login" className="tactic-cut bg-white/5 border border-white/10 px-8 py-5 text-white text-sm font-black hover:bg-white/10 transition-all">
-                已有账号，直接登录
-              </Link>
-            </div>
-          </div>
+      {/* ============ Hero 区 ============ */}
+      <section className="relative border-b border-ink-line overflow-hidden">
+        {/* 背景超大水印 */}
+        <div className="absolute -right-12 bottom-0 select-none pointer-events-none font-mono font-extrabold text-[20vw] leading-none text-fg/[0.035] tracking-tighter">
+          RUST+
+        </div>
+        {/* 背景网格 */}
+        <div
+          className="absolute inset-0 opacity-[0.12] pointer-events-none"
+          style={{
+            backgroundImage:
+              'linear-gradient(#2A2A2A 1px, transparent 1px), linear-gradient(90deg, #2A2A2A 1px, transparent 1px)',
+            backgroundSize: '64px 64px',
+          }}
+        />
 
-          {/* 手机通知演示 */}
-          <div className="relative flex justify-center items-center">
-            <div className="relative w-[300px] h-[600px] bg-[#1a1c20] border-[8px] border-[#2a2d32] rounded-[3rem] shadow-2xl overflow-hidden tactic-border">
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-7 bg-[#2a2d32] rounded-b-3xl z-20"></div>
-              <div className="relative h-full bg-black">
-                <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=2070&auto=format&fit=crop')] bg-cover opacity-30"></div>
-                <div className="p-8 pt-16 space-y-4 relative z-10">
-                  <div className="bg-black/80 backdrop-blur-md border border-[#cd5241]/50 p-4 tactic-cut animate-bounce">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[#cd5241] text-[10px] font-black">! 核心区报警</span>
-                      <span className="text-white/30 text-[9px]">刚刚</span>
-                    </div>
-                    <div className="text-white text-xs font-bold">
-                      智能报警器已被触发：领地柜房
-                    </div>
+        <div className="relative z-10 max-w-[1400px] mx-auto px-5 md:px-8 pt-32 md:pt-40 pb-16 md:pb-24">
+          <div className="grid lg:grid-cols-[1.15fr_1fr] gap-12 lg:gap-16 items-center">
+            {/* 左：主文案 */}
+            <div>
+              <div className="tac-label mb-6 flex items-center gap-3">
+                <span className="w-10 h-px bg-hazard" /> REMOTE BASE COMMAND · 远程基地中控 v2.0
+              </div>
+              <h1 className="text-5xl md:text-7xl font-extrabold text-fg leading-[0.95] tracking-tightest">
+                离线也能
+                <br />
+                <span className="text-hazard">掌控</span> 你的基地
+              </h1>
+              <p className="mt-7 max-w-xl text-base leading-relaxed text-fg-dim">
+                在 Rust 的残酷世界里，离线不代表防御停止。连接你的服务器集群，实时掌握基地防御、队友动向与事件预警——
+                警报触发即刻推送，设备远程联控，玩家轨迹尽在掌握。配对凭证通过 Microsoft Edge 插件获取，流程清晰、上手更快。
+              </p>
+
+              <div className="mt-9 flex flex-wrap gap-3">
+                <Link to="/register" className="tac-btn tac-btn-primary !py-4 group">
+                  进入控制台 // LAUNCH
+                  <FaArrowRight className="text-xs group-hover:translate-x-1 transition-transform" />
+                </Link>
+                <Link to="/demo" className="tac-btn tac-btn-ghost !py-4 group">
+                  <FaPlay className="text-[10px]" /> 先体验 // DEMO
+                </Link>
+                <Link to="/login" className="tac-btn tac-btn-ghost !py-4">
+                  已有账号 // SIGN IN
+                </Link>
+              </div>
+
+              {/* 遥测数据条 */}
+              <div className="mt-10 grid grid-cols-2 sm:grid-cols-4 gap-px bg-ink-line border border-ink-line max-w-2xl">
+                <Telemetry label="NODES" value="07" />
+                <Telemetry label="UPTIME" value="99.2%" />
+                <Telemetry label="LATENCY" value="42ms" />
+                <Telemetry label="LINK" value="SECURE" live />
+              </div>
+            </div>
+
+            {/* 右：手机推送遥测面板 */}
+            <div className="relative">
+              <div className="tac-panel tac-corners">
+                {/* 面板顶栏 */}
+                <div className="flex items-center justify-between px-4 h-11 border-b border-ink-line">
+                  <div className="tac-label flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-terminal animate-tac-blink" /> PUSH FEED // LIVE
                   </div>
-                  <div className="bg-black/60 backdrop-blur-md border border-white/10 p-4 tactic-cut opacity-80">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-blue-400 text-[10px] font-black">! 团队动态</span>
-                      <span className="text-white/30 text-[9px]">2分钟前</span>
-                    </div>
-                    <div className="text-white text-xs font-bold">
-                      队友 '小李' 在 <span className="text-[#cd5241]">G12</span> 阵亡
-                    </div>
-                  </div>
+                  <span className="font-mono text-[10px] text-fg-mute tabular-nums">0x1A</span>
+                </div>
+
+                {/* 推送通知流 */}
+                <div className="p-4 space-y-px bg-ink-line border-b border-ink-line">
+                  <NotifyRow
+                    level="high"
+                    tag="ALARM"
+                    title="智能报警器触发：领地柜房"
+                    time="刚刚"
+                  />
+                  <NotifyRow
+                    level="warn"
+                    tag="SQUAD"
+                    title="队友 小李 在 G12 阵亡"
+                    time="2 分钟前"
+                  />
+                  <NotifyRow
+                    level="info"
+                    tag="EVENT"
+                    title="货船事件刷新，位置 J8 海域"
+                    time="5 分钟前"
+                  />
+                </div>
+
+                {/* 储物 / 上料读数 */}
+                <div className="grid grid-cols-3 gap-px bg-ink-line">
+                  <PanelReadout label="UPKEEP" value="1d 08h" />
+                  <PanelReadout label="SULFUR" value="14.2k" />
+                  <PanelReadout label="ONLINE" value="2/3" live />
+                </div>
+
+                {/* 底部 barcode */}
+                <div className="px-4 py-3 border-t border-ink-line flex items-center gap-3">
+                  <span className="tac-label shrink-0">SIGNAL</span>
+                  <div className="h-4 flex-1 tac-barcode opacity-30" />
                 </div>
               </div>
             </div>
-            <div className="absolute -z-10 w-80 h-80 bg-[#cd5241]/10 blur-[120px] animate-pulse"></div>
           </div>
         </div>
       </section>
 
-      <section className="px-6 pb-20">
-        <div className="max-w-7xl mx-auto">
-          <div className="tactic-border tactic-cut p-1 bg-black/40">
-            <div className="bg-black/40 p-6 md:p-8">
-              <h2 className="text-2xl md:text-3xl font-black italic mb-6">你可以直接做到这些</h2>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <QuickUseCard icon={<FaShieldAlt />} title="离线报警" desc="核心区被打、报警触发时立刻通知" />
-                <QuickUseCard icon={<FaUsers />} title="队友动态" desc="在线状态、阵亡位置、回归提醒" />
-                <QuickUseCard icon={<FaCogs />} title="设备控制" desc="大门、电力、炮塔可远程联动" />
-                <QuickUseCard icon={<FaChartLine />} title="事件监控" desc="货船、油井、直升机事件跟踪" />
-                <QuickUseCard icon={<FaQuestionCircle />} title="玩家追踪" desc="重点玩家动向与历史轨迹记录" />
-                <QuickUseCard icon={<FaMoneyBillWave />} title="订阅管理" desc="套餐、订单、续费状态一目了然" />
-              </div>
-              <div className="mt-6 p-4 tactic-cut border border-yellow-500/30 bg-yellow-500/10 text-sm text-yellow-100">
-                首次上手建议：先体验控制台界面，再登录完成 Edge 插件配对。
-              </div>
+      {/* ============ 快速能力一览 ============ */}
+      <section className="border-b border-ink-line">
+        <div className="max-w-[1400px] mx-auto px-5 md:px-8 py-16 md:py-20">
+          <div className="mb-10">
+            <div className="tac-label mb-2 flex items-center gap-2">
+              <FaServer className="text-hazard text-[11px]" /> CAPABILITIES // 你能直接做到
             </div>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-fg tracking-tight">六大核心能力</h2>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-ink-line border border-ink-line">
+            <QuickUseCard
+              icon={<FaServer />}
+              en="SERVER"
+              title="服务器连接"
+              desc="完成 Rust+ 配对后实时接入服务器，掌握在线状态、队伍信息与基地全局。"
+            />
+            <QuickUseCard
+              icon={<FaComments />}
+              en="TEAM CHAT"
+              title="队伍聊天"
+              desc="网页直接收发队伍消息，离线也能与队友沟通、下达指令。"
+            />
+            <QuickUseCard
+              icon={<FaCogs />}
+              en="DEVICES"
+              title="设备控制"
+              desc="智能开关 · 警报 · 储物监视器，远程开关炮塔电力、监控工具柜上料。"
+            />
+            <QuickUseCard
+              icon={<FaSatelliteDish />}
+              en="EVENTS"
+              title="事件监控"
+              desc="货船 · 武装直升机 · 上锁箱刷新即时播报，抢先一步规划行动。"
+            />
+            <QuickUseCard
+              icon={<FaCrosshairs />}
+              en="TRACKING"
+              title="玩家追踪"
+              desc="锁定重点玩家动向，记录历史轨迹与风险画像，预判敌对行动。"
+            />
+            <QuickUseCard
+              icon={<FaMoneyBillWave />}
+              en="BILLING"
+              title="订阅管理"
+              desc="套餐、订单、续费状态一目了然，支付宝支付即时开通。"
+            />
+          </div>
+
+          <div className="mt-px flex items-center gap-3 px-4 py-3 border border-ink-line bg-hazard-dim">
+            <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-hazard shrink-0">TIP</span>
+            <span className="text-[13px] text-fg-dim">
+              首次上手建议：先体验控制台界面，再登录完成 Edge 插件配对。
+            </span>
           </div>
         </div>
       </section>
 
-      <section className="px-6 pb-20">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-8 text-center">
-            <h2 className="text-3xl md:text-4xl font-black italic mb-3">第一次使用怎么走</h2>
-            <p className="text-gray-400 text-sm">按这 4 步操作，基本不会走弯路</p>
+      {/* ============ 上手流程 ============ */}
+      <section className="border-b border-ink-line bg-ink-850/40">
+        <div className="max-w-[1400px] mx-auto px-5 md:px-8 py-16 md:py-20">
+          <div className="mb-10">
+            <div className="tac-label mb-2 flex items-center gap-2">
+              <FaArrowRight className="text-hazard text-[11px]" /> ONBOARDING // 第一次怎么走
+            </div>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-fg tracking-tight">四步完成接入</h2>
+            <p className="mt-2 text-sm text-fg-dim">按这 4 步操作，基本不会走弯路</p>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-px bg-ink-line border border-ink-line">
             <GettingStartedStep
               step="01"
               title="先体验控制台"
@@ -217,61 +314,110 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 功能特性 */}
-      <section id="features" className="py-32 bg-white/[0.02] border-y border-white/5 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-20">
-            <h2 className="text-4xl font-black mb-4 italic">核心功能模块</h2>
-            <div className="w-20 h-1 bg-[#cd5241] mx-auto"></div>
+      {/* ============ 核心功能模块 ============ */}
+      <section id="features" className="border-b border-ink-line">
+        <div className="max-w-[1400px] mx-auto px-5 md:px-8 py-20 md:py-28">
+          <div className="mb-12">
+            <div className="tac-label mb-2 flex items-center gap-2">
+              <FaShieldAlt className="text-hazard text-[11px]" /> CORE MODULES // 核心功能模块
+            </div>
+            <h2 className="text-4xl md:text-5xl font-extrabold text-fg tracking-tightest">
+              为离线防御而生
+            </h2>
           </div>
-          <div className="grid md:grid-cols-3 gap-8">
+
+          <div className="grid md:grid-cols-3 gap-px bg-ink-line border border-ink-line">
             <FeatureCard
-              icon={<FaShieldAlt />}
+              icon={<FaBell />}
+              en="OFFLINE ALARM"
               title="离线防拆报警"
-              desc="毫秒级推送。当基地遭遇袭击、警报器触发，系统将通过网页、App、甚至语音电话通知你，确保离线也能守护基地。"
-            />
-            <FeatureCard
-              icon={<FaUsers />}
-              title="16人团队管理"
-              desc="支持超大团队数据同步。实时查看队友在线状态、坐标位置，自动生成今日采集排行榜，识别谁才是团队核心。"
+              corners
+              points={[
+                '领地柜 · 后门智能警报触发即时推送',
+                '基地遭袭第一时间通知，离线也守得住',
+                'FCM 链路稳定，去重防漏报',
+              ]}
+              desc="当基地遭遇袭击、智能报警器触发，系统通过网页与推送即刻通知你，确保离线也能守护基地。"
             />
             <FeatureCard
               icon={<FaCogs />}
+              en="DEVICE CONTROL"
               title="全图设备联控"
-              desc="支持关键词搜索、置顶常用开关。远程开启自动防御炮塔、控制基地电力，甚至一键封锁所有大门。"
+              points={[
+                '自动炮塔 · 火焰陷阱 · 车库门远程开关',
+                '储物监视器盯紧工具柜上料倒计时',
+                '关键词搜索 · 置顶常用设备',
+              ]}
+              desc="远程开启自动防御炮塔、控制基地电力，甚至一键封锁所有大门，关键设备尽在指尖。"
+            />
+            <FeatureCard
+              icon={<FaSatelliteDish />}
+              en="EVENT WATCH"
+              title="全图事件监控"
+              points={[
+                '货船 · 武装直升机刷新坐标即时播报',
+                '上锁箱 · 油井事件追踪不漏过',
+                '配合玩家追踪，预判敌对动向',
+              ]}
+              desc="货船、武装直升机、上锁箱等全图事件刷新即时上报，让你抢先一步规划进攻与防守。"
             />
           </div>
         </div>
       </section>
 
-      {/* 终端模拟 */}
-      <section className="py-32 px-6 max-w-5xl mx-auto">
-        <div className="tactic-border tactic-cut p-1 bg-black/80 shadow-3xl">
-          <div className="p-8 font-mono text-sm leading-relaxed h-[300px] overflow-hidden relative">
-            <div className="scanline"></div>
-            <div className="animate-scroll-text space-y-2">
-              <div className="text-gray-500">{"[10:24:01]"} 系统内核加载成功...</div>
-              <div className="text-gray-500">{"[10:24:05]"} 正在连接 Rust+ 官方服务器...</div>
-              <div className="text-white">{">"} 获取团队状态：发现 12 名在线成员</div>
-              <div className="text-[#cd5241] font-bold">{"[10:24:12]"} ! 警报：核心房报警器被触发</div>
-              <div className="text-gray-400">{">"} 正在尝试语音拨号通知管理员...</div>
-              <div className="text-[#a3e635]">{"[10:24:15]"} 通知已下达：管理员已收到电话提醒</div>
-              <div className="text-white">{">"} 实时数据对比：队友 '大王' 采集了 5000 硫磺</div>
-              <div className="text-gray-500">{"[10:24:20]"} 系统运行稳定，持续监听中...</div>
+      {/* ============ 终端实时日志 ============ */}
+      <section className="border-b border-ink-line bg-ink-850/40">
+        <div className="max-w-[1400px] mx-auto px-5 md:px-8 py-16 md:py-20">
+          <div className="mb-8">
+            <div className="tac-label mb-2 flex items-center gap-2">
+              <FaSatelliteDish className="text-hazard text-[11px]" /> LIVE TELEMETRY // 实时遥测日志
+            </div>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-fg tracking-tight">系统在持续监听</h2>
+          </div>
+
+          <div className="tac-panel">
+            <div className="flex items-center justify-between px-4 h-11 border-b border-ink-line">
+              <div className="tac-label flex items-center gap-2">
+                <span className="w-1.5 h-1.5 bg-terminal animate-tac-blink" /> EVENT STREAM
+              </div>
+              <span className="font-mono text-[10px] text-fg-mute tabular-nums">SESSION 0x1A</span>
+            </div>
+            <div className="p-5 md:p-6 font-mono text-[13px] leading-relaxed space-y-2">
+              <LogLine ts="10:24:01" text="系统内核加载成功" tone="mute" />
+              <LogLine ts="10:24:05" text="正在连接 Rust+ 官方服务器" tone="mute" />
+              <LogLine ts="10:24:08" prefix=">" text="获取队伍状态：发现 12 名在线成员" tone="fg" />
+              <LogLine ts="10:24:12" prefix="!" text="警报：核心房智能报警器被触发（领地柜房）" tone="hazard" />
+              <LogLine ts="10:24:13" prefix=">" text="正在推送告警至已配对设备" tone="dim" />
+              <LogLine ts="10:24:15" prefix="✓" text="通知已下达：管理员已收到实时推送" tone="terminal" />
+              <LogLine ts="10:24:18" prefix=">" text="实时数据：队友 大王 采集 5000 硫磺" tone="fg" />
+              <LogLine ts="10:24:20" text="系统运行稳定，持续监听中" tone="mute" />
             </div>
           </div>
         </div>
       </section>
 
-      {/* 价格方案 */}
-      <section id="pricing" className="py-32 bg-white/[0.02] border-y border-white/5 px-6">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-20">
-            <h2 className="text-4xl font-black mb-4 italic">选择你的方案</h2>
-            <div className="w-20 h-1 bg-[#cd5241] mx-auto mb-6"></div>
-            <p className="text-gray-500 text-sm">新用户注册即享 7 天免费试用</p>
+      {/* ============ 价格方案 ============ */}
+      <section id="pricing" className="border-b border-ink-line">
+        <div className="max-w-[1400px] mx-auto px-5 md:px-8 py-20 md:py-28">
+          <div className="mb-12">
+            <div className="tac-label mb-2 flex items-center gap-2">
+              <FaMoneyBillWave className="text-hazard text-[11px]" /> PRICING // 选择你的方案
+            </div>
+            <h2 className="text-4xl md:text-5xl font-extrabold text-fg tracking-tightest">订阅你的指挥权限</h2>
+            <p className="mt-3 text-sm text-fg-dim">
+              新用户注册即享 <span className="font-mono text-terminal font-bold">7</span> 天免费试用
+            </p>
           </div>
-          <div className={`grid gap-6 ${plans.length === 1 ? 'md:grid-cols-1 max-w-sm mx-auto' : plans.length === 2 ? 'md:grid-cols-2 max-w-2xl mx-auto' : 'md:grid-cols-3'}`}>
+
+          <div
+            className={`grid gap-px bg-ink-line border border-ink-line ${
+              plans.length === 1
+                ? 'md:grid-cols-1 max-w-md'
+                : plans.length === 2
+                ? 'md:grid-cols-2 max-w-3xl'
+                : 'md:grid-cols-3 max-w-5xl'
+            }`}
+          >
             {plans.length > 0 ? (
               plans.map((plan) => (
                 <PricingCard
@@ -295,14 +441,17 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 常见问题 */}
-      <section id="faq" className="py-32 px-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-20">
-            <h2 className="text-4xl font-black mb-4 italic">常见问题</h2>
-            <div className="w-20 h-1 bg-[#cd5241] mx-auto"></div>
+      {/* ============ 常见问题 ============ */}
+      <section id="faq" className="border-b border-ink-line bg-ink-850/40">
+        <div className="max-w-[1400px] mx-auto px-5 md:px-8 py-20 md:py-28">
+          <div className="mb-12">
+            <div className="tac-label mb-2 flex items-center gap-2">
+              <FaShieldAlt className="text-hazard text-[11px]" /> FAQ // 常见问题
+            </div>
+            <h2 className="text-4xl md:text-5xl font-extrabold text-fg tracking-tightest">配对前先看这里</h2>
           </div>
-          <div className="space-y-4">
+
+          <div className="max-w-4xl border border-ink-line bg-ink-line grid gap-px">
             <FAQItem
               question="什么是 Rust+ 配对？"
               answer="Rust+ 是 Rust 游戏官方推出的功能。完成配对后，我们的系统即可连接你的服务器，实现离线监控和远程控制。当前需通过 Microsoft Edge 插件获取配对凭证。"
@@ -323,32 +472,54 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-40 px-6 text-center">
-        <h2 className="text-5xl font-black mb-12 italic">准备好统领全图了吗？</h2>
-        <Link to="/register" className="inline-block tactic-cut bg-white text-black px-16 py-6 font-black text-2xl hover:bg-[#cd5241] hover:text-white transition-all transform hover:scale-105">
-          立即开启配对
-        </Link>
+      {/* ============ CTA ============ */}
+      <section className="relative border-b border-ink-line overflow-hidden">
+        <div className="absolute -right-12 -bottom-8 select-none pointer-events-none font-mono font-extrabold text-[18vw] leading-none text-fg/[0.035] tracking-tighter">
+          DEPLOY
+        </div>
+        <div className="relative z-10 max-w-[1400px] mx-auto px-5 md:px-8 py-24 md:py-32">
+          <div className="tac-label mb-4 flex items-center gap-3">
+            <span className="w-10 h-px bg-hazard" /> READY TO DEPLOY · 准备就绪
+          </div>
+          <h2 className="text-5xl md:text-6xl font-extrabold text-fg tracking-tightest leading-[0.95] max-w-3xl">
+            准备好统领全图了吗？
+          </h2>
+          <p className="mt-6 max-w-xl text-base text-fg-dim leading-relaxed">
+            完成配对，从此离线也能守护基地、指挥队友、预判敌情。
+          </p>
+          <div className="mt-9 flex flex-wrap gap-3">
+            <Link to="/register" className="tac-btn tac-btn-primary !py-4 group">
+              立即开启配对 // DEPLOY
+              <FaArrowRight className="text-xs group-hover:translate-x-1 transition-transform" />
+            </Link>
+            <Link to="/demo" className="tac-btn tac-btn-ghost !py-4 group">
+              <FaPlay className="text-[10px]" /> 先看演示 // PREVIEW
+            </Link>
+          </div>
+        </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-12 border-t border-white/5 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+      {/* ============ 页脚 ============ */}
+      <footer className="bg-ink-900">
+        <div className="max-w-[1400px] mx-auto px-5 md:px-8 py-10">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 tactic-cut bg-[#cd5241] flex items-center justify-center">
-                <FaTerminal className="text-white text-sm" />
+              <div className="w-8 h-8 bg-hazard flex items-center justify-center">
+                <img src="/logo.svg" alt="Rust+" className="w-5 h-5 object-contain" />
               </div>
-              <span className="text-sm font-black italic tracking-tighter uppercase text-gray-500">Rust_Commander</span>
+              <div className="leading-tight">
+                <div className="font-mono text-xs font-bold tracking-[0.2em] text-fg">RUST+</div>
+                <div className="font-mono text-[10px] uppercase tracking-wider text-fg-mute">TACTICAL OPS CONSOLE</div>
+              </div>
             </div>
-            <nav className="flex flex-wrap justify-center gap-6 text-xs text-gray-600">
-              <Link to="/privacy" className="hover:text-white transition-colors">隐私政策</Link>
-              <button onClick={() => scrollToSection('features')} className="hover:text-white transition-colors">功能介绍</button>
-              <button onClick={() => scrollToSection('pricing')} className="hover:text-white transition-colors">价格方案</button>
-              <button onClick={() => scrollToSection('faq')} className="hover:text-white transition-colors">常见问题</button>
+            <nav className="flex flex-wrap gap-6">
+              <Link to="/privacy" className="tac-label hover:text-fg transition-colors">隐私 // PRIVACY</Link>
+              <button onClick={() => scrollToSection('features')} className="tac-label hover:text-fg transition-colors">功能 // FEATURES</button>
+              <button onClick={() => scrollToSection('pricing')} className="tac-label hover:text-fg transition-colors">价格 // PRICING</button>
+              <button onClick={() => scrollToSection('faq')} className="tac-label hover:text-fg transition-colors">问答 // FAQ</button>
             </nav>
-            <div className="text-gray-600 text-xs tracking-widest font-bold">
-              © 2024 RUST_COMMANDER
+            <div className="font-mono text-[10px] uppercase tracking-wider text-fg-mute tabular-nums">
+              © 2024 RUST+ OPS · ALL SYSTEMS NOMINAL
             </div>
           </div>
         </div>
@@ -357,68 +528,153 @@ export default function HomePage() {
   );
 }
 
-function FeatureCard({ icon, title, desc }) {
+function Telemetry({ label, value, live }) {
   return (
-    <div className="tactic-border tactic-cut p-10 bg-white/[0.01] hover:bg-white/[0.03] transition-all group">
-      <div className="text-4xl text-[#cd5241] mb-8 group-hover:scale-110 transition-transform">{icon}</div>
-      <h3 className="text-2xl font-black mb-4 italic">{title}</h3>
-      <p className="text-gray-500 leading-relaxed font-medium">{desc}</p>
+    <div className="bg-ink-850 px-4 py-3">
+      <div className="tac-label mb-1.5 flex items-center gap-1.5">
+        {live && <span className="w-1 h-1 bg-terminal animate-tac-blink" />}{label}
+      </div>
+      <div className="tac-readout font-bold">{value}</div>
     </div>
   );
 }
 
-function QuickUseCard({ icon, title, desc }) {
+function NotifyRow({ level, tag, title, time }) {
+  const dotClass = level === 'high' ? 'bg-hazard' : level === 'warn' ? 'bg-fg' : 'bg-fg-mute';
+  const tagClass = level === 'high' ? 'text-hazard' : 'text-fg-dim';
   return (
-    <div className="tactic-cut border border-white/10 bg-white/[0.02] p-4">
-      <div className="flex items-center gap-3 mb-2">
-        <span className="text-[#cd5241]">{icon}</span>
-        <span className="text-sm font-black">{title}</span>
+    <div className="bg-ink-850 px-3 py-2.5 flex items-start gap-3">
+      <span className={`w-1.5 h-1.5 mt-1.5 shrink-0 ${dotClass} ${level === 'high' ? 'animate-tac-blink' : ''}`} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2 mb-0.5">
+          <span className={`font-mono text-[10px] uppercase tracking-[0.15em] ${tagClass}`}>{tag}</span>
+          <span className="font-mono text-[10px] text-fg-mute uppercase tracking-wider shrink-0">{time}</span>
+        </div>
+        <div className="text-[13px] text-fg leading-snug">{title}</div>
       </div>
-      <p className="text-xs text-gray-400 leading-relaxed">{desc}</p>
+    </div>
+  );
+}
+
+function PanelReadout({ label, value, live }) {
+  return (
+    <div className="bg-ink-850 px-3 py-2.5 text-center">
+      <div className="tac-label !text-[10px] mb-1 flex items-center justify-center gap-1">
+        {live && <span className="w-1 h-1 bg-terminal animate-tac-blink" />}{label}
+      </div>
+      <div className="font-mono text-sm text-fg tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+function LogLine({ ts, prefix, text, tone }) {
+  const toneClass =
+    tone === 'hazard'
+      ? 'text-hazard font-bold'
+      : tone === 'terminal'
+      ? 'text-terminal'
+      : tone === 'fg'
+      ? 'text-fg'
+      : tone === 'dim'
+      ? 'text-fg-dim'
+      : 'text-fg-mute';
+  return (
+    <div className={toneClass}>
+      <span className="text-fg-mute">[{ts}]</span>
+      {prefix && <span className="mx-1.5">{prefix}</span>}
+      {!prefix && ' '}
+      {text}
+    </div>
+  );
+}
+
+function QuickUseCard({ icon, en, title, desc }) {
+  return (
+    <div className="bg-ink-850 p-6 hover:bg-ink-800 transition-colors group">
+      <div className="flex items-center justify-between mb-4">
+        <div className="w-10 h-10 flex items-center justify-center border border-ink-line text-hazard group-hover:border-hazard transition-colors">
+          {icon}
+        </div>
+        <span className="tac-label">{en}</span>
+      </div>
+      <h3 className="text-base font-bold text-fg mb-1.5">{title}</h3>
+      <p className="text-[13px] text-fg-dim leading-relaxed">{desc}</p>
     </div>
   );
 }
 
 function GettingStartedStep({ step, title, desc, actionLabel, actionTo }) {
   return (
-    <div className="tactic-cut border border-white/10 bg-white/[0.02] p-4 flex flex-col">
-      <div className="text-[10px] font-black text-[#cd5241] tracking-widest mb-2">STEP {step}</div>
-      <h3 className="text-base font-black mb-2">{title}</h3>
-      <p className="text-xs text-gray-400 leading-relaxed flex-1">{desc}</p>
+    <div className="bg-ink-850 p-6 flex flex-col">
+      <div className="flex items-baseline justify-between mb-4">
+        <span className="font-mono text-3xl font-extrabold text-hazard tabular-nums leading-none">{step}</span>
+        <span className="tac-label">STEP</span>
+      </div>
+      <h3 className="text-base font-bold text-fg mb-1.5">{title}</h3>
+      <p className="text-[13px] text-fg-dim leading-relaxed flex-1">{desc}</p>
       <Link
         to={actionTo}
-        className="mt-4 inline-flex items-center gap-2 text-[11px] font-black text-white bg-white/5 hover:bg-white/10 border border-white/10 tactic-cut px-3 py-2 w-fit transition-all"
+        className="mt-5 inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em] text-hazard hover:text-hazard-bright transition-colors w-fit"
       >
         {actionLabel}
-        <FaChevronRight className="text-[10px]" />
+        <FaArrowRight className="text-[10px]" />
       </Link>
+    </div>
+  );
+}
+
+function FeatureCard({ icon, en, title, desc, points, corners }) {
+  return (
+    <div className={`bg-ink-850 p-8 md:p-10 hover:bg-ink-800 transition-colors group relative ${corners ? 'tac-corners' : ''}`}>
+      <div className="flex items-center justify-between mb-6">
+        <div className="w-12 h-12 flex items-center justify-center border border-ink-line text-hazard text-xl group-hover:border-hazard transition-colors">
+          {icon}
+        </div>
+        <span className="tac-label">{en}</span>
+      </div>
+      <h3 className="text-2xl font-extrabold text-fg tracking-tight mb-3">{title}</h3>
+      <p className="text-sm text-fg-dim leading-relaxed mb-6">{desc}</p>
+      <ul className="space-y-2.5 pt-5 border-t border-ink-line">
+        {points.map((point, index) => (
+          <li key={index} className="flex items-start gap-2.5 text-[13px] text-fg">
+            <span className="w-1.5 h-1.5 mt-1.5 bg-hazard shrink-0" />
+            {point}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
 
 function PricingCard({ title, price, period, features, highlighted }) {
   return (
-    <div className={`tactic-border tactic-cut p-8 transition-all ${highlighted ? 'bg-[#cd5241]/10 border-[#cd5241]/50 scale-105' : 'bg-white/[0.01] hover:bg-white/[0.03]'}`}>
-      {highlighted && (
-        <div className="text-[10px] font-black text-[#cd5241] uppercase tracking-widest mb-4">推荐</div>
-      )}
-      <h3 className="text-xl font-black mb-2">{title}</h3>
-      <div className="mb-6">
-        <span className="text-4xl font-black">{price}</span>
-        <span className="text-gray-500 text-sm">{period}</span>
+    <div className={`p-8 transition-colors relative ${highlighted ? 'bg-ink-800 tac-corners' : 'bg-ink-850 hover:bg-ink-800'}`}>
+      <div className="flex items-center justify-between mb-5 h-5">
+        <span className="tac-label">{highlighted ? 'PLAN' : 'PLAN'}</span>
+        {highlighted && (
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-hazard border border-hazard/40 bg-hazard-dim px-2 py-0.5">
+            <span className="w-1 h-1 bg-hazard animate-tac-blink" /> 推荐
+          </span>
+        )}
+      </div>
+      <h3 className="text-lg font-bold text-fg mb-3">{title}</h3>
+      <div className="mb-6 flex items-baseline gap-1">
+        <span className="font-mono text-4xl font-extrabold text-fg tabular-nums tracking-tight">{price}</span>
+        <span className="font-mono text-sm text-fg-mute tabular-nums">{period}</span>
       </div>
       <ul className="space-y-3 mb-8">
         {features.map((feature, index) => (
-          <li key={index} className="text-sm text-gray-400 flex items-center gap-2">
-            <span className="text-[#cd5241]">✓</span> {feature}
+          <li key={index} className="text-[13px] text-fg-dim flex items-start gap-2.5">
+            <span className="w-1.5 h-1.5 mt-1.5 bg-hazard shrink-0" />
+            {feature}
           </li>
         ))}
       </ul>
       <Link
         to="/register"
-        className={`block text-center tactic-cut py-3 text-sm font-black transition-all ${highlighted ? 'bg-[#cd5241] hover:bg-[#b04537] text-white' : 'bg-white/5 hover:bg-white/10 text-white'}`}
+        className={`tac-btn w-full ${highlighted ? 'tac-btn-primary' : 'tac-btn-ghost'}`}
       >
-        开始使用
+        开始使用 // START
       </Link>
     </div>
   );
@@ -426,12 +682,16 @@ function PricingCard({ title, price, period, features, highlighted }) {
 
 function FAQItem({ question, answer }) {
   return (
-    <details className="group tactic-border tactic-cut bg-white/[0.01] hover:bg-white/[0.02] transition-all">
-      <summary className="p-6 cursor-pointer flex justify-between items-center font-bold text-white">
-        {question}
-        <span className="text-[#cd5241] transform group-open:rotate-45 transition-transform text-xl">+</span>
+    <details className="group bg-ink-850 hover:bg-ink-800 transition-colors">
+      <summary className="px-5 md:px-6 py-5 cursor-pointer flex justify-between items-center gap-4 text-fg font-bold list-none">
+        <span className="flex items-center gap-3 min-w-0">
+          <span className="font-mono text-hazard text-xs shrink-0">Q</span>
+          {question}
+        </span>
+        <span className="text-hazard transform group-open:rotate-45 transition-transform text-xl shrink-0 font-mono leading-none">+</span>
       </summary>
-      <div className="px-6 pb-6 text-gray-500 text-sm leading-relaxed border-t border-white/5 pt-4">
+      <div className="px-5 md:px-6 pb-5 text-[13px] text-fg-dim leading-relaxed border-t border-ink-line pt-4 flex items-start gap-3">
+        <span className="font-mono text-fg-mute text-xs shrink-0">A</span>
         {answer}
       </div>
     </details>

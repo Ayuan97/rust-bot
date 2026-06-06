@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaPlus, FaEdit, FaTrash, FaSave, FaTimes, FaStar, FaCheck } from 'react-icons/fa';
+import { FaPlus, FaEdit, FaTrash, FaSave, FaTimes, FaStar, FaCheck, FaBoxOpen } from 'react-icons/fa';
 import api from '../../services/api';
 import { useToast } from '../Toast';
 import { useConfirm } from '../ConfirmModal';
@@ -229,73 +229,73 @@ const PlanManager = () => {
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">套餐代码 *</label>
+          <label className="block tac-label mb-1.5">套餐代码 // CODE *</label>
           <input
             type="text"
             value={formData.code}
             onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
             placeholder="如: WEEKLY"
-            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm focus:border-orange-500 outline-none"
+            className="tac-input w-full font-mono tabular-nums"
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">显示名称 *</label>
+          <label className="block tac-label mb-1.5">显示名称 // NAME *</label>
           <input
             type="text"
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             placeholder="如: 周卡"
-            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm focus:border-orange-500 outline-none"
+            className="tac-input w-full"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">价格 (元) *</label>
+          <label className="block tac-label mb-1.5">价格 // PRICE *</label>
           <input
             type="number"
             step="0.01"
             value={formData.price}
             onChange={(e) => setFormData({ ...formData, price: e.target.value })}
             placeholder="9.9"
-            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm focus:border-orange-500 outline-none"
+            className="tac-input w-full font-mono tabular-nums"
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">时长 (天) *</label>
+          <label className="block tac-label mb-1.5">时长 // DAYS *</label>
           <input
             type="number"
             value={formData.duration}
             onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
             placeholder="7"
-            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm focus:border-orange-500 outline-none"
+            className="tac-input w-full font-mono tabular-nums"
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">排序</label>
+          <label className="block tac-label mb-1.5">排序 // ORDER</label>
           <input
             type="number"
             value={formData.sortOrder}
             onChange={(e) => setFormData({ ...formData, sortOrder: parseInt(e.target.value) || 0 })}
-            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm focus:border-orange-500 outline-none"
+            className="tac-input w-full font-mono tabular-nums"
           />
         </div>
       </div>
 
       <div>
-        <label className="block text-xs text-gray-500 mb-1">描述</label>
+        <label className="block tac-label mb-1.5">描述 // DESC</label>
         <input
           type="text"
           value={formData.description}
           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
           placeholder="7天体验套餐"
-          className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm focus:border-orange-500 outline-none"
+          className="tac-input w-full"
         />
       </div>
 
       <div>
-        <label className="block text-xs text-gray-500 mb-1">功能特性</label>
+        <label className="block tac-label mb-1.5">功能特性 // FEATURES</label>
         {formData.features.map((feature, index) => (
           <div key={index} className="flex gap-2 mb-2">
             <input
@@ -303,11 +303,11 @@ const PlanManager = () => {
               value={feature}
               onChange={(e) => updateFeature(index, e.target.value)}
               placeholder="功能描述..."
-              className="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm focus:border-orange-500 outline-none"
+              className="tac-input flex-1"
             />
             <button
               onClick={() => removeFeature(index)}
-              className="px-3 py-2 bg-red-900/30 text-red-400 rounded hover:bg-red-900/50"
+              className="px-3 bg-hazard-dim border border-hazard/40 text-hazard-bright hover:bg-hazard/20 transition-colors"
             >
               <FaTimes />
             </button>
@@ -315,7 +315,7 @@ const PlanManager = () => {
         ))}
         <button
           onClick={addFeature}
-          className="text-xs text-orange-400 hover:text-orange-300"
+          className="text-xs text-hazard hover:text-hazard-bright transition-colors"
         >
           + 添加功能
         </button>
@@ -327,33 +327,33 @@ const PlanManager = () => {
             type="checkbox"
             checked={formData.isActive}
             onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-            className="w-4 h-4 accent-orange-500"
+            className="w-4 h-4 accent-hazard"
           />
-          <span className="text-sm">启用套餐</span>
+          <span className="text-sm text-fg">启用套餐</span>
         </label>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
             checked={formData.highlighted}
             onChange={(e) => setFormData({ ...formData, highlighted: e.target.checked })}
-            className="w-4 h-4 accent-orange-500"
+            className="w-4 h-4 accent-hazard"
           />
-          <span className="text-sm">推荐标签</span>
+          <span className="text-sm text-fg">推荐标签</span>
         </label>
       </div>
 
-      <div className="flex justify-end gap-2 pt-4 border-t border-gray-700">
+      <div className="flex justify-end gap-2 pt-4 border-t border-ink-line">
         <button
           onClick={closeFormModal}
           disabled={submitting}
-          className="px-4 py-2 bg-gray-700 rounded text-sm hover:bg-gray-600 disabled:opacity-60"
+          className="tac-btn tac-btn-ghost"
         >
           取消
         </button>
         <button
           onClick={onSubmit}
           disabled={submitting}
-          className="px-4 py-2 bg-orange-600 rounded text-sm hover:bg-orange-700 flex items-center gap-2 disabled:opacity-60"
+          className="tac-btn tac-btn-primary"
         >
           <FaSave className={submitting ? 'animate-spin' : ''} /> {submitText}
         </button>
@@ -363,25 +363,28 @@ const PlanManager = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">加载中...</div>
+      <div className="tac-label py-8 flex items-center gap-2">
+        <span className="w-1.5 h-1.5 bg-hazard animate-tac-blink" /> LOADING PLANS // 正在加载套餐配置…
       </div>
     );
   }
 
   return (
-    <div className="p-6">
+    <div className="space-y-5">
       {/* 头部 */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-lg font-bold text-gray-100">套餐配置</h2>
-          <p className="text-xs text-gray-500 mt-1">管理订阅套餐的价格、时长和功能特性</p>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <div className="min-w-0">
+          <div className="tac-label flex items-center gap-2">
+            <FaBoxOpen className="text-hazard" /> 套餐策略 // PLANS
+          </div>
+          <h2 className="text-lg font-bold text-fg mt-1">套餐配置</h2>
+          <p className="text-[11px] text-fg-dim mt-1">管理订阅套餐的价格、时长和功能特性</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           {plans.length === 0 && (
             <button
               onClick={handleInitDefault}
-              className="px-4 py-2 bg-gray-700 rounded text-sm hover:bg-gray-600"
+              className="tac-btn tac-btn-ghost"
             >
               初始化默认套餐
             </button>
@@ -391,7 +394,7 @@ const PlanManager = () => {
               resetForm();
               setShowCreateModal(true);
             }}
-            className="px-4 py-2 bg-orange-600 rounded text-sm hover:bg-orange-700 flex items-center gap-2"
+            className="tac-btn tac-btn-primary"
           >
             <FaPlus /> 新建套餐
           </button>
@@ -399,49 +402,54 @@ const PlanManager = () => {
       </div>
 
       {/* 套餐列表 */}
-      <div className="grid gap-4">
+      <div className="grid gap-3">
         {plans.map((plan) => (
           <div
             key={plan.id}
-            className={`p-4 rounded border ${
+            className={`tac-panel p-4 ${
               plan.isActive
                 ? plan.highlighted
-                  ? 'bg-orange-900/20 border-orange-600/50'
-                  : 'bg-gray-800/50 border-gray-700'
-                : 'bg-gray-900/50 border-gray-800 opacity-60'
+                  ? '!border-hazard/50 bg-hazard-dim'
+                  : ''
+                : 'opacity-60'
             }`}
           >
             {editingPlan?.id === plan.id ? (
               <PlanForm onSubmit={handleUpdate} submitText="保存修改" />
             ) : (
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="text-lg font-bold text-gray-100">{plan.name}</span>
-                    <span className="text-xs px-2 py-0.5 bg-gray-700 rounded">{plan.code}</span>
+              <div className="flex justify-between items-start gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center flex-wrap gap-2 mb-2">
+                    {plan.isActive && (
+                      <span className="w-1.5 h-1.5 bg-terminal animate-tac-blink shrink-0" />
+                    )}
+                    <span className="text-lg font-bold text-fg">{plan.name}</span>
+                    <span className="text-[11px] px-2 py-0.5 border border-ink-line text-fg-dim font-mono tabular-nums">{plan.code}</span>
                     {plan.highlighted && (
-                      <span className="text-xs px-2 py-0.5 bg-orange-600/30 text-orange-400 rounded flex items-center gap-1">
+                      <span className="text-[11px] px-2 py-0.5 border border-hazard/30 bg-hazard-dim text-hazard-bright inline-flex items-center gap-1">
                         <FaStar className="text-[10px]" /> 推荐
                       </span>
                     )}
                     {!plan.isActive && (
-                      <span className="text-xs px-2 py-0.5 bg-red-900/30 text-red-400 rounded">已禁用</span>
+                      <span className="inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 border border-ink-line text-fg-dim">
+                        <span className="w-1.5 h-1.5 bg-fg-mute" /> 已禁用
+                      </span>
                     )}
                   </div>
 
-                  <div className="flex items-baseline gap-4 mb-3">
-                    <span className="text-2xl font-bold text-orange-400">¥{plan.price}</span>
-                    <span className="text-gray-500">/ {plan.duration} 天</span>
+                  <div className="flex items-baseline gap-3 mb-3">
+                    <span className="text-2xl font-bold text-hazard font-mono tabular-nums">¥{plan.price}</span>
+                    <span className="text-fg-dim font-mono tabular-nums">/ {plan.duration} 天</span>
                     {plan.description && (
-                      <span className="text-sm text-gray-400">{plan.description}</span>
+                      <span className="text-sm text-fg-dim">{plan.description}</span>
                     )}
                   </div>
 
                   {plan.features?.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {plan.features.map((feature, i) => (
-                        <span key={i} className="text-xs px-2 py-1 bg-gray-700/50 rounded text-gray-400">
-                          <FaCheck className="inline mr-1 text-green-500 text-[10px]" />
+                        <span key={i} className="text-xs px-2 py-1 bg-ink-800 border border-ink-line text-fg-dim inline-flex items-center gap-1.5">
+                          <FaCheck className="text-terminal text-[10px]" />
                           {feature}
                         </span>
                       ))}
@@ -449,26 +457,26 @@ const PlanManager = () => {
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => handleToggleActive(plan)}
-                    className={`px-3 py-1.5 rounded text-xs ${
+                    className={`px-3 py-1.5 text-xs border transition-colors ${
                       plan.isActive
-                        ? 'bg-red-900/30 text-red-400 hover:bg-red-900/50'
-                        : 'bg-green-900/30 text-green-400 hover:bg-green-900/50'
+                        ? 'bg-hazard-dim border-hazard/40 text-hazard-bright hover:bg-hazard/20'
+                        : 'bg-ink-800 border-ink-line text-fg-dim hover:text-fg hover:border-ink-line2'
                     }`}
                   >
                     {plan.isActive ? '禁用' : '启用'}
                   </button>
                   <button
                     onClick={() => startEdit(plan)}
-                    className="px-3 py-1.5 bg-gray-700 rounded text-xs hover:bg-gray-600"
+                    className="px-3 py-1.5 text-xs bg-ink-800 border border-ink-line text-fg-dim hover:text-fg hover:border-ink-line2 transition-colors"
                   >
                     <FaEdit />
                   </button>
                   <button
                     onClick={() => handleDelete(plan)}
-                    className="px-3 py-1.5 bg-red-900/30 text-red-400 rounded text-xs hover:bg-red-900/50"
+                    className="px-3 py-1.5 text-xs bg-hazard-dim border border-hazard/40 text-hazard-bright hover:bg-hazard/20 transition-colors"
                   >
                     <FaTrash />
                   </button>
@@ -479,18 +487,20 @@ const PlanManager = () => {
         ))}
 
         {plans.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            <p>暂无套餐配置</p>
-            <p className="text-sm mt-2">点击「初始化默认套餐」创建周卡、半月卡、月卡</p>
+          <div className="tac-panel text-center py-12">
+            <p className="text-fg-dim">暂无套餐配置</p>
+            <p className="text-sm mt-2 text-fg-mute">点击「初始化默认套餐」创建周卡、半月卡、月卡</p>
           </div>
         )}
       </div>
 
       {/* 创建弹窗 */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-[#1a1c20] rounded-lg p-6 w-full max-w-lg border border-gray-700">
-            <h3 className="text-lg font-bold mb-4">创建新套餐</h3>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="tac-panel tac-corners p-6 w-full max-w-lg">
+            <div className="tac-label flex items-center gap-2 mb-4">
+              <FaPlus className="text-hazard" /> 新建套餐 // CREATE PLAN
+            </div>
             <PlanForm onSubmit={handleCreate} submitText="创建套餐" />
           </div>
         </div>

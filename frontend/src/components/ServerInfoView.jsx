@@ -69,25 +69,21 @@ function buildPopulationPoints(points, width, height, padding = 10) {
 }
 
 // 状态卡片组件
-function StatCard({ icon: Icon, label, value, subValue, color = 'rust-orange', loading }) {
+function StatCard({ icon: Icon, label, value, subValue, loading }) {
   return (
-    <div className="bg-dark-800/50 rounded-lg p-4 border border-white/5 hover:border-white/10 transition-all">
-      <div className="flex items-center gap-3">
-        <div className={`p-2.5 rounded-lg bg-${color}/10`}>
-          <Icon className={`text-lg text-${color}`} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-xs text-gray-500 mb-0.5">{label}</div>
-          {loading ? (
-            <div className="h-6 w-20 bg-gray-700/50 rounded animate-pulse" />
-          ) : (
-            <div className="text-lg font-bold text-white truncate">
-              {value}
-              {subValue && <span className="text-sm text-gray-500 ml-1">{subValue}</span>}
-            </div>
-          )}
-        </div>
+    <div className="bg-ink-850 px-3 py-2.5">
+      <div className="text-fg-dim text-[11px] flex items-center gap-2">
+        <span className="text-hazard text-xs"><Icon /></span>
+        {label}
       </div>
+      {loading ? (
+        <div className="h-6 w-20 bg-ink-700 animate-pulse mt-2" />
+      ) : (
+        <div className="text-fg text-lg font-bold font-mono tabular-nums mt-2 truncate">
+          {value}
+          {subValue && <span className="text-sm text-fg-mute ml-1">{subValue}</span>}
+        </div>
+      )}
     </div>
   );
 }
@@ -104,26 +100,25 @@ function PlayerListItem({ player, rank }) {
   };
 
   return (
-    <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-white/5 transition-colors">
+    <div className="flex items-center gap-3 py-2 px-3 border-b border-ink-line last:border-0 hover:bg-ink-800/60 transition-colors">
       {rank && (
-        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-          rank === 1 ? 'bg-yellow-500/20 text-yellow-400' :
-          rank === 2 ? 'bg-gray-400/20 text-gray-300' :
-          rank === 3 ? 'bg-orange-600/20 text-orange-400' :
-          'bg-gray-700/50 text-gray-500'
+        <div className={`w-6 h-6 flex items-center justify-center font-mono text-xs font-bold tabular-nums border ${
+          rank <= 3
+            ? 'text-hazard border-hazard/40 bg-hazard-dim'
+            : 'text-fg-dim border-ink-line'
         }`}>
           {rank}
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <div className="text-sm text-white truncate">{player.name}</div>
+        <div className="text-sm text-fg truncate">{player.name}</div>
         {player.time && (
-          <div className="text-xs text-gray-500">{formatPlayTime(player.time)}</div>
+          <div className="text-[11px] text-fg-mute font-mono tabular-nums">{formatPlayTime(player.time)}</div>
         )}
       </div>
       {player.time && (
-        <div className="text-xs text-gray-400">
-          <FaUserClock className="inline mr-1" />
+        <div className="text-xs text-fg-dim font-mono tabular-nums">
+          <FaUserClock className="inline mr-1 text-fg-mute" />
           {formatPlayTime(player.time)}
         </div>
       )}
@@ -132,12 +127,13 @@ function PlayerListItem({ player, rank }) {
 }
 
 // 信息面板组件
-function InfoPanel({ title, icon: Icon, children, className = '' }) {
+function InfoPanel({ title, en, icon: Icon, children, className = '' }) {
   return (
-    <div className={`bg-dark-800/30 rounded-xl border border-white/5 overflow-hidden ${className}`}>
-      <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
-        <Icon className="text-rust-orange" />
-        <span className="font-semibold text-white">{title}</span>
+    <div className={`tac-panel ${className}`}>
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-ink-line">
+        <Icon className="text-hazard" />
+        <span className="text-fg-dim text-[11px] font-bold">{title}</span>
+        {en && <span className="tac-label">// {en}</span>}
       </div>
       <div className="p-4">
         {children}
@@ -267,9 +263,9 @@ function ServerInfoView({ server, onBack }) {
 
   // 获取状态颜色
   const getStatusColor = (status) => {
-    if (status === 'online') return 'text-green-400';
-    if (status === 'offline') return 'text-red-400';
-    return 'text-yellow-400';
+    if (status === 'online') return 'text-terminal';
+    if (status === 'offline') return 'text-fg-mute';
+    return 'text-hazard';
   };
 
   // 格式化运行时间
@@ -444,19 +440,20 @@ function ServerInfoView({ server, onBack }) {
   if (!serverId) {
     return (
       <div className="h-full flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-dark-800/40 border border-white/10 rounded-xl p-6 text-center">
-          <FaServer className="mx-auto text-3xl text-gray-500 mb-3" />
-          <h3 className="text-lg font-bold text-white mb-2">暂无可用服务器</h3>
-          <p className="text-sm text-gray-400 mb-5">
+        <div className="max-w-md w-full tac-panel tac-corners p-6 text-center">
+          <FaServer className="mx-auto text-3xl text-fg-mute mb-3" />
+          <div className="tac-label mb-2">NO SERVER</div>
+          <h3 className="text-lg font-extrabold text-fg mb-2">暂无可用服务器</h3>
+          <p className="text-sm text-fg-dim mb-5">
             请先完成服务器配对或选择已连接服务器，再查看服务器信息。
           </p>
           {onBack && (
             <button
               type="button"
               onClick={onBack}
-              className="px-4 py-2 rounded-lg bg-[#cd5241] hover:bg-[#b04537] text-white text-sm font-bold transition-colors"
+              className="tac-btn tac-btn-primary"
             >
-              返回基地概览
+              返回基地概览 // OVERVIEW
             </button>
           )}
         </div>
@@ -465,23 +462,23 @@ function ServerInfoView({ server, onBack }) {
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-6xl mx-auto p-6 space-y-6">
+    <div className="h-full overflow-y-auto bg-ink-900">
+      <div className="p-4 md:p-6 space-y-6">
 
         {/* 顶部头图区域 */}
-        <div className="relative rounded-2xl overflow-hidden">
+        <div className="relative tac-panel tac-corners overflow-hidden">
           {/* 背景图 */}
           <div className="absolute inset-0">
             {bmInfo?.headerImage ? (
               <img
                 src={bmInfo.headerImage}
                 alt=""
-                className="w-full h-full object-cover opacity-30"
+                className="w-full h-full object-cover opacity-20"
               />
             ) : (
-              <div className="w-full h-full bg-gradient-to-br from-rust-orange/20 to-dark-900" />
+              <div className="w-full h-full bg-ink-850" />
             )}
-            <div className="absolute inset-0 bg-gradient-to-t from-dark-900 via-dark-900/80 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-ink-900 via-ink-900/85 to-ink-900/40" />
           </div>
 
           {/* 内容 */}
@@ -493,58 +490,64 @@ function ServerInfoView({ server, onBack }) {
                   <img
                     src={server.img || server.logo || bmInfo?.headerImage}
                     alt={server.name}
-                    className="w-24 h-24 rounded-xl object-cover border-2 border-white/10 shadow-xl"
+                    className="w-24 h-24 object-cover border border-ink-line"
                   />
                 ) : (
-                  <div className="w-24 h-24 rounded-xl bg-gradient-to-br from-rust-orange to-orange-600 flex items-center justify-center border-2 border-white/10 shadow-xl">
-                    <FaServer className="text-4xl text-white" />
+                  <div className="w-24 h-24 bg-ink-800 border border-ink-line flex items-center justify-center">
+                    <FaServer className="text-4xl text-fg-mute" />
                   </div>
                 )}
               </div>
 
               {/* 服务器信息 */}
               <div className="flex-1 min-w-0">
+                <div className="tac-label flex items-center gap-2 mb-1">
+                  <FaServer className="text-hazard" /> 服务器情报 // INTEL
+                </div>
                 <div className="flex items-center gap-3 mb-2 flex-wrap">
-                  <h1 className="text-2xl font-bold text-white truncate">
+                  <h1 className="text-2xl font-extrabold text-fg truncate">
                     {bmInfo?.name || server.name}
                   </h1>
                   {bmInfo?.status && (
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
-                      bmInfo.status === 'online'
-                        ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                        : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                    }`}>
-                      <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                      {bmInfo.status === 'online' ? '在线' : '离线'}
-                    </span>
+                    bmInfo.status === 'online' ? (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-mono uppercase tracking-wider text-terminal border border-terminal/30">
+                        <span className="w-1.5 h-1.5 bg-terminal animate-tac-blink" />
+                        ONLINE
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-mono uppercase tracking-wider text-fg-mute border border-ink-line">
+                        <span className="w-1.5 h-1.5 bg-fg-mute" />
+                        OFFLINE
+                      </span>
+                    )
                   )}
                   {bmInfo?.official && (
-                    <span className="px-2 py-1 rounded-full text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                      官方服
+                    <span className="inline-flex items-center px-2 py-1 text-[11px] font-mono uppercase tracking-wider text-fg-dim border border-ink-line">
+                      OFFICIAL
                     </span>
                   )}
                   {bmInfo?.modded && (
-                    <span className="px-2 py-1 rounded-full text-xs font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                      模组服
+                    <span className="inline-flex items-center px-2 py-1 text-[11px] font-mono uppercase tracking-wider text-fg-dim border border-ink-line">
+                      MODDED
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-4 text-sm text-gray-400 mb-4">
+                <div className="flex items-center gap-4 text-sm text-fg-dim mb-4 flex-wrap">
                   <span className="flex items-center gap-1.5">
-                    <FaSignal className="text-gray-500" />
-                    <span className="font-mono">{bmInfo?.address || `${server.ip}:${server.port}`}</span>
+                    <FaSignal className="text-fg-mute" />
+                    <span className="font-mono tabular-nums">{bmInfo?.address || `${server.ip}:${server.port}`}</span>
                   </span>
                   {bmInfo?.country && (
                     <span className="flex items-center gap-1.5">
-                      <FaGlobe className="text-gray-500" />
+                      <FaGlobe className="text-fg-mute" />
                       {bmInfo.country}
                     </span>
                   )}
                   {bmInfo?.rank && (
                     <span className="flex items-center gap-1.5">
-                      <FaTrophy className="text-yellow-500" />
-                      排名 #{bmInfo.rank}
+                      <FaTrophy className="text-fg-mute" />
+                      排名 <span className="font-mono tabular-nums">#{bmInfo.rank}</span>
                     </span>
                   )}
                 </div>
@@ -553,25 +556,22 @@ function ServerInfoView({ server, onBack }) {
                 {bmInfo && (
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-sm text-gray-400 flex items-center gap-1.5">
-                        <FaUsers className="text-rust-orange" />
-                        在线玩家
+                      <span className="tac-label flex items-center gap-1.5">
+                        <FaUsers className="text-hazard" />
+                        POPULATION
                       </span>
-                      <span className="text-sm font-bold text-white">
+                      <span className="text-sm font-bold text-fg font-mono tabular-nums">
                         {bmInfo.players}
-                        <span className="text-gray-500">/{bmInfo.maxPlayers}</span>
+                        <span className="text-fg-mute">/{bmInfo.maxPlayers}</span>
                         {bmInfo.queuedPlayers > 0 && (
-                          <span className="text-yellow-400 ml-2">(+{bmInfo.queuedPlayers} 排队)</span>
+                          <span className="text-hazard ml-2">(+{bmInfo.queuedPlayers} 排队)</span>
                         )}
                       </span>
                     </div>
-                    <div className="relative h-2.5 bg-black/40 rounded-full overflow-hidden">
+                    <div className="relative h-1.5 bg-ink-700 border border-ink-line overflow-hidden">
                       <div
                         className={`h-full transition-all duration-500 ${
-                          playerPercentage >= 90 ? 'bg-gradient-to-r from-red-500 to-red-600' :
-                          playerPercentage >= 70 ? 'bg-gradient-to-r from-orange-500 to-orange-600' :
-                          playerPercentage >= 50 ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' :
-                          'bg-gradient-to-r from-green-500 to-green-600'
+                          playerPercentage >= 70 ? 'bg-hazard' : 'bg-fg-dim'
                         }`}
                         style={{ width: `${playerPercentage}%` }}
                       />
@@ -585,17 +585,18 @@ function ServerInfoView({ server, onBack }) {
                 <button
                   onClick={handleRefresh}
                   disabled={cooldown > 0 || refreshing}
-                  className={`p-3 rounded-xl transition-all ${
+                  className={`p-3 border transition-colors ${
                     cooldown > 0 || refreshing
-                      ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
-                      : 'bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white'
+                      ? 'border-ink-line text-fg-mute cursor-not-allowed'
+                      : 'border-ink-line text-fg-dim hover:border-hazard/50 hover:text-hazard'
                   }`}
                   title={cooldown > 0 ? `${cooldown}秒后可刷新` : '刷新数据'}
+                  aria-label="刷新数据"
                 >
                   <FaSyncAlt className={`text-lg ${refreshing ? 'animate-spin' : ''}`} />
                 </button>
                 {cooldown > 0 && (
-                  <div className="text-xs text-gray-500 text-center mt-1">{cooldown}s</div>
+                  <div className="text-xs text-fg-mute font-mono tabular-nums text-center mt-1">{cooldown}s</div>
                 )}
               </div>
             </div>
@@ -603,81 +604,76 @@ function ServerInfoView({ server, onBack }) {
         </div>
 
         {/* 状态卡片网格 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-px bg-ink-line border border-ink-line">
           <StatCard
             icon={FaUsers}
             label="在线玩家"
-            value={bmInfo?.players || '-'}
+            value={bmInfo?.players ?? '-'}
             subValue={bmInfo ? `/ ${bmInfo.maxPlayers}` : ''}
-            color="green-400"
             loading={loading}
           />
           <StatCard
             icon={FaHourglassHalf}
             label="排队人数"
             value={bmInfo?.queuedPlayers || 0}
-            color="yellow-400"
             loading={loading}
           />
           <StatCard
             icon={FaTachometerAlt}
             label="服务器 FPS"
             value={bmInfo?.fps || '-'}
-            color="blue-400"
             loading={loading}
           />
           <StatCard
             icon={FaCubes}
             label="实体数量"
             value={bmInfo?.entityCount?.toLocaleString() || '-'}
-            color="purple-400"
             loading={loading}
           />
           <StatCard
             icon={FaTrophy}
             label="全球排名"
             value={bmInfo?.rank ? `#${bmInfo.rank}` : '-'}
-            color="yellow-400"
             loading={loading}
           />
           <StatCard
             icon={FaClock}
             label="运行时间"
             value={formatUptime(bmInfo?.uptime)}
-            color="cyan-400"
             loading={loading}
           />
         </div>
 
         {/* 主要内容区域 - 三列布局 */}
 
-        <div className="bg-dark-800/30 rounded-xl border border-white/5 overflow-hidden">
-          <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between gap-3 flex-wrap">
+        <div className="tac-panel">
+          <div className="px-4 py-3 border-b border-ink-line flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
-              <FaChartLine className="text-rust-orange" />
-              <span className="font-semibold text-white">{'\u5728\u7ebf\u4eba\u6570\u8d8b\u52bf'}</span>
+              <FaChartLine className="text-hazard" />
+              <span className="text-fg-dim text-[11px] font-bold">{'\u5728\u7ebf\u4eba\u6570\u8d8b\u52bf'}</span>
+              <span className="tac-label">// POPULATION</span>
             </div>
-            <div className="flex items-center gap-4 text-xs text-gray-400">
+            <div className="flex items-center gap-4 text-xs text-fg-dim">
               {showPopTrend && (
                 <span className="inline-flex items-center gap-1">
-                  <FaSignal className={popTrendDiff > 0 ? 'text-emerald-400' : 'text-red-400'} />
+                  <FaSignal className={popTrendDiff > 0 ? 'text-terminal' : 'text-hazard'} />
                   <span>{'\u0031\u5c0f\u65f6\u53d8\u5316'}</span>
-                  <span className={popTrendDiff > 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>
+                  <span className={popTrendDiff > 0 ? 'text-terminal font-bold font-mono tabular-nums' : 'text-hazard font-bold font-mono tabular-nums'}>
                     {popTrendDiff > 0 ? '+' : ''}{popTrendDiff}
                   </span>
                 </span>
               )}
-              <span>{'\u5f53\u524d\u5728\u7ebf'} {runtimeInfo?.players ?? bmInfo?.players ?? '-'}</span>
+              <span>{'\u5f53\u524d\u5728\u7ebf'} <span className="font-mono tabular-nums text-fg">{runtimeInfo?.players ?? bmInfo?.players ?? '-'}</span></span>
             </div>
           </div>
           <div className="p-4">
             {canShowPopCurve ? (
               <>
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-                  <span>{'\u8fd13\u5929\u5728\u7ebf\u66f2\u7ebf'}</span>
-                  <span>MIN {popMin} / MAX {popMax}</span>
+                <div className="flex items-center justify-between text-xs text-fg-mute mb-2">
+                  <span className="tac-label !text-[9px]">POP \u00b7 3D</span>
+                  <span className="font-mono tabular-nums">MIN {popMin} / MAX {popMax}</span>
                 </div>
-                <div className="relative">
+                <div className="relative border border-ink-line bg-ink-900">
                   <svg
                     viewBox={`0 0 ${POP_CHART_WIDTH} ${POP_CHART_HEIGHT}`}
                     className="w-full h-40 cursor-crosshair"
@@ -687,7 +683,7 @@ function ServerInfoView({ server, onBack }) {
                     onTouchStart={handlePopChartTouchMove}
                     onTouchEnd={() => setPopHoverIndex(null)}
                   >
-                    <path d={popPath} fill="none" stroke="#fb923c" strokeWidth="3" strokeLinecap="round" />
+                    <path d={popPath} fill="none" stroke="#E0452E" strokeWidth="3" strokeLinecap="round" />
                     {hoveredPopPoint && (
                       <>
                         <line
@@ -695,7 +691,7 @@ function ServerInfoView({ server, onBack }) {
                           y1={POP_CHART_PADDING}
                           x2={hoveredPopPoint.x}
                           y2={POP_CHART_HEIGHT - POP_CHART_PADDING}
-                          stroke="rgba(251,146,60,0.45)"
+                          stroke="rgba(224,69,46,0.45)"
                           strokeWidth="1.5"
                           strokeDasharray="4 3"
                         />
@@ -703,8 +699,8 @@ function ServerInfoView({ server, onBack }) {
                           cx={hoveredPopPoint.x}
                           cy={hoveredPopPoint.y}
                           r="5"
-                          fill="#fb923c"
-                          stroke="#111827"
+                          fill="#E0452E"
+                          stroke="#0A0A0A"
                           strokeWidth="2"
                         />
                       </>
@@ -712,36 +708,36 @@ function ServerInfoView({ server, onBack }) {
                   </svg>
                   {hoveredPopPoint && (
                     <div
-                      className="absolute pointer-events-none z-10 bg-black/85 border border-rust-orange/40 rounded-md px-2 py-1 text-xs text-white shadow-lg"
+                      className="absolute pointer-events-none z-10 bg-ink-900/90 border border-hazard/40 px-2 py-1 text-xs text-fg"
                       style={{
                         left: `${popTooltipLeft}%`,
                         top: `${popTooltipTop}%`,
                         transform: 'translate(-50%, -115%)'
                       }}
                     >
-                      <div className="text-[11px] text-gray-300">{formatMiniDateTime(hoveredPopPoint.timestamp)}</div>
-                      <div className="font-semibold">{hoveredPopPoint.players} 人</div>
+                      <div className="text-[11px] text-fg-dim font-mono tabular-nums">{formatMiniDateTime(hoveredPopPoint.timestamp)}</div>
+                      <div className="font-bold font-mono tabular-nums">{hoveredPopPoint.players} 人</div>
                     </div>
                   )}
                 </div>
-                <div className="text-xs text-gray-500 mt-2">鼠标悬停可查看对应时间点在线人数</div>
-                <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
+                <div className="text-xs text-fg-mute mt-2">鼠标悬停可查看对应时间点在线人数</div>
+                <div className="flex items-center justify-between text-xs text-fg-mute font-mono tabular-nums mt-2">
                   <span>{formatMiniDateTime(popStart?.timestamp)}</span>
                   <span>{formatMiniDateTime(popMidTs)}</span>
                   <span>{formatMiniDateTime(popEnd?.timestamp)}</span>
                 </div>
-                <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
+                <div className="flex items-center justify-between text-xs text-fg-mute font-mono tabular-nums mt-1">
                   <span>{popStart?.players ?? 0}{'\u4eba'}</span>
                   <span>{popEnd?.players ?? 0}{'\u4eba'}</span>
                 </div>
                 {!popHasFullThreeDay && (
-                  <div className="text-xs text-gray-500 mt-2">
-                    {'\u5f53\u524d\u5df2\u91c7\u6837\u7ea6 '}{popCoverageHours}{'\u5c0f\u65f6\uff0c\u6ee1 72 \u5c0f\u65f6\u540e\u66f4\u5b8c\u6574'}
+                  <div className="text-xs text-fg-mute mt-2">
+                    {'\u5f53\u524d\u5df2\u91c7\u6837\u7ea6 '}<span className="font-mono tabular-nums">{popCoverageHours}</span>{'\u5c0f\u65f6\uff0c\u6ee1 72 \u5c0f\u65f6\u540e\u66f4\u5b8c\u6574'}
                   </div>
                 )}
               </>
             ) : (
-              <div className="text-sm text-gray-400">{'\u5728\u7ebf\u66f2\u7ebf\u91c7\u6837\u4e2d\uff08\u81f3\u5c112\u4e2a\u91c7\u6837\u70b9\u540e\u663e\u793a\uff0c\u6ee172\u5c0f\u65f6\u66f4\u5b8c\u6574\uff09'}</div>
+              <div className="text-sm text-fg-dim">{'\u5728\u7ebf\u66f2\u7ebf\u91c7\u6837\u4e2d\uff08\u81f3\u5c112\u4e2a\u91c7\u6837\u70b9\u540e\u663e\u793a\uff0c\u6ee172\u5c0f\u65f6\u66f4\u5b8c\u6574\uff09'}</div>
             )}
           </div>
         </div>
@@ -751,30 +747,30 @@ function ServerInfoView({ server, onBack }) {
           {/* 左列：清档 & 地图信息 */}
           <div className="space-y-6">
             {/* 清档信息 */}
-            <InfoPanel title="清档信息" icon={FaCalendarAlt}>
+            <InfoPanel title="清档信息" en="WIPE" icon={FaCalendarAlt}>
               {loading ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map(i => (
-                    <div key={i} className="h-10 bg-gray-700/30 rounded animate-pulse" />
+                    <div key={i} className="h-10 bg-ink-700 animate-pulse" />
                   ))}
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between py-2 border-b border-white/5">
-                    <span className="text-sm text-gray-400">上次清档</span>
-                    <span className="text-sm font-medium text-white">
+                  <div className="flex items-center justify-between py-2 border-b border-ink-line">
+                    <span className="text-sm text-fg-dim">上次清档</span>
+                    <span className="text-sm font-mono tabular-nums text-fg">
                       {bmInfo?.wipeTime ? formatTimeAgo(bmInfo.wipeTime) : '-'}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between py-2 border-b border-white/5">
-                    <span className="text-sm text-gray-400">清档周期</span>
-                    <span className="text-sm font-medium text-white">
+                  <div className="flex items-center justify-between py-2 border-b border-ink-line">
+                    <span className="text-sm text-fg-dim">清档周期</span>
+                    <span className="text-sm font-medium text-fg">
                       {formatWipeCycle(bmInfo?.wipeCycle)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-2">
-                    <span className="text-sm text-gray-400">预计下次清档</span>
-                    <span className="text-sm font-medium text-rust-orange">
+                    <span className="text-sm text-fg-dim">预计下次清档</span>
+                    <span className="text-sm font-mono tabular-nums text-hazard">
                       {bmInfo?.nextWipe ? formatTimeAgo(bmInfo.nextWipe) : '-'}
                     </span>
                   </div>
@@ -783,33 +779,33 @@ function ServerInfoView({ server, onBack }) {
             </InfoPanel>
 
             {/* 地图信息 */}
-            <InfoPanel title="地图信息" icon={FaMapMarkedAlt}>
+            <InfoPanel title="地图信息" en="MAP" icon={FaMapMarkedAlt}>
               {loading ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map(i => (
-                    <div key={i} className="h-10 bg-gray-700/30 rounded animate-pulse" />
+                    <div key={i} className="h-10 bg-ink-700 animate-pulse" />
                   ))}
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between py-2 border-b border-white/5">
-                    <span className="text-sm text-gray-400">地图类型</span>
-                    <span className="text-sm font-medium text-white">
+                  <div className="flex items-center justify-between py-2 border-b border-ink-line">
+                    <span className="text-sm text-fg-dim">地图类型</span>
+                    <span className="text-sm font-medium text-fg">
                       {bmInfo?.map || 'Procedural Map'}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between py-2 border-b border-white/5">
-                    <span className="text-sm text-gray-400">地图大小</span>
-                    <span className="text-sm font-medium text-white">
+                  <div className="flex items-center justify-between py-2 border-b border-ink-line">
+                    <span className="text-sm text-fg-dim">地图大小</span>
+                    <span className="text-sm font-mono tabular-nums text-fg">
                       {bmInfo?.mapSize ? `${bmInfo.mapSize}m` : '-'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-2">
-                    <span className="text-sm text-gray-400 flex items-center gap-1">
-                      <FaSeedling className="text-green-400" />
+                    <span className="text-sm text-fg-dim flex items-center gap-1">
+                      <FaSeedling className="text-fg-mute" />
                       地图种子
                     </span>
-                    <span className="text-sm font-mono text-white">
+                    <span className="text-sm font-mono tabular-nums text-fg">
                       {bmInfo?.seed || '-'}
                     </span>
                   </div>
@@ -820,7 +816,7 @@ function ServerInfoView({ server, onBack }) {
                       href={bmInfo.rustMapsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-2 mt-3 py-2 px-4 rounded-lg bg-rust-orange/10 hover:bg-rust-orange/20 text-rust-orange transition-colors"
+                      className="flex items-center justify-center gap-2 mt-3 py-2 px-4 bg-hazard-dim border border-hazard/30 hover:border-hazard text-hazard transition-colors"
                     >
                       <FaExternalLinkAlt className="text-xs" />
                       <span className="text-sm font-medium">在 RustMaps 查看</span>
@@ -831,25 +827,25 @@ function ServerInfoView({ server, onBack }) {
             </InfoPanel>
 
             {/* 服务器标签 */}
-            <InfoPanel title="服务器属性" icon={FaGamepad}>
+            <InfoPanel title="服务器属性" en="ATTRIBUTES" icon={FaGamepad}>
               <div className="flex flex-wrap gap-2">
                 {bmInfo?.official && (
-                  <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                    <FaCheckCircle className="inline mr-1" /> 官方服务器
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-ink-800 text-fg-dim border border-ink-line">
+                    <FaCheckCircle className="text-fg-mute" /> 官方服务器
                   </span>
                 )}
                 {bmInfo?.modded && (
-                  <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                    <FaGamepad className="inline mr-1" /> 模组服务器
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-ink-800 text-fg-dim border border-ink-line">
+                    <FaGamepad className="text-fg-mute" /> 模组服务器
                   </span>
                 )}
                 {bmInfo?.pve && (
-                  <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
-                    <FaInfoCircle className="inline mr-1" /> PVE 模式
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-ink-800 text-fg-dim border border-ink-line">
+                    <FaInfoCircle className="text-fg-mute" /> PVE 模式
                   </span>
                 )}
                 {!bmInfo?.official && !bmInfo?.modded && !bmInfo?.pve && (
-                  <span className="text-sm text-gray-500">暂无标签信息</span>
+                  <span className="text-sm text-fg-mute">暂无标签信息</span>
                 )}
               </div>
             </InfoPanel>
@@ -857,126 +853,126 @@ function ServerInfoView({ server, onBack }) {
 
           {/* 中列：在线玩家列表 */}
           <div className="space-y-6">
-            <InfoPanel title={`最近登录玩家 (${recentOnlineCount}/${totalOnlineCount})`} icon={FaUserClock} className="h-fit">
+            <InfoPanel title={`最近登录玩家 (${recentOnlineCount}/${totalOnlineCount})`} en="RECENT" icon={FaUserClock} className="h-fit">
               {loading ? (
                 <div className="space-y-2">
                   {[1, 2, 3, 4, 5].map(i => (
-                    <div key={i} className="h-12 bg-gray-700/30 rounded animate-pulse" />
+                    <div key={i} className="h-12 bg-ink-700 animate-pulse" />
                   ))}
                 </div>
               ) : recentOnlineCount > 0 ? (
                 <div className="space-y-3">
                   {recentOnlineCount < totalOnlineCount && (
-                    <div className="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                    <div className="text-[11px] text-fg-dim bg-hazard-dim border border-hazard/30 px-3 py-2">
                       该列表仅展示最近时间窗口内有会话活动的玩家，可在下方查看全部在线玩家。
                     </div>
                   )}
                   <div className="relative">
-                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-xs" />
+                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-mute text-xs" />
                     <input
                       type="text"
                       value={onlineSearch}
                       onChange={(e) => setOnlineSearch(e.target.value)}
                       placeholder="搜索最近登录玩家"
-                      className="w-full pl-8 pr-3 py-2 text-xs bg-black/40 border border-white/10 rounded-lg focus:outline-none focus:border-[#cd5241]/40"
+                      className="tac-input !pl-8 !py-2 !text-xs"
                     />
                   </div>
-                  <div className="max-h-64 overflow-y-auto border border-white/10 rounded-lg">
-                    <div className="grid grid-cols-12 text-[10px] text-gray-500 uppercase tracking-wider px-3 py-2 border-b border-white/10 bg-white/[0.02]">
-                      <span className="col-span-5">玩家</span>
-                      <span className="col-span-3">上线时间</span>
-                      <span className="col-span-3">在线时长</span>
-                      <span className="col-span-1 text-right">追踪</span>
+                  <div className="max-h-64 overflow-y-auto border border-ink-line">
+                    <div className="grid grid-cols-12 text-[10px] text-fg-dim font-mono uppercase tracking-wider px-3 py-2 border-b border-ink-line bg-ink-800">
+                      <span className="col-span-5">PLAYER</span>
+                      <span className="col-span-3">ONLINE</span>
+                      <span className="col-span-3">DURATION</span>
+                      <span className="col-span-1 text-right">TRACK</span>
                     </div>
                     {filteredRecentOnlinePlayers.map((player, index) => (
                       <button
                         type="button"
                         key={player.id || index}
                         onClick={() => setSelectedPlayer(player)}
-                        className="group w-full grid grid-cols-12 items-center px-3 py-2 border-b border-white/5 hover:bg-white/5 transition-colors text-left"
+                        className="group w-full grid grid-cols-12 items-center px-3 py-2 border-b border-ink-line last:border-0 hover:bg-ink-800/60 transition-colors text-left"
                       >
-                        <span className="col-span-5 text-sm text-white truncate">{player.name || 'Unknown'}</span>
-                        <span className="col-span-3 text-xs text-gray-400">{formatDateTime(player.sessionStart)}</span>
-                        <span className="col-span-3 text-xs text-green-400">
+                        <span className="col-span-5 text-sm text-fg truncate">{player.name || 'Unknown'}</span>
+                        <span className="col-span-3 text-xs text-fg-dim font-mono tabular-nums">{formatDateTime(player.sessionStart)}</span>
+                        <span className="col-span-3 text-xs text-terminal font-mono tabular-nums">
                           {formatDuration(getSessionDurationSec(player) || player.onlineDurationSec)}
                         </span>
                         <span className="col-span-1 text-right">
-                          <FaCrosshairs className="inline text-xs text-gray-600 group-hover:text-[#cd5241] transition-colors" />
+                          <FaCrosshairs className="inline text-xs text-fg-mute group-hover:text-hazard transition-colors" />
                         </span>
                       </button>
                     ))}
                     {filteredRecentOnlinePlayers.length === 0 && (
-                      <div className="text-center text-xs text-gray-500 py-6">
+                      <div className="text-center text-xs text-fg-mute py-6">
                         未找到匹配玩家
                       </div>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-fg-mute">
                   <FaUserClock className="text-3xl mx-auto mb-2 opacity-50" />
                   <p>{totalOnlineCount > 0 ? '最近登录玩家暂不可用，请稍后刷新' : '暂无在线玩家数据'}</p>
                 </div>
               )}
             </InfoPanel>
 
-            <InfoPanel title={`全部在线玩家 (${allOnlineCount}/${totalOnlineCount})`} icon={FaUsers} className="h-fit">
+            <InfoPanel title={`全部在线玩家 (${allOnlineCount}/${totalOnlineCount})`} en="ONLINE" icon={FaUsers} className="h-fit">
               {loading ? (
                 <div className="space-y-2">
                   {[1, 2, 3, 4, 5].map(i => (
-                    <div key={i} className="h-12 bg-gray-700/30 rounded animate-pulse" />
+                    <div key={i} className="h-12 bg-ink-700 animate-pulse" />
                   ))}
                 </div>
               ) : allOnlineCount > 0 ? (
                 <div className="space-y-3">
                   {allOnlineCount < totalOnlineCount && (
-                    <div className="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                    <div className="text-[11px] text-fg-dim bg-hazard-dim border border-hazard/30 px-3 py-2">
                       全量在线列表与总在线人数可能存在 BattleMetrics 的短暂同步延迟。
                     </div>
                   )}
                   <div className="relative">
-                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-xs" />
+                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-mute text-xs" />
                     <input
                       type="text"
                       value={allOnlineSearch}
                       onChange={(e) => setAllOnlineSearch(e.target.value)}
                       placeholder="搜索全部在线玩家"
-                      className="w-full pl-8 pr-3 py-2 text-xs bg-black/40 border border-white/10 rounded-lg focus:outline-none focus:border-[#cd5241]/40"
+                      className="tac-input !pl-8 !py-2 !text-xs"
                     />
                   </div>
-                  <div className="max-h-96 overflow-y-auto border border-white/10 rounded-lg">
-                    <div className="grid grid-cols-12 text-[10px] text-gray-500 uppercase tracking-wider px-3 py-2 border-b border-white/10 bg-white/[0.02]">
-                      <span className="col-span-5">玩家</span>
-                      <span className="col-span-3">上线时间</span>
-                      <span className="col-span-3">在线时长</span>
-                      <span className="col-span-1 text-right">追踪</span>
+                  <div className="max-h-96 overflow-y-auto border border-ink-line">
+                    <div className="grid grid-cols-12 text-[10px] text-fg-dim font-mono uppercase tracking-wider px-3 py-2 border-b border-ink-line bg-ink-800">
+                      <span className="col-span-5">PLAYER</span>
+                      <span className="col-span-3">ONLINE</span>
+                      <span className="col-span-3">DURATION</span>
+                      <span className="col-span-1 text-right">TRACK</span>
                     </div>
                     {filteredAllOnlinePlayers.map((player, index) => (
                       <button
                         type="button"
                         key={`${player.id || index}-all`}
                         onClick={() => setSelectedPlayer(player)}
-                        className="group w-full grid grid-cols-12 items-center px-3 py-2 border-b border-white/5 hover:bg-white/5 transition-colors text-left"
+                        className="group w-full grid grid-cols-12 items-center px-3 py-2 border-b border-ink-line last:border-0 hover:bg-ink-800/60 transition-colors text-left"
                       >
-                        <span className="col-span-5 text-sm text-white truncate">{player.name || 'Unknown'}</span>
-                        <span className="col-span-3 text-xs text-gray-400">{formatDateTime(player.sessionStart)}</span>
-                        <span className="col-span-3 text-xs text-green-400">
+                        <span className="col-span-5 text-sm text-fg truncate">{player.name || 'Unknown'}</span>
+                        <span className="col-span-3 text-xs text-fg-dim font-mono tabular-nums">{formatDateTime(player.sessionStart)}</span>
+                        <span className="col-span-3 text-xs text-terminal font-mono tabular-nums">
                           {formatDuration(getSessionDurationSec(player) || player.onlineDurationSec)}
                         </span>
                         <span className="col-span-1 text-right">
-                          <FaCrosshairs className="inline text-xs text-gray-600 group-hover:text-[#cd5241] transition-colors" />
+                          <FaCrosshairs className="inline text-xs text-fg-mute group-hover:text-hazard transition-colors" />
                         </span>
                       </button>
                     ))}
                     {filteredAllOnlinePlayers.length === 0 && (
-                      <div className="text-center text-xs text-gray-500 py-6">
+                      <div className="text-center text-xs text-fg-mute py-6">
                         未找到匹配玩家
                       </div>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-fg-mute">
                   <FaUsers className="text-3xl mx-auto mb-2 opacity-50" />
                   <p>{totalOnlineCount > 0 ? '全部在线玩家列表暂不可用，请稍后刷新' : '暂无在线玩家数据'}</p>
                 </div>
@@ -985,21 +981,21 @@ function ServerInfoView({ server, onBack }) {
           </div>
 
           {/* 右列：时长排行榜 */}
-          <InfoPanel title="30天时长排行" icon={FaChartLine} className="h-fit">
+          <InfoPanel title="30天时长排行" en="LEADERBOARD" icon={FaChartLine} className="h-fit">
             {loading ? (
               <div className="space-y-2">
                 {[1, 2, 3, 4, 5].map(i => (
-                  <div key={i} className="h-12 bg-gray-700/30 rounded animate-pulse" />
+                  <div key={i} className="h-12 bg-ink-700 animate-pulse" />
                 ))}
               </div>
             ) : topPlayers.length > 0 ? (
-              <div className="space-y-1 max-h-96 overflow-y-auto">
+              <div className="border border-ink-line max-h-96 overflow-y-auto">
                 {topPlayers.slice(0, 20).map((player, index) => (
                   <PlayerListItem key={player.id} player={player} rank={index + 1} />
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-fg-mute">
                 <FaChartLine className="text-3xl mx-auto mb-2 opacity-50" />
                 <p>暂无排行数据</p>
               </div>
@@ -1009,17 +1005,17 @@ function ServerInfoView({ server, onBack }) {
 
         {/* 服务器描述 */}
         {bmInfo?.description && (
-          <InfoPanel title="服务器描述" icon={FaInfoCircle}>
-            <div className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
+          <InfoPanel title="服务器描述" en="DESCRIPTION" icon={FaInfoCircle}>
+            <div className="text-sm text-fg-dim whitespace-pre-wrap leading-relaxed">
               {bmInfo.description}
             </div>
           </InfoPanel>
         )}
 
         {/* 底部提示 */}
-        <div className="text-center text-xs text-gray-600 pb-4">
+        <div className="text-center text-xs text-fg-mute pb-4">
           {lastRefresh && (
-            <span>数据更新于 {lastRefresh.toLocaleTimeString()}</span>
+            <span>数据更新于 <span className="font-mono tabular-nums">{lastRefresh.toLocaleTimeString()}</span></span>
           )}
           <span className="mx-2">·</span>
           <span>数据来源: Battlemetrics (每60秒自动更新)</span>
@@ -1028,67 +1024,71 @@ function ServerInfoView({ server, onBack }) {
 
       {/* 玩家详情弹窗 */}
       {selectedPlayer && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-dark-900 border border-white/10 rounded-2xl w-full max-w-sm mx-4 shadow-2xl">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="tac-panel tac-corners w-full max-w-sm">
             {/* 头部 */}
-            <div className="flex items-center justify-between p-5 border-b border-white/5">
-              <h3 className="text-lg font-bold flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
+            <div className="flex items-center justify-between p-5 border-b border-ink-line">
+              <h3 className="text-lg font-extrabold text-fg flex items-center gap-2">
+                <span className="w-1.5 h-1.5 bg-terminal animate-tac-blink" />
                 玩家信息
               </h3>
               <button
                 onClick={() => setSelectedPlayer(null)}
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                className="p-2 text-fg-dim hover:text-fg hover:bg-ink-800 transition-colors"
+                aria-label="关闭"
               >
-                <FaTimes className="text-gray-400" />
+                <FaTimes />
               </button>
             </div>
 
             {/* 内容 */}
             <div className="p-5 space-y-4">
               <div className="text-center">
-                <h4 className="text-xl font-bold text-white mb-1">{selectedPlayer.name}</h4>
-                <p className="text-xs text-gray-500 font-mono">BM ID: {selectedPlayer.id}</p>
+                <h4 className="text-xl font-extrabold text-fg mb-1">{selectedPlayer.name}</h4>
+                <p className="text-xs text-fg-dim font-mono tabular-nums">BM ID: {selectedPlayer.id}</p>
               </div>
 
-              <div className="bg-white/5 rounded-lg p-4 space-y-2">
+              <div className="bg-ink-800 border border-ink-line p-4 space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">状态</span>
-                  <span className="text-green-400 font-medium">在线</span>
+                  <span className="text-fg-dim">状态</span>
+                  <span className="inline-flex items-center gap-1.5 text-terminal font-mono uppercase tracking-wider text-xs">
+                    <span className="w-1.5 h-1.5 bg-terminal animate-tac-blink" />
+                    ONLINE
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">服务器</span>
-                  <span className="text-white truncate ml-4 max-w-[180px]">{server?.name || bmInfo?.name}</span>
+                  <span className="text-fg-dim">服务器</span>
+                  <span className="text-fg truncate ml-4 max-w-[180px]">{server?.name || bmInfo?.name}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">上线时间</span>
-                  <span className="text-white">{formatDateTime(selectedPlayer.sessionStart)}</span>
+                  <span className="text-fg-dim">上线时间</span>
+                  <span className="text-fg font-mono tabular-nums">{formatDateTime(selectedPlayer.sessionStart)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">在线时长</span>
-                  <span className="text-green-400">
+                  <span className="text-fg-dim">在线时长</span>
+                  <span className="text-terminal font-mono tabular-nums">
                     {formatDuration(getSessionDurationSec(selectedPlayer) || selectedPlayer.onlineDurationSec)}
                   </span>
                 </div>
               </div>
 
-              <p className="text-xs text-gray-500 text-center">
+              <p className="text-xs text-fg-mute text-center">
                 点击下方按钮将此玩家添加到追踪列表，当他上线/下线时会收到通知
               </p>
             </div>
 
             {/* 底部按钮 */}
-            <div className="flex gap-3 p-5 border-t border-white/5">
+            <div className="flex gap-3 p-5 border-t border-ink-line">
               <button
                 onClick={() => setSelectedPlayer(null)}
-                className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+                className="tac-btn tac-btn-ghost flex-1"
               >
                 取消
               </button>
               <button
                 onClick={handleTrackPlayer}
                 disabled={tracking}
-                className="flex-1 py-3 bg-[#cd5241] hover:bg-[#b04537] rounded-lg font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                className="tac-btn tac-btn-primary flex-1"
               >
                 {tracking ? (
                   <>

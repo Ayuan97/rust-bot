@@ -203,32 +203,33 @@ function FCMSettings({ onNavigateToPairing }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-48">
-        <div className="animate-spin w-8 h-8 border-2 border-rust-accent border-t-transparent rounded-full" />
+        <div className="animate-spin w-8 h-8 border-2 border-hazard border-t-transparent" />
       </div>
     );
   }
+
+  const hasCredentials = status.hasCredentials || status.hasStoredCredentials;
 
   return (
     <div className="space-y-6">
       {/* 过期/错误警告 Banner */}
       {(isExpired || isExpiringSoon || hasConnectionError) && (
-        <div className={`p-4 rounded-xl border flex items-start gap-3 animate-fade-in ${(isExpired || hasConnectionError)
-          ? 'bg-red-500/10 border-red-500/20'
-          : 'bg-yellow-500/10 border-yellow-500/20'
-          }`}>
-          <div className={`p-2 rounded-lg ${(isExpired || hasConnectionError) ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'
-            }`}>
+        <div className="tac-panel tac-corners p-4 bg-hazard-dim border-hazard/40 flex items-start gap-3 animate-fade-in">
+          <div className="w-9 h-9 shrink-0 bg-hazard-dim border border-hazard/40 flex items-center justify-center text-hazard">
             <FaExclamationTriangle />
           </div>
-          <div className="flex-1">
-            <h3 className={`font-bold ${(isExpired || hasConnectionError) ? 'text-red-400' : 'text-yellow-400'}`}>
+          <div className="flex-1 min-w-0">
+            <div className="tac-label mb-1 text-hazard">
+              {hasConnectionError ? 'CONNECTION FAILED' : isExpired ? 'CREDENTIALS EXPIRED' : 'EXPIRING SOON'}
+            </div>
+            <h3 className="font-extrabold text-fg">
               {hasConnectionError
                 ? 'FCM 连接失败'
                 : isExpired
                   ? 'FCM 凭证已过期'
                   : 'FCM 凭证即将过期'}
             </h3>
-            <p className="text-gray-300 text-sm mt-1">
+            <p className="text-fg-dim text-sm mt-1 leading-relaxed">
               {hasConnectionError
                 ? `最近一次连接尝试失败: ${diagnosis.info.lastError.message}。如果持续失败，您的凭证可能已在其他设备重置。`
                 : isExpired
@@ -244,38 +245,33 @@ function FCMSettings({ onNavigateToPairing }) {
                 }
                 setShowUpdateModal(true);
               }}
-              className={`mt-3 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors ${(isExpired || hasConnectionError)
-                ? 'bg-red-500 hover:bg-red-600 text-white'
-                : 'bg-yellow-500 hover:bg-yellow-600 text-black'
-                }`}
+              className="mt-3 tac-btn tac-btn-primary !py-2.5"
             >
-              <FaSync /> 立即更新凭证
+              <FaSync /> 立即更新凭证 // UPDATE
             </button>
           </div>
         </div>
       )}
 
       {/* 状态卡片 */}
-      <div className={`p-4 rounded-xl border ${status.isListening
-        ? 'bg-green-500/10 border-green-500/20'
-        : status.hasCredentials || status.hasStoredCredentials
-          ? 'bg-yellow-500/10 border-yellow-500/20'
-          : 'bg-dark-700/50 border-white/5'
-        }`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${status.isListening ? 'bg-green-500/20' : 'bg-dark-600'
+      <div className="tac-panel tac-corners p-4">
+        <div className="tac-label mb-3 flex items-center gap-2">
+          <FaBell className="text-hazard" /> 配对状态 // PAIRING
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-10 h-10 shrink-0 flex items-center justify-center border ${status.isListening ? 'border-terminal/40 bg-ink-800 text-terminal' : 'border-ink-line bg-ink-800 text-fg-dim'
               }`}>
-              <FaBell className={status.isListening ? 'text-green-400' : 'text-gray-400'} />
+              <FaBell />
             </div>
-            <div>
-              <div className="font-medium text-white">
-                {status.isListening ? 'FCM 监听中' : status.hasCredentials || status.hasStoredCredentials ? '已配置凭证' : '未配置凭证'}
+            <div className="min-w-0">
+              <div className="font-bold text-fg">
+                {status.isListening ? 'FCM 监听中' : hasCredentials ? '已配置凭证' : '未配置凭证'}
               </div>
-              <div className="text-sm text-gray-400">
+              <div className="text-sm text-fg-dim truncate">
                 {status.isListening
-                  ? `类型: ${status.credentialType || 'GCM'} ${status.steamId ? `| Steam: ${status.steamId}` : ''}`
-                  : status.hasCredentials || status.hasStoredCredentials
+                  ? <span className="font-mono tabular-nums">类型: {status.credentialType || 'GCM'}{status.steamId ? ` | STEAM: ${status.steamId}` : ''}</span>
+                  : hasCredentials
                     ? 'FCM 未在监听（可能断开或未启动）'
                     : '请点击下方按钮添加 FCM 凭证'
                 }
@@ -283,12 +279,22 @@ function FCMSettings({ onNavigateToPairing }) {
             </div>
           </div>
 
-          <div className={`w-3 h-3 rounded-full ${status.isListening
-            ? 'bg-green-400 animate-pulse'
-            : status.hasCredentials || status.hasStoredCredentials
-              ? 'bg-yellow-400'
-              : 'bg-gray-500'
-            }`} />
+          <span className={`inline-flex items-center gap-1.5 px-2 py-1 border shrink-0 ${status.isListening
+            ? 'text-terminal border-terminal/30'
+            : hasCredentials
+              ? 'text-hazard border-hazard/30 bg-hazard-dim'
+              : 'text-fg-mute border-ink-line'
+            }`}>
+            <span className={`w-1.5 h-1.5 ${status.isListening
+              ? 'bg-terminal animate-tac-blink'
+              : hasCredentials
+                ? 'bg-hazard'
+                : 'bg-fg-mute'
+              }`} />
+            <span className="font-mono text-[11px] uppercase tracking-wider">
+              {status.isListening ? 'LIVE' : hasCredentials ? 'IDLE' : 'NONE'}
+            </span>
+          </span>
         </div>
       </div>
 
@@ -296,7 +302,7 @@ function FCMSettings({ onNavigateToPairing }) {
       {/* 操作按钮 */}
       <div className="flex gap-3 flex-wrap">
         {/* 添加凭证按钮 - 没有凭证时显示 */}
-        {!(status.hasCredentials || status.hasStoredCredentials) && (
+        {!hasCredentials && (
           <button
             onClick={() => {
               if (isSubscriptionExpired) {
@@ -309,52 +315,52 @@ function FCMSettings({ onNavigateToPairing }) {
                 setShowUpdateModal(true);
               }
             }}
-            className="btn btn-primary bg-rust-accent hover:bg-rust-accent/80"
+            className="tac-btn tac-btn-primary"
           >
-            <FaPlug /> 添加 FCM 凭证
+            <FaPlug /> 添加 FCM 凭证 // ADD
           </button>
         )}
 
         <button
           onClick={() => handleDiagnose(false)}
           disabled={diagnosing}
-          className="btn btn-primary"
+          className="tac-btn tac-btn-primary"
         >
           {diagnosing ? (
             <span className="animate-spin">...</span>
           ) : (
-            <><FaSearch /> 诊断凭证</>
+            <><FaSearch /> 诊断凭证 // DIAGNOSE</>
           )}
         </button>
 
         <button
           onClick={handleVerify}
           disabled={verifying}
-          className="btn btn-secondary bg-purple-600 hover:bg-purple-500 text-white border-none"
+          className="tac-btn tac-btn-ghost"
         >
           {verifying ? (
             <span className="animate-spin">...</span>
           ) : (
-            <><FaCheck /> 验证有效性</>
+            <><FaCheck /> 验证有效性 // VERIFY</>
           )}
         </button>
 
         {/* 重连按钮 - 有凭证但未连接时显示 */}
-        {(status.hasCredentials || status.hasStoredCredentials) && !status.isListening && (
+        {hasCredentials && !status.isListening && (
           <button
             onClick={handleReconnect}
             disabled={reconnecting}
-            className="btn btn-secondary bg-green-600 hover:bg-green-500 text-white border-none"
+            className="tac-btn tac-btn-ghost"
           >
             {reconnecting ? (
               <span className="animate-spin">...</span>
             ) : (
-              <><FaPlug /> 重连 FCM</>
+              <><FaPlug /> 重连 FCM // RECONNECT</>
             )}
           </button>
         )}
 
-        {(status.hasCredentials || status.hasStoredCredentials) && (
+        {hasCredentials && (
           <>
             <button
               onClick={() => {
@@ -364,16 +370,16 @@ function FCMSettings({ onNavigateToPairing }) {
                 }
                 setShowUpdateModal(true);
               }}
-              className="btn btn-ghost text-blue-400 hover:bg-blue-500/10"
+              className="tac-btn tac-btn-ghost"
             >
-              <FaSync /> 更新凭证
+              <FaSync /> 更新凭证 // UPDATE
             </button>
             <button
               onClick={handleReset}
               disabled={resetting}
-              className="btn btn-ghost text-red-400 hover:bg-red-500/10"
+              className="tac-btn tac-btn-ghost"
             >
-              {resetting ? '重置中...' : <><FaTrash /> 重置凭证</>}
+              {resetting ? '重置中...' : <><FaTrash /> 重置凭证 // RESET</>}
             </button>
           </>
         )}
@@ -382,51 +388,37 @@ function FCMSettings({ onNavigateToPairing }) {
       {/* 诊断结果 */}
       {diagnosis && (
         <div className="space-y-4 animate-fade-in">
-          <h4 className="font-medium text-white flex items-center gap-2">
-            <FaInfoCircle className="text-gray-400" />
-            诊断结果
-          </h4>
+          <div className="tac-label flex items-center gap-2">
+            <FaInfoCircle className="text-hazard" /> 诊断结果 // DIAGNOSIS
+          </div>
 
           {/* 凭证信息 */}
-          <div className="p-4 rounded-xl bg-dark-700/50 border border-white/5">
-            <h5 className="text-sm font-medium text-gray-300 mb-3">凭证信息</h5>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <span className="text-gray-500">类型:</span>
-                <span className="ml-2 text-white">{diagnosis.info.type || '未知'}</span>
-              </div>
-              <div>
-                <span className="text-gray-500">Android ID:</span>
-                <span className="ml-2 text-white font-mono">{diagnosis.info.androidId || '无'}</span>
-              </div>
-              <div>
-                <span className="text-gray-500">Security Token:</span>
-                <span className="ml-2 text-white">{diagnosis.info.hasSecurityToken ? '已设置' : '缺失'}</span>
-              </div>
-              <div>
-                <span className="text-gray-500">Steam ID:</span>
-                <span className="ml-2 text-white font-mono">{diagnosis.info.steamId || '未知'}</span>
-              </div>
-              <div>
-                <span className="text-gray-500">过期时间:</span>
-                <span className={`ml-2 ${diagnosis.info.isExpired ? 'text-red-400 font-bold' : 'text-white'}`}>
-                  {diagnosis.info.expiresAt ? new Date(diagnosis.info.expiresAt).toLocaleString() : '未知'}
-                </span>
-              </div>
+          <div className="border border-ink-line">
+            <div className="bg-ink-800 px-4 py-2.5 tac-label">CREDENTIALS // 凭证信息</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-ink-line border-t border-ink-line">
+              <InfoRow label="类型 // TYPE" value={diagnosis.info.type || '未知'} mono />
+              <InfoRow label="ANDROID ID" value={diagnosis.info.androidId || '无'} mono truncate />
+              <InfoRow label="SECURITY TOKEN" value={diagnosis.info.hasSecurityToken ? '已设置' : '缺失'} />
+              <InfoRow label="STEAM ID" value={diagnosis.info.steamId || '未知'} mono />
+              <InfoRow
+                label="过期时间 // EXPIRES"
+                value={diagnosis.info.expiresAt ? new Date(diagnosis.info.expiresAt).toLocaleString() : '未知'}
+                mono
+                valueClass={diagnosis.info.isExpired ? 'text-hazard font-bold' : 'text-fg'}
+              />
               {diagnosis.info.daysUntilExpire !== undefined && (
-                <div>
-                  <span className="text-gray-500">剩余天数:</span>
-                  <span className={`ml-2 font-bold ${diagnosis.info.daysUntilExpire <= 7 ? 'text-yellow-400' : 'text-green-400'}`}>
-                    {diagnosis.info.daysUntilExpire} 天
-                  </span>
-                </div>
+                <InfoRow
+                  label="剩余天数 // DAYS LEFT"
+                  value={`${diagnosis.info.daysUntilExpire} 天`}
+                  mono
+                  valueClass={diagnosis.info.daysUntilExpire <= 7 ? 'text-hazard font-bold' : 'text-terminal font-bold'}
+                />
               )}
-              <div>
-                <span className="text-gray-500">监听状态:</span>
-                <span className={`ml-2 ${diagnosis.info.isListening ? 'text-green-400' : 'text-yellow-400'}`}>
-                  {diagnosis.info.isListening ? '监听中' : '未监听'}
-                </span>
-              </div>
+              <InfoRow
+                label="监听状态 // LISTEN"
+                value={diagnosis.info.isListening ? '监听中' : '未监听'}
+                valueClass={diagnosis.info.isListening ? 'text-terminal' : 'text-hazard'}
+              />
             </div>
           </div>
 
@@ -436,23 +428,19 @@ function FCMSettings({ onNavigateToPairing }) {
               {diagnosis.issues.map((issue, index) => (
                 <div
                   key={index}
-                  className={`p-3 rounded-lg border ${issue.level === 'error'
-                    ? 'bg-red-500/10 border-red-500/20'
-                    : 'bg-yellow-500/10 border-yellow-500/20'
-                    }`}
+                  className="p-3 border bg-hazard-dim border-hazard/40"
                 >
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-start gap-2.5">
                     {issue.level === 'error' ? (
-                      <FaTimes className="text-red-400 mt-0.5 flex-shrink-0" />
+                      <FaTimes className="text-hazard mt-0.5 flex-shrink-0" />
                     ) : (
-                      <FaExclamationTriangle className="text-yellow-400 mt-0.5 flex-shrink-0" />
+                      <FaExclamationTriangle className="text-hazard mt-0.5 flex-shrink-0" />
                     )}
-                    <div>
-                      <div className={`font-medium ${issue.level === 'error' ? 'text-red-400' : 'text-yellow-400'
-                        }`}>
+                    <div className="min-w-0">
+                      <div className="font-bold text-fg">
                         {issue.message}
                       </div>
-                      <div className="text-sm text-gray-400 mt-1">
+                      <div className="text-sm text-fg-dim mt-1">
                         {issue.solution}
                       </div>
                     </div>
@@ -464,23 +452,24 @@ function FCMSettings({ onNavigateToPairing }) {
 
           {/* 无问题时的提示 */}
           {diagnosis.issues.length === 0 && (
-            <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20">
+            <div className="p-4 border border-terminal/30 bg-ink-800">
               <div className="flex items-center gap-3">
-                <FaCheck className="text-green-400" />
+                <span className="w-1.5 h-1.5 bg-terminal animate-tac-blink shrink-0" />
+                <FaCheck className="text-terminal shrink-0" />
                 <div>
-                  <div className="font-medium text-green-400">凭证配置正常</div>
-                  <div className="text-sm text-gray-400">没有发现任何问题</div>
+                  <div className="font-bold text-fg">凭证配置正常</div>
+                  <div className="text-sm text-fg-dim">没有发现任何问题</div>
                 </div>
               </div>
             </div>
           )}
 
           {/* 建议 */}
-          <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+          <div className="p-4 border border-ink-line bg-ink-800">
             <div className="flex items-start gap-3">
-              <FaInfoCircle className="text-blue-400 mt-0.5 flex-shrink-0" />
-              <div className="text-sm text-gray-300">
-                <strong>建议:</strong> {diagnosis.recommendation}
+              <FaInfoCircle className="text-fg-dim mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-fg-dim">
+                <strong className="text-fg">建议:</strong> {diagnosis.recommendation}
               </div>
             </div>
           </div>
@@ -489,15 +478,15 @@ function FCMSettings({ onNavigateToPairing }) {
 
       {/* 使用说明 - 在没有过期的情况下显示，避免干扰警告 */}
       {(!isExpired && !isExpiringSoon) && (
-        <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+        <div className="p-4 border border-ink-line bg-ink-800">
           <div className="flex items-start gap-3">
-            <FaExclamationTriangle className="text-blue-400 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-gray-300 space-y-1">
-              <p><strong>关于 FCM 凭证:</strong></p>
-              <ul className="list-disc list-inside text-gray-400 space-y-1">
+            <FaInfoCircle className="text-fg-dim mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-fg-dim space-y-1">
+              <p><strong className="text-fg">关于 FCM 凭证:</strong></p>
+              <ul className="list-disc list-inside text-fg-dim space-y-1">
                 <li>FCM 用于接收游戏中的配对推送（在游戏中点击 Pair）</li>
                 <li>凭证建议使用 {REQUIRED_PLUGIN_BROWSER} 插件生成并复制</li>
-                <li>登录页：<a href={STEAM_LOGIN_URL} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">companion-rust.facepunch.com</a></li>
+                <li>登录页：<a href={STEAM_LOGIN_URL} target="_blank" rel="noopener noreferrer" className="text-hazard hover:text-hazard-bright transition-colors">companion-rust.facepunch.com</a></li>
                 <li>凭证有有效期，过期后需要重新获取</li>
                 <li>如果连接循环或无法接收推送，尝试更新凭证或重置</li>
               </ul>
@@ -508,110 +497,117 @@ function FCMSettings({ onNavigateToPairing }) {
 
       {/* 更新凭证模态框 */}
       {showUpdateModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-2xl tactic-border tactic-cut p-1 bg-black/60">
-            <div className="bg-black/80 flex flex-col max-h-[85vh]">
-              {/* Modal Header */}
-              <div className="p-5 border-b border-white/5 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 tactic-cut bg-[#cd5241]/20 flex items-center justify-center text-[#cd5241]">
-                    <FaSync />
-                  </div>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-2xl tac-panel tac-corners flex flex-col max-h-[85vh]">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-ink-line flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-hazard-dim border border-hazard/40 flex items-center justify-center text-hazard">
+                  <FaSync />
+                </div>
+                <div>
+                  <div className="tac-label mb-1">UPDATE CREDENTIALS</div>
+                  <h3 className="text-lg font-extrabold text-fg tracking-tight">更新 FCM 凭证</h3>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowUpdateModal(false)}
+                className="w-8 h-8 border border-ink-line bg-ink-800 hover:border-hazard/50 flex items-center justify-center text-fg-dim hover:text-hazard transition-colors"
+                aria-label="关闭"
+              >
+                <FaTimes />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 flex-1 overflow-y-auto space-y-5 custom-scrollbar">
+              {/* 步骤指引 */}
+              <div className="space-y-4">
+                <div className="flex gap-4">
+                  <span className="text-[10px] font-mono tabular-nums font-bold text-hazard bg-hazard-dim border border-hazard/30 w-6 h-6 flex items-center justify-center shrink-0 mt-0.5">1</span>
                   <div>
-                    <h3 className="text-lg font-black uppercase italic text-white tracking-tight">更新 FCM 凭证</h3>
-                    <p className="text-[10px] text-gray-500 uppercase tracking-widest">请获取新的凭证命令并粘贴到下方</p>
+                    <p className="text-fg-dim text-sm">
+                      先在 {REQUIRED_PLUGIN_BROWSER} 安装插件并确认已启用
+                    </p>
+                    <a
+                      href={EDGE_EXTENSION_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-hazard hover:text-hazard-bright transition-colors text-sm inline-flex items-center gap-1 mt-1 font-bold"
+                    >
+                      打开 Edge 插件商店 <FaExternalLinkIcon />
+                    </a>
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowUpdateModal(false)}
-                  className="w-8 h-8 tactic-cut bg-white/5 hover:bg-[#cd5241]/20 flex items-center justify-center text-gray-400 hover:text-[#cd5241] transition-colors"
-                >
-                  <FaTimes />
-                </button>
-              </div>
-
-              {/* Modal Body */}
-              <div className="p-5 flex-1 overflow-y-auto space-y-5">
-                {/* 步骤指引 */}
-                <div className="space-y-4">
-                  <div className="flex gap-4">
-                    <div className="w-6 h-6 tactic-cut bg-[#cd5241]/20 text-[#cd5241] flex items-center justify-center text-xs font-black shrink-0 mt-0.5">1</div>
-                    <div>
-                      <p className="text-gray-300 text-sm">
-                        先在 {REQUIRED_PLUGIN_BROWSER} 安装插件并确认已启用
-                      </p>
-                      <a
-                        href={EDGE_EXTENSION_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[#cd5241] hover:underline text-sm inline-flex items-center gap-1 mt-1 font-bold"
-                      >
-                        打开 Edge 插件商店 <FaExternalLinkIcon />
-                      </a>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="w-6 h-6 tactic-cut bg-[#cd5241]/20 text-[#cd5241] flex items-center justify-center text-xs font-black shrink-0 mt-0.5">2</div>
-                    <div>
-                      <p className="text-gray-300 text-sm">在 Edge 中打开 Rust+ 登录页并完成 Steam 登录</p>
-                      <a
-                        href={STEAM_LOGIN_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[#cd5241] hover:underline text-sm inline-flex items-center gap-1 mt-1 font-bold"
-                      >
-                        companion-rust.facepunch.com <FaExternalLinkIcon />
-                      </a>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="w-6 h-6 tactic-cut bg-[#cd5241]/20 text-[#cd5241] flex items-center justify-center text-xs font-black shrink-0 mt-0.5">3</div>
-                    <div>
-                      <p className="text-gray-300 text-sm">在插件结果页复制完整的 <code className="bg-white/10 px-1 py-0.5 tactic-cut text-xs text-[#cd5241]">/credentials add ...</code> 命令，粘贴到下方保存</p>
-                    </div>
+                <div className="flex gap-4">
+                  <span className="text-[10px] font-mono tabular-nums font-bold text-hazard bg-hazard-dim border border-hazard/30 w-6 h-6 flex items-center justify-center shrink-0 mt-0.5">2</span>
+                  <div>
+                    <p className="text-fg-dim text-sm">在 Edge 中打开 Rust+ 登录页并完成 Steam 登录</p>
+                    <a
+                      href={STEAM_LOGIN_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-hazard hover:text-hazard-bright transition-colors text-sm inline-flex items-center gap-1 mt-1 font-bold"
+                    >
+                      companion-rust.facepunch.com <FaExternalLinkIcon />
+                    </a>
                   </div>
                 </div>
-
-                {/* 输入区域 */}
-                <div className="space-y-2">
-                  <label className="text-xs font-black text-gray-300 uppercase tracking-widest">粘贴凭证命令</label>
-                  <textarea
-                    value={updateCommand}
-                    onChange={(e) => setUpdateCommand(e.target.value)}
-                    placeholder="/credentials add gcm_android_id:..."
-                    className="w-full h-28 bg-black/50 border border-white/10 tactic-cut p-4 text-sm font-mono text-gray-200 focus:border-[#cd5241] outline-none resize-none placeholder:text-gray-600"
-                  />
+                <div className="flex gap-4">
+                  <span className="text-[10px] font-mono tabular-nums font-bold text-hazard bg-hazard-dim border border-hazard/30 w-6 h-6 flex items-center justify-center shrink-0 mt-0.5">3</span>
+                  <div>
+                    <p className="text-fg-dim text-sm">在插件结果页复制完整的 <code className="bg-ink-700 border border-ink-line px-1 py-0.5 text-xs text-hazard font-mono">/credentials add ...</code> 命令，粘贴到下方保存</p>
+                  </div>
                 </div>
               </div>
 
-              {/* Modal Footer */}
-              <div className="p-5 border-t border-white/5 flex justify-end gap-3 bg-black/40">
-                <button
-                  onClick={() => setShowUpdateModal(false)}
-                  className="px-4 py-2 tactic-cut text-xs font-black uppercase text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleUpdateCredentials}
-                  disabled={updating || !updateCommand.trim()}
-                  className={`px-6 py-2.5 tactic-cut text-xs font-black uppercase flex items-center gap-2 transition-all ${updating || !updateCommand.trim()
-                    ? 'bg-gray-800 cursor-not-allowed text-gray-500'
-                    : 'bg-[#cd5241] hover:bg-[#b04537] text-white shadow-lg shadow-[#cd5241]/20'
-                    }`}
-                >
-                  {updating ? (
-                    <span className="animate-spin">...</span>
-                  ) : (
-                    <FaSave />
-                  )}
-                  {updating ? '正在更新...' : '保存并更新'}
-                </button>
+              {/* 输入区域 */}
+              <div className="space-y-2">
+                <label className="block tac-label border-l-2 border-hazard pl-2">PASTE COMMAND // 粘贴凭证命令</label>
+                <textarea
+                  value={updateCommand}
+                  onChange={(e) => setUpdateCommand(e.target.value)}
+                  placeholder="/credentials add gcm_android_id:..."
+                  className="tac-input h-28 font-mono text-[11px] text-hazard resize-none custom-scrollbar placeholder:text-fg-mute"
+                />
               </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-5 border-t border-ink-line flex justify-end gap-3 bg-ink-850">
+              <button
+                onClick={() => setShowUpdateModal(false)}
+                className="tac-btn tac-btn-ghost"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleUpdateCredentials}
+                disabled={updating || !updateCommand.trim()}
+                className="tac-btn tac-btn-primary"
+              >
+                {updating ? (
+                  <span className="animate-spin">...</span>
+                ) : (
+                  <FaSave />
+                )}
+                {updating ? '正在更新 // SAVING...' : '保存并更新 // SAVE'}
+              </button>
             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function InfoRow({ label, value, mono = false, truncate = false, valueClass = 'text-fg' }) {
+  return (
+    <div className="bg-ink-850 px-4 py-2.5">
+      <div className="tac-label mb-1">{label}</div>
+      <div className={`text-sm ${mono ? 'font-mono tabular-nums' : ''} ${truncate ? 'truncate' : ''} ${valueClass}`}>
+        {value}
+      </div>
     </div>
   );
 }

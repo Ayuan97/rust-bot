@@ -86,7 +86,6 @@ function TrackingView() {
           : p
       ));
 
-      // 显示通知
       const message = data.isSameServer
         ? `[警告] ${data.playerName} 进入了你的服务器!`
         : `[追踪] ${data.playerName} 上线了`;
@@ -180,39 +179,37 @@ function TrackingView() {
   const onlineCount = players.filter(p => p.isOnline).length;
 
   return (
-    <div className="h-full flex flex-col animate-fade-in">
+    <div className="h-full flex flex-col animate-fade-in font-sans">
       {/* 顶部工具栏 */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <h2 className="text-xl font-black uppercase italic tracking-tight flex items-center gap-3">
-            <FaUsers className="text-[#cd5241]" />
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-6">
+        <div>
+          <div className="tac-label mb-1">PLAYER TRACKING</div>
+          <h2 className="text-xl font-extrabold text-fg tracking-tight flex items-center gap-3">
             玩家追踪
-            <span className="text-sm font-normal text-gray-500 not-italic">
-              ({players.length} 人, {onlineCount} 在线)
-            </span>
+            <span className="font-mono text-xs font-normal text-fg-mute">{players.length} 人 · {onlineCount} 在线</span>
           </h2>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {/* 搜索框 */}
           <div className="relative">
-            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-mute text-xs pointer-events-none" />
             <input
               type="text"
               placeholder="搜索玩家..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm focus:outline-none focus:border-[#cd5241] w-48"
+              className="tac-input !pl-9 !py-2.5 w-44"
             />
           </div>
 
           {/* 分组筛选 */}
           <div className="relative">
-            <FaFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+            <FaFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-mute text-xs pointer-events-none z-10" />
             <select
               value={selectedGroup}
               onChange={(e) => setSelectedGroup(e.target.value)}
-              className="pl-9 pr-8 py-2 bg-white/5 border border-white/10 rounded-lg text-sm focus:outline-none focus:border-[#cd5241] appearance-none cursor-pointer"
+              className="tac-input !pl-9 !py-2.5 pr-8 appearance-none cursor-pointer"
             >
               <option value="all">全部分组</option>
               {groups.map(g => (
@@ -225,61 +222,56 @@ function TrackingView() {
           <button
             onClick={() => loadPlayers(true)}
             disabled={refreshing}
-            className="p-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-all"
+            className="w-10 h-10 flex items-center justify-center border border-ink-line text-fg-dim hover:text-fg hover:border-fg-dim transition-colors shrink-0"
           >
-            <FaSync className={`text-gray-400 ${refreshing ? 'animate-spin' : ''}`} />
+            <FaSync className={refreshing ? 'animate-spin' : ''} />
           </button>
 
           {/* 添加按钮 */}
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="px-4 py-2.5 bg-[#cd5241] hover:bg-[#b04537] rounded-lg flex items-center gap-2 font-bold text-sm transition-all"
-          >
+          <button onClick={() => setShowAddModal(true)} className="tac-btn tac-btn-primary !py-2.5">
             <FaPlus /> 添加追踪
           </button>
         </div>
       </div>
 
       {/* 主内容区 */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar">
         {loading ? (
-          // 加载骨架屏
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {[1, 2, 3, 4, 5, 6].map(i => (
-              <div key={i} className="h-32 bg-white/5 rounded-xl animate-pulse" />
+              <div key={i} className="h-32 border border-ink-line bg-ink-850 animate-pulse" />
             ))}
           </div>
         ) : players.length === 0 ? (
           // 空状态
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <FaUsers className="text-6xl text-gray-700 mb-4" />
-            <h3 className="text-xl font-bold text-gray-400 mb-2">暂无追踪玩家</h3>
-            <p className="text-gray-500 mb-6">添加玩家开始追踪他们的在线状态</p>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="px-6 py-3 bg-[#cd5241] hover:bg-[#b04537] rounded-lg flex items-center gap-2 font-bold transition-all"
-            >
+            <div className="w-16 h-16 border border-ink-line flex items-center justify-center mb-5">
+              <FaUsers className="text-2xl text-fg-mute" />
+            </div>
+            <div className="tac-label mb-2">NO TARGETS</div>
+            <h3 className="text-xl font-extrabold text-fg mb-2">暂无追踪玩家</h3>
+            <p className="text-sm text-fg-dim mb-6">添加玩家开始追踪他们的在线状态与换服动向</p>
+            <button onClick={() => setShowAddModal(true)} className="tac-btn tac-btn-primary !py-3">
               <FaPlus /> 添加第一个追踪
             </button>
           </div>
         ) : filteredPlayers.length === 0 ? (
-          // 搜索无结果
           <div className="flex flex-col items-center justify-center h-64 text-center">
-            <FaSearch className="text-4xl text-gray-700 mb-4" />
-            <p className="text-gray-500">没有找到匹配的玩家</p>
+            <FaSearch className="text-3xl text-fg-mute mb-4" />
+            <p className="text-sm text-fg-dim">没有找到匹配的玩家</p>
           </div>
         ) : (
           // 玩家列表 (按分组)
           <div className="space-y-6">
             {Object.entries(playersByGroup).map(([groupName, groupPlayers]) => (
               <div key={groupName}>
-                <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-[#cd5241] rounded-full" />
+                <h3 className="tac-label mb-3 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-hazard" />
                   {groupName}
-                  <span className="text-gray-600">({groupPlayers.length})</span>
+                  <span className="text-fg-mute">({groupPlayers.length})</span>
                 </h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {groupPlayers.map(player => (
                     <PlayerCard
                       key={player.steamId}
@@ -335,8 +327,8 @@ function PlayerCard({ player, nowTs, menuOpen, onMenuToggle, onDelete, onClick }
 
   return (
     <div
-      className={`relative bg-dark-800/50 rounded-xl border transition-all cursor-pointer hover:border-white/20 ${
-        player.isOnline ? 'border-green-500/30' : 'border-white/5'
+      className={`relative border bg-ink-850 transition-colors cursor-pointer hover:border-ink-line2 ${
+        player.isOnline ? 'border-terminal/40' : 'border-ink-line'
       }`}
       onClick={onClick}
     >
@@ -344,41 +336,29 @@ function PlayerCard({ player, nowTs, menuOpen, onMenuToggle, onDelete, onClick }
         {/* 头部：状态和菜单 */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2">
-            {/* 在线状态指示 */}
-            <div className={`w-2.5 h-2.5 rounded-full ${
-              player.isOnline ? 'bg-green-400 animate-pulse' : 'bg-gray-600'
-            }`} />
-            <span className={`text-xs font-bold uppercase ${
-              player.isOnline ? 'text-green-400' : 'text-gray-500'
-            }`}>
-              {player.isOnline ? '在线' : '离线'}
+            <div className={`w-1.5 h-1.5 ${player.isOnline ? 'bg-terminal' : 'bg-fg-mute'}`} />
+            <span className={`font-mono text-[11px] uppercase tracking-wider ${player.isOnline ? 'text-terminal' : 'text-fg-mute'}`}>
+              {player.isOnline ? 'ONLINE' : 'OFFLINE'}
             </span>
-            {/* 优先级标识 */}
             {player.priority === 'HIGH' && (
-              <FaStar className="text-yellow-500 text-xs" title="高优先级" />
+              <FaStar className="text-hazard text-xs" title="高优先级" />
             )}
           </div>
 
           {/* 菜单按钮 */}
           <div className="relative">
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onMenuToggle();
-              }}
-              className="p-1.5 hover:bg-white/10 rounded transition-colors"
+              onClick={(e) => { e.stopPropagation(); onMenuToggle(); }}
+              className="p-1.5 text-fg-mute hover:text-fg transition-colors"
             >
-              <FaEllipsisV className="text-gray-500" />
+              <FaEllipsisV />
             </button>
 
             {menuOpen && (
-              <div className="absolute right-0 top-8 bg-dark-900 border border-white/10 rounded-lg shadow-xl z-10 py-1 min-w-[120px]">
+              <div className="absolute right-0 top-8 tac-panel shadow-2xl z-10 py-1 min-w-[120px]">
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete();
-                  }}
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-red-500/20 text-red-400 flex items-center gap-2"
+                  onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-hazard-dim text-hazard flex items-center gap-2"
                 >
                   <FaTrash /> 停止追踪
                 </button>
@@ -388,33 +368,39 @@ function PlayerCard({ player, nowTs, menuOpen, onMenuToggle, onDelete, onClick }
         </div>
 
         {/* 玩家名称 */}
-        <h4 className="font-bold text-white text-lg mb-1 truncate">
+        <h4 className="font-bold text-fg text-base mb-1 truncate">
           {player.currentName || 'Unknown Player'}
         </h4>
 
         {/* Steam ID */}
-        <p className="text-xs text-gray-500 font-mono mb-3 truncate">
+        <p className="font-mono text-[11px] text-fg-mute mb-3 truncate">
           {player.steamId}
         </p>
 
         {/* 服务器信息 */}
         {player.isOnline && player.currentServerName && (
-          <div className="flex items-center gap-2 text-xs text-gray-400 bg-white/5 rounded-lg px-3 py-2">
-            <FaServer className="text-gray-500" />
+          <div className="flex items-center gap-2 text-xs text-fg-dim border border-ink-line px-3 py-2">
+            <FaServer className="text-fg-mute" />
             <span className="truncate">{player.currentServerName}</span>
           </div>
         )}
 
-        <div className="mt-2 text-xs text-gray-500 space-y-1">
-          <div>累计游玩: {totalPlaytimeHours} 小时</div>
-          <div>
-            当前在线: {player.isOnline ? formatDuration(onlineDurationSec) : '-'}
+        <div className="mt-2.5 space-y-1 font-mono text-[11px] text-fg-mute">
+          <div className="flex justify-between">
+            <span>累计游玩</span>
+            <span className="text-fg-dim">{totalPlaytimeHours}H</span>
+          </div>
+          <div className="flex justify-between">
+            <span>当前在线</span>
+            <span className={player.isOnline ? 'text-terminal' : 'text-fg-mute'}>
+              {player.isOnline ? formatDuration(onlineDurationSec) : '-'}
+            </span>
           </div>
         </div>
 
         {/* 备注 */}
         {player.notes && (
-          <p className="text-xs text-gray-500 mt-2 truncate" title={player.notes}>
+          <p className="text-[11px] text-fg-mute mt-2 truncate" title={player.notes}>
             {player.notes}
           </p>
         )}

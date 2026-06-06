@@ -29,16 +29,17 @@ function formatAgo(dateValue) {
 }
 
 function statusLabel(node) {
+  // 状态色收敛：在线=terminal 绿（单点状态），其余告警/异常=hazard 红
   if (node.status === 'DRAINING') {
-    return { text: '排空中', className: 'text-yellow-400 border-yellow-400/30 bg-yellow-400/10' };
+    return { text: '排空中', tone: 'hazard' };
   }
   if (node.status === 'OFFLINE') {
-    return { text: '离线', className: 'text-red-400 border-red-400/30 bg-red-400/10' };
+    return { text: '离线', tone: 'hazard' };
   }
   if (!node.heartbeatAlive) {
-    return { text: '心跳超时', className: 'text-orange-400 border-orange-400/30 bg-orange-400/10' };
+    return { text: '心跳超时', tone: 'hazard' };
   }
-  return { text: '在线', className: 'text-green-400 border-green-400/30 bg-green-400/10' };
+  return { text: '在线', tone: 'online' };
 }
 
 export default function NodeMonitor() {
@@ -88,38 +89,43 @@ export default function NodeMonitor() {
   }, [summary.queueByReason]);
 
   if (loading) {
-    return <div className="text-sm text-gray-400 py-8">正在加载节点状态...</div>;
+    return (
+      <div className="tac-label py-8 flex items-center gap-2">
+        <span className="w-1.5 h-1.5 bg-hazard animate-tac-blink" /> LOADING NODES // 正在加载节点状态…
+      </div>
+    );
   }
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-bold text-white">子节点监控</h3>
-          <p className="text-xs text-gray-500 mt-1">
-            最近更新：{lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString('zh-CN') : '未知'}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="tac-label flex items-center gap-2">
+            <FaServer className="text-hazard" /> 节点运行 // NODES
+          </div>
+          <h3 className="text-lg font-bold text-fg mt-1">子节点监控</h3>
+          <p className="text-[11px] text-fg-mute mt-1 font-mono tracking-wider">
+            LAST SYNC · {lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString('zh-CN') : '未知'}
           </p>
         </div>
         <button
           type="button"
           onClick={() => fetchStatus({ silent: true })}
           disabled={refreshing}
-          className="px-3 py-2 text-xs font-bold rounded border border-white/10 hover:border-[#cd5241]/40 hover:bg-[#cd5241]/10 transition-colors disabled:opacity-60"
+          className="tac-btn tac-btn-ghost !py-2.5 shrink-0"
         >
-          <span className="inline-flex items-center gap-2">
-            <FaSync className={refreshing ? 'animate-spin' : ''} />
-            刷新
-          </span>
+          <FaSync className={refreshing ? 'animate-spin' : ''} /> 刷新
         </button>
       </div>
 
       {error && (
-        <div className="text-xs text-red-400 border border-red-400/30 bg-red-400/10 rounded p-3">
-          {error}
+        <div className="px-4 py-3 bg-hazard-dim border border-hazard/40 text-fg text-sm flex items-start gap-2.5">
+          <span className="font-mono text-hazard-bright text-xs mt-0.5 shrink-0">[ERR]</span>
+          <span>{error}</span>
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-px bg-ink-line border border-ink-line">
         <MetricCard
           icon={<FaServer />}
           label="在线节点"
@@ -152,58 +158,61 @@ export default function NodeMonitor() {
         />
       </div>
 
-      <div className="text-xs text-gray-500">
-        排队原因：{queueReasonText}
+      <div className="text-xs text-fg-dim flex items-center gap-2">
+        <span className="tac-label !text-[9px]">QUEUE</span>
+        排队原因：<span className="font-mono tabular-nums text-fg">{queueReasonText}</span>
       </div>
 
-      <div className="overflow-x-auto border border-white/10 rounded-lg">
+      <div className="overflow-x-auto border border-ink-line">
         <table className="w-full text-xs">
-          <thead className="bg-white/5 text-gray-400">
-            <tr>
-              <th className="text-left py-3 px-3">节点</th>
-              <th className="text-left py-3 px-3">状态</th>
-              <th className="text-left py-3 px-3">会话</th>
-              <th className="text-left py-3 px-3">容量</th>
-              <th className="text-left py-3 px-3">心跳</th>
-              <th className="text-left py-3 px-3">区域</th>
+          <thead className="bg-ink-800">
+            <tr className="text-fg-dim">
+              <th className="text-left py-2.5 px-3 font-semibold text-[11px]">节点</th>
+              <th className="text-left py-2.5 px-3 font-semibold text-[11px]">状态</th>
+              <th className="text-left py-2.5 px-3 font-semibold text-[11px]">会话</th>
+              <th className="text-left py-2.5 px-3 font-semibold text-[11px]">容量</th>
+              <th className="text-left py-2.5 px-3 font-semibold text-[11px]">心跳</th>
+              <th className="text-left py-2.5 px-3 font-semibold text-[11px]">区域</th>
             </tr>
           </thead>
           <tbody>
             {nodes.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 px-3 text-center text-gray-500">
+                <td colSpan={6} className="py-8 px-3 text-center text-fg-mute">
                   暂无已注册节点
                 </td>
               </tr>
             )}
             {nodes.map((node) => {
               const tag = statusLabel(node);
+              const online = tag.tone === 'online';
               return (
-                <tr key={node.id} className="border-t border-white/5 hover:bg-white/[0.03]">
+                <tr key={node.id} className="border-t border-ink-line hover:bg-ink-800/60 transition-colors">
                   <td className="py-3 px-3">
-                    <div className="text-white font-semibold">{node.id}</div>
-                    <div className="text-gray-500 mt-1">{node.publicIp}</div>
+                    <div className="text-fg font-mono font-semibold tabular-nums">{node.id}</div>
+                    <div className="text-fg-mute mt-1 font-mono tabular-nums">{node.publicIp}</div>
                   </td>
                   <td className="py-3 px-3">
-                    <span className={`inline-block px-2 py-1 rounded border ${tag.className}`}>
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 border ${online ? 'text-terminal border-terminal/30' : 'text-hazard border-hazard/30 bg-hazard-dim'}`}>
+                      <span className={`w-1.5 h-1.5 ${online ? 'bg-terminal animate-tac-blink' : 'bg-hazard'}`} />
                       {tag.text}
                     </span>
                   </td>
-                  <td className="py-3 px-3 text-gray-300">
-                    <div>活跃 {node.activeSessions}</div>
-                    <div className="text-gray-500 mt-1">
+                  <td className="py-3 px-3 text-fg-dim">
+                    <div className="text-fg">活跃 <span className="font-mono tabular-nums">{node.activeSessions}</span></div>
+                    <div className="text-fg-mute mt-1 font-mono tabular-nums">
                       连接中 {node.connectingSessions} / 已连 {node.connectedSessions}
                     </div>
                   </td>
-                  <td className="py-3 px-3 text-gray-300">
-                    <div>{node.totalCapacity}</div>
-                    <div className="text-gray-500 mt-1">利用率 {formatPercent(node.utilization)}</div>
+                  <td className="py-3 px-3 text-fg-dim">
+                    <div className="text-fg font-mono tabular-nums">{node.totalCapacity}</div>
+                    <div className="text-fg-mute mt-1">利用率 <span className="font-mono tabular-nums">{formatPercent(node.utilization)}</span></div>
                   </td>
-                  <td className="py-3 px-3 text-gray-300">
-                    <div>{node.lastHeartbeatAt ? formatAgo(node.lastHeartbeatAt) : '从未'}</div>
-                    <div className="text-gray-500 mt-1">TTL {summary.heartbeatTtlSec || 0}s</div>
+                  <td className="py-3 px-3 text-fg-dim">
+                    <div className="text-fg">{node.lastHeartbeatAt ? formatAgo(node.lastHeartbeatAt) : '从未'}</div>
+                    <div className="text-fg-mute mt-1 font-mono tabular-nums">TTL {summary.heartbeatTtlSec || 0}s</div>
                   </td>
-                  <td className="py-3 px-3 text-gray-400">
+                  <td className="py-3 px-3 text-fg-dim font-mono">
                     {node.region || '-'}
                   </td>
                 </tr>
@@ -218,12 +227,12 @@ export default function NodeMonitor() {
 
 function MetricCard({ icon, label, value }) {
   return (
-    <div className="bg-white/[0.03] border border-white/10 rounded-lg p-3">
-      <div className="text-gray-500 text-[11px] flex items-center gap-2">
-        <span className="text-[#cd5241]">{icon}</span>
+    <div className="bg-ink-850 px-3 py-2.5">
+      <div className="text-fg-dim text-[11px] flex items-center gap-2">
+        <span className="text-hazard text-xs">{icon}</span>
         {label}
       </div>
-      <div className="text-white text-lg font-bold mt-2">{value}</div>
+      <div className="text-fg text-lg font-bold font-mono tabular-nums mt-2">{value}</div>
     </div>
   );
 }

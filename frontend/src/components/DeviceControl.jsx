@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   FaLightbulb, FaTrash, FaSync, FaPowerOff, FaBolt,
-  FaEdit, FaTerminal, FaRobot, FaSearch, FaStar, FaRegStar,
+  FaEdit, FaRobot, FaSearch, FaStar, FaRegStar,
   FaDoorOpen, FaCrosshairs, FaFan, FaBell, FaBox, FaShieldAlt, FaExclamationTriangle, FaWifi
 } from 'react-icons/fa';
 import socketService from '../services/socket';
@@ -12,7 +12,7 @@ import EmptyState from './EmptyState';
 import { DeviceListSkeleton } from './Skeleton';
 import DeviceEditModal from './DeviceEditModal';
 
-// 自动化模式名称映射
+// 自动化模式名称映射（Rust+ 智能开关真实模式）
 const AUTO_MODE_NAMES = {
   0: null, 1: '白天开启', 2: '夜晚开启', 3: '始终开启', 4: '始终关闭', 7: '在线开启', 8: '在线关闭'
 };
@@ -28,74 +28,52 @@ function TacticalToolbar({
   stats
 }) {
   return (
-    <div className="relative isolate overflow-hidden tactic-border tactic-cut bg-black/40 shadow-2xl transition-all duration-300">
-      {/* 顶部装饰条 */}
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50"></div>
-
-      <div className="flex flex-col md:flex-row items-center justify-between gap-6 p-5">
-
-        {/* 左侧：搜索区 */}
-        <div className="relative w-full md:w-auto md:min-w-[320px] group">
-          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-            <FaSearch className="h-4 w-4 text-gray-400 group-focus-within:text-rust-orange transition-colors" />
-          </div>
+    <div className="tac-panel">
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 p-4">
+        {/* 搜索 */}
+        <div className="relative w-full md:w-auto md:min-w-[300px]">
+          <FaSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-fg-mute pointer-events-none" />
           <input
             type="text"
-            className="block w-full tactic-cut border border-white/5 bg-black/40 py-2.5 pl-11 pr-4 text-sm text-gray-200 placeholder:text-gray-600 focus:border-white/20 focus:bg-black/60 outline-none transition-all"
+            className="tac-input !pl-10"
             placeholder="搜索设备..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
 
-        {/* 中间：过滤器 */}
-        <div className="flex items-center gap-2 p-1 bg-black/40 tactic-cut border border-white/5">
+        {/* 过滤 */}
+        <div className="flex items-center gap-1 border border-ink-line p-1">
           <FilterTab active={filterType === 'all'} onClick={() => setFilterType('all')} icon={<FaBolt />} label="全部" />
           <FilterTab active={filterType === 'light'} onClick={() => setFilterType('light')} icon={<FaLightbulb />} label="灯光" />
           <FilterTab active={filterType === 'turret'} onClick={() => setFilterType('turret')} icon={<FaCrosshairs />} label="防御" />
           <FilterTab active={filterType === 'door'} onClick={() => setFilterType('door')} icon={<FaDoorOpen />} label="门控" />
         </div>
 
-        {/* 右侧：操作区 */}
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-px bg-white/10 mx-1 hidden md:block"></div>
-
-          <button
-            onClick={() => onCheckReachability(false)}
-            disabled={checking}
-            className="group relative flex items-center gap-2 px-4 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 tactic-cut border border-indigo-500/20 hover:border-indigo-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <span className={`flex items-center justify-center ${checking ? 'animate-spin' : ''}`}>
-              {checking ? <FaSync className="text-xs" /> : <FaWifi className="text-xs" />}
-            </span>
-            <span className="text-xs font-bold tracking-wider">连接检测</span>
-
-            {/* 状态指示点 */}
-            <span className="flex h-2 w-2 absolute top-0 right-0 -mt-1 -mr-1">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-            </span>
+        {/* 操作 */}
+        <div className="flex items-center gap-2">
+          <button onClick={() => onCheckReachability(false)} disabled={checking} className="tac-btn tac-btn-ghost !py-2.5">
+            {checking ? <FaSync className="text-xs animate-spin" /> : <FaWifi className="text-xs" />}
+            连接检测
           </button>
-
           <button
             onClick={onRefresh}
-            className="p-2.5 text-gray-400 hover:text-white hover:bg-white/10 tactic-cut transition-all border border-transparent hover:border-white/10"
+            className="w-10 h-10 flex items-center justify-center border border-ink-line text-fg-dim hover:text-fg hover:border-fg-dim transition-colors shrink-0"
             title="刷新列表"
           >
-            <FaSync className={`${loading ? 'animate-spin' : ''}`} />
+            <FaSync className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
 
-      {/* 底部状态栏 */}
-      <div className="bg-black/40 px-5 py-2 flex items-center gap-6 text-[10px] font-mono text-gray-500 uppercase tracking-wider border-t border-white/5">
+      {/* 统计栏 */}
+      <div className="border-t border-ink-line px-4 py-2.5 flex items-center gap-6 font-mono text-[10px] uppercase tracking-wider text-fg-mute">
         <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)]"></div>
-          系统在线
+          <span className="w-1.5 h-1.5 bg-terminal" /> 系统在线
         </div>
-        <div>总设备: <span className="text-gray-300">{stats.total}</span></div>
-        <div>活跃中: <span className="text-rust-orange">{stats.active}</span></div>
-        <div>警报器: <span className="text-red-400">{stats.alarms}</span></div>
+        <div>总设备: <span className="text-fg">{stats.total}</span></div>
+        <div>活跃中: <span className="text-hazard">{stats.active}</span></div>
+        <div>警报器: <span className="text-fg">{stats.alarms}</span></div>
       </div>
     </div>
   );
@@ -105,67 +83,59 @@ function FilterTab({ active, onClick, icon, label }) {
   return (
     <button
       onClick={onClick}
-      className={`relative px-4 py-1.5 tactic-cut text-[10px] font-black uppercase tracking-wider flex items-center gap-2 transition-all ${active
-        ? 'bg-rust-dark text-white '
-        : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+      className={`px-3.5 py-1.5 text-xs font-bold flex items-center gap-2 transition-colors ${active
+        ? 'bg-hazard-dim text-hazard'
+        : 'text-fg-dim hover:text-fg hover:bg-ink-800'
         }`}
     >
-      {icon} {label}
+      <span className="text-[11px]">{icon}</span> {label}
     </button>
   );
 }
 
 // ============================================================================
-// 子组件：智能开关卡片 (SmartSwitchCard) - 强调交互
+// 子组件：智能开关卡片
 // ============================================================================
 function SmartSwitchCard({ device, isReadOnly, onToggle, onEdit, onDelete, onPin, isPinned, onCheck }) {
   const isOn = device.currentValue;
   const isUnreachable = device.reachable === false;
 
   return (
-    <div className={`group relative h-full flex flex-col tactic-cut border transition-all duration-300 overflow-hidden
-      ${isOn
-        ? 'border-rust-orange/50 bg-[#cd5241]/5'
-        : 'border-white/10 bg-black/20 hover:bg-black/40 hover:border-white/20'
-      }
-      ${isUnreachable ? 'opacity-70 border-yellow-500/30' : ''}
+    <div className={`group relative h-full flex flex-col border bg-ink-850 transition-colors overflow-hidden
+      ${isOn ? 'border-hazard/50' : 'border-ink-line hover:border-ink-line2'}
+      ${isUnreachable ? 'opacity-70' : ''}
     `}>
-      {/* 顶部光效 - 增强亮度 */}
-      {isOn && <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#cd5241] shadow-[0_0_15px_rgba(205,82,65,0.8)]"></div>}
+      {isOn && <div className="absolute top-0 left-0 right-0 h-0.5 bg-hazard" />}
 
-      {/* 不可达覆盖层 */}
       {isUnreachable && (
-        <div className="absolute inset-0 bg-black/90 backdrop-blur-[1px] z-20 flex flex-col items-center justify-center text-center p-4 cursor-pointer"
-          onClick={onCheck}
-        >
-          <FaExclamationTriangle className="text-3xl text-yellow-500 mb-2 animate-pulse" />
-          <span className="text-xs font-bold text-yellow-500 uppercase tracking-widest">连接丢失</span>
-          <span className="text-[10px] text-gray-500 mt-1">点击移除设备</span>
+        <div className="absolute inset-0 bg-ink-900/90 z-20 flex flex-col items-center justify-center text-center p-4 cursor-pointer" onClick={onCheck}>
+          <FaExclamationTriangle className="text-2xl text-hazard mb-2" />
+          <span className="font-mono text-[11px] font-bold text-hazard uppercase tracking-wider">连接丢失</span>
+          <span className="text-[10px] text-fg-mute mt-1">点击移除设备</span>
         </div>
       )}
 
-      {/* 卡片内容 */}
       <div className="p-5 flex-1 flex flex-col relative z-10">
         <div className="flex justify-between items-start mb-4">
-          <div className={`w-12 h-12 tactic-cut flex items-center justify-center text-2xl transition-all duration-500 ${isOn
-            ? 'bg-[#cd5241] text-white shadow-[0_0_20px_rgba(205,82,65,0.4)]'
-            : 'bg-white/5 text-gray-600'
+          <div className={`w-11 h-11 flex items-center justify-center text-xl border transition-colors ${isOn
+            ? 'bg-hazard border-hazard text-white'
+            : 'border-ink-line text-fg-mute'
             }`}>
             {getDeviceIcon(device.name, device.type)}
           </div>
-          <button onClick={onPin} className={`text-sm transition-colors ${isPinned ? 'text-yellow-400' : 'text-gray-700 hover:text-gray-500'}`}>
+          <button onClick={onPin} className={`text-sm transition-colors ${isPinned ? 'text-hazard' : 'text-fg-mute hover:text-fg-dim'}`}>
             {isPinned ? <FaStar /> : <FaRegStar />}
           </button>
         </div>
 
-        <div className="mb-6">
-          <h3 className={`text-base font-black uppercase tracking-tight truncate mb-1 transition-colors ${isOn ? 'text-white' : 'text-gray-400'}`}>
+        <div className="mb-5">
+          <h3 className={`text-base font-bold tracking-tight truncate mb-1.5 ${isOn ? 'text-fg' : 'text-fg-dim'}`}>
             {device.name}
           </h3>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] bg-white/5 px-1.5 py-0.5 tactic-cut text-gray-500 font-mono">#{device.entityId}</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-[10px] text-fg-mute">#{device.entityId}</span>
             {AUTO_MODE_NAMES[device.autoMode] && (
-              <span className="text-[9px] text-lime-400 bg-lime-400/10 px-1.5 py-0.5 tactic-cut font-bold uppercase flex items-center gap-1 border border-lime-400/20">
+              <span className="font-mono text-[9px] text-terminal uppercase tracking-wider flex items-center gap-1 border border-terminal/30 px-1.5 py-0.5">
                 <FaRobot className="text-[8px]" /> {AUTO_MODE_NAMES[device.autoMode]}
               </span>
             )}
@@ -173,28 +143,24 @@ function SmartSwitchCard({ device, isReadOnly, onToggle, onEdit, onDelete, onPin
         </div>
 
         <div className="mt-auto">
-          {/* 大开关按钮 */}
           <button
             onClick={() => !isReadOnly && onToggle(device)}
             disabled={isReadOnly}
             title={isReadOnly ? '续费后可控制设备' : ''}
-            className={`w-full py-3.5 tactic-cut flex items-center justify-center gap-3 transition-all duration-300 relative overflow-hidden group/btn ${isReadOnly
-              ? 'bg-black/20 border border-white/5 text-gray-600 cursor-not-allowed'
+            className={`w-full py-3.5 flex items-center justify-center gap-3 font-mono text-xs font-bold uppercase tracking-[0.15em] transition-colors ${isReadOnly
+              ? 'border border-ink-line text-fg-mute cursor-not-allowed'
               : isOn
-                ? 'bg-[#cd5241] text-white hover:bg-[#a03525]'
-                : 'bg-black/40 border border-white/10 text-gray-500 hover:bg-white/5 hover:text-gray-300'
+                ? 'bg-hazard text-white hover:bg-hazard-bright'
+                : 'border border-ink-line text-fg-dim hover:text-fg hover:bg-ink-800'
               }`}
           >
-            <FaPowerOff className={`text-sm ${isOn && !isReadOnly ? '' : 'group-hover/btn:scale-110 transition-transform'}`} />
-            <span className="text-xs font-black uppercase tracking-widest">
-              {isReadOnly ? '已暂停' : isOn ? '已启动' : '关闭中'}
-            </span>
+            <FaPowerOff className="text-sm" />
+            {isReadOnly ? '已暂停' : isOn ? '已启动 ON' : '关闭 OFF'}
           </button>
         </div>
       </div>
 
-      {/* 底部悬浮操作栏 (Group Hover 显示) */}
-      <div className="absolute top-4 right-14 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+      <div className="absolute top-4 right-14 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <ActionIconBtn icon={<FaEdit />} onClick={onEdit} />
         <ActionIconBtn icon={<FaTrash />} variant="danger" onClick={onDelete} />
       </div>
@@ -203,63 +169,51 @@ function SmartSwitchCard({ device, isReadOnly, onToggle, onEdit, onDelete, onPin
 }
 
 // ============================================================================
-// 子组件：智能警报卡片 (SmartAlarmCard) - 强调状态
+// 子组件：智能警报卡片
 // ============================================================================
 function SmartAlarmCard({ device, isReadOnly, onEdit, onDelete, onPin, isPinned, onCheck }) {
-  const isTriggered = false; // 目前没有实时触发状态字段
   const isUnreachable = device.reachable === false;
 
   return (
-    <div className={`group relative h-full flex flex-col tactic-cut border bg-black/20 transition-all duration-300 overflow-hidden
-      ${isTriggered
-        ? 'border-red-500/50 shadow-[0_0_30px_rgba(239,68,68,0.2)]'
-        : 'border-white/10 hover:border-blue-500/30'
-      }
-      ${isUnreachable ? 'opacity-70 border-yellow-500/30' : ''}
+    <div className={`group relative h-full flex flex-col border border-ink-line bg-ink-850 transition-colors overflow-hidden hover:border-ink-line2
+      ${isUnreachable ? 'opacity-70' : ''}
     `}>
-      {/* 不可达逻辑同上 */}
       {isUnreachable && (
-        <div className="absolute inset-0 bg-black/90 backdrop-blur-[1px] z-20 flex flex-col items-center justify-center text-center p-4 cursor-pointer" onClick={onCheck}>
-          <FaExclamationTriangle className="text-3xl text-yellow-500 mb-2 animate-pulse" />
-          <span className="text-xs font-bold text-yellow-500 uppercase tracking-widest">连接丢失</span>
+        <div className="absolute inset-0 bg-ink-900/90 z-20 flex flex-col items-center justify-center text-center p-4 cursor-pointer" onClick={onCheck}>
+          <FaExclamationTriangle className="text-2xl text-hazard mb-2" />
+          <span className="font-mono text-[11px] font-bold text-hazard uppercase tracking-wider">连接丢失</span>
         </div>
       )}
 
-      {/* 状态指示条 */}
-      <div className={`absolute left-0 top-0 bottom-0 w-1 ${isTriggered ? 'bg-red-500 animate-pulse' : 'bg-blue-500/50'}`}></div>
+      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-hazard/60" />
 
-      <div className="p-5 pl-7 flex-1 flex flex-col">
-        <div className="flex justify-between items-start mb-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-blue-400 uppercase tracking-wider">
-            <FaShieldAlt /> 安全系统
-          </div>
-          <button onClick={onPin} className={`text-sm transition-colors ${isPinned ? 'text-yellow-400' : 'text-gray-700 hover:text-gray-500'}`}>
+      <div className="p-5 pl-6 flex-1 flex flex-col">
+        <div className="flex justify-between items-start mb-3">
+          <div className="tac-label flex items-center gap-1.5"><FaShieldAlt className="text-hazard" /> 安全警报</div>
+          <button onClick={onPin} className={`text-sm transition-colors ${isPinned ? 'text-hazard' : 'text-fg-mute hover:text-fg-dim'}`}>
             {isPinned ? <FaStar /> : <FaRegStar />}
           </button>
         </div>
 
-        <h3 className="text-lg font-black text-gray-200 uppercase tracking-tight mb-4">{device.name}</h3>
+        <h3 className="text-base font-bold text-fg tracking-tight mb-4">{device.name}</h3>
 
-        <div className="mt-auto space-y-3">
-          {/* 最近触发时间 */}
-          <div className="bg-black/40 tactic-cut p-3 border border-white/5">
-            <div className="text-[10px] text-gray-500 uppercase mb-1">最近活动</div>
-            <div className="text-xs font-mono text-gray-300">
+        <div className="mt-auto space-y-2.5">
+          <div className="border border-ink-line p-3">
+            <div className="tac-label !text-[10px] mb-1">最近触发</div>
+            <div className="font-mono text-xs text-fg">
               {device.lastTrigger ? new Date(device.lastTrigger).toLocaleString() : '暂无触发记录'}
             </div>
           </div>
-
-          {/* 自定义消息展示 */}
           {device.message && (
-            <div className="text-[10px] text-gray-500 flex items-start gap-2 bg-blue-500/5 p-2 tactic-cut border border-blue-500/10">
-              <FaBell className="mt-0.5 text-blue-400" />
-              <span className="line-clamp-2 italic">"{device.message}"</span>
+            <div className="text-[11px] text-fg-dim flex items-start gap-2 border border-ink-line p-2">
+              <FaBell className="mt-0.5 text-hazard shrink-0" />
+              <span className="line-clamp-2">"{device.message}"</span>
             </div>
           )}
         </div>
       </div>
 
-      <div className="absolute top-4 right-14 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+      <div className="absolute top-4 right-14 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <ActionIconBtn icon={<FaEdit />} onClick={onEdit} />
         <ActionIconBtn icon={<FaTrash />} variant="danger" onClick={onDelete} />
       </div>
@@ -268,46 +222,48 @@ function SmartAlarmCard({ device, isReadOnly, onEdit, onDelete, onPin, isPinned,
 }
 
 // ============================================================================
-// 子组件：存储监控卡片 (StorageMonitorCard) - 强调容量
+// 子组件：存储监控卡片
 // ============================================================================
 function StorageMonitorCard({ device, isReadOnly, onEdit, onDelete, onPin, isPinned, onCheck }) {
   const isUnreachable = device.reachable === false;
 
   return (
-    <div className={`group relative h-full flex flex-col tactic-cut border border-white/10 bg-black/20 transition-all duration-300 overflow-hidden hover:border-emerald-500/30
-      ${isUnreachable ? 'opacity-70 border-yellow-500/30' : ''}
+    <div className={`group relative h-full flex flex-col border border-ink-line bg-ink-850 transition-colors overflow-hidden hover:border-ink-line2
+      ${isUnreachable ? 'opacity-70' : ''}
     `}>
       {isUnreachable && (
-        <div className="absolute inset-0 bg-black/90 backdrop-blur-[1px] z-20 flex flex-col items-center justify-center text-center p-4 cursor-pointer" onClick={onCheck}>
-          <FaExclamationTriangle className="text-3xl text-yellow-500 mb-2 animate-pulse" />
-          <span className="text-xs font-bold text-yellow-500 uppercase tracking-widest">连接丢失</span>
+        <div className="absolute inset-0 bg-ink-900/90 z-20 flex flex-col items-center justify-center text-center p-4 cursor-pointer" onClick={onCheck}>
+          <FaExclamationTriangle className="text-2xl text-hazard mb-2" />
+          <span className="font-mono text-[11px] font-bold text-hazard uppercase tracking-wider">连接丢失</span>
         </div>
       )}
 
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex justify-between items-start mb-4">
-          <div className={`w-10 h-10 tactic-cut bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-center justify-center text-lg`}>
+          <div className="w-10 h-10 border border-ink-line text-fg-dim flex items-center justify-center text-lg">
             <FaBox />
           </div>
-          <button onClick={onPin} className={`text-sm transition-colors ${isPinned ? 'text-yellow-400' : 'text-gray-700 hover:text-gray-500'}`}>
+          <button onClick={onPin} className={`text-sm transition-colors ${isPinned ? 'text-hazard' : 'text-fg-mute hover:text-fg-dim'}`}>
             {isPinned ? <FaStar /> : <FaRegStar />}
           </button>
         </div>
 
         <div className="mb-4">
-          <h3 className="text-sm font-black text-gray-200 uppercase tracking-tight truncate mb-1">{device.name}</h3>
-          <span className="text-[10px] bg-white/5 px-1.5 py-0.5 tactic-cut text-gray-500 font-mono">#{device.entityId}</span>
+          <h3 className="text-sm font-bold text-fg tracking-tight truncate mb-1.5">{device.name}</h3>
+          <span className="font-mono text-[10px] text-fg-mute">#{device.entityId}</span>
         </div>
 
         <div className="mt-auto">
-          <div className="bg-black/40 tactic-cut px-3 py-2 border border-white/5 flex items-center justify-between">
-            <span className="text-[10px] text-gray-500 uppercase">状态</span>
-            <span className="text-[10px] font-bold text-emerald-400 uppercase">监控中</span>
+          <div className="border border-ink-line px-3 py-2 flex items-center justify-between">
+            <span className="tac-label !text-[10px]">状态</span>
+            <span className="font-mono text-[10px] text-terminal uppercase tracking-wider flex items-center gap-1.5">
+              <span className="w-1 h-1 bg-terminal" /> 监控中
+            </span>
           </div>
         </div>
       </div>
 
-      <div className="absolute top-4 right-14 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+      <div className="absolute top-4 right-14 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <ActionIconBtn icon={<FaEdit />} onClick={onEdit} />
         <ActionIconBtn icon={<FaTrash />} variant="danger" onClick={onDelete} />
       </div>
@@ -319,9 +275,9 @@ function ActionIconBtn({ icon, onClick, variant = 'default' }) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`w-7 h-7 flex items-center justify-center tactic-cut transition-all ${variant === 'danger'
-        ? 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'
-        : 'bg-white/5 text-gray-400 hover:bg-white/20 hover:text-white'
+      className={`w-7 h-7 flex items-center justify-center border transition-colors ${variant === 'danger'
+        ? 'border-hazard/30 text-hazard hover:bg-hazard hover:text-white'
+        : 'border-ink-line text-fg-dim hover:text-fg hover:border-fg-dim'
         }`}
     >
       <span className="text-xs">{icon}</span>
@@ -357,7 +313,7 @@ function DeviceControl({ serverId, isReadOnly = false }) {
   const toast = useToast();
   const confirm = useConfirm();
 
-  // 虚拟演示设备
+  // 虚拟演示设备（Rust+ 三类：智能开关 / 警报 / 储物监视）
   const demoDevices = [
     { id: 'demo1', entityId: 12345, name: '核心权限门 (演示)', type: 'SWITCH', currentValue: false, autoMode: 0, reachable: true },
     { id: 'demo2', entityId: 67890, name: '外围自动炮塔 (演示)', type: 'SWITCH', currentValue: true, autoMode: 7, reachable: true },
@@ -525,7 +481,7 @@ function DeviceControl({ serverId, isReadOnly = false }) {
   if (loading && !devices.length) return <div className="p-8"><DeviceListSkeleton /></div>;
 
   return (
-    <div className="flex flex-col h-full space-y-6 animate-fade-in font-sans pb-6">
+    <div className="flex flex-col h-full space-y-5 animate-fade-in font-sans pb-6">
       <TacticalToolbar
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
@@ -539,20 +495,20 @@ function DeviceControl({ serverId, isReadOnly = false }) {
       />
 
       {isDemo && (
-        <div className="mx-1 tactic-cut bg-indigo-500/10 border border-indigo-500/20 p-4 flex items-center gap-4">
-          <FaRobot className="text-indigo-400 text-xl" />
-          <div className="text-sm text-indigo-200">
-            <span className="font-bold">演示模式运行中</span> — 请在 Rust 游戏中使用 "Rust+ 配对" 来连接真实设备。
+        <div className="tac-panel p-4 flex items-center gap-3">
+          <span className="font-mono text-hazard text-xs shrink-0">[DEMO]</span>
+          <div className="text-sm text-fg-dim">
+            <span className="text-fg font-bold">演示模式运行中</span> — 请在 Rust 游戏中使用 "Rust+ 配对" 来连接真实设备。
           </div>
         </div>
       )}
 
       {/* Grid Layout */}
-      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar">
         {filteredDevices.length === 0 ? (
-          <EmptyState title="未找到设备" description="请尝试调整过滤条件或配对新设备。" icon={<FaSearch className="text-4xl text-gray-700" />} />
+          <EmptyState title="未找到设备" description="请尝试调整过滤条件或配对新设备。" icon={<FaSearch className="text-4xl text-fg-mute" />} />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
             {filteredDevices.map((device) => {
               const commonProps = {
                 device,

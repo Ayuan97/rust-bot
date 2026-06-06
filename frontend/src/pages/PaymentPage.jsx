@@ -57,145 +57,204 @@ export default function PaymentPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0d0e10] text-[#e0e0e0] font-sans p-4 md:p-6 relative overflow-hidden flex flex-col items-center">
-      <div className="scanline"></div>
-      
-      {/* 头部状态 */}
-      <header className="w-full max-w-5xl flex flex-col md:flex-row justify-between md:items-center gap-4 mb-8 md:mb-12 border-b border-white/5 pb-6">
-        <div className="flex items-center gap-4">
-          <button onClick={() => navigate('/dashboard')} className="w-10 h-10 tactic-cut border border-white/10 flex items-center justify-center hover:bg-[#cd5241] transition-all">
+    <div className="tac-fx min-h-[100dvh] bg-ink-900 text-fg font-sans flex flex-col">
+      {/* 顶部 status bar */}
+      <header className="flex items-center justify-between gap-4 px-6 md:px-10 h-14 border-b border-ink-line shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="w-9 h-9 border border-ink-line flex items-center justify-center text-fg-dim hover:text-fg hover:border-fg-dim transition-colors shrink-0"
+            aria-label="返回控制台"
+          >
             <FaArrowLeft className="text-xs" />
           </button>
-          <div>
-            <h1 className="text-2xl font-black uppercase tracking-widest glow-text italic">订阅与续费</h1>
-            <p className="text-[10px] text-gray-600 uppercase tracking-[0.3em] font-bold">开通实时报警与远程控制能力</p>
+          <div className="tac-label flex items-center gap-2">
+            <span className="w-1.5 h-1.5 bg-terminal animate-tac-blink" /> SECURE LINK // ALIPAY
           </div>
         </div>
-        <div className="flex items-center gap-6">
-          <div className="hidden md:flex gap-6 text-[10px] font-bold text-gray-500 uppercase">
-            <span>安全连接: 已加密</span>
-            <span>支付通道: 支付宝</span>
+        <div className="flex items-center gap-5">
+          <div className="hidden md:flex items-center gap-5 tac-label">
+            <span className="flex items-center gap-1.5"><FaShieldAlt className="text-hazard text-[10px]" /> ENCRYPTED</span>
+            <span>CHANNEL // 0x2F</span>
           </div>
           <button
             onClick={logout}
-            className="w-10 h-10 tactic-cut border border-white/10 flex items-center justify-center hover:bg-[#ef4444]/20 hover:border-[#ef4444]/50 transition-all group"
+            className="w-9 h-9 border border-ink-line flex items-center justify-center text-fg-mute hover:text-hazard hover:border-hazard/50 transition-colors"
             title="退出登录"
+            aria-label="退出登录"
           >
-            <FaSignOutAlt className="text-xs text-gray-500 group-hover:text-[#ef4444]" />
+            <FaSignOutAlt className="text-xs" />
           </button>
         </div>
       </header>
 
-      <main className="w-full max-w-5xl">
+      <main className="flex-1 w-full px-6 md:px-10 py-10">
+        {/* 标题 */}
+        <div className="mb-8">
+          <div className="tac-label flex items-center gap-2 mb-2">
+            <FaTerminal className="text-hazard" /> 订阅续费 // SUBSCRIPTION
+          </div>
+          <h1 className="text-3xl font-extrabold text-fg tracking-tight">开通实时报警与远程控制</h1>
+          <p className="mt-2 text-sm text-fg-dim">选择订阅档位，扫码完成支付后即刻拉起服务实例。</p>
+        </div>
+
         {error && (
-          <div className="mb-8 p-4 bg-red-500/10 border border-red-500/30 text-red-500 text-xs font-black uppercase tracking-widest tactic-cut animate-pulse text-center">
-            {">"} {error}
+          <div className="mb-8 px-4 py-3 bg-hazard-dim border border-hazard/40 text-fg text-sm flex items-start gap-2.5">
+            <span className="font-mono text-hazard-bright text-xs mt-0.5 shrink-0">[ERR]</span>
+            <span>{error}</span>
           </div>
         )}
 
         {!order ? (
-          <div className="space-y-12">
-            {/* 订阅方案选择 */}
-            <div className="grid md:grid-cols-3 gap-6">
-              {Object.entries(PLANS).map(([key, plan]) => (
-                <div 
-                  key={key}
-                  onClick={() => setSelectedPlan(key)}
-                  className={`relative tactic-border tactic-cut p-1 group cursor-pointer transition-all ${selectedPlan === key ? 'bg-[#cd5241]/10 border-[#cd5241]/50 shadow-2xl shadow-[#cd5241]/10' : 'bg-black/20 border-white/5 hover:border-white/20'}`}
-                >
-                  <div className="bg-black/40 p-8 text-center h-full flex flex-col items-center">
-                    <div className={`w-14 h-14 tactic-cut flex items-center justify-center mb-6 transition-all ${selectedPlan === key ? 'bg-[#cd5241] text-white shadow-[0_0_20px_#cd5241]' : 'bg-gray-800 text-gray-600'}`}>
-                      <FaBoxOpen className="text-2xl" />
-                    </div>
-                    <h3 className={`text-xl font-black uppercase tracking-tighter mb-2 ${selectedPlan === key ? 'text-white' : 'text-gray-400'}`}>{plan.name}</h3>
-                    <p className="text-xs text-gray-500 mb-8 font-bold">{plan.description}</p>
-                    
-                    <div className="mt-auto">
-                      <div className="text-4xl font-black italic mb-2">¥{plan.price}</div>
-                      <div className="text-[10px] text-gray-600 font-bold uppercase tracking-widest border-t border-white/5 pt-4 mt-4">
-                        订阅时长: {plan.duration} 天
-                      </div>
-                    </div>
+          <div className="space-y-8">
+            {/* 选择套餐 */}
+            <section>
+              <div className="tac-label mb-4">选择套餐 // PLAN</div>
+              <div className="grid md:grid-cols-3 gap-px bg-ink-line border border-ink-line">
+                {Object.entries(PLANS).map(([key, plan]) => {
+                  const active = selectedPlan === key;
+                  const recommended = key === 'YEARLY';
+                  return (
+                    <div
+                      key={key}
+                      onClick={() => setSelectedPlan(key)}
+                      className={`relative p-6 cursor-pointer transition-colors flex flex-col ${
+                        active
+                          ? 'bg-hazard-dim border border-hazard/50'
+                          : recommended
+                            ? 'bg-ink-850 border border-ink-line hover:border-hazard/40'
+                            : 'bg-ink-850 border border-ink-line hover:border-fg-dim/40'
+                      }`}
+                    >
+                      {recommended && (
+                        <div className="absolute top-0 right-0 px-2 py-1 bg-hazard text-white font-mono text-[10px] uppercase tracking-[0.16em]">
+                          推荐 // BEST
+                        </div>
+                      )}
+                      {active && (
+                        <div className="absolute top-3 left-3 text-hazard">
+                          <FaCheckCircle className="text-sm" />
+                        </div>
+                      )}
 
-                    {selectedPlan === key && (
-                      <div className="absolute top-3 right-3 text-[#cd5241]">
-                        <FaCheckCircle className="text-sm" />
+                      <div className={`w-11 h-11 flex items-center justify-center mb-5 border transition-colors ${active ? 'bg-hazard text-white border-hazard' : 'bg-ink-800 text-fg-mute border-ink-line'}`}>
+                        <FaBoxOpen className="text-lg" />
                       </div>
-                    )}
+
+                      <div className="tac-label mb-1">{plan.level}</div>
+                      <h3 className={`text-lg font-bold mb-1 ${active ? 'text-fg' : 'text-fg-dim'}`}>{plan.name}</h3>
+                      <p className="text-xs text-fg-mute mb-6">{plan.description}</p>
+
+                      <div className="mt-auto">
+                        <div className="flex items-baseline gap-1">
+                          <span className="font-mono text-hazard text-sm">¥</span>
+                          <span className="font-mono tabular-nums text-4xl font-extrabold text-hazard leading-none">{plan.price}</span>
+                        </div>
+                        <div className="tac-label mt-4 pt-4 border-t border-ink-line flex items-center gap-1.5">
+                          时长 <span className="font-mono tabular-nums text-fg-dim">{plan.duration}</span> 天
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* 支付方式 + 下单 */}
+            <section className="grid lg:grid-cols-3 gap-px bg-ink-line border border-ink-line">
+              {/* 支付方式 */}
+              <div className="lg:col-span-2 bg-ink-850 p-6">
+                <div className="tac-label mb-4">支付方式 // PAYMENT</div>
+                <div className="flex items-center justify-between border border-hazard/50 bg-hazard-dim px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <span className="w-9 h-9 bg-ink-800 border border-ink-line flex items-center justify-center text-hazard shrink-0">
+                      <FaQrcode className="text-sm" />
+                    </span>
+                    <div>
+                      <div className="text-sm font-bold text-fg">支付宝</div>
+                      <div className="tac-label">ALIPAY · QR SCAN</div>
+                    </div>
                   </div>
+                  <FaCheckCircle className="text-hazard text-sm" />
                 </div>
-              ))}
-            </div>
+                <p className="mt-4 text-xs text-fg-mute leading-relaxed">
+                  下单后将生成支付宝收款二维码，使用支付宝 App 扫码即可完成支付，系统自动轮询交易状态并放行服务。
+                </p>
+              </div>
 
-            {/* 确认操作 */}
-            <div className="tactic-border tactic-cut p-1 bg-black/40 max-w-2xl mx-auto shadow-2xl">
-              <div className="bg-black/40 p-8 flex flex-col md:flex-row items-center justify-between gap-8">
-                  <div>
-                    <div className="text-[10px] text-gray-500 font-bold mb-1 uppercase tracking-widest">当前选择的级别</div>
-                    <div className="text-2xl font-black text-[#cd5241] uppercase tracking-tighter">{PLANS[selectedPlan].level}</div>
-                  </div>
-                  <button 
-                    onClick={handleCreateOrder}
-                    disabled={loading}
-                    className="w-full md:w-auto px-16 py-5 tactic-cut bg-[#cd5241] hover:bg-[#b04537] text-white font-black uppercase tracking-widest text-sm transition-all flex items-center justify-center gap-4 shadow-xl shadow-[#cd5241]/20 group"
-                  >
-                    {loading ? '正在获取支付信息...' : (
-                      <>
-                        <FaQrcode className="group-hover:scale-110 transition-transform" />
-                        立即扫码支付
-                      </>
-                    )}
-                  </button>
-               </div>
-            </div>
+              {/* 当前选择 + 确认 */}
+              <div className="bg-ink-850 p-6 flex flex-col">
+                <div className="tac-label mb-2">当前选择 // SELECTED</div>
+                <div className="text-2xl font-extrabold text-hazard mb-1">{PLANS[selectedPlan].level}</div>
+                <div className="flex items-baseline gap-2 mb-6">
+                  <span className="font-mono tabular-nums text-fg text-lg font-bold">¥{PLANS[selectedPlan].price}</span>
+                  <span className="tac-label">/ {PLANS[selectedPlan].duration} 天</span>
+                </div>
+                <button
+                  onClick={handleCreateOrder}
+                  disabled={loading}
+                  className="tac-btn tac-btn-primary w-full mt-auto !py-4 group"
+                >
+                  {loading ? '生成订单 // CREATING...' : (
+                    <>
+                      <FaQrcode className="group-hover:scale-110 transition-transform" />
+                      确认支付 // PAY
+                    </>
+                  )}
+                </button>
+              </div>
+            </section>
           </div>
         ) : (
           /* 支付终端界面 */
-          <div className="max-w-2xl mx-auto animate-scale-in">
-            <div className="tactic-border tactic-cut p-1 bg-[#121417] shadow-3xl">
-              <div className="bg-[#121417] p-12 text-center relative overflow-hidden">
-                <div className="scanline"></div>
-                <h2 className="text-2xl font-black uppercase tracking-widest mb-2 glow-text italic">安全支付终端</h2>
-                <p className="text-[10px] text-gray-600 uppercase tracking-[0.3em] mb-12">请使用支付宝扫码完成支付</p>
-
-                <div className="relative inline-block mb-12 p-6 tactic-border tactic-cut bg-white/[0.03] shadow-inner">
-                  {qrCode ? (
-                    <div className="relative group">
-                      <div className="absolute inset-0 border-2 border-[#cd5241]/20 animate-pulse pointer-events-none"></div>
-                      <img src={qrCode} alt="支付宝支付二维码" className="w-64 h-64 mix-blend-screen opacity-90" style={{ filter: 'contrast(1.1) brightness(1.1)' }} />
-                    </div>
-                  ) : (
-                    <div className="w-64 h-64 flex flex-col items-center justify-center text-gray-700">
-                      <FaSatellite className="text-5xl animate-spin mb-6" />
-                      <div className="text-[10px] font-black uppercase tracking-widest">同步中...</div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-4 mb-12">
-                  <div className="text-[#a3e635] text-xs font-black uppercase tracking-widest flex items-center justify-center gap-3 animate-pulse">
-                    <span className="w-2 h-2 rounded-full bg-[#a3e635]"></span>
-                    正在等待支付结果
-                  </div>
-                  <div className="text-gray-600 font-mono text-[10px]">
-                    订单编号: {order.id}
-                  </div>
-                </div>
-
-                <button 
-                  onClick={() => { setOrder(null); setQrCode(''); setPolling(false); }}
-                  className="text-xs text-gray-600 hover:text-[#cd5241] uppercase tracking-widest underline underline-offset-8 transition-colors font-bold"
-                >
-                  取消并返回选择
-                </button>
+          <div className="max-w-xl mx-auto">
+            <div className="tac-panel tac-corners p-8 md:p-10 text-center">
+              <div className="tac-label flex items-center justify-center gap-2 mb-2">
+                <FaQrcode className="text-hazard" /> 安全支付终端 // PAY TERMINAL
               </div>
+              <h2 className="text-2xl font-extrabold text-fg tracking-tight mb-1">请使用支付宝扫码</h2>
+              <p className="text-sm text-fg-dim mb-8">扫码完成支付后将自动跳转控制台</p>
+
+              {/* 二维码框：直角发丝线 */}
+              <div className="relative inline-block mb-8 p-4 border border-ink-line bg-ink-900">
+                {qrCode ? (
+                  <div className="relative">
+                    <div className="absolute inset-0 border border-hazard/40 animate-tac-blink pointer-events-none" />
+                    <img src={qrCode} alt="支付宝支付二维码" className="w-60 h-60 bg-white p-2 object-contain" />
+                  </div>
+                ) : (
+                  <div className="w-60 h-60 flex flex-col items-center justify-center text-fg-mute gap-5">
+                    <FaSatellite className="text-4xl animate-spin" />
+                    <div className="tac-label">SYNCING...</div>
+                  </div>
+                )}
+              </div>
+
+              {/* 状态：待支付 = hazard */}
+              <div className="space-y-3 mb-8">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 border border-hazard/30 bg-hazard-dim text-hazard">
+                  <span className="w-1.5 h-1.5 bg-hazard animate-tac-blink" />
+                  <span className="font-mono text-[11px] uppercase tracking-[0.16em]">AWAITING PAYMENT · 等待支付</span>
+                </div>
+                <div className="tac-label flex items-center justify-center gap-1.5">
+                  ORDER <span className="font-mono tabular-nums text-fg-dim normal-case tracking-normal">{order.id}</span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => { setOrder(null); setQrCode(''); setPolling(false); }}
+                className="tac-btn tac-btn-ghost"
+              >
+                <FaArrowLeft className="text-[10px]" /> 取消并返回 // BACK
+              </button>
             </div>
           </div>
         )}
       </main>
 
-      <footer className="mt-auto py-12 opacity-30 text-[9px] uppercase tracking-[0.5em] text-gray-600 font-bold">
-        Secure_Link_v2.0 // 已建立 SSL 加密保护交易
+      <footer className="px-6 md:px-10 py-6 border-t border-ink-line shrink-0 flex items-center justify-between">
+        <span className="tac-label">SECURE_LINK_V2.0 · SSL ENCRYPTED</span>
+        <span className="tac-label hidden md:inline">RUST+ TACTICAL OPS</span>
       </footer>
     </div>
   );

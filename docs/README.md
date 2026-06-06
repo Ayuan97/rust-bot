@@ -6,6 +6,7 @@ Core docs that are kept and maintained:
 - `DATABASE.md`: schema and initialization rules
 - `LOW_COST_DISTRIBUTED.md`: deployment model for low-cost distributed mode
 - `TROUBLESHOOTING.md`: common failures and checks
+- `DESIGN_SYSTEM.md`: 前端战术遥测(Tactical Telemetry)设计系统 — 改前端必读
 
 Cleanup policy:
 

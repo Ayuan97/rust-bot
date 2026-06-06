@@ -5,25 +5,25 @@ import { FaExclamationTriangle, FaTrash, FaInfoCircle } from 'react-icons/fa';
 // Confirm Context
 const ConfirmContext = createContext(null);
 
-// 确认类型配置
+// 确认类型配置（色彩收敛：危险/警告=hazard，提示=中性 fg；确认按钮统一 hazard 红）
 const confirmConfig = {
   danger: {
     icon: FaTrash,
-    iconBg: 'bg-red-500/10',
-    iconColor: 'text-red-400',
-    confirmBtn: 'bg-red-500 hover:bg-red-600 text-white focus-visible:ring-red-500'
+    iconBg: 'bg-hazard-dim border border-hazard/40',
+    iconColor: 'text-hazard-bright',
+    confirmBtn: 'tac-btn tac-btn-primary'
   },
   warning: {
     icon: FaExclamationTriangle,
-    iconBg: 'bg-yellow-500/10',
-    iconColor: 'text-yellow-400',
-    confirmBtn: 'bg-yellow-500 hover:bg-yellow-600 text-black focus-visible:ring-yellow-500'
+    iconBg: 'bg-hazard-dim border border-hazard/40',
+    iconColor: 'text-hazard',
+    confirmBtn: 'tac-btn tac-btn-primary'
   },
   info: {
     icon: FaInfoCircle,
-    iconBg: 'bg-blue-500/10',
-    iconColor: 'text-blue-400',
-    confirmBtn: 'bg-rust-accent hover:bg-rust-hover text-white focus-visible:ring-rust-accent'
+    iconBg: 'bg-ink-800 border border-ink-line',
+    iconColor: 'text-fg-dim',
+    confirmBtn: 'tac-btn tac-btn-primary'
   }
 };
 
@@ -104,21 +104,21 @@ function ConfirmModal({ isOpen, config, onConfirm, onCancel }) {
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descId}
-        className="relative bg-dark-800 rounded-2xl border border-white/10 shadow-2xl w-full max-w-md animate-scale-in"
+        className="relative tac-panel tac-corners w-full max-w-md animate-scale-in"
       >
         <div className="p-6">
           {/* Icon */}
-          <div className={`w-12 h-12 rounded-full ${typeConfig.iconBg} flex items-center justify-center mx-auto mb-4`}>
+          <div className={`w-12 h-12 ${typeConfig.iconBg} flex items-center justify-center mx-auto mb-4`}>
             <Icon className={`text-xl ${typeConfig.iconColor}`} aria-hidden="true" />
           </div>
 
           {/* Title */}
-          <h3 id={titleId} className="text-lg font-bold text-white text-center mb-2">
+          <h3 id={titleId} className="text-lg font-bold text-fg text-center mb-2">
             {config.title || '确认操作'}
           </h3>
 
           {/* Message */}
-          <p id={descId} className="text-gray-400 text-center text-sm mb-6">
+          <p id={descId} className="text-fg-dim text-center text-sm mb-6 leading-relaxed">
             {config.message}
           </p>
 
@@ -127,13 +127,13 @@ function ConfirmModal({ isOpen, config, onConfirm, onCancel }) {
             <button
               ref={cancelButtonRef}
               onClick={onCancel}
-              className="flex-1 px-4 py-2.5 rounded-lg bg-dark-700 text-gray-300 hover:bg-dark-600 hover:text-white transition-all font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-dark-500 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-800"
+              className="flex-1 tac-btn tac-btn-ghost"
             >
               {config.cancelText || '取消'}
             </button>
             <button
               onClick={onConfirm}
-              className={`flex-1 px-4 py-2.5 rounded-lg transition-all font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-800 ${typeConfig.confirmBtn}`}
+              className={`flex-1 ${typeConfig.confirmBtn}`}
             >
               {config.confirmText || '确认'}
             </button>

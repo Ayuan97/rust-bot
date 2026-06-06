@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  FaSearch, FaSync, FaWallet, FaCircle,
+  FaSearch, FaSync, FaWallet,
   FaTerminal, FaEdit, FaTimes, FaPlus, FaMinus, FaUsers,
   FaBan, FaCheckCircle, FaServer, FaEye, FaChevronLeft, FaChevronRight,
   FaPlug, FaTrashAlt
@@ -348,35 +348,39 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
   const totalPages = Math.ceil(total / limit);
 
-  // 套餐类型标签
+  // 套餐类型标签（中性元数据，统一发丝线描边，不引入多色）
   const getPlanBadge = (planType) => {
     const config = {
-      TRIAL: { label: '试用', color: 'bg-yellow-500/20 text-yellow-400' },
-      MONTHLY: { label: '月付', color: 'bg-blue-500/20 text-blue-400' },
-      QUARTERLY: { label: '季付', color: 'bg-purple-500/20 text-purple-400' },
-      YEARLY: { label: '年付', color: 'bg-green-500/20 text-green-400' }
+      TRIAL: { label: '试用' },
+      MONTHLY: { label: '月付' },
+      QUARTERLY: { label: '季付' },
+      YEARLY: { label: '年付' }
     };
-    const c = config[planType] || { label: planType || 'N/A', color: 'bg-gray-500/20 text-gray-400' };
-    return <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${c.color}`}>{c.label}</span>;
+    const c = config[planType] || { label: planType || 'N/A' };
+    return <span className="px-2 py-0.5 border border-ink-line text-fg-dim text-[10px] font-bold">{c.label}</span>;
   };
 
   return (
     <div className="space-y-4">
       {/* 标题和工具栏 */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <FaUsers className="text-orange-500" />
-          幸存者名录
-          <span className="text-sm font-normal text-gray-500">({total})</span>
-        </h2>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-3">
+        <div className="min-w-0">
+          <div className="tac-label flex items-center gap-2">
+            <FaUsers className="text-hazard" /> 用户运营 // USERS
+          </div>
+          <h2 className="text-xl font-extrabold text-fg mt-1 flex items-center gap-2">
+            幸存者名录
+            <span className="text-sm font-bold text-fg-dim font-mono tabular-nums">({total})</span>
+          </h2>
+        </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => {
               resetCreateForm();
               setIsCreateModalOpen(true);
             }}
-            className="px-3 py-2 bg-orange-600 hover:bg-orange-500 rounded text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-2"
+            className="tac-btn tac-btn-primary !py-2.5"
           >
             <FaPlus className="text-[10px]" />
             添加用户
@@ -385,7 +389,8 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
           <button
             onClick={fetchUsers}
             disabled={loading}
-            className="p-2 bg-gray-800 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+            className="tac-btn tac-btn-ghost !py-2.5 !px-3.5"
+            title="刷新"
           >
             <FaSync className={loading ? 'animate-spin' : ''} />
           </button>
@@ -393,14 +398,14 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
       </div>
 
       {/* 筛选栏 */}
-      <div className="flex flex-wrap gap-3 bg-[#121417] border border-gray-800 rounded-lg p-4">
+      <div className="flex flex-wrap gap-3 tac-panel p-4">
         {/* 搜索 */}
         <div className="relative flex-1 min-w-[200px]">
-          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-mute" />
           <input
             type="text"
             placeholder="搜索 UID / 用户名 / 邮箱..."
-            className="w-full bg-[#0D0E10] border border-gray-800 rounded px-10 py-2 text-sm focus:border-orange-500 outline-none transition-all"
+            className="tac-input !pl-10"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -410,7 +415,7 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
         <select
           value={statusFilter}
           onChange={(e) => handleFilterChange('status', e.target.value)}
-          className="bg-[#0D0E10] border border-gray-800 rounded px-4 py-2 text-sm focus:border-orange-500 outline-none cursor-pointer"
+          className="tac-input !w-auto cursor-pointer"
         >
           <option value="">全部状态</option>
           <option value="active">活跃</option>
@@ -423,7 +428,7 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
         <select
           value={planFilter}
           onChange={(e) => handleFilterChange('plan', e.target.value)}
-          className="bg-[#0D0E10] border border-gray-800 rounded px-4 py-2 text-sm focus:border-orange-500 outline-none cursor-pointer"
+          className="tac-input !w-auto cursor-pointer"
         >
           <option value="">全部套餐</option>
           <option value="TRIAL">试用</option>
@@ -434,48 +439,48 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
       </div>
 
       {/* 用户表格 */}
-      <div className="bg-[#121417] border border-gray-800 rounded-lg overflow-hidden">
+      <div className="tac-panel overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm min-w-[980px]">
-          <thead className="bg-[#1A1C1F] text-gray-500 font-bold uppercase tracking-wider text-[11px] border-b border-gray-800">
+          <thead className="bg-ink-800 text-fg-dim border-b border-ink-line">
             <tr>
-              <th className="px-4 py-3">幸存者</th>
-              <th className="px-4 py-3">邮箱</th>
-              <th className="px-4 py-3">套餐</th>
-              <th className="px-4 py-3">余额</th>
-              <th className="px-4 py-3">到期时间</th>
-              <th className="px-4 py-3">链路状态</th>
-              <th className="px-4 py-3">状态</th>
-              <th className="px-4 py-3 text-right">操作</th>
+              <th className="px-4 py-3 font-semibold text-[11px]">幸存者</th>
+              <th className="px-4 py-3 font-semibold text-[11px]">邮箱</th>
+              <th className="px-4 py-3 font-semibold text-[11px]">套餐</th>
+              <th className="px-4 py-3 font-semibold text-[11px]">余额</th>
+              <th className="px-4 py-3 font-semibold text-[11px]">到期时间</th>
+              <th className="px-4 py-3 font-semibold text-[11px]">链路状态</th>
+              <th className="px-4 py-3 font-semibold text-[11px]">状态</th>
+              <th className="px-4 py-3 font-semibold text-[11px] text-right">操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-800/50">
+          <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
+                <td colSpan={8} className="px-4 py-12 text-center text-fg-dim">
                   <FaSync className="animate-spin inline mr-2" />
                   加载中...
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-gray-600">
+                <td colSpan={8} className="px-4 py-12 text-center text-fg-mute">
                   未发现幸存者信号...
                 </td>
               </tr>
             ) : users.map(user => (
-              <tr key={user.id} className="hover:bg-white/5 transition-colors group">
+              <tr key={user.id} className="border-t border-ink-line hover:bg-ink-800/60 transition-colors group">
                 {/* 用户名 */}
                 <td className="px-4 py-3">
                   <div className="flex flex-col">
-                    <span className="font-bold text-gray-200">{user.username}</span>
-                    <span className="text-[10px] text-gray-600 font-mono">{user.id.substring(0, 12)}...</span>
+                    <span className="font-bold text-fg">{user.username}</span>
+                    <span className="text-[10px] text-fg-mute font-mono tabular-nums">{user.id.substring(0, 12)}...</span>
                   </div>
                 </td>
 
                 {/* 邮箱 */}
                 <td className="px-4 py-3">
-                  <span className="text-gray-400 text-xs">{user.email || '-'}</span>
+                  <span className="text-fg-dim text-xs">{user.email || '-'}</span>
                 </td>
 
                 {/* 套餐 */}
@@ -485,18 +490,18 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
                 {/* 余额 */}
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-1 text-orange-400">
-                    <FaWallet className="text-[10px]" />
-                    <span className="font-mono text-xs">¥{parseFloat(user.balance || 0).toFixed(2)}</span>
+                  <div className="flex items-center gap-1.5 text-fg">
+                    <FaWallet className="text-[10px] text-hazard" />
+                    <span className="font-mono text-xs tabular-nums">¥{parseFloat(user.balance || 0).toFixed(2)}</span>
                   </div>
                 </td>
 
                 {/* 到期时间 */}
                 <td className="px-4 py-3">
-                  <span className={`font-mono text-xs ${
+                  <span className={`font-mono text-xs tabular-nums ${
                     user.subscriptions?.endDate && new Date(user.subscriptions.endDate) < new Date()
-                      ? 'text-red-500'
-                      : 'text-gray-400'
+                      ? 'text-hazard'
+                      : 'text-fg-dim'
                   }`}>
                     {user.subscriptions?.endDate
                       ? new Date(user.subscriptions.endDate).toLocaleDateString()
@@ -506,14 +511,14 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
                 {/* 链路状态 */}
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1" title="FCM 监听">
-                      <FaCircle className={`text-[6px] ${user.serviceStatus?.fcmListening ? 'text-green-500' : 'text-gray-700'}`} />
-                      <span className="text-[9px] text-gray-600">FCM</span>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5" title="FCM 监听">
+                      <span className={`w-1.5 h-1.5 ${user.serviceStatus?.fcmListening ? 'bg-terminal animate-tac-blink' : 'bg-ink-line2'}`} />
+                      <span className="tac-label !text-[9px] !tracking-[0.12em]">FCM</span>
                     </div>
-                    <div className="flex items-center gap-1" title="Rust+ 连接">
-                      <FaCircle className={`text-[6px] ${user.serviceStatus?.connectedServers?.length > 0 ? 'text-green-500' : 'text-gray-700'}`} />
-                      <span className="text-[9px] text-gray-600">R+({user.serviceStatus?.connectedServers?.length || 0}/{user.serverCount || 0})</span>
+                    <div className="flex items-center gap-1.5" title="Rust+ 连接">
+                      <span className={`w-1.5 h-1.5 ${user.serviceStatus?.connectedServers?.length > 0 ? 'bg-terminal animate-tac-blink' : 'bg-ink-line2'}`} />
+                      <span className="text-[9px] text-fg-dim font-mono tabular-nums">R+({user.serviceStatus?.connectedServers?.length || 0}/{user.serverCount || 0})</span>
                     </div>
                   </div>
                 </td>
@@ -528,15 +533,35 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                     const isExpired = endDate && new Date() > endDate;
 
                     if (!user.isActive) {
-                      return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400">已禁用</span>;
+                      return (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 border text-hazard border-hazard/30 bg-hazard-dim text-[10px] font-bold">
+                          <span className="w-1.5 h-1.5 bg-hazard" />已禁用
+                        </span>
+                      );
                     } else if (isNotActivated) {
-                      return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-400">未激活</span>;
+                      return (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 border text-fg-dim border-ink-line text-[10px] font-bold">
+                          <span className="w-1.5 h-1.5 bg-fg-mute" />未激活
+                        </span>
+                      );
                     } else if (isExpired) {
-                      return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-500/20 text-orange-400">已过期</span>;
+                      return (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 border text-hazard border-hazard/30 bg-hazard-dim text-[10px] font-bold">
+                          <span className="w-1.5 h-1.5 bg-hazard" />已过期
+                        </span>
+                      );
                     } else if (user.serviceStatus?.isServiceRunning) {
-                      return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/20 text-green-400">运行中</span>;
+                      return (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 border text-terminal border-terminal/30 text-[10px] font-bold">
+                          <span className="w-1.5 h-1.5 bg-terminal animate-tac-blink" />运行中
+                        </span>
+                      );
                     } else {
-                      return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/20 text-yellow-400">待启动</span>;
+                      return (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 border text-fg-dim border-ink-line text-[10px] font-bold">
+                          <span className="w-1.5 h-1.5 bg-fg-mute" />待启动
+                        </span>
+                      );
                     }
                   })()}
                 </td>
@@ -547,7 +572,7 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                     {/* 查看详情 */}
                     <button
                       onClick={() => handleViewDetail(user)}
-                      className="p-1.5 bg-gray-800 hover:bg-blue-500/20 hover:text-blue-400 rounded transition-all"
+                      className="p-1.5 border border-ink-line bg-ink-800 text-fg-dim hover:border-hazard hover:text-hazard transition-colors"
                       title="查看详情"
                     >
                       <FaEye className="text-xs" />
@@ -556,7 +581,7 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                     {/* 查看服务器 */}
                     <button
                       onClick={() => handleViewServers(user)}
-                      className="p-1.5 bg-gray-800 hover:bg-purple-500/20 hover:text-purple-400 rounded transition-all"
+                      className="p-1.5 border border-ink-line bg-ink-800 text-fg-dim hover:border-hazard hover:text-hazard transition-colors"
                       title="服务器列表"
                     >
                       <FaServer className="text-xs" />
@@ -568,7 +593,7 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                         setSelectedUser(user);
                         setIsAdjustModalOpen(true);
                       }}
-                      className="p-1.5 bg-gray-800 hover:bg-orange-500/20 hover:text-orange-400 rounded transition-all"
+                      className="p-1.5 border border-ink-line bg-ink-800 text-fg-dim hover:border-hazard hover:text-hazard transition-colors"
                       title="资产调整"
                     >
                       <FaEdit className="text-xs" />
@@ -577,7 +602,7 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                     {/* 实时诊断 */}
                     <button
                       onClick={() => handleNavigateToLogs(user)}
-                      className={`p-1.5 bg-gray-800 hover:bg-cyan-500/20 hover:text-cyan-400 rounded transition-all ${
+                      className={`p-1.5 border border-ink-line bg-ink-800 text-fg-dim hover:border-hazard hover:text-hazard transition-colors ${
                         !user.serviceStatus?.isServiceRunning ? 'opacity-50 cursor-not-allowed' : ''
                       }`}
                       title="实时诊断"
@@ -589,10 +614,10 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                     {/* 启用/禁用 */}
                     <button
                       onClick={() => handleToggleStatus(user)}
-                      className={`p-1.5 bg-gray-800 rounded transition-all ${
+                      className={`p-1.5 border border-ink-line bg-ink-800 text-fg-dim transition-colors ${
                         user.isActive
-                          ? 'hover:bg-red-500/20 hover:text-red-400'
-                          : 'hover:bg-green-500/20 hover:text-green-400'
+                          ? 'hover:border-hazard hover:text-hazard'
+                          : 'hover:border-terminal hover:text-terminal'
                       }`}
                       title={user.isActive ? '禁用用户' : '启用用户'}
                     >
@@ -603,7 +628,7 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                     {!user.isAdmin && (
                       <button
                         onClick={() => handleDeleteUser(user)}
-                        className="p-1.5 bg-gray-800 hover:bg-red-600/30 hover:text-red-400 rounded transition-all"
+                        className="p-1.5 border border-ink-line bg-ink-800 text-fg-dim hover:border-hazard hover:text-hazard hover:bg-hazard-dim transition-colors"
                         title="删除用户"
                       >
                         <FaTrashAlt className="text-xs" />
@@ -619,15 +644,15 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
         {/* 分页 */}
         {totalPages > 1 && (
-          <div className="px-4 py-3 border-t border-gray-800 flex items-center justify-between bg-[#1A1C1F]">
-            <span className="text-xs text-gray-500">
-              共 {total} 条，第 {page}/{totalPages} 页
+          <div className="px-4 py-3 border-t border-ink-line flex items-center justify-between bg-ink-800">
+            <span className="text-xs text-fg-dim">
+              共 <span className="font-mono tabular-nums text-fg">{total}</span> 条，第 <span className="font-mono tabular-nums text-fg">{page}/{totalPages}</span> 页
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="p-2 bg-gray-800 hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 border border-ink-line bg-ink-850 text-fg-dim hover:border-fg-dim hover:text-fg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <FaChevronLeft className="text-xs" />
               </button>
@@ -648,10 +673,10 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                   <button
                     key={pageNum}
                     onClick={() => setPage(pageNum)}
-                    className={`px-3 py-1 rounded text-xs ${
+                    className={`px-3 py-1 border text-xs font-mono tabular-nums transition-colors ${
                       page === pageNum
-                        ? 'bg-orange-600 text-white'
-                        : 'bg-gray-800 hover:bg-gray-700'
+                        ? 'bg-hazard text-white border-hazard'
+                        : 'bg-ink-850 text-fg-dim border-ink-line hover:border-fg-dim hover:text-fg'
                     }`}
                   >
                     {pageNum}
@@ -662,7 +687,7 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="p-2 bg-gray-800 hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 border border-ink-line bg-ink-850 text-fg-dim hover:border-fg-dim hover:text-fg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <FaChevronRight className="text-xs" />
               </button>
@@ -673,11 +698,11 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
       {/* 删除确认弹窗 */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#121417] border border-red-500/30 rounded-lg w-full max-w-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-red-500/20 flex justify-between items-center bg-red-500/10">
-              <h3 className="font-bold text-red-200 flex items-center gap-2">
-                <FaTrashAlt />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="tac-panel tac-corners border-hazard/40 w-full max-w-lg">
+            <div className="px-6 py-4 border-b border-hazard/30 flex justify-between items-center bg-hazard-dim">
+              <h3 className="font-bold text-fg flex items-center gap-2">
+                <FaTrashAlt className="text-hazard" />
                 永久删除用户
               </h3>
               <button
@@ -686,25 +711,25 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                   setDeleteTarget(null);
                   setDeleteConfirmInput('');
                 }}
-                className="text-red-200/70 hover:text-red-100"
+                className="text-fg-dim hover:text-fg transition-colors"
               >
                 <FaTimes />
               </button>
             </div>
 
             <div className="p-6 space-y-4">
-              <p className="text-sm text-red-100 leading-relaxed">
-                此操作将永久删除用户 <span className="font-bold">「{deleteTarget.username}」</span> 的服务器、设备、日志、订单和订阅数据，且不可恢复。
+              <p className="text-sm text-fg leading-relaxed">
+                此操作将永久删除用户 <span className="font-bold text-hazard-bright">「{deleteTarget.username}」</span> 的服务器、设备、日志、订单和订阅数据，且不可恢复。
               </p>
-              <p className="text-xs text-red-200/80">
-                请输入用户名 <span className="font-bold">{deleteTarget.username}</span> 进行确认。
+              <p className="text-xs text-fg-dim">
+                请输入用户名 <span className="font-bold text-fg font-mono">{deleteTarget.username}</span> 进行确认。
               </p>
               <input
                 type="text"
                 value={deleteConfirmInput}
                 onChange={(e) => setDeleteConfirmInput(e.target.value)}
                 placeholder="输入用户名确认"
-                className="w-full bg-[#0D0E10] border border-red-500/30 rounded px-3 py-2 text-sm focus:border-red-400 outline-none"
+                className="tac-input"
               />
 
               <div className="flex gap-3">
@@ -715,14 +740,14 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                     setDeleteConfirmInput('');
                   }}
                   disabled={deleteSubmitting}
-                  className="flex-1 py-2.5 border border-gray-700 hover:bg-gray-800 rounded font-bold text-xs uppercase tracking-widest disabled:opacity-50"
+                  className="tac-btn tac-btn-ghost flex-1 !py-2.5"
                 >
                   取消
                 </button>
                 <button
                   onClick={handleConfirmDelete}
                   disabled={deleteSubmitting}
-                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded font-bold text-xs uppercase tracking-widest disabled:opacity-60 flex items-center justify-center gap-2"
+                  className="tac-btn tac-btn-primary flex-1 !py-2.5"
                 >
                   {deleteSubmitting && <FaSync className="animate-spin text-xs" />}
                   永久删除
@@ -735,17 +760,17 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
       {/* 新建用户弹窗 */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#121417] border border-gray-800 rounded-lg w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-[#1A1C1F]">
-              <h3 className="font-bold text-gray-100 flex items-center gap-2">
-                <FaPlus className="text-orange-500" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="tac-panel tac-corners w-full max-w-xl animate-fade-in">
+            <div className="px-6 py-4 border-b border-ink-line flex justify-between items-center bg-ink-800">
+              <h3 className="font-bold text-fg flex items-center gap-2">
+                <FaPlus className="text-hazard" />
                 添加用户
               </h3>
               <button
                 onClick={closeCreateModal}
                 disabled={createSubmitting}
-                className="text-gray-500 hover:text-white disabled:opacity-40"
+                className="text-fg-dim hover:text-fg transition-colors disabled:opacity-40"
               >
                 <FaTimes />
               </button>
@@ -754,53 +779,53 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">用户名 *</label>
+                  <label className="text-[11px] font-bold text-fg-dim">用户名 *</label>
                   <input
                     type="text"
                     value={createUserForm.username}
                     onChange={(e) => handleCreateUserInput('username', e.target.value)}
                     placeholder="3-50 位，字母/数字/下划线"
-                    className="w-full bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                    className="tac-input !py-2"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">邮箱（可选）</label>
+                  <label className="text-[11px] font-bold text-fg-dim">邮箱（可选）</label>
                   <input
                     type="email"
                     value={createUserForm.email}
                     onChange={(e) => handleCreateUserInput('email', e.target.value)}
                     placeholder="example@mail.com"
-                    className="w-full bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                    className="tac-input !py-2"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">密码 *</label>
+                  <label className="text-[11px] font-bold text-fg-dim">密码 *</label>
                   <input
                     type="password"
                     value={createUserForm.password}
                     onChange={(e) => handleCreateUserInput('password', e.target.value)}
                     placeholder="至少 6 位"
-                    className="w-full bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                    className="tac-input !py-2"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">确认密码 *</label>
+                  <label className="text-[11px] font-bold text-fg-dim">确认密码 *</label>
                   <input
                     type="password"
                     value={createUserForm.confirmPassword}
                     onChange={(e) => handleCreateUserInput('confirmPassword', e.target.value)}
                     placeholder="再次输入密码"
-                    className="w-full bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                    className="tac-input !py-2"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">套餐</label>
+                  <label className="text-[11px] font-bold text-fg-dim">套餐</label>
                   <select
                     value={createUserForm.planType}
                     onChange={(e) => handleCreateUserInput('planType', e.target.value)}
-                    className="w-full bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                    className="tac-input !py-2"
                   >
                     <option value="TRIAL">试用</option>
                     <option value="MONTHLY">月付</option>
@@ -809,45 +834,45 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">订阅天数</label>
+                  <label className="text-[11px] font-bold text-fg-dim">订阅天数</label>
                   <input
                     type="number"
                     min={0}
                     value={createUserForm.subscriptionDays}
                     onChange={(e) => handleCreateUserInput('subscriptionDays', e.target.value)}
-                    className="w-full bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                    className="tac-input !py-2 font-mono tabular-nums"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">初始余额</label>
+                  <label className="text-[11px] font-bold text-fg-dim">初始余额</label>
                   <input
                     type="number"
                     min={0}
                     step="0.01"
                     value={createUserForm.balance}
                     onChange={(e) => handleCreateUserInput('balance', e.target.value)}
-                    className="w-full bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                    className="tac-input !py-2 font-mono tabular-nums"
                   />
                 </div>
               </div>
 
               <div className="flex items-center gap-6 pt-1">
-                <label className="inline-flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                <label className="inline-flex items-center gap-2 text-xs text-fg-dim cursor-pointer">
                   <input
                     type="checkbox"
                     checked={createUserForm.isActive}
                     onChange={(e) => handleCreateUserInput('isActive', e.target.checked)}
-                    className="rounded border-gray-700 bg-[#0D0E10] text-orange-500 focus:ring-orange-500/40"
+                    className="bg-ink-700 border-ink-line accent-hazard"
                   />
                   创建后立即启用
                 </label>
-                <label className="inline-flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                <label className="inline-flex items-center gap-2 text-xs text-fg-dim cursor-pointer">
                   <input
                     type="checkbox"
                     checked={createUserForm.isAdmin}
                     onChange={(e) => handleCreateUserInput('isAdmin', e.target.checked)}
-                    className="rounded border-gray-700 bg-[#0D0E10] text-orange-500 focus:ring-orange-500/40"
+                    className="bg-ink-700 border-ink-line accent-hazard"
                   />
                   管理员账号
                 </label>
@@ -857,14 +882,14 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                 <button
                   onClick={closeCreateModal}
                   disabled={createSubmitting}
-                  className="flex-1 py-2.5 border border-gray-800 hover:bg-gray-800 rounded font-bold text-xs uppercase tracking-widest transition-all disabled:opacity-50"
+                  className="tac-btn tac-btn-ghost flex-1 !py-2.5"
                 >
                   取消
                 </button>
                 <button
                   onClick={handleCreateUser}
                   disabled={createSubmitting}
-                  className="flex-1 py-2.5 bg-orange-600 hover:bg-orange-500 text-white rounded font-bold text-xs uppercase tracking-widest transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                  className="tac-btn tac-btn-primary flex-1 !py-2.5"
                 >
                   {createSubmitting && <FaSync className="text-xs animate-spin" />}
                   确认创建
@@ -877,14 +902,14 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
       {/* 资产调整弹窗 */}
       {isAdjustModalOpen && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#121417] border border-gray-800 rounded-lg w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-[#1A1C1F]">
-              <h3 className="font-bold text-gray-100 flex items-center gap-2">
-                <FaEdit className="text-orange-500" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="tac-panel tac-corners w-full max-w-md animate-fade-in">
+            <div className="px-6 py-4 border-b border-ink-line flex justify-between items-center bg-ink-800">
+              <h3 className="font-bold text-fg flex items-center gap-2">
+                <FaEdit className="text-hazard" />
                 资产调整: {selectedUser.username}
               </h3>
-              <button onClick={() => { setIsAdjustModalOpen(false); resetAdjustForm(); }} className="text-gray-500 hover:text-white">
+              <button onClick={() => { setIsAdjustModalOpen(false); resetAdjustForm(); }} className="text-fg-dim hover:text-fg transition-colors">
                 <FaTimes />
               </button>
             </div>
@@ -892,12 +917,12 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
             <div className="p-6 space-y-5">
               {/* 余额调整 */}
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">物资余额调整 (¥)</label>
+                <label className="text-[11px] font-bold text-fg-dim">物资余额调整 (¥)</label>
                 <div className="flex items-center gap-3">
-                  <div className="flex-1 flex items-center bg-[#0D0E10] border border-gray-800 rounded overflow-hidden">
+                  <div className="flex-1 flex items-center bg-ink-700 border border-ink-line overflow-hidden">
                     <button
                       onClick={() => setBalanceDelta(d => parseFloat(d) - 10)}
-                      className="px-3 py-2 hover:bg-gray-800 text-gray-400"
+                      className="px-3 py-2 hover:bg-ink-800 hover:text-hazard text-fg-dim transition-colors"
                     >
                       <FaMinus className="text-xs" />
                     </button>
@@ -905,27 +930,27 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                       type="number"
                       value={balanceDelta}
                       onChange={(e) => setBalanceDelta(e.target.value)}
-                      className="flex-1 bg-transparent text-center font-mono text-orange-400 focus:outline-none py-2"
+                      className="flex-1 min-w-0 bg-transparent text-center font-mono tabular-nums text-fg focus:outline-none py-2"
                     />
                     <button
                       onClick={() => setBalanceDelta(d => parseFloat(d) + 10)}
-                      className="px-3 py-2 hover:bg-gray-800 text-gray-400"
+                      className="px-3 py-2 hover:bg-ink-800 hover:text-hazard text-fg-dim transition-colors"
                     >
                       <FaPlus className="text-xs" />
                     </button>
                   </div>
-                  <span className="text-[10px] text-gray-600 font-mono whitespace-nowrap">当前: ¥{parseFloat(selectedUser.balance || 0).toFixed(2)}</span>
+                  <span className="text-[10px] text-fg-mute font-mono tabular-nums whitespace-nowrap">当前: ¥{parseFloat(selectedUser.balance || 0).toFixed(2)}</span>
                 </div>
               </div>
 
               {/* 授权天数调整 */}
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">蓝图授权调整 (天)</label>
+                <label className="text-[11px] font-bold text-fg-dim">蓝图授权调整 (天)</label>
                 <div className="flex items-center gap-3">
-                  <div className="flex-1 flex items-center bg-[#0D0E10] border border-gray-800 rounded overflow-hidden">
+                  <div className="flex-1 flex items-center bg-ink-700 border border-ink-line overflow-hidden">
                     <button
                       onClick={() => setDaysDelta(d => parseInt(d) - 7)}
-                      className="px-3 py-2 hover:bg-gray-800 text-gray-400"
+                      className="px-3 py-2 hover:bg-ink-800 hover:text-hazard text-fg-dim transition-colors"
                     >
                       <FaMinus className="text-xs" />
                     </button>
@@ -933,40 +958,40 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                       type="number"
                       value={daysDelta}
                       onChange={(e) => setDaysDelta(e.target.value)}
-                      className="flex-1 bg-transparent text-center font-mono text-blue-400 focus:outline-none py-2"
+                      className="flex-1 min-w-0 bg-transparent text-center font-mono tabular-nums text-fg focus:outline-none py-2"
                     />
                     <button
                       onClick={() => setDaysDelta(d => parseInt(d) + 7)}
-                      className="px-3 py-2 hover:bg-gray-800 text-gray-400"
+                      className="px-3 py-2 hover:bg-ink-800 hover:text-hazard text-fg-dim transition-colors"
                     >
                       <FaPlus className="text-xs" />
                     </button>
                   </div>
-                  <span className="text-[10px] text-gray-600 font-mono whitespace-nowrap">基于当前到期日</span>
+                  <span className="text-[10px] text-fg-mute font-mono whitespace-nowrap">基于当前到期日</span>
                 </div>
               </div>
 
               {/* 备注 */}
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">调整备注</label>
+                <label className="text-[11px] font-bold text-fg-dim">调整备注</label>
                 <textarea
                   value={adjustReason}
                   onChange={(e) => setAdjustReason(e.target.value)}
                   placeholder="请输入调整原因..."
-                  className="w-full bg-[#0D0E10] border border-gray-800 rounded p-3 text-sm focus:border-orange-500 outline-none h-20 resize-none"
+                  className="tac-input h-20 resize-none"
                 />
               </div>
 
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => { setIsAdjustModalOpen(false); resetAdjustForm(); }}
-                  className="flex-1 py-2.5 border border-gray-800 hover:bg-gray-800 rounded font-bold text-xs uppercase tracking-widest transition-all"
+                  className="tac-btn tac-btn-ghost flex-1 !py-2.5"
                 >
                   取消
                 </button>
                 <button
                   onClick={handleAdjustAssets}
-                  className="flex-1 py-2.5 bg-orange-600 hover:bg-orange-500 text-white rounded font-bold text-xs uppercase tracking-widest transition-all"
+                  className="tac-btn tac-btn-primary flex-1 !py-2.5"
                 >
                   确认调整
                 </button>
@@ -978,21 +1003,21 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
       {/* 用户详情弹窗 */}
       {isDetailModalOpen && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#121417] border border-gray-800 rounded-lg w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-[#1A1C1F]">
-              <h3 className="font-bold text-gray-100 flex items-center gap-2">
-                <FaEye className="text-blue-500" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="tac-panel tac-corners w-full max-w-2xl animate-fade-in">
+            <div className="px-6 py-4 border-b border-ink-line flex justify-between items-center bg-ink-800">
+              <h3 className="font-bold text-fg flex items-center gap-2">
+                <FaEye className="text-hazard" />
                 用户详情: {selectedUser.username}
               </h3>
-              <button onClick={() => setIsDetailModalOpen(false)} className="text-gray-500 hover:text-white">
+              <button onClick={() => setIsDetailModalOpen(false)} className="text-fg-dim hover:text-fg transition-colors">
                 <FaTimes />
               </button>
             </div>
 
             <div className="p-6">
               {detailLoading ? (
-                <div className="py-8 text-center text-gray-500">
+                <div className="py-8 text-center text-fg-dim">
                   <FaSync className="animate-spin inline mr-2" />
                   加载中...
                 </div>
@@ -1001,68 +1026,68 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                   {/* 基本信息 */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-[10px] text-gray-600 uppercase">用户名</label>
-                      <p className="text-gray-200">{userDetail.user.username}</p>
+                      <label className="text-[11px] text-fg-dim font-bold">用户名</label>
+                      <p className="text-fg">{userDetail.user.username}</p>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] text-gray-600 uppercase">邮箱</label>
-                      <p className="text-gray-200">{userDetail.user.email}</p>
+                      <label className="text-[11px] text-fg-dim font-bold">邮箱</label>
+                      <p className="text-fg">{userDetail.user.email}</p>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] text-gray-600 uppercase">注册时间</label>
-                      <p className="text-gray-400 text-sm">{new Date(userDetail.user.createdAt).toLocaleString()}</p>
+                      <label className="text-[11px] text-fg-dim font-bold">注册时间</label>
+                      <p className="text-fg-dim text-sm font-mono tabular-nums">{new Date(userDetail.user.createdAt).toLocaleString()}</p>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] text-gray-600 uppercase">最后登录</label>
-                      <p className="text-gray-400 text-sm">{userDetail.user.lastLogin ? new Date(userDetail.user.lastLogin).toLocaleString() : 'N/A'}</p>
+                      <label className="text-[11px] text-fg-dim font-bold">最后登录</label>
+                      <p className="text-fg-dim text-sm font-mono tabular-nums">{userDetail.user.lastLogin ? new Date(userDetail.user.lastLogin).toLocaleString() : 'N/A'}</p>
                     </div>
                   </div>
 
-                  <hr className="border-gray-800" />
+                  <hr className="border-ink-line" />
 
                   {/* 统计数据 */}
-                  <div className="grid grid-cols-4 gap-4">
-                    <div className="bg-[#0D0E10] p-4 rounded-lg text-center">
-                      <p className="text-2xl font-bold text-blue-400">{userDetail.stats.serverCount}</p>
-                      <p className="text-[10px] text-gray-600 uppercase">服务器</p>
+                  <div className="grid grid-cols-4 gap-px bg-ink-line border border-ink-line">
+                    <div className="bg-ink-850 px-3 py-4 text-center">
+                      <p className="text-2xl font-bold text-fg font-mono tabular-nums">{userDetail.stats.serverCount}</p>
+                      <p className="text-[11px] text-fg-dim mt-1">服务器</p>
                     </div>
-                    <div className="bg-[#0D0E10] p-4 rounded-lg text-center">
-                      <p className="text-2xl font-bold text-purple-400">{userDetail.stats.eventCount}</p>
-                      <p className="text-[10px] text-gray-600 uppercase">事件数</p>
+                    <div className="bg-ink-850 px-3 py-4 text-center">
+                      <p className="text-2xl font-bold text-fg font-mono tabular-nums">{userDetail.stats.eventCount}</p>
+                      <p className="text-[11px] text-fg-dim mt-1">事件数</p>
                     </div>
-                    <div className="bg-[#0D0E10] p-4 rounded-lg text-center">
-                      <p className="text-2xl font-bold text-orange-400">{userDetail.stats.orderCount}</p>
-                      <p className="text-[10px] text-gray-600 uppercase">订单数</p>
+                    <div className="bg-ink-850 px-3 py-4 text-center">
+                      <p className="text-2xl font-bold text-fg font-mono tabular-nums">{userDetail.stats.orderCount}</p>
+                      <p className="text-[11px] text-fg-dim mt-1">订单数</p>
                     </div>
-                    <div className="bg-[#0D0E10] p-4 rounded-lg text-center">
-                      <p className="text-2xl font-bold text-green-400">¥{userDetail.stats.totalSpent.toFixed(2)}</p>
-                      <p className="text-[10px] text-gray-600 uppercase">总消费</p>
+                    <div className="bg-ink-850 px-3 py-4 text-center">
+                      <p className="text-2xl font-bold text-hazard font-mono tabular-nums">¥{userDetail.stats.totalSpent.toFixed(2)}</p>
+                      <p className="text-[11px] text-fg-dim mt-1">总消费</p>
                     </div>
                   </div>
 
-                  <hr className="border-gray-800" />
+                  <hr className="border-ink-line" />
 
                   {/* 服务状态 */}
-                  <div className="bg-[#0D0E10] p-4 rounded-lg">
-                    <h4 className="text-[10px] text-gray-600 uppercase mb-3">服务状态</h4>
+                  <div className="bg-ink-900 border border-ink-line p-4">
+                    <div className="tac-label mb-3">服务状态 // STATUS</div>
                     <div className="grid grid-cols-3 gap-4 text-sm">
                       <div className="flex items-center gap-2">
-                        <FaCircle className={`text-xs ${userDetail.serviceStatus.isServiceRunning ? 'text-green-500' : 'text-gray-700'}`} />
-                        <span className="text-gray-400">服务: {userDetail.serviceStatus.isServiceRunning ? '运行中' : '未运行'}</span>
+                        <span className={`w-1.5 h-1.5 ${userDetail.serviceStatus.isServiceRunning ? 'bg-terminal animate-tac-blink' : 'bg-ink-line2'}`} />
+                        <span className="text-fg-dim">服务: {userDetail.serviceStatus.isServiceRunning ? '运行中' : '未运行'}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <FaCircle className={`text-xs ${userDetail.serviceStatus.fcmListening ? 'text-green-500' : 'text-gray-700'}`} />
-                        <span className="text-gray-400">FCM: {userDetail.serviceStatus.fcmListening ? '监听中' : '未监听'}</span>
+                        <span className={`w-1.5 h-1.5 ${userDetail.serviceStatus.fcmListening ? 'bg-terminal animate-tac-blink' : 'bg-ink-line2'}`} />
+                        <span className="text-fg-dim">FCM: {userDetail.serviceStatus.fcmListening ? '监听中' : '未监听'}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <FaServer className="text-xs text-gray-600" />
-                        <span className="text-gray-400">连接: {userDetail.serviceStatus.connectedServers?.length || 0} 个</span>
+                        <FaServer className="text-xs text-fg-mute" />
+                        <span className="text-fg-dim">连接: <span className="font-mono tabular-nums">{userDetail.serviceStatus.connectedServers?.length || 0}</span> 个</span>
                       </div>
                     </div>
                   </div>
                 </div>
               ) : (
-                <p className="text-gray-500 text-center py-8">加载失败</p>
+                <p className="text-fg-dim text-center py-8">加载失败</p>
               )}
             </div>
           </div>
@@ -1071,43 +1096,43 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
       {/* 服务器列表弹窗 */}
       {isServersModalOpen && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#121417] border border-gray-800 rounded-lg w-full max-w-3xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-[#1A1C1F]">
-              <h3 className="font-bold text-gray-100 flex items-center gap-2">
-                <FaServer className="text-purple-500" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="tac-panel tac-corners w-full max-w-3xl animate-fade-in">
+            <div className="px-6 py-4 border-b border-ink-line flex justify-between items-center bg-ink-800">
+              <h3 className="font-bold text-fg flex items-center gap-2">
+                <FaServer className="text-hazard" />
                 服务器列表: {selectedUser.username}
               </h3>
-              <button onClick={() => setIsServersModalOpen(false)} className="text-gray-500 hover:text-white">
+              <button onClick={() => setIsServersModalOpen(false)} className="text-fg-dim hover:text-fg transition-colors">
                 <FaTimes />
               </button>
             </div>
 
             <div className="p-6">
               {detailLoading ? (
-                <div className="py-8 text-center text-gray-500">
+                <div className="py-8 text-center text-fg-dim">
                   <FaSync className="animate-spin inline mr-2" />
                   加载中...
                 </div>
               ) : userServers.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">暂无服务器</p>
+                <p className="text-fg-dim text-center py-8">暂无服务器</p>
               ) : (
-                <div className="space-y-3 max-h-96 overflow-y-auto">
+                <div className="space-y-px bg-ink-line border border-ink-line max-h-96 overflow-y-auto">
                   {userServers.map(server => (
-                    <div key={server.id} className="bg-[#0D0E10] p-4 rounded-lg flex items-center justify-between">
+                    <div key={server.id} className="bg-ink-850 p-4 flex items-center justify-between">
                       <div className="flex items-center gap-4">
-                        <FaCircle className={`text-xs ${server.connected ? 'text-green-500' : 'text-gray-700'}`} />
+                        <span className={`w-1.5 h-1.5 shrink-0 ${server.connected ? 'bg-terminal animate-tac-blink' : 'bg-ink-line2'}`} />
                         <div>
-                          <p className="font-bold text-gray-200">{server.name || '未命名服务器'}</p>
-                          <p className="text-xs text-gray-600 font-mono">{server.ip}:{server.port}</p>
+                          <p className="font-bold text-fg">{server.name || '未命名服务器'}</p>
+                          <p className="text-xs text-fg-mute font-mono tabular-nums">{server.ip}:{server.port}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
-                        <span className="text-xs text-gray-500">{server.deviceCount || 0} 个设备</span>
+                        <span className="text-xs text-fg-dim"><span className="font-mono tabular-nums">{server.deviceCount || 0}</span> 个设备</span>
                         {server.connected && (
                           <button
                             onClick={() => handleDisconnectServer(server.id)}
-                            className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded transition-all"
+                            className="p-2 border border-hazard/30 bg-hazard-dim text-hazard hover:border-hazard hover:bg-hazard/20 transition-colors"
                             title="强制断开"
                           >
                             <FaPlug className="text-xs" />

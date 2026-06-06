@@ -110,7 +110,7 @@ const TradeCenter = () => {
       ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
     ].join('\n');
 
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8' });
+    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -130,24 +130,26 @@ const TradeCenter = () => {
     setPage(1);
   };
 
+  // 类型色收敛：充值=terminal 单点正向，其余一律中性 fg-dim（唯一强调色留给 hazard）
   const getOrderTypeLabel = (type) => {
     switch (type) {
-      case 'TOPUP': return { label: '余额充值', color: 'text-green-400', bg: 'bg-green-500/10' };
-      case 'AUTH_BUY': return { label: '蓝图授权', color: 'text-blue-400', bg: 'bg-blue-500/10' };
-      case 'SERVICE_FEE': return { label: '增强服务', color: 'text-purple-400', bg: 'bg-purple-500/10' };
-      case 'ADMIN_ADJUST': return { label: '管理调整', color: 'text-orange-400', bg: 'bg-orange-500/10' };
-      default: return { label: type || '未知', color: 'text-gray-400', bg: 'bg-gray-500/10' };
+      case 'TOPUP': return { label: '余额充值', color: 'text-terminal', bg: 'bg-ink-800 border-terminal/30' };
+      case 'AUTH_BUY': return { label: '蓝图授权', color: 'text-fg-dim', bg: 'bg-ink-800 border-ink-line' };
+      case 'SERVICE_FEE': return { label: '增强服务', color: 'text-fg-dim', bg: 'bg-ink-800 border-ink-line' };
+      case 'ADMIN_ADJUST': return { label: '管理调整', color: 'text-fg-dim', bg: 'bg-ink-800 border-ink-line' };
+      default: return { label: type || '未知', color: 'text-fg-dim', bg: 'bg-ink-800 border-ink-line' };
     }
   };
 
+  // 状态色收敛：已支付=terminal 单点；待支付/失败/过期=hazard；已取消=中性 fg-dim
   const getStatusLabel = (status) => {
     switch (status) {
-      case 'PENDING': return { label: '待支付', color: 'text-yellow-400', bg: 'bg-yellow-500/10' };
-      case 'PAID': return { label: '已支付', color: 'text-green-400', bg: 'bg-green-500/10' };
-      case 'FAILED': return { label: '失败', color: 'text-red-400', bg: 'bg-red-500/10' };
-      case 'CANCELLED': return { label: '已取消', color: 'text-gray-400', bg: 'bg-gray-500/10' };
-      case 'EXPIRED': return { label: '已过期', color: 'text-orange-400', bg: 'bg-orange-500/10' };
-      default: return { label: status || '未知', color: 'text-gray-400', bg: 'bg-gray-500/10' };
+      case 'PENDING': return { label: '待支付', color: 'text-hazard', bg: 'bg-hazard-dim border-hazard/30', dot: 'bg-hazard' };
+      case 'PAID': return { label: '已支付', color: 'text-terminal', bg: 'border-terminal/30', dot: 'bg-terminal' };
+      case 'FAILED': return { label: '失败', color: 'text-hazard', bg: 'bg-hazard-dim border-hazard/30', dot: 'bg-hazard' };
+      case 'CANCELLED': return { label: '已取消', color: 'text-fg-dim', bg: 'border-ink-line', dot: 'bg-fg-mute' };
+      case 'EXPIRED': return { label: '已过期', color: 'text-hazard', bg: 'bg-hazard-dim border-hazard/30', dot: 'bg-hazard' };
+      default: return { label: status || '未知', color: 'text-fg-dim', bg: 'border-ink-line', dot: 'bg-fg-mute' };
     }
   };
 
@@ -155,162 +157,175 @@ const TradeCenter = () => {
   const hasFilters = Boolean(searchTerm || statusFilter || typeFilter || dateRange.start || dateRange.end);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* 标题和视图切换 */}
       <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
-        <div className="flex bg-[#121417] p-1 rounded-lg border border-gray-800 w-full md:w-auto">
-          <button
-            onClick={() => setView('analytics')}
-            className={`flex-1 md:flex-none px-4 md:px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${
-              view === 'analytics' ? 'bg-orange-600 text-white' : 'text-gray-500 hover:text-gray-300'
-            }`}
-          >
-            财务分析
-          </button>
-          <button
-            onClick={() => setView('orders')}
-            className={`flex-1 md:flex-none px-4 md:px-6 py-2 rounded-md text-xs font-bold uppercase tracking-widest transition-all ${
-              view === 'orders' ? 'bg-orange-600 text-white' : 'text-gray-500 hover:text-gray-300'
-            }`}
-          >
-            订单清单
-          </button>
+        <div className="min-w-0">
+          <div className="tac-label flex items-center gap-2">
+            <FaChartLine className="text-hazard" /> 交易运营 // TRADE
+          </div>
+          <h3 className="text-lg font-bold text-fg mt-1">流水与订单</h3>
         </div>
 
-        <div className="flex items-center justify-between md:justify-end gap-2">
-          {view === 'orders' && (
-            <span className="text-xs text-gray-500">
-              共 {total} 条 · 第 {page} / {Math.max(totalPages, 1)} 页
-            </span>
-          )}
-          {view === 'orders' && (
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="flex border border-ink-line bg-ink-900 w-full md:w-auto">
             <button
-              onClick={handleExportCSV}
-              disabled={orders.length === 0}
-              className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded text-xs disabled:opacity-50"
+              onClick={() => setView('analytics')}
+              className={`flex-1 md:flex-none px-4 md:px-6 py-2 font-mono text-[11px] uppercase tracking-[0.16em] font-bold transition-colors ${
+                view === 'analytics' ? 'bg-hazard text-white' : 'text-fg-dim hover:text-fg'
+              }`}
             >
-              <FaFileExport />
-              导出 CSV
+              财务分析
             </button>
-          )}
-          <button
-            onClick={view === 'analytics' ? fetchAnalytics : fetchOrders}
-            disabled={loading}
-            className="p-2 bg-gray-800 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
-          >
-            <FaSync className={loading ? 'animate-spin' : ''} />
-          </button>
+            <button
+              onClick={() => setView('orders')}
+              className={`flex-1 md:flex-none px-4 md:px-6 py-2 font-mono text-[11px] uppercase tracking-[0.16em] font-bold transition-colors ${
+                view === 'orders' ? 'bg-hazard text-white' : 'text-fg-dim hover:text-fg'
+              }`}
+            >
+              订单清单
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between md:justify-end gap-2">
+            {view === 'orders' && (
+              <span className="text-xs text-fg-dim font-mono tabular-nums">
+                共 {total} 条 · 第 {page} / {Math.max(totalPages, 1)} 页
+              </span>
+            )}
+            {view === 'orders' && (
+              <button
+                onClick={handleExportCSV}
+                disabled={orders.length === 0}
+                className="tac-btn tac-btn-ghost !px-3 !py-2"
+              >
+                <FaFileExport />
+                导出 CSV
+              </button>
+            )}
+            <button
+              onClick={view === 'analytics' ? fetchAnalytics : fetchOrders}
+              disabled={loading}
+              className="tac-btn tac-btn-ghost !px-3 !py-2"
+            >
+              <FaSync className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
         </div>
       </div>
 
       {view === 'analytics' && stats ? (
-        <div className="space-y-6 animate-in fade-in duration-300">
+        <div className="space-y-5">
           {/* 汇总卡片 */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-[#121417] border border-gray-800 p-5 rounded-lg relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-10">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-px bg-ink-line border border-ink-line">
+            <div className="bg-ink-850 p-5 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 text-fg-mute opacity-20">
                 <FaChartLine size={36} />
               </div>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">总贸易流水</p>
-              <h3 className="text-2xl font-mono font-bold text-gray-100">¥ {parseFloat(stats.totalRevenue || 0).toLocaleString()}</h3>
-              <p className="text-[10px] text-gray-600 mt-2">共计 {stats.totalOrders || 0} 笔订单</p>
+              <p className="tac-label !text-[10px]">TOTAL FLOW</p>
+              <p className="text-[11px] text-fg-dim font-medium mt-1">总贸易流水</p>
+              <h3 className="text-2xl font-mono font-bold text-fg tabular-nums mt-2">¥ {parseFloat(stats.totalRevenue || 0).toLocaleString()}</h3>
+              <p className="text-[10px] text-fg-mute mt-2 font-mono tabular-nums">共计 {stats.totalOrders || 0} 笔订单</p>
             </div>
 
-            <div className="bg-[#121417] border border-gray-800 p-5 rounded-lg relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-10 text-orange-500">
+            <div className="bg-ink-850 p-5 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 text-hazard opacity-20">
                 <FaWallet size={36} />
               </div>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">幸存者总余额</p>
-              <h3 className="text-2xl font-mono font-bold text-orange-500">¥ {parseFloat(stats.systemDebt || 0).toLocaleString()}</h3>
-              <p className="text-[10px] text-gray-600 mt-2">系统待销项负载</p>
+              <p className="tac-label !text-[10px] !text-hazard/80">SYSTEM DEBT</p>
+              <p className="text-[11px] text-fg-dim font-medium mt-1">幸存者总余额</p>
+              <h3 className="text-2xl font-mono font-bold text-hazard tabular-nums mt-2">¥ {parseFloat(stats.systemDebt || 0).toLocaleString()}</h3>
+              <p className="text-[10px] text-fg-mute mt-2">系统待销项负载</p>
             </div>
 
-            <div className="bg-[#121417] border border-gray-800 p-5 rounded-lg relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-10 text-green-500">
+            <div className="bg-ink-850 p-5 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 text-terminal opacity-20">
                 <FaArrowUp size={36} />
               </div>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">今日新增收入</p>
-              <h3 className="text-2xl font-mono font-bold text-green-500">+ ¥ {parseFloat(stats.todayRevenue || 0).toLocaleString()}</h3>
-              <p className="text-[10px] text-gray-600 mt-2">{stats.todayOrders || 0} 笔今日订单</p>
+              <p className="tac-label !text-[10px]">TODAY IN</p>
+              <p className="text-[11px] text-fg-dim font-medium mt-1">今日新增收入</p>
+              <h3 className="text-2xl font-mono font-bold text-terminal tabular-nums mt-2">+ ¥ {parseFloat(stats.todayRevenue || 0).toLocaleString()}</h3>
+              <p className="text-[10px] text-fg-mute mt-2 font-mono tabular-nums">{stats.todayOrders || 0} 笔今日订单</p>
             </div>
 
-            <div className="bg-[#121417] border border-gray-800 p-5 rounded-lg relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-10 text-blue-500">
+            <div className="bg-ink-850 p-5 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 text-fg-mute opacity-20">
                 <FaUserShield size={36} />
               </div>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">平均客单价</p>
-              <h3 className="text-2xl font-mono font-bold text-blue-500">¥ {(stats.totalRevenue / (stats.totalOrders || 1)).toFixed(2)}</h3>
-              <p className="text-[10px] text-gray-600 mt-2">基于所有历史订单</p>
+              <p className="tac-label !text-[10px]">AVG TICKET</p>
+              <p className="text-[11px] text-fg-dim font-medium mt-1">平均客单价</p>
+              <h3 className="text-2xl font-mono font-bold text-fg tabular-nums mt-2">¥ {(stats.totalRevenue / (stats.totalOrders || 1)).toFixed(2)}</h3>
+              <p className="text-[10px] text-fg-mute mt-2">基于所有历史订单</p>
             </div>
           </div>
 
           {/* 授权分布 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-[#121417] border border-gray-800 p-5 rounded-lg">
-              <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-5 flex items-center gap-2">
-                <FaShoppingCart className="text-orange-500" />
-                授权包分布
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-ink-line border border-ink-line">
+            <div className="bg-ink-850 p-5">
+              <h4 className="tac-label flex items-center gap-2">
+                <FaShoppingCart className="text-hazard" />
+                授权包分布 // PLANS
               </h4>
-              <div className="space-y-4">
+              <div className="space-y-4 mt-5">
                 {stats.planDistribution && stats.planDistribution.length > 0 ? (
                   stats.planDistribution.map(plan => (
                     <div key={plan.planType || 'NONE'} className="space-y-2">
-                      <div className="flex justify-between text-xs font-mono">
-                        <span className="text-gray-400">{plan.planType || '物资充值'}</span>
-                        <span className="text-gray-100">{plan._count?.id || 0} 笔</span>
+                      <div className="flex justify-between text-xs font-mono tabular-nums">
+                        <span className="text-fg-dim">{plan.planType || '物资充值'}</span>
+                        <span className="text-fg">{plan._count?.id || 0} 笔</span>
                       </div>
-                      <div className="h-1.5 bg-gray-900 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-ink-700 overflow-hidden">
                         <div
-                          className="h-full bg-orange-600 rounded-full transition-all duration-500"
+                          className="h-full bg-hazard transition-all duration-500"
                           style={{ width: `${Math.min((plan._count?.id || 0) / (stats.totalOrders || 1) * 100, 100)}%` }}
                         />
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-gray-600 text-sm text-center py-4">暂无数据</p>
+                  <p className="text-fg-mute text-sm text-center py-4">暂无数据</p>
                 )}
               </div>
             </div>
 
             {/* 订单状态分布 */}
-            <div className="bg-[#121417] border border-gray-800 p-5 rounded-lg">
-              <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-5 flex items-center gap-2">
-                <FaHistory className="text-blue-500" />
-                订单状态分布
+            <div className="bg-ink-850 p-5">
+              <h4 className="tac-label flex items-center gap-2">
+                <FaHistory className="text-hazard" />
+                订单状态分布 // STATUS
               </h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-[#0D0E10] p-4 rounded-lg text-center">
-                  <p className="text-2xl font-bold text-green-400">{stats.paidOrders || 0}</p>
-                  <p className="text-[10px] text-gray-600 uppercase">已支付</p>
+              <div className="grid grid-cols-2 gap-px bg-ink-line border border-ink-line mt-5">
+                <div className="bg-ink-900 p-4 text-center">
+                  <p className="text-2xl font-bold font-mono tabular-nums text-terminal">{stats.paidOrders || 0}</p>
+                  <p className="text-[11px] text-fg-dim mt-1">已支付</p>
                 </div>
-                <div className="bg-[#0D0E10] p-4 rounded-lg text-center">
-                  <p className="text-2xl font-bold text-yellow-400">{stats.pendingOrders || 0}</p>
-                  <p className="text-[10px] text-gray-600 uppercase">待支付</p>
+                <div className="bg-ink-900 p-4 text-center">
+                  <p className="text-2xl font-bold font-mono tabular-nums text-hazard">{stats.pendingOrders || 0}</p>
+                  <p className="text-[11px] text-fg-dim mt-1">待支付</p>
                 </div>
-                <div className="bg-[#0D0E10] p-4 rounded-lg text-center">
-                  <p className="text-2xl font-bold text-red-400">{stats.failedOrders || 0}</p>
-                  <p className="text-[10px] text-gray-600 uppercase">失败</p>
+                <div className="bg-ink-900 p-4 text-center">
+                  <p className="text-2xl font-bold font-mono tabular-nums text-hazard">{stats.failedOrders || 0}</p>
+                  <p className="text-[11px] text-fg-dim mt-1">失败</p>
                 </div>
-                <div className="bg-[#0D0E10] p-4 rounded-lg text-center">
-                  <p className="text-2xl font-bold text-gray-400">{stats.cancelledOrders || 0}</p>
-                  <p className="text-[10px] text-gray-600 uppercase">已取消</p>
+                <div className="bg-ink-900 p-4 text-center">
+                  <p className="text-2xl font-bold font-mono tabular-nums text-fg-dim">{stats.cancelledOrders || 0}</p>
+                  <p className="text-[11px] text-fg-dim mt-1">已取消</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
       ) : view === 'orders' ? (
-        <div className="space-y-4 animate-in fade-in duration-300">
+        <div className="space-y-4">
           {/* 筛选栏 */}
-          <div className="flex flex-wrap items-center gap-3 bg-[#121417] border border-gray-800 rounded-lg p-4">
+          <div className="flex flex-wrap items-center gap-3 bg-ink-850 border border-ink-line p-4">
             {/* 搜索 */}
             <div className="relative flex-1 min-w-[200px]">
-              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs" />
+              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-mute text-xs z-10" />
               <input
                 type="text"
                 placeholder="搜索订单号/用户名..."
-                className="w-full bg-[#0D0E10] border border-gray-800 rounded px-9 py-2 text-sm focus:border-orange-500 outline-none"
+                className="tac-input !pl-9 !py-2"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -320,7 +335,7 @@ const TradeCenter = () => {
             <select
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-              className="bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none cursor-pointer"
+              className="tac-input !w-auto !py-2 cursor-pointer"
             >
               <option value="">全部状态</option>
               <option value="PENDING">待支付</option>
@@ -334,7 +349,7 @@ const TradeCenter = () => {
             <select
               value={typeFilter}
               onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
-              className="bg-[#0D0E10] border border-gray-800 rounded px-3 py-2 text-sm focus:border-orange-500 outline-none cursor-pointer"
+              className="tac-input !w-auto !py-2 cursor-pointer"
             >
               <option value="">全部类型</option>
               <option value="TOPUP">余额充值</option>
@@ -345,19 +360,19 @@ const TradeCenter = () => {
 
             {/* 日期范围 */}
             <div className="flex items-center gap-2 flex-wrap">
-              <FaCalendarAlt className="text-gray-500 text-xs" />
+              <FaCalendarAlt className="text-fg-mute text-xs" />
               <input
                 type="date"
                 value={dateRange.start}
                 onChange={(e) => { setDateRange(prev => ({ ...prev, start: e.target.value })); setPage(1); }}
-                className="bg-[#0D0E10] border border-gray-800 rounded px-2 py-2 text-xs focus:border-orange-500 outline-none"
+                className="tac-input !w-auto !px-2 !py-2 !text-xs"
               />
-              <span className="text-gray-600">-</span>
+              <span className="text-fg-mute">-</span>
               <input
                 type="date"
                 value={dateRange.end}
                 onChange={(e) => { setDateRange(prev => ({ ...prev, end: e.target.value })); setPage(1); }}
-                className="bg-[#0D0E10] border border-gray-800 rounded px-2 py-2 text-xs focus:border-orange-500 outline-none"
+                className="tac-input !w-auto !px-2 !py-2 !text-xs"
               />
             </div>
 
@@ -365,7 +380,7 @@ const TradeCenter = () => {
             {hasFilters && (
               <button
                 onClick={handleClearFilters}
-                className="p-2 bg-gray-800 hover:bg-red-500/20 hover:text-red-400 rounded transition-all"
+                className="p-2 border border-ink-line text-fg-dim hover:border-hazard hover:text-hazard transition-colors"
                 title="清除筛选"
               >
                 <FaTimes className="text-xs" />
@@ -373,38 +388,38 @@ const TradeCenter = () => {
             )}
           </div>
 
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-fg-dim">
             {hasFilters
               ? `已启用筛选，当前展示 ${orders.length} 条结果`
               : `未启用筛选，默认展示最近 ${orders.length} 条订单`}
           </div>
 
           {/* 订单表格 */}
-          <div className="bg-[#121417] border border-gray-800 rounded-lg overflow-hidden">
+          <div className="border border-ink-line">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm min-w-[900px]">
-                <thead className="bg-[#1A1C1F] text-gray-500 font-bold uppercase tracking-wider text-[11px] border-b border-gray-800">
+                <thead className="bg-ink-800 text-fg-dim">
                   <tr>
-                    <th className="px-4 py-3">订单号</th>
-                    <th className="px-4 py-3">用户</th>
-                    <th className="px-4 py-3">类型</th>
-                    <th className="px-4 py-3 text-right">金额</th>
-                    <th className="px-4 py-3">状态</th>
-                    <th className="px-4 py-3">创建时间</th>
-                    <th className="px-4 py-3">支付时间</th>
+                    <th className="px-4 py-3 font-semibold text-[11px]">订单号</th>
+                    <th className="px-4 py-3 font-semibold text-[11px]">用户</th>
+                    <th className="px-4 py-3 font-semibold text-[11px]">类型</th>
+                    <th className="px-4 py-3 font-semibold text-[11px] text-right">金额</th>
+                    <th className="px-4 py-3 font-semibold text-[11px]">状态</th>
+                    <th className="px-4 py-3 font-semibold text-[11px]">创建时间</th>
+                    <th className="px-4 py-3 font-semibold text-[11px]">支付时间</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800/50">
+                <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
+                      <td colSpan={7} className="px-4 py-12 text-center text-fg-dim">
                         <FaSync className="animate-spin inline mr-2" />
                         加载中...
                       </td>
                     </tr>
                   ) : orders.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center text-gray-600">
+                      <td colSpan={7} className="px-4 py-12 text-center text-fg-mute">
                         暂无订单数据
                       </td>
                     </tr>
@@ -412,32 +427,33 @@ const TradeCenter = () => {
                     const typeInfo = getOrderTypeLabel(order.type);
                     const statusInfo = getStatusLabel(order.status);
                     return (
-                      <tr key={order.id} className="hover:bg-white/5 transition-colors">
+                      <tr key={order.id} className="border-t border-ink-line hover:bg-ink-800/60 transition-colors">
                         <td className="px-4 py-3">
-                          <span className="text-[10px] text-gray-500 font-mono">{order.id.substring(0, 12)}...</span>
+                          <span className="text-[10px] text-fg-mute font-mono tabular-nums">{order.id.substring(0, 12)}...</span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-gray-300">{order.users?.username || 'System'}</span>
+                          <span className="text-fg">{order.users?.username || 'System'}</span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${typeInfo.bg} ${typeInfo.color}`}>
+                          <span className={`inline-flex items-center px-2 py-0.5 border text-[10px] font-bold ${typeInfo.bg} ${typeInfo.color}`}>
                             {typeInfo.label}
                           </span>
                         </td>
-                        <td className={`px-4 py-3 text-right font-mono font-bold ${
-                          parseFloat(order.amount) >= 0 ? 'text-green-400' : 'text-red-400'
+                        <td className={`px-4 py-3 text-right font-mono font-bold tabular-nums ${
+                          parseFloat(order.amount) >= 0 ? 'text-terminal' : 'text-hazard'
                         }`}>
                           {parseFloat(order.amount) >= 0 ? '+' : ''}{parseFloat(order.amount || 0).toFixed(2)}
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusInfo.bg} ${statusInfo.color}`}>
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 border text-[10px] font-bold ${statusInfo.bg} ${statusInfo.color}`}>
+                            <span className={`w-1.5 h-1.5 ${statusInfo.dot}`} />
                             {statusInfo.label}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-gray-500 text-xs">
+                        <td className="px-4 py-3 text-fg-dim text-xs font-mono tabular-nums">
                           {new Date(order.createdAt).toLocaleString()}
                         </td>
-                        <td className="px-4 py-3 text-gray-500 text-xs">
+                        <td className="px-4 py-3 text-fg-dim text-xs font-mono tabular-nums">
                           {order.paidAt ? new Date(order.paidAt).toLocaleString() : '-'}
                         </td>
                       </tr>
@@ -449,15 +465,15 @@ const TradeCenter = () => {
 
             {/* 分页 */}
             {totalPages > 1 && (
-              <div className="px-4 py-3 border-t border-gray-800 flex items-center justify-between bg-[#1A1C1F]">
-                <span className="text-xs text-gray-500">
+              <div className="px-4 py-3 border-t border-ink-line flex items-center justify-between bg-ink-800">
+                <span className="text-xs text-fg-dim font-mono tabular-nums">
                   共 {total} 条，第 {page}/{totalPages} 页
                 </span>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setPage(p => Math.max(1, p - 1))}
                     disabled={page === 1}
-                    className="p-2 bg-gray-800 hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-2 border border-ink-line text-fg-dim hover:border-fg-dim hover:text-fg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     <FaChevronLeft className="text-xs" />
                   </button>
@@ -477,10 +493,10 @@ const TradeCenter = () => {
                       <button
                         key={pageNum}
                         onClick={() => setPage(pageNum)}
-                        className={`px-3 py-1 rounded text-xs ${
+                        className={`px-3 py-1 font-mono text-xs tabular-nums border transition-colors ${
                           page === pageNum
-                            ? 'bg-orange-600 text-white'
-                            : 'bg-gray-800 hover:bg-gray-700'
+                            ? 'bg-hazard text-white border-hazard'
+                            : 'border-ink-line text-fg-dim hover:border-fg-dim hover:text-fg'
                         }`}
                       >
                         {pageNum}
@@ -491,7 +507,7 @@ const TradeCenter = () => {
                   <button
                     onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                     disabled={page === totalPages}
-                    className="p-2 bg-gray-800 hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-2 border border-ink-line text-fg-dim hover:border-fg-dim hover:text-fg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     <FaChevronRight className="text-xs" />
                   </button>
@@ -501,7 +517,7 @@ const TradeCenter = () => {
           </div>
         </div>
       ) : (
-        <div className="flex items-center justify-center py-20 text-gray-600">
+        <div className="flex items-center justify-center py-20 text-fg-mute">
           <FaSync className="animate-spin mr-2" />
           加载中...
         </div>
