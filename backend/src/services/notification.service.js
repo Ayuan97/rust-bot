@@ -27,10 +27,10 @@ class NotificationService {
     this.fallbackKey = process.env.BARK_KEY || '';
 
     // ===== Bark 推送参数（全局一致）=====
-    this.barkLevel = process.env.BARK_LEVEL || 'critical';   // critical=绕过静音强制响铃
-    this.barkVolume = Number(process.env.BARK_VOLUME || 8);  // 0-10
-    this.barkCall = String(process.env.BARK_CALL || 'true') === 'true'; // 重复响铃约30秒
-    this.barkSound = process.env.BARK_SOUND || '';
+    this.barkLevel = process.env.BARK_LEVEL || 'critical';    // critical=绕过静音/勿扰强制响铃（最强）
+    this.barkVolume = Number(process.env.BARK_VOLUME || 10);  // 0-10，默认拉满到最大
+    this.barkCall = String(process.env.BARK_CALL || 'true') === 'true'; // call=重复响铃约30秒，接近来电
+    this.barkSound = process.env.BARK_SOUND || 'alarm';       // 警报铃声，最贴合突袭场景
 
     // 合并窗口内存态：userId -> 上次实际发送时间戳(ms)。重启丢失无妨（重启后首次告警照常发）。
     this.lastNotifiedAt = new Map();
