@@ -48,7 +48,7 @@ function App() {
   const activeConnectionMeta = getConnectionStateMeta(activeConnectionState);
   const canDisconnectActiveServer = Boolean(activeServer) && activeConnectionState !== CONNECTION_STATES.DISCONNECTED;
   const allowedViews = useMemo(
-    () => new Set(['hud', 'team', 'map', 'devices', 'tracking', 'serverinfo', 'settings', 'pairing', 'admin']),
+    () => new Set(['hud', 'team', 'map', 'devices', 'tracking', 'serverinfo', 'raid', 'settings', 'pairing', 'admin']),
     []
   );
 
@@ -329,6 +329,8 @@ function App() {
             onBack={() => setActiveView('hud')}
           />
         );
+      case 'raid':
+        return <RaidAlertSettings />;
       case 'settings':
         return <ServerSettingsView server={activeServer} onNavigateToPairing={() => setActiveView('pairing')} />;
       case 'admin':
@@ -369,7 +371,8 @@ function App() {
           <NavIcon id="tracking" icon={<FaCrosshairs />} active={activeView} onClick={setActiveView} label="玩家追踪" />
           <NavIcon id="serverinfo" icon={<FaServer />} active={activeView} onClick={setActiveView} label="服务器信息" />
           <div className="h-px bg-ink-line my-2 mx-1" />
-          <NavIcon id="settings" icon={<FaCog />} active={activeView} onClick={setActiveView} label="预警配置" />
+          <NavIcon id="raid" icon={<FaShieldAlt />} active={activeView} onClick={setActiveView} label="突袭通知" />
+          <NavIcon id="settings" icon={<FaCog />} active={activeView} onClick={setActiveView} label="系统配置" />
           {user?.isAdmin && (
             <NavIcon id="admin" icon={<FaTools />} active={activeView} onClick={setActiveView} label="管理后台" />
           )}
@@ -527,8 +530,6 @@ function ServerSettingsView({ server, onNavigateToPairing }) {
   const tabs = [
     { id: 'fcm', label: 'FCM 推送', icon: <FaBell />, desc: '配对凭证管理' },
     { id: 'notifications', label: '通知设置', icon: <FaBell />, desc: '队伍聊天通知' },
-    { id: 'raid', label: '突袭通知', icon: <FaShieldAlt />, desc: '智能警报强提醒' },
-    { id: 'alerts', label: '预警规则', icon: <FaShieldAlt />, desc: '自动化报警' },
   ];
 
   return (
@@ -582,49 +583,6 @@ function ServerSettingsView({ server, onNavigateToPairing }) {
 
           {/* 通知设置 */}
           {activeTab === 'notifications' && <NotificationSettingsEmbed />}
-
-          {/* 突袭通知（智能警报 → Bark 强提醒） */}
-          {activeTab === 'raid' && <RaidAlertSettings />}
-
-          {/* 预警规则 */}
-          {activeTab === 'alerts' && (
-            <div className="space-y-5">
-              <div className="mb-2">
-                <div className="tac-label mb-1">ALERT RULES</div>
-                <h4 className="text-lg font-extrabold text-fg">预警规则配置</h4>
-                <p className="text-[13px] text-fg-dim mt-1">自动化报警与防御联动</p>
-              </div>
-
-              <SettingRow
-                title="核心房智能警报器"
-                desc="当领地柜房间或核心防区的 Smart Alarm 被触发时，发送毫秒级推送提醒。"
-                active={!isDemo}
-              />
-              <SettingRow
-                title="队员阵亡即时同步"
-                desc="团队成员在野外阵亡时，立即抓取坐标并在地图上标记尸体位置，同时发送通知。"
-                active={!isDemo}
-              />
-              <SettingRow
-                title="24/7 电话语音报警"
-                desc="在深夜或核心区域遭受连续爆炸时，系统将通过加密线路直接拨打您的手机。"
-                pro
-                active={false}
-              />
-              <SettingRow
-                title="自动电力防御联动"
-                desc="当警报触发后，系统可自动开启所有已配对的自动炮塔并锁定基地大门。"
-                pro
-                active={false}
-              />
-
-              {isDemo && (
-                <div className="mt-6 p-5 border border-dashed border-ink-line text-center">
-                  <p className="text-sm text-fg-mute">请先在左侧选择或添加一个活跃的服务器节点。</p>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -641,31 +599,6 @@ function NotificationSettingsEmbed() {
         <p className="text-[13px] text-fg-dim mt-1">队伍聊天通知配置</p>
       </div>
       <NotificationSettings />
-    </div>
-  );
-}
-
-function SettingRow({ title, desc, active, pro }) {
-  return (
-    <div className="flex justify-between items-center gap-4 border border-ink-line p-4">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <div className="text-sm font-bold text-fg">{title}</div>
-          {pro && <span className="font-mono text-[9px] px-1.5 py-0.5 bg-hazard text-white uppercase tracking-wider">PRO</span>}
-        </div>
-        <div className="text-[12px] text-fg-dim mt-1 leading-relaxed">{desc}</div>
-      </div>
-      <div className={pro ? 'opacity-30 cursor-not-allowed' : ''}>
-        <QuickToggle active={active} />
-      </div>
-    </div>
-  );
-}
-
-function QuickToggle({ active, disabled }) {
-  return (
-    <div className={`w-11 h-6 relative transition-colors border ${active ? 'bg-hazard-dim border-hazard/50' : 'bg-ink-700 border-ink-line'} ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}>
-      <div className={`absolute top-[3px] w-4 h-4 transition-all ${active ? 'right-[3px] bg-hazard' : 'left-[3px] bg-fg-mute'}`} />
     </div>
   );
 }
