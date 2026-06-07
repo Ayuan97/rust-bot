@@ -240,7 +240,7 @@ EOF
     if [ -d "$APP_DIR/browser-extension" ]; then
       command -v zip >/dev/null 2>&1 || pkg_install zip
       rm -f "$APP_DIR/frontend/public/rust-credentials-helper.zip"
-      ( cd "$APP_DIR" && zip -rq frontend/public/rust-credentials-helper.zip browser-extension -x "*.DS_Store" )
+      ( cd "$APP_DIR/browser-extension" && zip -rq ../frontend/public/rust-credentials-helper.zip . -x "*.DS_Store" )
     fi
     ( cd "$APP_DIR/frontend" && npm install && npm run build )
     mkdir -p "$WEB_DIR" && rsync -a --delete "$APP_DIR/frontend/dist/" "$WEB_DIR/"
