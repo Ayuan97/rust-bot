@@ -34,7 +34,7 @@ const http = axios.create({
   },
 });
 
-const rustManager = new UserRustPlusManager(`connector:${NODE_ID}`);
+const rustManager = new UserRustPlusManager(`connector:${NODE_ID}`, { autoReconnect: false });
 
 const activeSessions = new Map();
 let heartbeatTimer = null;
@@ -354,7 +354,10 @@ async function bootstrap() {
   });
 
   rustManager.on('server:disconnected', ({ serverId }) => {
-    updateSessionState(serverId, 'CONNECTING', 'connection dropped, reconnecting');
+    // 本地不自动重连：从 activeSessions 移除并上报 CONNECTING，
+    // 由 syncAssignments 依据控制平面的 assignment 决定是否重连（避免与 failover 冲突造成双连接）
+    activeSessions.delete(serverId);
+    updateSessionState(serverId, 'CONNECTING', 'connection dropped, awaiting reassignment');
   });
 
   rustManager.on('server:error', ({ serverId, error }) => {

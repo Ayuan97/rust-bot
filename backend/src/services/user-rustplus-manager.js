@@ -8,7 +8,7 @@ import EventEmitter from 'events';
 import logger from '../utils/logger.js';
 
 class UserRustPlusManager extends EventEmitter {
-  constructor(userId) {
+  constructor(userId, options = {}) {
     super();
 
     if (!userId) {
@@ -16,6 +16,8 @@ class UserRustPlusManager extends EventEmitter {
     }
 
     this.userId = userId;
+    // 分布式 connector 模式应禁用本地自动重连：重连由控制平面 assignment 主导，避免与 failover 冲突造成双连接
+    this.autoReconnect = options.autoReconnect !== false;
     this.connections = new Map(); // serverId -> rustplus instance
     this.connecting = new Set(); // 正在连接中的 serverId（防止竞态）
     this.serverConfigs = new Map(); // serverId -> config（保存配置用于重连）
@@ -137,7 +139,8 @@ class UserRustPlusManager extends EventEmitter {
         this.emit('server:disconnected', { userId: this.userId, serverId });
 
         // 握手失败也会触发 disconnected。仅对已建立过的连接自动重连，避免无限重试风暴。
-        if (wasConnected && !this.manualDisconnect.has(serverId)) {
+        // 分布式 connector 模式禁用本地重连（autoReconnect=false），由控制平面 assignment 决定是否重连。
+        if (wasConnected && !this.manualDisconnect.has(serverId) && this.autoReconnect) {
           this.scheduleReconnect(serverId);
         }
       });
