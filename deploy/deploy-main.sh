@@ -16,6 +16,7 @@ trap 'echo -e "\033[1;31m[deploy-main] 第 $LINENO 行出错，已中断\033[0m"
 APP_DIR=${APP_DIR:-/www/wwwroot/rust-bot}
 REPO_URL=${REPO_URL:-https://github.com/Ayuan97/rust-bot.git}
 REPO_RAW=${REPO_RAW:-https://raw.githubusercontent.com/Ayuan97/rust-bot/main}
+REPO_TOKEN=${REPO_TOKEN:-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}
 BRANCH=${BRANCH:-main}
 WEB_DIR=${WEB_DIR:-/var/www/app.rustplusplus.com}
 NODE_MAJOR=20
@@ -113,9 +114,7 @@ cmd_provision() {
   [ -f "$APP_DIR/.env" ] || die "未找到 $APP_DIR/.env，请先部署主节点"
   token=$( cd "$APP_DIR" && node backend/scripts/issue-node-token.js "$nid" )
   [ -n "$token" ] || die "签发失败"
-  local repotoken master
-  repotoken=$(grep -E '^REPO_TOKEN=' "$APP_DIR/.env" | head -1 | cut -d= -f2- || true)
-  [ -n "$repotoken" ] || warn "主节点 .env 未配置 REPO_TOKEN：私有仓库下子节点将无法拉取代码"
+  local master
   # 默认用主节点公网 IP 直连(不依赖 nginx/域名)；可用 MASTER_HOST 环境变量改成域名
   master=${MASTER_HOST:-}
   [ -n "$master" ] || master=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo "")
@@ -126,10 +125,10 @@ cmd_provision() {
  子节点 [$nid] 一键部署命令（到子节点机器粘贴执行，零交互）
 ------------------------------------------------------------
  方式A（已把 deploy-connector.sh 传到子节点）:
-   REPO_TOKEN='$repotoken' NODE_TOKEN='$token' MASTER_HOST='$master' bash deploy-connector.sh
+   NODE_TOKEN='$token' MASTER_HOST='$master' bash deploy-connector.sh
 
- 方式B（一条命令；私有仓库用令牌下载脚本+拉代码）:
-   curl -fsSL -H "Authorization: token $repotoken" $REPO_RAW/deploy/deploy-connector.sh | REPO_TOKEN='$repotoken' NODE_TOKEN='$token' MASTER_HOST='$master' bash
+ 方式B（一条命令，自动拉脚本+代码，脚本已内置仓库令牌）:
+   curl -fsSL -H "Authorization: token $REPO_TOKEN" $REPO_RAW/deploy/deploy-connector.sh | NODE_TOKEN='$token' MASTER_HOST='$master' bash
 ============================================================
 EOF
 }
