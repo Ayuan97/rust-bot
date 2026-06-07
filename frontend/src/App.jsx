@@ -3,7 +3,7 @@ import {
   FaTerminal, FaUsers, FaCogs, FaMapMarkedAlt, FaCog,
   FaSignOutAlt, FaPlus, FaClock, FaSatellite, FaShieldAlt,
   FaTimes, FaExpandArrowsAlt, FaPlay, FaRobot, FaBolt, FaLightbulb, FaCrosshairs, FaDoorOpen, FaChartLine,
-  FaGlobe, FaTools, FaBell, FaServer
+  FaGlobe, FaTools, FaBell, FaServer, FaAngleDoubleLeft, FaAngleDoubleRight
 } from 'react-icons/fa';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
@@ -36,6 +36,7 @@ function App() {
   const [servers, setServers] = useState([]);
   const [activeServer, setActiveServer] = useState(null);
   const [activeView, setActiveView] = useState('hud'); // 'hud', 'team', 'devices', 'settings', 'pairing', 'admin'
+  const [navExpanded, setNavExpanded] = useState(false); // 左侧菜单展开/收起（手动控制，不再 hover 自动）
   const [showMapModal, setShowMapModal] = useState(false);
   const [connectionLoading, setConnectionLoading] = useState(false);
   const [teamData, setTeamData] = useState(null);
@@ -350,13 +351,13 @@ function App() {
       {alertLevel === 'critical' && <div className="alert-pulse" />}
 
       {/* 左侧导航轨 (Navigation Rail) - 悬停展开 */}
-      <nav className="group/nav h-full flex flex-col py-5 bg-ink-900 border-r border-ink-line z-50 shrink-0 w-16 md:w-[68px] hover:w-16 md:hover:w-56 transition-all duration-300 ease-out overflow-hidden">
+      <nav className={`h-full flex flex-col py-5 bg-ink-900 border-r border-ink-line z-50 shrink-0 w-16 transition-all duration-300 ease-out overflow-hidden ${navExpanded ? 'md:w-56' : 'md:w-[68px]'}`}>
         <div className="mb-8 px-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-hazard flex items-center justify-center shrink-0">
               <img src="/logo.svg" alt="Rust+" className="w-6 h-6 object-contain" />
             </div>
-            <div className="opacity-0 group-hover/nav:opacity-100 transition-opacity duration-300 whitespace-nowrap leading-tight">
+            <div className={`transition-opacity duration-300 whitespace-nowrap leading-tight ${navExpanded ? 'opacity-100' : 'opacity-0'}`}>
               <div className="font-mono text-sm font-bold tracking-[0.2em] text-fg">RUST+</div>
               <div className="tac-label">OPS CONSOLE</div>
             </div>
@@ -364,21 +365,35 @@ function App() {
         </div>
 
         <div className="flex-1 flex flex-col gap-1 min-h-0 overflow-y-auto px-3">
-          <NavIcon id="hud" icon={<FaTerminal />} active={activeView} onClick={setActiveView} label="基地概览" />
-          <NavIcon id="team" icon={<FaUsers />} active={activeView} onClick={setActiveView} label="队友动态" />
-          <NavIcon id="map" icon={<FaMapMarkedAlt />} active={activeView} onClick={setActiveView} label="实时地图" />
-          <NavIcon id="devices" icon={<FaCogs />} active={activeView} onClick={setActiveView} label="智能中控" />
-          <NavIcon id="tracking" icon={<FaCrosshairs />} active={activeView} onClick={setActiveView} label="玩家追踪" />
-          <NavIcon id="serverinfo" icon={<FaServer />} active={activeView} onClick={setActiveView} label="服务器信息" />
+          <NavIcon id="hud" icon={<FaTerminal />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="基地概览" />
+          <NavIcon id="team" icon={<FaUsers />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="队友动态" />
+          <NavIcon id="map" icon={<FaMapMarkedAlt />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="实时地图" />
+          <NavIcon id="devices" icon={<FaCogs />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="智能中控" />
+          <NavIcon id="tracking" icon={<FaCrosshairs />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="玩家追踪" />
+          <NavIcon id="serverinfo" icon={<FaServer />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="服务器信息" />
           <div className="h-px bg-ink-line my-2 mx-1" />
-          <NavIcon id="raid" icon={<FaShieldAlt />} active={activeView} onClick={setActiveView} label="突袭通知" />
-          <NavIcon id="settings" icon={<FaCog />} active={activeView} onClick={setActiveView} label="系统配置" />
+          <NavIcon id="raid" icon={<FaShieldAlt />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="突袭通知" />
+          <NavIcon id="settings" icon={<FaCog />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="系统配置" />
           {user?.isAdmin && (
-            <NavIcon id="admin" icon={<FaTools />} active={activeView} onClick={setActiveView} label="管理后台" />
+            <NavIcon id="admin" icon={<FaTools />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="管理后台" />
           )}
         </div>
 
-        <div className="mt-auto pt-4 px-3 shrink-0">
+        <div className="mt-auto pt-4 px-3 shrink-0 space-y-1">
+          {/* 收起/展开 菜单切换 */}
+          <button
+            onClick={() => setNavExpanded((v) => !v)}
+            title={navExpanded ? '收起菜单' : '展开菜单'}
+            className="w-full h-11 flex items-center gap-3 px-3 text-fg-dim hover:bg-ink-800 hover:text-fg transition-colors"
+          >
+            <div className="w-6 h-6 flex items-center justify-center shrink-0">
+              {navExpanded ? <FaAngleDoubleLeft className="text-sm" /> : <FaAngleDoubleRight className="text-sm" />}
+            </div>
+            <span className={`text-[13px] font-bold whitespace-nowrap transition-opacity duration-300 ${navExpanded ? 'opacity-100' : 'opacity-0'}`}>
+              收起菜单
+            </span>
+          </button>
+
           {/* 用户信息 + 退出 */}
           <button
             onClick={logout}
@@ -388,7 +403,7 @@ function App() {
             <div className="w-6 h-6 flex items-center justify-center shrink-0">
               <FaSignOutAlt className="text-fg-mute group-hover/logout:text-hazard transition-colors" />
             </div>
-            <div className="flex-1 text-left opacity-0 group-hover/nav:opacity-100 transition-opacity duration-300 overflow-hidden">
+            <div className={`flex-1 text-left transition-opacity duration-300 overflow-hidden ${navExpanded ? 'opacity-100' : 'opacity-0'}`}>
               <div className="text-[11px] text-fg font-bold truncate">{user?.username}</div>
               <div className="font-mono text-[9px] uppercase tracking-wider text-fg-mute">LOGOUT</div>
             </div>
@@ -503,11 +518,12 @@ function App() {
 
 // --- 子组件 ---
 
-function NavIcon({ id, icon, active, onClick, label }) {
+function NavIcon({ id, icon, active, onClick, label, expanded }) {
   const isActive = active === id;
   return (
     <button
       onClick={() => onClick(id)}
+      title={label}
       className={`relative w-full h-11 flex items-center gap-3 px-3 border-l-2 transition-colors duration-150 ${isActive ? 'bg-hazard-dim border-hazard text-fg' : 'border-transparent text-fg-dim hover:bg-ink-800 hover:text-fg'}`}
     >
       {/* 图标 */}
@@ -515,8 +531,8 @@ function NavIcon({ id, icon, active, onClick, label }) {
         <span className={`text-sm ${isActive ? 'text-hazard' : ''}`}>{icon}</span>
       </div>
 
-      {/* 文字标签 - 跟随父级 nav 的 hover 状态显示 */}
-      <span className="text-[13px] font-bold whitespace-nowrap opacity-0 group-hover/nav:opacity-100 transition-opacity duration-300">
+      {/* 文字标签 - 跟随菜单展开状态显示 */}
+      <span className={`text-[13px] font-bold whitespace-nowrap transition-opacity duration-300 ${expanded ? 'opacity-100' : 'opacity-0'}`}>
         {label}
       </span>
     </button>
