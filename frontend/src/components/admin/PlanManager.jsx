@@ -417,7 +417,7 @@ const PlanManager = () => {
             }`}
           >
             {editingPlan?.id === plan.id ? (
-              {renderPlanForm(handleUpdate, '保存修改')}
+              renderPlanForm(handleUpdate, '保存修改')
             ) : (
               <div className="flex justify-between items-start gap-4">
                 <div className="flex-1 min-w-0">
