@@ -236,6 +236,12 @@ EOF
 
   if [ -d "$APP_DIR/frontend" ]; then
     log "构建前端 -> $WEB_DIR"
+    # 打包浏览器插件供 Chrome 用户手动安装下载（放进 public，build 时会复制进 dist）
+    if [ -d "$APP_DIR/browser-extension" ]; then
+      command -v zip >/dev/null 2>&1 || pkg_install zip
+      rm -f "$APP_DIR/frontend/public/rust-credentials-helper.zip"
+      ( cd "$APP_DIR" && zip -rq frontend/public/rust-credentials-helper.zip browser-extension -x "*.DS_Store" )
+    fi
     ( cd "$APP_DIR/frontend" && npm install && npm run build )
     mkdir -p "$WEB_DIR" && rsync -a --delete "$APP_DIR/frontend/dist/" "$WEB_DIR/"
   fi
