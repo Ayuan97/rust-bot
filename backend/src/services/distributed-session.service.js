@@ -24,8 +24,13 @@ const DEADLOCK_RETRY_BASE_DELAY_MS = 120;
 
 function isDeadlockError(error) {
   if (!error) return false;
-  if (error.code === 'ER_LOCK_DEADLOCK') return true;
-  return /deadlock found when trying to get lock/i.test(error.message || '');
+  if (error.code === 'ER_LOCK_DEADLOCK' || error.code === 'ER_LOCK_WAIT_TIMEOUT') return true;
+  if (error.errno === 1213 || error.errno === 1205) return true;
+  return /deadlock found when trying to get lock|lock wait timeout/i.test(error.message || '');
+}
+
+function isDupEntryError(error) {
+  return !!error && (error.code === 'ER_DUP_ENTRY' || error.errno === 1062);
 }
 
 function delay(ms) {
@@ -55,8 +60,17 @@ class DistributedSessionService extends EventEmitter {
     this.failoverGraceSec = Number(process.env.DISTRIBUTED_FAILOVER_GRACE_SEC || 20);
     this.failoverBatchSize = Math.max(20, Number(process.env.DISTRIBUTED_FAILOVER_BATCH_SIZE || 200));
     this.queueExpireMinutes = Number(process.env.DISTRIBUTED_QUEUE_EXPIRE_MINUTES || 10);
-    this.commandPollIntervalMs = Number(process.env.DISTRIBUTED_COMMAND_POLL_MS || 250);
+    // 命令结果改为“事件唤醒为主 + 长轮询兜底”，兜底间隔覆盖 failover/close 等不经 completeCommand 的终态
+    this.commandFallbackPollMs = Math.max(
+      250,
+      Number(process.env.DISTRIBUTED_COMMAND_FALLBACK_POLL_MS || 2000)
+    );
     this.commandTimeoutMs = Number(process.env.DISTRIBUTED_COMMAND_TIMEOUT_MS || 25000);
+    // 已认领(CLAIMED)命令超过此时长仍无结果，视为认领超时、允许被重新认领（应 < commandTimeoutMs）
+    this.commandClaimTimeoutMs = Math.max(
+      1000,
+      Number(process.env.DISTRIBUTED_COMMAND_CLAIM_TIMEOUT_MS || 15000)
+    );
     this.backgroundIntervalMs = Math.max(2000, Number(process.env.DISTRIBUTED_BACKGROUND_INTERVAL_MS || 10000));
     this.expireCleanupBatchSize = Math.min(
       2000,
@@ -77,6 +91,8 @@ class DistributedSessionService extends EventEmitter {
     this.backgroundTimer = null;
     this.backgroundTickRunning = false;
     this.autoscaler = null;
+    // 命令结果等待者：commandId -> Set<notifyFn>，由 completeCommandForNode 即时唤醒，替代忙轮询
+    this.commandWaiters = new Map();
   }
 
   isDistributedMode() {
@@ -163,7 +179,7 @@ class DistributedSessionService extends EventEmitter {
       const [commandResult] = await this.queryWithDeadlockRetry(
         `UPDATE session_commands
          SET status = 'EXPIRED', error = ?, updatedAt = NOW()
-         WHERE status IN (${COMMAND_PENDING_STATUS_SQL})
+         WHERE status = 'PENDING'
            AND expiresAt IS NOT NULL
            AND expiresAt < NOW()
          ORDER BY expiresAt ASC, id ASC
@@ -202,7 +218,10 @@ class DistributedSessionService extends EventEmitter {
         if (!isDeadlockError(error) || attempt >= DEADLOCK_RETRY_MAX_ATTEMPTS) {
           throw error;
         }
-        await delay(DEADLOCK_RETRY_BASE_DELAY_MS * attempt);
+        await delay(
+          DEADLOCK_RETRY_BASE_DELAY_MS * attempt +
+            Math.floor(Math.random() * DEADLOCK_RETRY_BASE_DELAY_MS)
+        );
       }
     }
   }
@@ -516,12 +535,30 @@ class DistributedSessionService extends EventEmitter {
       return { status: 'queued', ...payload };
     }
 
-    const sessionId = await this.createAssignedSession({
-      userId,
-      serverId,
-      serverKey,
-      nodeId: node.id,
-    });
+    let sessionId;
+    try {
+      sessionId = await this.createAssignedSession({
+        userId,
+        serverId,
+        serverKey,
+        nodeId: node.id,
+      });
+    } catch (error) {
+      // 并发下另一请求已为同一 (userId, serverId) 建了活跃会话（撞唯一约束），复用之，杜绝双会话/双连接
+      if (isDupEntryError(error)) {
+        const existing = await this.findActiveSession(userId, serverId);
+        if (existing) {
+          return {
+            status: existing.status === 'CONNECTED' ? 'connected' : 'assigned',
+            existing: true,
+            sessionId: existing.id,
+            nodeId: existing.nodeId,
+            serverKey,
+          };
+        }
+      }
+      throw error;
+    }
     const payload = {
       status: 'assigned',
       sessionId,
@@ -702,13 +739,31 @@ class DistributedSessionService extends EventEmitter {
         continue;
       }
 
-      const sessionId = await this.createAssignedSession({
-        userId: queued.userId,
-        serverId: queued.serverId,
-        serverKey: queued.serverKey,
-        nodeId: node.id,
-        sourceQueueId: queued.id,
-      });
+      let sessionId;
+      try {
+        sessionId = await this.createAssignedSession({
+          userId: queued.userId,
+          serverId: queued.serverId,
+          serverKey: queued.serverKey,
+          nodeId: node.id,
+          sourceQueueId: queued.id,
+        });
+      } catch (error) {
+        // 并发下已存在活跃会话：把该队列项指向既有会话后跳过，避免重复建会话
+        if (isDupEntryError(error)) {
+          const existing = await this.findActiveSession(queued.userId, queued.serverId);
+          if (existing) {
+            await db.query(
+              `UPDATE connection_queue
+               SET status = 'ASSIGNED', sessionId = ?, updatedAt = NOW()
+               WHERE id = ?`,
+              [existing.id, queued.id]
+            );
+          }
+          continue;
+        }
+        throw error;
+      }
 
       await db.query(
         `UPDATE connection_queue
@@ -742,6 +797,9 @@ class DistributedSessionService extends EventEmitter {
   }) {
     if (!nodeId || !publicIp) {
       throw new Error('nodeId and publicIp are required');
+    }
+    if (!/^[A-Za-z0-9._-]{1,64}$/.test(nodeId)) {
+      throw new Error('invalid nodeId format');
     }
 
     await db.query(
@@ -989,7 +1047,8 @@ class DistributedSessionService extends EventEmitter {
 
   async waitForCommandResult(commandId, timeoutMs) {
     const startedAt = Date.now();
-    while (Date.now() - startedAt < timeoutMs) {
+
+    const checkOnce = async () => {
       const [rows] = await db.query(
         `SELECT status, result, error
          FROM session_commands
@@ -1000,24 +1059,74 @@ class DistributedSessionService extends EventEmitter {
       if (!row) {
         return { status: 'failed', error: 'command not found' };
       }
-
       if (row.status === 'DONE') {
         return { status: 'success', result: parseJson(row.result, row.result) };
       }
       if (row.status === 'FAILED' || row.status === 'EXPIRED') {
         return { status: 'failed', error: row.error || 'command failed' };
       }
+      return null;
+    };
 
-      await new Promise((resolve) => setTimeout(resolve, this.commandPollIntervalMs));
+    // 立即查一次：命令可能已完成（含复用的未决命令刚好返回）
+    const immediate = await checkOnce();
+    if (immediate) return immediate;
+
+    // 事件唤醒为主、长轮询兜底：正常路径由 completeCommandForNode 亚秒唤醒，不再 250ms 忙轮询占用连接池
+    while (Date.now() - startedAt < timeoutMs) {
+      const remaining = timeoutMs - (Date.now() - startedAt);
+      await this._waitCommandSignal(commandId, Math.min(remaining, this.commandFallbackPollMs));
+      const res = await checkOnce();
+      if (res) return res;
     }
 
+    // 仅作废尚未被认领(PENDING)的命令；CLAIMED 表示子节点已在执行，不单方作废
+    // （避免“显示失败但实际已执行”），其结局交给迟到回报 / 认领超时重认领 / 节点失联 failover
     await db.query(
       `UPDATE session_commands
        SET status = 'EXPIRED', error = ?, updatedAt = NOW()
-       WHERE id = ? AND status IN (${COMMAND_PENDING_STATUS_SQL})`,
+       WHERE id = ? AND status = 'PENDING'`,
       ['command timeout', commandId]
     );
     return { status: 'failed', error: 'command timeout' };
+  }
+
+  /**
+   * 等待某命令的“结果就绪”信号，或最多等待 maxWaitMs 毫秒（取唤醒与兜底间隔的较小值）。
+   * @private
+   */
+  _waitCommandSignal(commandId, maxWaitMs) {
+    return new Promise((resolve) => {
+      let timer = null;
+      const done = () => {
+        if (timer) clearTimeout(timer);
+        const set = this.commandWaiters.get(commandId);
+        if (set) {
+          set.delete(done);
+          if (set.size === 0) this.commandWaiters.delete(commandId);
+        }
+        resolve();
+      };
+      let set = this.commandWaiters.get(commandId);
+      if (!set) {
+        set = new Set();
+        this.commandWaiters.set(commandId, set);
+      }
+      set.add(done);
+      timer = setTimeout(done, Math.max(0, maxWaitMs));
+    });
+  }
+
+  /**
+   * 唤醒等待某命令结果的所有 waiter（命令已落终态时调用）。
+   * @private
+   */
+  _signalCommandResult(commandId) {
+    const set = this.commandWaiters.get(commandId);
+    if (!set) return;
+    for (const done of Array.from(set)) {
+      done();
+    }
   }
 
   async claimCommandsForNode(nodeId, limit = 20) {
@@ -1027,6 +1136,7 @@ class DistributedSessionService extends EventEmitter {
     try {
       await conn.beginTransaction();
 
+      const claimTimeoutSec = Math.max(1, Math.ceil(this.commandClaimTimeoutMs / 1000));
       const [rows] = await conn.query(
         `SELECT
            c.id,
@@ -1039,12 +1149,19 @@ class DistributedSessionService extends EventEmitter {
          FROM session_commands c
          INNER JOIN connection_sessions s ON s.id = c.sessionId
          WHERE s.nodeId = ?
-           AND c.status = 'PENDING'
            AND s.status IN (${SESSION_CONNECTED_STATUS_SQL})
+           AND (
+             c.status = 'PENDING'
+             OR (
+               c.status = 'CLAIMED'
+               AND c.claimedAt IS NOT NULL
+               AND c.claimedAt < DATE_SUB(NOW(), INTERVAL ? SECOND)
+             )
+           )
          ORDER BY c.createdAt ASC, c.id ASC
          LIMIT ?
          FOR UPDATE`,
-        [nodeId, safeLimit]
+        [nodeId, claimTimeoutSec, safeLimit]
       );
 
       if (rows.length === 0) {
@@ -1057,7 +1174,7 @@ class DistributedSessionService extends EventEmitter {
         `UPDATE session_commands
          SET status = 'CLAIMED', claimedAt = NOW(), updatedAt = NOW()
          WHERE id IN (${ids.map(() => '?').join(',')})
-           AND status = 'PENDING'`,
+           AND status IN (${COMMAND_PENDING_STATUS_SQL})`,
         ids
       );
 
@@ -1104,6 +1221,8 @@ class DistributedSessionService extends EventEmitter {
         commandId,
       ]
     );
+    // 命令已落终态：即时唤醒等待该结果的 waiter，避免其继续兜底轮询/空等到超时
+    this._signalCommandResult(commandId);
     if (updateResult.affectedRows === 0) {
       return { commandId, success: false, ignored: true, reason: 'COMMAND_ALREADY_RESOLVED' };
     }
