@@ -4,7 +4,7 @@ import {
   FaCheck, FaLock, FaArrowLeft, FaArrowRight, FaSpinner,
   FaSatellite, FaGamepad, FaCheckCircle, FaRocket, FaShieldAlt,
   FaKey, FaPlay, FaStop, FaTimes, FaInfoCircle,
-  FaExclamationTriangle, FaCreditCard
+  FaExclamationTriangle, FaCreditCard, FaChrome, FaDownload, FaBook
 } from 'react-icons/fa';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from './Toast';
@@ -12,6 +12,8 @@ import { getPairingStatus, startPairing, stopPairing, registerSimple } from '../
 import socketService from '../services/socket';
 import {
   EDGE_EXTENSION_URL,
+  CHROME_EXTENSION_DOWNLOAD,
+  CHROME_INSTALL_GUIDE,
   STEAM_LOGIN_URL,
   REQUIRED_PLUGIN_BROWSER,
   detectBrowser,
@@ -273,7 +275,7 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
           <div className="p-6">
             {currentStep === 1 && (
               <Step1InstallPlugin
-                isUsingEdge={isUsingEdge}
+                browser={browser}
                 onNext={() => setCurrentStep(2)}
                 onSkip={() => setCurrentStep(2)}
               />
@@ -410,45 +412,68 @@ function WizardFooter({ children }) {
 
 // ============ 步骤组件 ============
 
-function Step1InstallPlugin({ isUsingEdge, onNext, onSkip }) {
+function Step1InstallPlugin({ browser, onNext, onSkip }) {
+  const isChrome = browser === 'chrome';
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="p-4 bg-ink-800 border border-ink-line">
         <div className="flex items-start gap-3">
           <FaInfoCircle className="text-fg-dim mt-0.5 shrink-0" />
           <p className="text-xs text-fg-dim leading-relaxed">
-            获取 FCM 凭证必须使用 {REQUIRED_PLUGIN_BROWSER} 插件。
-            你仍可继续后续步骤，但只有来自 Edge 插件的凭证才能成功配对。
+            获取 FCM 凭证需要安装浏览器插件。Edge 可从商店一键安装；Chrome 商店版即将上架，当前可手动安装（约 1 分钟）。
           </p>
         </div>
       </div>
 
-      {!isUsingEdge && <EdgeRequiredNotice />}
-
       <div className="space-y-3">
         <div className="tac-label border-l-2 border-hazard pl-2">
-          INSTALL PLUGIN // 安装 {REQUIRED_PLUGIN_BROWSER} 插件
+          INSTALL PLUGIN // 安装插件
         </div>
 
+        {/* Edge：商店一键安装 */}
         <button
           onClick={() => window.open(EDGE_EXTENSION_URL, '_blank')}
-          className="w-full p-4 flex items-center gap-4 transition-colors duration-150 border border-ink-line bg-ink-800 hover:border-hazard/50"
+          className={`w-full p-4 flex items-center gap-4 transition-colors duration-150 border bg-ink-800 hover:border-hazard/50 ${!isChrome ? 'border-hazard/50' : 'border-ink-line'}`}
         >
           <div className="w-10 h-10 bg-hazard-dim border border-hazard/40 flex items-center justify-center">
             <FaEdge className="text-hazard text-xl" />
           </div>
           <div className="text-left flex-1">
             <div className="font-bold text-sm text-fg">Microsoft Edge</div>
-            <div className="text-[11px] text-fg-dim">Edge 加载项商店</div>
+            <div className="text-[11px] text-fg-dim">加载项商店 · 一键安装</div>
           </div>
           <FaExternalLinkAlt className="text-fg-mute" />
         </button>
+
+        {/* Chrome：商店未上架前，手动安装（下载 + 教程） */}
+        <div className={`p-4 border bg-ink-800 ${isChrome ? 'border-hazard/50' : 'border-ink-line'}`}>
+          <div className="flex items-center gap-4 mb-3">
+            <div className="w-10 h-10 bg-hazard-dim border border-hazard/40 flex items-center justify-center">
+              <FaChrome className="text-hazard text-xl" />
+            </div>
+            <div className="text-left flex-1">
+              <div className="font-bold text-sm text-fg flex items-center gap-2 flex-wrap">
+                Google Chrome
+                <span className="font-mono text-[9px] px-1.5 py-0.5 bg-hazard-dim border border-hazard/40 text-hazard uppercase tracking-wider">商店即将上架</span>
+              </div>
+              <div className="text-[11px] text-fg-dim">当前手动安装</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <a href={CHROME_EXTENSION_DOWNLOAD} download className="tac-btn tac-btn-ghost !py-2.5 justify-center">
+              <FaDownload className="text-xs" /> 下载插件
+            </a>
+            <button onClick={() => window.open(CHROME_INSTALL_GUIDE, '_blank')} className="tac-btn tac-btn-ghost !py-2.5 justify-center">
+              <FaBook className="text-xs" /> 安装教程
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="p-3 bg-hazard-dim border border-hazard/30">
         <p className="text-[11px] text-fg-dim leading-relaxed">
           <span className="font-mono text-hazard-bright text-[10px] uppercase tracking-wider mr-1">TIP</span>
-          安装后请在 Edge 中打开插件并登录 Steam，确认能复制
+          安装后请在浏览器里打开插件并登录 Steam，确认能复制
           <span className="text-hazard font-mono"> /credentials add ... </span>
           命令再继续。
         </p>
