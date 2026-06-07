@@ -23,7 +23,7 @@
 cp .env.example .env
 ```
 
-Fill database, JWT, `INTERNAL_API_TOKEN`, and frontend URL settings.
+Fill database, JWT, `NODE_TOKEN_SECRET`, and frontend URL settings.
 
 ### 3) Initialize database
 
@@ -40,6 +40,12 @@ mysql -u root -p < backend/sql/init.sql
 ```
 
 ### 5) Start connector node (optional)
+
+Issue a node token on the main host (the `nodeId` becomes the node's identity), then set it as `NODE_TOKEN` in the connector's `.env`:
+
+```bash
+node backend/scripts/issue-node-token.js node-1
+```
 
 ```powershell
 ./start-connector.ps1

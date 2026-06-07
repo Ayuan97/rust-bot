@@ -3,7 +3,7 @@
 ## 1) Missing environment variables at startup
 
 Symptom:
-- startup errors for `DB_*`, `JWT_SECRET`, or `INTERNAL_API_TOKEN`
+- startup errors for `DB_*`, `JWT_SECRET`, or `NODE_TOKEN_SECRET`
 
 Fix:
 1. Ensure root `.env` exists
@@ -26,7 +26,8 @@ mysql -u root -p < backend/sql/init.sql
 
 Check:
 - `CONTROL_API_URL` reachable from connector
-- `INTERNAL_API_TOKEN` same on main and connector
+- connector `NODE_TOKEN` is signed by main's `NODE_TOKEN_SECRET` (issue via `backend/scripts/issue-node-token.js <nodeId>`)
+- connector source IP is allowed by `INTERNAL_ALLOWED_IPS` on main
 - main node is running and serving `/api/internal`
 
 ## 4) Session keeps queued

@@ -46,7 +46,7 @@ $envFile = Join-Path $projectRoot '.env'
 
 Import-DotEnvFile -Path $envFile
 
-$requiredEnv = @('DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'JWT_SECRET', 'INTERNAL_API_TOKEN')
+$requiredEnv = @('DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'JWT_SECRET', 'NODE_TOKEN_SECRET')
 foreach ($key in $requiredEnv) {
   if (-not [Environment]::GetEnvironmentVariable($key, 'Process')) {
     throw "Missing required env var in .env: $key"

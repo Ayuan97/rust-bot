@@ -1,18 +1,38 @@
 import express from 'express';
 import distributedSessionService from '../services/distributed-session.service.js';
+import { verifyNodeToken, isAllowedInternalIp } from '../utils/node-auth.js';
 
 const router = express.Router();
 
-function authenticateInternal(req, res, next) {
-  const expected = process.env.INTERNAL_API_TOKEN;
-  if (!expected) {
+/**
+ * 网络层：仅允许可信来源访问内部接口。
+ * 默认锁本机（INTERNAL_ALLOWED_IPS 缺省 = 127.0.0.1,::1）；
+ * 跨机子节点需把其出口 IP 加入 INTERNAL_ALLOWED_IPS，或设为 "*" 关闭该限制。
+ */
+function restrictInternalNetwork(req, res, next) {
+  const ip = req.ip || req.socket?.remoteAddress || '';
+  if (!isAllowedInternalIp(ip)) {
+    return res.status(403).json({
+      success: false,
+      error: 'internal endpoint not allowed from this address',
+    });
+  }
+  next();
+}
+
+/**
+ * 身份层：用节点 JWT 解析出可信 nodeId 并写入 req.nodeId。
+ * 后续所有处理一律以 req.nodeId 为准，忽略请求体/查询里自报的 nodeId。
+ */
+function authenticateNode(req, res, next) {
+  if (!process.env.NODE_TOKEN_SECRET) {
     return res.status(503).json({
       success: false,
-      error: 'INTERNAL_API_TOKEN not configured',
+      error: 'NODE_TOKEN_SECRET not configured',
     });
   }
 
-  const headerToken = req.headers['x-internal-token'];
+  const headerToken = req.headers['x-node-token'];
   const authHeader = req.headers.authorization;
   let bearerToken = null;
   if (authHeader) {
@@ -22,20 +42,24 @@ function authenticateInternal(req, res, next) {
     }
   }
   const token = headerToken || bearerToken;
-  if (!token || token !== expected) {
-    return res.status(401).json({
-      success: false,
-      error: 'invalid internal token',
-    });
+
+  try {
+    req.nodeId = verifyNodeToken(token);
+    next();
+  } catch (error) {
+    return res.status(401).json({ success: false, error: 'invalid node token' });
   }
-  next();
 }
 
-router.use(authenticateInternal);
+router.use(restrictInternalNetwork);
+router.use(authenticateNode);
 
 router.post('/gateway/register', async (req, res) => {
   try {
-    const node = await distributedSessionService.registerGatewayNode(req.body || {});
+    const node = await distributedSessionService.registerGatewayNode({
+      ...(req.body || {}),
+      nodeId: req.nodeId,
+    });
     res.json({ success: true, node });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
@@ -44,80 +68,11 @@ router.post('/gateway/register', async (req, res) => {
 
 router.post('/gateway/heartbeat', async (req, res) => {
   try {
-    await distributedSessionService.heartbeatGatewayNode(req.body || {});
+    await distributedSessionService.heartbeatGatewayNode({
+      ...(req.body || {}),
+      nodeId: req.nodeId,
+    });
     res.json({ success: true });
-  } catch (error) {
-    res.status(400).json({ success: false, error: error.message });
-  }
-});
-
-router.post('/session/open', async (req, res) => {
-  try {
-    const { userId, serverId, reason } = req.body || {};
-    if (!userId || !serverId) {
-      return res.status(400).json({ success: false, error: 'userId and serverId are required' });
-    }
-    const result = await distributedSessionService.openSession({ userId, serverId, reason });
-    if (result.status === 'queued') {
-      return res.status(202).json({ success: true, queued: true, ...result });
-    }
-    return res.json({ success: true, queued: false, ...result });
-  } catch (error) {
-    res.status(400).json({ success: false, error: error.message });
-  }
-});
-
-router.post('/session/command', async (req, res) => {
-  try {
-    const { userId, serverId, action, payload, timeoutMs } = req.body || {};
-    if (!userId || !serverId || !action) {
-      return res.status(400).json({
-        success: false,
-        error: 'userId, serverId and action are required',
-      });
-    }
-    const result = await distributedSessionService.dispatchCommand({
-      userId,
-      serverId,
-      action,
-      payload,
-      timeoutMs,
-    });
-    if (result.status === 'queued' || result.status === 'missing_session') {
-      return res.status(202).json({ success: false, ...result });
-    }
-    if (result.status === 'failed') {
-      return res.status(400).json({ success: false, ...result });
-    }
-    return res.json({ success: true, ...result });
-  } catch (error) {
-    res.status(400).json({ success: false, error: error.message });
-  }
-});
-
-router.post('/session/close', async (req, res) => {
-  try {
-    const { userId, serverId, sessionId, reason } = req.body || {};
-    if (!userId) {
-      return res.status(400).json({ success: false, error: 'userId is required' });
-    }
-    const result = await distributedSessionService.closeSession({
-      userId,
-      serverId,
-      sessionId,
-      reason,
-    });
-    res.json({ success: true, ...result });
-  } catch (error) {
-    res.status(400).json({ success: false, error: error.message });
-  }
-});
-
-router.get('/session/queue', async (req, res) => {
-  try {
-    const { userId } = req.query;
-    const queue = await distributedSessionService.getQueue(userId || null);
-    res.json({ success: true, queue });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
   }
@@ -125,11 +80,7 @@ router.get('/session/queue', async (req, res) => {
 
 router.get('/session/assignments', async (req, res) => {
   try {
-    const { nodeId } = req.query;
-    if (!nodeId) {
-      return res.status(400).json({ success: false, error: 'nodeId is required' });
-    }
-    const assignments = await distributedSessionService.getAssignmentsForNode(nodeId);
+    const assignments = await distributedSessionService.getAssignmentsForNode(req.nodeId);
     res.json({ success: true, assignments });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
@@ -138,15 +89,15 @@ router.get('/session/assignments', async (req, res) => {
 
 router.post('/session/state', async (req, res) => {
   try {
-    const { nodeId, sessionId, status, error } = req.body || {};
-    if (!nodeId || !sessionId || !status) {
+    const { sessionId, status, error } = req.body || {};
+    if (!sessionId || !status) {
       return res.status(400).json({
         success: false,
-        error: 'nodeId, sessionId and status are required',
+        error: 'sessionId and status are required',
       });
     }
     const result = await distributedSessionService.updateSessionState({
-      nodeId,
+      nodeId: req.nodeId,
       sessionId,
       status,
       error,
@@ -159,15 +110,15 @@ router.post('/session/state', async (req, res) => {
 
 router.post('/session/events', async (req, res) => {
   try {
-    const { nodeId, sessionId, eventType, payload } = req.body || {};
-    if (!nodeId || !sessionId || !eventType) {
+    const { sessionId, eventType, payload } = req.body || {};
+    if (!sessionId || !eventType) {
       return res.status(400).json({
         success: false,
-        error: 'nodeId, sessionId and eventType are required',
+        error: 'sessionId and eventType are required',
       });
     }
     const result = await distributedSessionService.publishNodeEvent({
-      nodeId,
+      nodeId: req.nodeId,
       sessionId,
       eventType,
       payload: payload || {},
@@ -180,11 +131,11 @@ router.post('/session/events', async (req, res) => {
 
 router.get('/session/commands', async (req, res) => {
   try {
-    const { nodeId, limit } = req.query;
-    if (!nodeId) {
-      return res.status(400).json({ success: false, error: 'nodeId is required' });
-    }
-    const commands = await distributedSessionService.claimCommandsForNode(nodeId, Number(limit || 20));
+    const { limit } = req.query;
+    const commands = await distributedSessionService.claimCommandsForNode(
+      req.nodeId,
+      Number(limit || 20)
+    );
     res.json({ success: true, commands });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
@@ -194,13 +145,11 @@ router.get('/session/commands', async (req, res) => {
 router.post('/session/commands/:id/result', async (req, res) => {
   try {
     const commandId = req.params.id;
-    const { nodeId, success, result, error } = req.body || {};
-    const normalizedSuccess = success === true || success === 'true' || success === 1 || success === '1';
-    if (!nodeId) {
-      return res.status(400).json({ success: false, error: 'nodeId is required' });
-    }
+    const { success, result, error } = req.body || {};
+    const normalizedSuccess =
+      success === true || success === 'true' || success === 1 || success === '1';
     const payload = await distributedSessionService.completeCommandForNode({
-      nodeId,
+      nodeId: req.nodeId,
       commandId,
       success: normalizedSuccess,
       result,
