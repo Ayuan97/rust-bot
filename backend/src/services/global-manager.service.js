@@ -404,202 +404,94 @@ class GlobalServiceManager extends EventEmitter {
    * @private
    */
   _attachUserServiceListeners(userId, userService) {
-    // 监听初始化事件
-    userService.on('initialized', (data) => {
-      this.emit('user:initialized', { ...data, userId });
-    });
+    // 统一向上转发：强制注入 userId，确保 WebSocketService 能按 user:${userId} 房间定向。
+    // 任何用户级推送都必须带 userId，否则会被发到 user:undefined 房间，前端永远收不到。
+    const withUserId = (data) => {
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        return { ...data, userId };
+      }
+      return { userId, data };
+    };
+    const forward = (event, targetEvent = event) => {
+      userService.on(event, (data) => {
+        this.emit(targetEvent, withUserId(data));
+      });
+    };
 
-    // 监听关闭事件
+    // === 生命周期事件（上抛时重命名为 user:*）===
+    forward('initialized', 'user:initialized');
+
     userService.on('shutdown', (data) => {
       console.log(`🛑 用户 ${userId} 服务已停止`);
-      this.emit('user:shutdown', { ...data, userId });
+      this.emit('user:shutdown', withUserId(data));
     });
 
-    // 监听错误事件
     userService.on('error', (error) => {
-      console.error(`❌ 用户 ${userId} 服务错误:`, error.message);
+      console.error(`❌ 用户 ${userId} 服务错误:`, error?.message || error);
       this.emit('user:service:error', { userId, error });
     });
 
     // === RustPlus 游戏服务器事件 ===
+    forward('server:connected');
+    forward('server:disconnected');
+    forward('server:error');
+    forward('server:reconnecting');
+    forward('rust:message');
+    forward('team:message');
+    forward('team:changed');
+    forward('entity:changed');
+    forward('clan:changed');
+    forward('clan:message');
 
-    userService.on('server:connected', (data) => {
-      this.emit('server:connected', data); // data 已包含 userId
-    });
-
-    userService.on('server:disconnected', (data) => {
-      this.emit('server:disconnected', data);
-    });
-
-    userService.on('server:error', (data) => {
-      this.emit('server:error', data);
-    });
-
-    userService.on('server:reconnecting', (data) => {
-      this.emit('server:reconnecting', data);
-    });
-
-    userService.on('rust:message', (data) => {
-      this.emit('rust:message', data);
-    });
-
-    userService.on('team:message', (data) => {
-      this.emit('team:message', data);
-    });
-
-    userService.on('team:changed', (data) => {
-      this.emit('team:changed', data);
-    });
-
-    userService.on('entity:changed', (data) => {
-      this.emit('entity:changed', data);
-    });
-
+    // === 警报事件（额外触发外部强提醒）===
     userService.on('alarm:triggered', (data) => {
-      this.emit('alarm:triggered', data);
+      const payload = withUserId(data);
+      this.emit('alarm:triggered', payload);
       // 外部强提醒（Bark 等），失败不阻塞主流程
-      notificationService.notifyAlarm(data).catch((err) => {
+      notificationService.notifyAlarm(payload).catch((err) => {
         console.error('❌ 警报外部通知失败:', err.message);
       });
     });
 
-    userService.on('clan:changed', (data) => {
-      this.emit('clan:changed', data);
-    });
-
-    userService.on('clan:message', (data) => {
-      this.emit('clan:message', data);
-    });
-
     // === 摄像头事件 ===
-
-    userService.on('camera:subscribing', (data) => {
-      this.emit('camera:subscribing', data);
-    });
-
-    userService.on('camera:subscribed', (data) => {
-      this.emit('camera:subscribed', data);
-    });
-
-    userService.on('camera:unsubscribed', (data) => {
-      this.emit('camera:unsubscribed', data);
-    });
-
-    userService.on('camera:render', (data) => {
-      this.emit('camera:render', data);
-    });
-
-    userService.on('camera:rays', (data) => {
-      this.emit('camera:rays', data);
-    });
+    forward('camera:subscribing');
+    forward('camera:subscribed');
+    forward('camera:unsubscribed');
+    forward('camera:render');
+    forward('camera:rays');
 
     // === FCM 推送事件 ===
+    forward('server:paired');
+    forward('entity:paired');
+    forward('entity:paired:success');
+    forward('fcm:listening');
+    forward('fcm:stopped');
+    forward('fcm:error');
 
-    userService.on('server:paired', (data) => {
-      this.emit('server:paired', data);
-    });
+    // === EventMonitor 事件监控 ===
+    forward('cargo:spawn');
+    forward('cargo:egress');
+    forward('cargo:dock');
+    forward('cargo:leave');
+    forward('travelling_vendor:spawn');
+    forward('travelling_vendor:leave_warning');
+    forward('travelling_vendor:leave');
+    forward('heli:spawn');
+    forward('heli:downed');
+    forward('heli:leave');
+    forward('player:died');
+    forward('player:online');
+    forward('player:offline');
+    forward('player:afk');
+    forward('player:contribution');
 
-    userService.on('entity:paired', (data) => {
-      this.emit('entity:paired', data);
-    });
+    // === Automation 自动化 ===
+    forward('automation:executed');
 
-    userService.on('entity:paired:success', (data) => {
-      this.emit('entity:paired:success', data);
-    });
-
-    userService.on('fcm:listening', (data) => {
-      this.emit('fcm:listening', data);
-    });
-
-    userService.on('fcm:stopped', (data) => {
-      this.emit('fcm:stopped', data);
-    });
-
-    userService.on('fcm:error', (data) => {
-      this.emit('fcm:error', data);
-    });
-
-    // === EventMonitor 事件监控事件 ===
-
-    userService.on('cargo:spawn', (data) => {
-      this.emit('cargo:spawn', data);
-    });
-
-    userService.on('cargo:egress', (data) => {
-      this.emit('cargo:egress', data);
-    });
-
-    userService.on('cargo:dock', (data) => {
-      this.emit('cargo:dock', data);
-    });
-
-    userService.on('cargo:leave', (data) => {
-      this.emit('cargo:leave', data);
-    });
-
-    userService.on('travelling_vendor:spawn', (data) => {
-      this.emit('travelling_vendor:spawn', data);
-    });
-
-    userService.on('travelling_vendor:leave_warning', (data) => {
-      this.emit('travelling_vendor:leave_warning', data);
-    });
-
-    userService.on('travelling_vendor:leave', (data) => {
-      this.emit('travelling_vendor:leave', data);
-    });
-
-    userService.on('heli:spawn', (data) => {
-      this.emit('heli:spawn', data);
-    });
-
-    userService.on('heli:downed', (data) => {
-      this.emit('heli:downed', data);
-    });
-
-    userService.on('heli:leave', (data) => {
-      this.emit('heli:leave', data);
-    });
-
-    userService.on('player:died', (data) => {
-      this.emit('player:died', data);
-    });
-
-    userService.on('player:online', (data) => {
-      this.emit('player:online', data);
-    });
-
-    userService.on('player:offline', (data) => {
-      this.emit('player:offline', data);
-    });
-
-    userService.on('player:afk', (data) => {
-      this.emit('player:afk', data);
-    });
-
-    userService.on('player:contribution', (data) => {
-      this.emit('player:contribution', data);
-    });
-
-    // === Automation 自动化事件 ===
-
-    userService.on('automation:executed', (data) => {
-      this.emit('automation:executed', data);
-    });
-
-    // === Tracking 玩家追踪事件 ===
-
-    userService.on('tracking:online', (data) => {
-      this.emit('tracking:online', data);
-    });
-
-    userService.on('tracking:offline', (data) => {
-      this.emit('tracking:offline', data);
-    });
-
-    userService.on('tracking:server_change', (data) => {
-      this.emit('tracking:server_change', data);
-    });
+    // === Tracking 玩家追踪 ===
+    forward('tracking:online');
+    forward('tracking:offline');
+    forward('tracking:server_change');
   }
 
   /**

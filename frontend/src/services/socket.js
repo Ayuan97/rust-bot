@@ -32,6 +32,13 @@ class SocketService {
       }
     });
 
+    // 补绑在 connect() 之前就通过 on() 登记的业务监听器。
+    // React 子组件的 effect 早于父组件执行，可能先 on()（如 server:paired）再 connect()，
+    // 若不在此补绑，这些事件会永远收不到。
+    this.listeners.forEach((callbacks, event) => {
+      callbacks.forEach((cb) => this.socket.on(event, cb));
+    });
+
     this.socket.on('connect', () => {
       console.log('✅ WebSocket 已连接');
       this.notifyConnectionChange(true);
@@ -410,32 +417,31 @@ class SocketService {
   // ========== 事件监听 ==========
 
   on(event, callback) {
-    if (!this.socket) {
-      console.warn('Socket 未连接');
-      return;
-    }
-
-    this.socket.on(event, callback);
-
-    // 记录监听器以便后续清理
+    // 总是登记监听器；socket 尚未建立时，connect() 会在建立后统一补绑。
     if (!this.listeners.has(event)) {
       this.listeners.set(event, []);
     }
     this.listeners.get(event).push(callback);
+
+    // socket 已存在则立即绑定
+    if (this.socket) {
+      this.socket.on(event, callback);
+    }
   }
 
   off(event, callback) {
-    if (!this.socket) return;
-
-    this.socket.off(event, callback);
-
-    // 从记录中移除
+    // 先从登记表移除（即使 socket 尚未建立）
     if (this.listeners.has(event)) {
       const callbacks = this.listeners.get(event);
       const index = callbacks.indexOf(callback);
       if (index > -1) {
         callbacks.splice(index, 1);
       }
+    }
+
+    // socket 存在则解绑
+    if (this.socket) {
+      this.socket.off(event, callback);
     }
   }
 
