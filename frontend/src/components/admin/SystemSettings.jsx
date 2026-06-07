@@ -41,7 +41,7 @@ export default function SystemSettings() {
       const res = await api.put('/admin/config', {
         registrationMode: config.registrationMode,
         freeTrialEnabled: config.freeTrialEnabled,
-        freeTrialDays: days
+        freeTrialDays: Number.isNaN(days) ? undefined : days
       });
       if (res.data.success) {
         setConfig(res.data.data);

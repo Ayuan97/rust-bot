@@ -126,7 +126,11 @@ router.put('/users/:id/approval', async (req, res) => {
         }
       }
     } else if (globalServiceManager.userServices.has(id)) {
-      await globalServiceManager.removeUserService(id, '审核未通过');
+      try {
+        await globalServiceManager.removeUserService(id, '审核未通过');
+      } catch (e) {
+        console.error('拒绝后停止用户服务失败:', e.message);
+      }
     }
 
     res.json({

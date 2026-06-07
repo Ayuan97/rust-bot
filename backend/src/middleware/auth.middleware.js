@@ -170,6 +170,15 @@ export const requireActiveSubscription = (req, res, next) => {
     });
   }
 
+  // 未通过审核的账号一律拦截（即便订阅被手工置为有效），保证审核态硬约束
+  if (req.user.approvalStatus === 'PENDING' || req.user.approvalStatus === 'REJECTED') {
+    return res.status(403).json({
+      success: false,
+      error: req.user.approvalStatus === 'REJECTED' ? '账号审核未通过' : '账号正在审核中，通过后即可使用',
+      code: 'PENDING_APPROVAL'
+    });
+  }
+
   if (!req.user.subscriptions) {
     return res.status(403).json({
       success: false,
