@@ -4,6 +4,11 @@
 
 ## 脚本用途
 
+- `deploy/deploy-main.sh`  
+  主节点**首次一键部署**：装依赖 / 拉代码 / 自动生成 .env(含随机密钥) / 建库 / 构建前端 / pm2 起 rust-main / 健康检查。子命令：`token <nodeId>` 签发子节点令牌、`allow <ip>` 放行内部接口来源 IP。
+- `deploy/deploy-connector.sh`  
+  子节点**首次一键部署**（把此脚本传到子节点机器执行）：交互填 主节点地址 + NODE_TOKEN + 节点画像，自动装依赖 / 拉代码 / 写 .env / pm2 起 rust-connector。**子节点不连数据库。**
+
 - `deploy/rustbot-update.sh`  
   主节点一键更新脚本：拉代码、安装依赖、构建前端、重启主节点与本机子节点、健康检查，并可自动扇出更新远程子节点。
 - `deploy/rustbot-update-connectors.sh`  
