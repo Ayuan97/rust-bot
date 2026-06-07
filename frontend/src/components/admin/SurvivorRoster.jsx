@@ -3,7 +3,7 @@ import {
   FaSearch, FaSync, FaWallet,
   FaTerminal, FaEdit, FaTimes, FaPlus, FaMinus, FaUsers,
   FaBan, FaCheckCircle, FaServer, FaEye, FaChevronLeft, FaChevronRight,
-  FaPlug, FaTrashAlt
+  FaPlug, FaTrashAlt, FaUserCheck, FaUserSlash
 } from 'react-icons/fa';
 import api from '../../services/api';
 import { useToast } from '../Toast';
@@ -239,6 +239,46 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
     }
   };
 
+  // 审核通过
+  const handleApprove = async (user) => {
+    const confirmed = await confirm({
+      type: 'info',
+      title: '通过审核',
+      message: `确定通过用户「${user.username}」的注册审核吗？`,
+      confirmText: '通过'
+    });
+    if (!confirmed) return;
+    try {
+      const res = await api.put(`/admin/users/${user.id}/approval`, { action: 'approve' });
+      if (res.data.success) {
+        toast.success(res.data.data?.grantedTrialDays ? `已通过并发放 ${res.data.data.grantedTrialDays} 天` : '已通过审核');
+        fetchUsers();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || '操作失败');
+    }
+  };
+
+  // 拒绝注册
+  const handleReject = async (user) => {
+    const confirmed = await confirm({
+      type: 'warning',
+      title: '拒绝注册',
+      message: `确定拒绝用户「${user.username}」的注册申请吗？`,
+      confirmText: '拒绝'
+    });
+    if (!confirmed) return;
+    try {
+      const res = await api.put(`/admin/users/${user.id}/approval`, { action: 'reject' });
+      if (res.data.success) {
+        toast.success('已拒绝');
+        fetchUsers();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || '操作失败');
+    }
+  };
+
   // 删除用户
   const handleDeleteUser = (user) => {
     setDeleteTarget(user);
@@ -418,6 +458,7 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
           className="tac-input !w-auto cursor-pointer"
         >
           <option value="">全部状态</option>
+          <option value="pending">待审核</option>
           <option value="active">活跃</option>
           <option value="inactive">已禁用</option>
           <option value="not_activated">未激活</option>
@@ -526,6 +567,22 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                 {/* 状态 */}
                 <td className="px-4 py-3">
                   {(() => {
+                    // 审核状态优先展示
+                    if (user.approvalStatus === 'PENDING') {
+                      return (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 border text-hazard border-hazard/30 bg-hazard-dim text-[10px] font-bold">
+                          <span className="w-1.5 h-1.5 bg-hazard animate-tac-blink" />审核中
+                        </span>
+                      );
+                    }
+                    if (user.approvalStatus === 'REJECTED') {
+                      return (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 border text-fg-dim border-ink-line text-[10px] font-bold">
+                          <span className="w-1.5 h-1.5 bg-fg-mute" />已拒绝
+                        </span>
+                      );
+                    }
+
                     // 判断未激活状态（startDate 和 endDate 几乎相同）
                     const startDate = user.subscriptions?.startDate ? new Date(user.subscriptions.startDate) : null;
                     const endDate = user.subscriptions?.endDate ? new Date(user.subscriptions.endDate) : null;
@@ -610,6 +667,26 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                     >
                       <FaTerminal className="text-xs" />
                     </button>
+
+                    {/* 审核通过/拒绝（仅待审核用户） */}
+                    {user.approvalStatus === 'PENDING' && (
+                      <>
+                        <button
+                          onClick={() => handleApprove(user)}
+                          className="p-1.5 border border-ink-line bg-ink-800 text-fg-dim hover:border-terminal hover:text-terminal transition-colors"
+                          title="通过审核"
+                        >
+                          <FaUserCheck className="text-xs" />
+                        </button>
+                        <button
+                          onClick={() => handleReject(user)}
+                          className="p-1.5 border border-ink-line bg-ink-800 text-fg-dim hover:border-hazard hover:text-hazard transition-colors"
+                          title="拒绝注册"
+                        >
+                          <FaUserSlash className="text-xs" />
+                        </button>
+                      </>
+                    )}
 
                     {/* 启用/禁用 */}
                     <button

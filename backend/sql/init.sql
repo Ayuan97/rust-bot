@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `balance` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
   `isActive` TINYINT(1) NOT NULL DEFAULT 1,
   `isAdmin` TINYINT(1) NOT NULL DEFAULT 0,
+  `approvalStatus` ENUM('PENDING', 'APPROVED', 'REJECTED') NOT NULL DEFAULT 'APPROVED',
   `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updatedAt` DATETIME(3) NOT NULL,
   `lastLogin` DATETIME(3) NULL,
@@ -18,8 +19,23 @@ CREATE TABLE IF NOT EXISTS `users` (
   UNIQUE INDEX `users_username_key` (`username`),
   UNIQUE INDEX `users_email_key` (`email`),
   INDEX `users_email_idx` (`email`),
-  INDEX `users_username_idx` (`username`)
+  INDEX `users_username_idx` (`username`),
+  INDEX `users_approvalStatus_idx` (`approvalStatus`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 全局应用配置（键值表）：注册模式、免费试用开关等运营开关
+CREATE TABLE IF NOT EXISTS `app_config` (
+  `configKey` VARCHAR(64) NOT NULL,
+  `configValue` VARCHAR(255) NOT NULL,
+  `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`configKey`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 默认运营开关：开放注册即用 / 免费试用默认关闭 / 试用 30 天
+INSERT IGNORE INTO `app_config` (`configKey`, `configValue`) VALUES
+  ('registration_mode', 'open'),
+  ('free_trial_enabled', '0'),
+  ('free_trial_days', '30');
 
 -- 服务器表
 CREATE TABLE IF NOT EXISTS `servers` (

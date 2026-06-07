@@ -46,7 +46,7 @@ export const authenticate = async (req, res, next) => {
     // 从数据库获取用户信息（JOIN 订阅表）
     const [rows] = await db.query(`
       SELECT
-        u.id, u.username, u.email, u.isActive, u.isAdmin,
+        u.id, u.username, u.email, u.isActive, u.isAdmin, u.approvalStatus,
         s.id as sub_id, s.planType as sub_planType, s.status as sub_status,
         s.startDate as sub_startDate, s.endDate as sub_endDate, s.autoRenew as sub_autoRenew
       FROM users u
@@ -90,6 +90,7 @@ export const authenticate = async (req, res, next) => {
       username: user.username,
       email: user.email,
       isAdmin: !!user.isAdmin,
+      approvalStatus: user.approvalStatus,
       subscriptions,
       isSubscriptionExpired  // 订阅过期标记
     };

@@ -1,17 +1,33 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { authApi } from '../services/auth';
+import { useAuth } from '../context/AuthContext';
 import { FaArrowRight, FaArrowLeft } from 'react-icons/fa';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { setUser } = useAuth();
   const [formData, setFormData] = useState({ username: '', password: '', confirmPassword: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [regInfo, setRegInfo] = useState(null);
   const redirectParam = new URLSearchParams(location.search).get('redirect');
   const redirectPath = redirectParam && redirectParam.startsWith('/') ? redirectParam : '/dashboard';
   const loginPath = `/login?redirect=${encodeURIComponent(redirectPath)}`;
+
+  // 拉取后台注册策略，动态展示提示语
+  useEffect(() => {
+    let active = true;
+    authApi.getRegistrationInfo()
+      .then((res) => { if (active && res?.success) setRegInfo(res.data); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  const approvalMode = regInfo?.mode === 'approval';
+  const trialOn = !!regInfo?.freeTrialEnabled;
+  const trialDays = regInfo?.freeTrialDays ?? 7;
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -36,6 +52,7 @@ export default function RegisterPage() {
       if (result.success) {
         localStorage.setItem('token', result.data.token);
         localStorage.setItem('user', JSON.stringify(result.data.user));
+        setUser(result.data.user);
         navigate(redirectPath, { replace: true });
       } else {
         setError(result.error || '注册失败，请稍后重试');
@@ -83,13 +100,21 @@ export default function RegisterPage() {
             创建账号<br />加入网络
           </h1>
           <p className="mt-6 max-w-sm text-sm leading-relaxed text-fg-dim">
-            注册即开通 7 天试用，连接你的 Rust 服务器,体验完整的基地监控、队友追踪与战术指挥能力。
+            {approvalMode
+              ? '注册后由管理员审核开通，通过后即可连接 Rust 服务器，体验完整的基地监控、队友追踪与战术指挥能力。'
+              : trialOn
+                ? `注册即送 ${trialDays} 天免费使用，连接你的 Rust 服务器，体验完整的基地监控、队友追踪与战术指挥能力。`
+                : '连接你的 Rust 服务器，体验完整的基地监控、队友追踪与战术指挥能力。'}
           </p>
         </div>
 
         <div className="relative z-10 space-y-5">
           <div className="grid grid-cols-3 gap-px bg-ink-line border border-ink-line">
-            <Telemetry label="TRIAL" value="7 DAYS" live />
+            <Telemetry
+              label={approvalMode ? 'REVIEW' : 'TRIAL'}
+              value={approvalMode ? 'MANUAL' : trialOn ? `${trialDays} DAYS` : 'OFF'}
+              live
+            />
             <Telemetry label="SETUP" value="3 MIN" />
             <Telemetry label="NODES" value="07" />
           </div>
@@ -130,11 +155,21 @@ export default function RegisterPage() {
                 </div>
               )}
 
-              {/* 7 天试用提示 */}
+              {/* 注册策略提示（按后台开关动态显示） */}
               <div className="mb-6 flex items-center gap-3 px-4 py-3 border border-hazard/30 bg-hazard-dim">
-                <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-hazard shrink-0">TRIAL</span>
+                <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-hazard shrink-0">
+                  {approvalMode ? 'REVIEW' : trialOn ? 'TRIAL' : 'INFO'}
+                </span>
                 <span className="text-[13px] text-fg">
-                  注册后自动开通 <span className="font-mono text-terminal font-bold">7</span> 天试用期
+                  {approvalMode ? (
+                    trialOn
+                      ? <>注册后需管理员审核，通过即送 <span className="font-mono text-terminal font-bold">{trialDays}</span> 天免费使用</>
+                      : <>注册后需管理员审核，通过后开通使用</>
+                  ) : trialOn ? (
+                    <>注册即送 <span className="font-mono text-terminal font-bold">{trialDays}</span> 天免费使用</>
+                  ) : (
+                    <>注册后由管理员开通服务</>
+                  )}
                 </span>
               </div>
 

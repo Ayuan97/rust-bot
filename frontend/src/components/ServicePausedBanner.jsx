@@ -14,6 +14,11 @@ export default function ServicePausedBanner() {
     return null;
   }
 
+  // 待审核/未通过用户走专属审核页，不叠加订阅暂停条
+  if (user.approvalStatus && user.approvalStatus !== 'APPROVED') {
+    return null;
+  }
+
   const subscription = user.subscriptions;
   const isTrial = subscription?.planType === 'TRIAL';
 

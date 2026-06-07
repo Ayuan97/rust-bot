@@ -10,6 +10,8 @@ import db, { getConnection } from '../lib/db.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { rateLimit } from '../middleware/rate-limiter.js';
 import { v4 as uuidv4 } from 'uuid';
+import appConfigService from '../services/app-config.service.js';
+import globalServiceManager from '../services/global-manager.service.js';
 
 const router = express.Router();
 
@@ -35,6 +37,22 @@ const loginLimiter = rateLimit({
     const username = String(req.body?.username || '').trim().toLowerCase();
     return username ? `login:${clientIp}:${username}` : `login:${clientIp}`;
   }
+});
+
+/**
+ * GET /api/auth/registration-info
+ * 公开：当前注册模式与免费策略，供注册页动态展示提示
+ */
+router.get('/registration-info', (req, res) => {
+  const cfg = appConfigService.getConfig();
+  res.json({
+    success: true,
+    data: {
+      mode: cfg.registrationMode,
+      freeTrialEnabled: cfg.freeTrialEnabled,
+      freeTrialDays: cfg.freeTrialDays
+    }
+  });
 });
 
 /**
@@ -101,6 +119,14 @@ router.post('/register', registerLimiter, async (req, res) => {
     // 加密密码
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
+    // 读取运营开关：注册模式 + 免费试用
+    const cfg = appConfigService.getConfig();
+    const isApprovalMode = cfg.registrationMode === 'approval';
+    const approvalStatus = isApprovalMode ? 'PENDING' : 'APPROVED';
+    // 仅在「开放注册即用」且免费试用开启时注册即发放 N 天；
+    // 审核模式下到期时间留到「审核通过」再发，避免排队期间白白消耗时长
+    const grantTrial = !isApprovalMode && cfg.freeTrialEnabled;
+
     // 使用事务创建用户、订阅和通知设置
     const conn = await getConnection();
     try {
@@ -110,19 +136,22 @@ router.post('/register', registerLimiter, async (req, res) => {
       const subscriptionId = uuidv4();
       const notificationSettingsId = uuidv4();
       const now = new Date();
+      const subscriptionEndDate = grantTrial
+        ? new Date(now.getTime() + cfg.freeTrialDays * 24 * 60 * 60 * 1000)
+        : now;
 
       // 创建用户
       await conn.query(
-        `INSERT INTO users (id, username, password, createdAt, updatedAt)
-         VALUES (?, ?, ?, ?, ?)`,
-        [userId, username, hashedPassword, now, now]
+        `INSERT INTO users (id, username, password, approvalStatus, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [userId, username, hashedPassword, approvalStatus, now, now]
       );
 
-      // 创建订阅（到期时间为当前，等待管理员审核）
+      // 创建订阅（开放注册+试用 → 发放 N 天；否则到期=现在，待付费/待审核再发放）
       await conn.query(
         `INSERT INTO subscriptions (id, userId, planType, endDate, createdAt, updatedAt)
          VALUES (?, ?, 'TRIAL', ?, ?, ?)`,
-        [subscriptionId, userId, now, now, now]
+        [subscriptionId, userId, subscriptionEndDate, now, now]
       );
 
       // 创建通知设置
@@ -143,6 +172,15 @@ router.post('/register', registerLimiter, async (req, res) => {
 
       await conn.commit();
 
+      // 注册即用：开放注册 + 已发放试用 → 立即拉起用户服务实例（与管理员建号一致；失败不阻塞注册）
+      if (approvalStatus === 'APPROVED' && subscriptionEndDate > now) {
+        try {
+          await globalServiceManager.createUserService(userId);
+        } catch (serviceError) {
+          console.error(`注册后拉起用户服务失败（userId=${userId}）:`, serviceError.message);
+        }
+      }
+
       // 生成 JWT token
       const token = jwt.sign(
         { userId },
@@ -152,16 +190,17 @@ router.post('/register', registerLimiter, async (req, res) => {
 
       res.status(201).json({
         success: true,
-        message: '注册成功',
+        message: isApprovalMode ? '注册成功，请等待管理员审核开通' : '注册成功',
         data: {
           token,
           user: {
             id: userId,
             username,
             isAdmin: false,
+            approvalStatus,
             subscriptions: {
               planType: 'TRIAL',
-              endDate: now
+              endDate: subscriptionEndDate
             },
             createdAt: now
           }
@@ -201,7 +240,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     // 查找用户（支持用户名或邮箱登录）
     const [rows] = await db.query(`
       SELECT
-        u.id, u.username, u.email, u.password, u.isActive, u.isAdmin,
+        u.id, u.username, u.email, u.password, u.isActive, u.isAdmin, u.approvalStatus,
         s.planType as sub_planType, s.endDate as sub_endDate
       FROM users u
       LEFT JOIN subscriptions s ON u.id = s.userId
@@ -259,6 +298,7 @@ router.post('/login', loginLimiter, async (req, res) => {
           username: user.username,
           email: user.email,
           isAdmin: !!user.isAdmin,
+          approvalStatus: user.approvalStatus,
           subscriptions: user.sub_planType ? {
             planType: user.sub_planType,
             endDate: user.sub_endDate,
@@ -286,7 +326,7 @@ router.get('/me', authenticate, async (req, res) => {
     // 获取用户信息和订阅
     const [userRows] = await db.query(`
       SELECT
-        u.id, u.username, u.email, u.isAdmin, u.isActive, u.createdAt, u.lastLogin,
+        u.id, u.username, u.email, u.isAdmin, u.isActive, u.approvalStatus, u.createdAt, u.lastLogin,
         s.planType as sub_planType, s.startDate as sub_startDate, s.endDate as sub_endDate, s.autoRenew as sub_autoRenew
       FROM users u
       LEFT JOIN subscriptions s ON u.id = s.userId
@@ -316,6 +356,7 @@ router.get('/me', authenticate, async (req, res) => {
         email: user.email,
         isAdmin: !!user.isAdmin,
         isActive: !!user.isActive,
+        approvalStatus: user.approvalStatus,
         subscriptions: user.sub_planType ? {
           planType: user.sub_planType,
           startDate: user.sub_startDate,

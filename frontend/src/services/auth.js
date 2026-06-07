@@ -59,6 +59,14 @@ export const authApi = {
   },
 
   /**
+   * 获取注册模式与免费策略（公开）
+   */
+  getRegistrationInfo: async () => {
+    const response = await apiClient.get('/auth/registration-info');
+    return response.data;
+  },
+
+  /**
    * 获取当前用户信息
    */
   getCurrentUser: async () => {

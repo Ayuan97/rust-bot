@@ -108,7 +108,7 @@ class GlobalServiceManager extends EventEmitter {
         `SELECT u.*, s.endDate as subscriptionEndDate
          FROM users u
          INNER JOIN subscriptions s ON u.id = s.userId
-         WHERE u.isActive = 1 AND s.endDate > NOW()`
+         WHERE u.isActive = 1 AND u.approvalStatus = 'APPROVED' AND s.endDate > NOW()`
       );
 
       console.log(`📊 找到 ${activeUsers.length} 个有效用户\n`);
@@ -201,6 +201,10 @@ class GlobalServiceManager extends EventEmitter {
 
       if (!user.isActive) {
         throw new Error('用户已被禁用');
+      }
+
+      if (user.approvalStatus && user.approvalStatus !== 'APPROVED') {
+        throw new Error('用户尚未通过审核');
       }
 
       if (!user.subscriptionEndDate || new Date() > new Date(user.subscriptionEndDate)) {
@@ -350,8 +354,8 @@ class GlobalServiceManager extends EventEmitter {
           const user = userRows[0];
 
           // 检查用户是否仍然有效
-          if (!user || !user.isActive || !user.subscriptionEndDate) {
-            await this.removeUserService(userId, '用户无效或无订阅');
+          if (!user || !user.isActive || user.approvalStatus !== 'APPROVED' || !user.subscriptionEndDate) {
+            await this.removeUserService(userId, '用户无效/未审核/无订阅');
             expiredCount++;
             continue;
           }

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { authApi } from '../services/auth';
+import { useAuth } from '../context/AuthContext';
 import { FaArrowLeft, FaArrowRight, FaEye, FaEyeSlash } from 'react-icons/fa';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { setUser } = useAuth();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -29,6 +31,7 @@ export default function LoginPage() {
       if (result.success) {
         localStorage.setItem('token', result.data.token);
         localStorage.setItem('user', JSON.stringify(result.data.user));
+        setUser(result.data.user);
         navigate(redirectPath, { replace: true });
       } else {
         setError(result.error || '登录失败，请检查账号或密码');

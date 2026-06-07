@@ -8,6 +8,7 @@ import bcrypt from 'bcrypt';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
 import db, { getConnection } from '../lib/db.js';
 import globalServiceManager from '../services/global-manager.service.js';
+import appConfigService from '../services/app-config.service.js';
 import paymentService from '../services/payment.service.js';
 import distributedSessionService from '../services/distributed-session.service.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -30,6 +31,117 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
 
 // 所有管理接口都需要管理员权限
 router.use(authenticate, requireAdmin);
+
+/**
+ * GET /api/admin/config
+ * 获取运营开关（注册模式 / 免费试用）
+ */
+router.get('/config', (req, res) => {
+  res.json({ success: true, data: appConfigService.getConfig() });
+});
+
+/**
+ * PUT /api/admin/config
+ * 更新运营开关（部分更新）
+ */
+router.put('/config', async (req, res) => {
+  try {
+    const { registrationMode, freeTrialEnabled, freeTrialDays } = req.body;
+    const updated = await appConfigService.updateConfig({ registrationMode, freeTrialEnabled, freeTrialDays });
+    res.json({ success: true, message: '配置已更新', data: updated });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message || '更新配置失败' });
+  }
+});
+
+/**
+ * PUT /api/admin/users/:id/approval
+ * 注册审核：通过 / 拒绝。通过时若开启免费试用且订阅未发放，则从此刻起发放 N 天
+ */
+router.put('/users/:id/approval', async (req, res) => {
+  const { id } = req.params;
+  const { action } = req.body;
+  const adminId = req.user.id;
+
+  if (!['approve', 'reject'].includes(action)) {
+    return res.status(400).json({ success: false, error: '无效的审核操作' });
+  }
+
+  const conn = await getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [userRows] = await conn.query(
+      'SELECT u.*, s.endDate AS subscriptionEndDate FROM users u LEFT JOIN subscriptions s ON u.id = s.userId WHERE u.id = ?',
+      [id]
+    );
+    const user = userRows[0];
+    if (!user) {
+      await conn.rollback();
+      return res.status(404).json({ success: false, error: '用户不存在' });
+    }
+
+    const now = new Date();
+    let grantedDays = 0;
+    let grantedEndDate = null;
+
+    if (action === 'approve') {
+      // 审核通过：若开启免费试用且订阅尚未发放（到期 <= 现在），从此刻起发放 N 天
+      const cfg = appConfigService.getConfig();
+      const currentEnd = user.subscriptionEndDate ? new Date(user.subscriptionEndDate) : null;
+      const subActive = currentEnd && currentEnd > now;
+      if (cfg.freeTrialEnabled && !subActive) {
+        grantedDays = cfg.freeTrialDays;
+        grantedEndDate = new Date(now.getTime() + grantedDays * 24 * 60 * 60 * 1000);
+        await conn.query(
+          'UPDATE subscriptions SET endDate = ?, updatedAt = NOW(3) WHERE userId = ?',
+          [grantedEndDate, id]
+        );
+      }
+      await conn.query("UPDATE users SET approvalStatus = 'APPROVED', updatedAt = NOW(3) WHERE id = ?", [id]);
+      await conn.query(
+        `INSERT INTO admin_logs (id, adminId, targetUserId, action, details, createdAt)
+         VALUES (?, ?, ?, 'APPROVE_USER', ?, NOW(3))`,
+        [uuidv4(), adminId, id, JSON.stringify({ grantedTrialDays: grantedDays })]
+      );
+    } else {
+      await conn.query("UPDATE users SET approvalStatus = 'REJECTED', updatedAt = NOW(3) WHERE id = ?", [id]);
+      await conn.query(
+        `INSERT INTO admin_logs (id, adminId, targetUserId, action, details, createdAt)
+         VALUES (?, ?, ?, 'REJECT_USER', ?, NOW(3))`,
+        [uuidv4(), adminId, id, JSON.stringify({ reason: req.body.reason || '管理员拒绝' })]
+      );
+    }
+
+    await conn.commit();
+
+    // 事务外处理服务实例（耗时操作不放进事务）
+    if (action === 'approve') {
+      const finalEnd = grantedEndDate || (user.subscriptionEndDate ? new Date(user.subscriptionEndDate) : null);
+      if (user.isActive && finalEnd && finalEnd > now && !globalServiceManager.userServices.has(id)) {
+        try {
+          await globalServiceManager.createUserService(id);
+        } catch (e) {
+          console.error('审核通过后拉起用户服务失败:', e.message);
+        }
+      }
+    } else if (globalServiceManager.userServices.has(id)) {
+      await globalServiceManager.removeUserService(id, '审核未通过');
+    }
+
+    res.json({
+      success: true,
+      message: action === 'approve' ? '已通过审核' : '已拒绝',
+      data: { id, approvalStatus: action === 'approve' ? 'APPROVED' : 'REJECTED', grantedTrialDays: grantedDays }
+    });
+  } catch (error) {
+    await conn.rollback();
+    console.error('审核操作失败:', error);
+    res.status(500).json({ success: false, error: '审核操作失败' });
+  } finally {
+    conn.release();
+  }
+});
 
 /**
  * POST /api/admin/users
@@ -457,6 +569,8 @@ router.get('/users', async (req, res) => {
       whereClause += ' AND u.isActive = 1';
     } else if (status === 'inactive') {
       whereClause += ' AND u.isActive = 0';
+    } else if (status === 'pending') {
+      whereClause += " AND u.approvalStatus = 'PENDING'";
     }
 
     // 订阅类型筛选
@@ -1126,6 +1240,7 @@ router.get('/stats', async (req, res) => {
        WHERE s.planType = 'TRIAL'`
     );
     const [bannedUsersResult] = await db.query('SELECT COUNT(*) as count FROM users WHERE isActive = 0');
+    const [pendingUsersResult] = await db.query("SELECT COUNT(*) as count FROM users WHERE approvalStatus = 'PENDING'");
     const [expiringSoonResult] = await db.query(
       `SELECT COUNT(DISTINCT u.id) as count FROM users u
        INNER JOIN subscriptions s ON u.id = s.userId
@@ -1143,6 +1258,7 @@ router.get('/stats', async (req, res) => {
     const activeUsers = activeUsersResult[0].count;
     const trialUsers = trialUsersResult[0].count;
     const bannedUsers = bannedUsersResult[0].count;
+    const pendingUsers = pendingUsersResult[0].count;
     const expiringSoonUsers = expiringSoonResult[0].count;
     const expiredUsers = expiredUsersResult[0].count;
     const paidUsers = totalUsers - trialUsers;
@@ -1200,6 +1316,7 @@ router.get('/stats', async (req, res) => {
         trialUsers,
         paidUsers,
         bannedUsers,
+        pendingUsers,
 
         // 订阅统计
         expiringSoonUsers,

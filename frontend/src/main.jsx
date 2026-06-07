@@ -14,12 +14,22 @@ import { ToastProvider } from './components/Toast';
 import { ConfirmProvider } from './components/ConfirmModal';
 import { AuthProvider } from './context/AuthContext';
 import ServicePausedBanner from './components/ServicePausedBanner';
+import PendingApprovalView from './components/PendingApprovalView';
+import { useAuth } from './context/AuthContext';
 import './styles/index.css';
 
 // 私有路由组件 - 需要登录才能访问
 function PrivateRoute({ children }) {
+  const { user } = useAuth();
   const token = localStorage.getItem('token');
-  return token ? children : <Navigate to="/login" replace />;
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  // 待审核 / 审核未通过用户：锁定功能，显示审核提示页（管理员豁免）
+  if (user && user.approvalStatus && user.approvalStatus !== 'APPROVED' && !user.isAdmin) {
+    return <PendingApprovalView status={user.approvalStatus} />;
+  }
+  return children;
 }
 
 // 管理员路由组件 - 需要管理员权限

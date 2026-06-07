@@ -12,6 +12,7 @@ validateEnv();
 
 // 新的多租户服务管理器
 import globalServiceManager from './services/global-manager.service.js';
+import appConfigService from './services/app-config.service.js';
 import websocketService from './services/websocket.service.js';
 import battlemetricsScheduler from './services/battlemetrics-scheduler.service.js';
 import distributedSessionService from './services/distributed-session.service.js';
@@ -100,6 +101,15 @@ app.get('/api/health', (req, res) => {
 
 // 初始化 WebSocket - 允许所有来源
 websocketService.initialize(server, '*');
+
+// 自举本特性所需表结构（app_config 表 + users.approvalStatus 列）——必须在开始监听前完成，
+// 否则首次部署重启那一刻，authenticate 查询 approvalStatus 可能命中尚未建好的列。线上仅靠重启即可迁移。
+try {
+  await appConfigService.ensureSchema();
+  console.log('✅ 应用配置/审核字段已就绪');
+} catch (err) {
+  console.error('❌ 应用配置表自举失败（注册开关/审核功能可能不可用）:', err.message);
+}
 
 // 启动服务器
 const PORT = process.env.PORT || 3000;

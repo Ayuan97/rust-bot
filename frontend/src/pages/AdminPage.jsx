@@ -7,7 +7,8 @@ import {
   FaSync,
   FaTerminal,
   FaTools,
-  FaUsers
+  FaUsers,
+  FaSlidersH
 } from 'react-icons/fa';
 import api from '../services/api';
 import SurvivorRoster from '../components/admin/SurvivorRoster';
@@ -15,13 +16,15 @@ import TradeCenter from '../components/admin/TradeCenter';
 import SystemLogs from '../components/admin/SystemLogs';
 import PlanManager from '../components/admin/PlanManager';
 import NodeMonitor from '../components/admin/NodeMonitor';
+import SystemSettings from '../components/admin/SystemSettings';
 
 const TAB_CONFIG = [
   { id: 'survivors', label: '用户运营', en: 'USERS', desc: '用户状态、资产、服务连通', icon: FaUsers },
   { id: 'trade', label: '交易运营', en: 'TRADE', desc: '流水、订单、异常支付追踪', icon: FaChartLine },
   { id: 'plans', label: '套餐策略', en: 'PLANS', desc: '价格、权益和启停管理', icon: FaBoxOpen },
   { id: 'nodes', label: '节点运行', en: 'NODES', desc: '分布式容量与健康状态', icon: FaServer },
-  { id: 'logs', label: '系统诊断', en: 'LOGS', desc: '按用户追踪实时日志', icon: FaTerminal }
+  { id: 'logs', label: '系统诊断', en: 'LOGS', desc: '按用户追踪实时日志', icon: FaTerminal },
+  { id: 'config', label: '系统设置', en: 'CONFIG', desc: '注册模式与免费策略', icon: FaSlidersH }
 ];
 
 function formatBytes(bytes = 0) {
@@ -113,6 +116,7 @@ const AdminPage = () => {
     if (activeTab === 'logs') {
       return <SystemLogs preselectedUserId={preselectedUserId} onUserSelected={() => setPreselectedUserId(null)} />;
     }
+    if (activeTab === 'config') return <SystemSettings />;
     return null;
   };
 
