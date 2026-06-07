@@ -57,6 +57,8 @@ ensure_deps() {
   command -v curl    >/dev/null || pkg_install curl
   command -v rsync   >/dev/null || pkg_install rsync
   command -v openssl >/dev/null || pkg_install openssl
+  # 原生 npm 模块(bcrypt 等)可能需要编译工具
+  if command -v apt-get >/dev/null; then pkg_install build-essential python3 || true; else pkg_install gcc gcc-c++ make python3 || true; fi
 
   if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)" -lt 18 ]; then
     log "安装 Node.js ${NODE_MAJOR}.x"
