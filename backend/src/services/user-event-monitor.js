@@ -2010,7 +2010,7 @@ class UserEventMonitor extends EventEmitter {
               // 发送 AFK 返回通知
               if (this.isNotificationEnabled('player_afk_return')) {
                 try {
-                  const defaultTemplate = '`{name}` 在离开 {minutes} 分钟后回来了';
+                  const defaultTemplate = '`{name}` 在离开 {duration} 后回来了';
                   const template = this.notificationSettings?.player_afk_return_template?.trim() || defaultTemplate;
 
                   const msg = template
@@ -2056,7 +2056,7 @@ class UserEventMonitor extends EventEmitter {
               if (this.isNotificationEnabled('player_afk')) {
                 try {
                   // 默认模板
-                  const defaultTemplate = '`{name}` 在 {position} 已挂机 {minutes} 分钟';
+                  const defaultTemplate = '`{name}` 在 {position} 已挂机 {duration}';
                   const template = this.notificationSettings?.player_afk_template?.trim() || defaultTemplate;
 
                   // 替换变量
