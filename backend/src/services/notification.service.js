@@ -65,8 +65,13 @@ class NotificationService {
       this.lastNotifiedAt.set(userId, now);
 
       // 3) 发给所有「启用」的通知人
-      const title = '🚨 基地警报';
-      const body = data.message || `${data.deviceName || '智能警报'} 触发`;
+      const alarmName = data.deviceName || '智能警报';
+      const title = `🚨 警报：${alarmName}`;
+      // 正文：服务器名 · Smart Alarm 自带消息 · 触发时间（任一为空自动省略）
+      const serverName = await this._getServerName(data.serverId);
+      const body =
+        [serverName, data.message, this._formatTime(data.time)].filter(Boolean).join(' · ') ||
+        `${alarmName} 触发`;
       const recipients = await this._getEnabledRecipients(userId);
 
       if (recipients.length === 0) {
@@ -208,8 +213,36 @@ class NotificationService {
     );
     const r = rows[0];
     if (!r) return false;
-    await this._sendBark(r.barkServer, r.barkKey, '✅ 测试通知', 'Rust 警报通知配置成功');
+    await this._sendBark(
+      r.barkServer,
+      r.barkKey,
+      '🚨 警报：大门',
+      `测试基地 · 这是一条测试警报 · ${this._formatTime()}`
+    );
     return true;
+  }
+
+  // ============ 通知内容辅助 ============
+
+  /** 查服务器名（用于通知正文；查不到则返回空，正文里自动省略） */
+  async _getServerName(serverId) {
+    if (!serverId) return '';
+    try {
+      const [rows] = await db.query('SELECT name FROM servers WHERE id = ?', [serverId]);
+      return rows[0]?.name || '';
+    } catch {
+      return '';
+    }
+  }
+
+  /** 触发时间格式化为 MM-DD HH:MM（服务器本地时区） */
+  _formatTime(time) {
+    const d = time ? new Date(time) : new Date();
+    const MM = String(d.getMonth() + 1).padStart(2, '0');
+    const DD = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${MM}-${DD} ${hh}:${mm}`;
   }
 
   // ============ Bark 发送 ============
