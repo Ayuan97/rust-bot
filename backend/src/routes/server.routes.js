@@ -141,7 +141,6 @@ router.get('/', async (req, res) => {
         ip: server.ip,
         port: server.port,
         playerId: server.playerId,
-        playerToken: server.playerToken,
         battlemetricsId: server.battlemetricsId,
         img: server.img,
         logo: server.logo,
@@ -193,7 +192,6 @@ router.get('/:id', async (req, res) => {
         ip: server.ip,
         port: server.port,
         playerId: server.playerId,
-        playerToken: server.playerToken,
         battlemetricsId: server.battlemetricsId,
         img: server.img,
         logo: server.logo,
@@ -431,8 +429,9 @@ router.post('/', requireActiveSubscription, async (req, res) => {
 /**
  * PUT /api/servers/:id
  * 更新服务器信息
+ * 需要有效订阅
  */
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireActiveSubscription, async (req, res) => {
   try {
     const { name, ip, port, playerId, playerToken, battlemetricsId, img, logo, url, description } = req.body;
 

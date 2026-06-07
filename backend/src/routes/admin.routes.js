@@ -259,19 +259,23 @@ router.post('/users', async (req, res) => {
  * 资产调整：加减余额、加减服务时间
  */
 router.put('/users/:id/adjust', async (req, res) => {
+  const { id } = req.params;
+  const { balanceDelta, daysDelta, reason } = req.body;
+  const adminId = req.user.id;
+
+  const conn = await db.getConnection();
   try {
-    const { id } = req.params;
-    const { balanceDelta, daysDelta, reason } = req.body;
-    const adminId = req.user.id;
+    await conn.beginTransaction();
 
     // 1. 获取当前状态
-    const [userRows] = await db.query(
+    const [userRows] = await conn.query(
       'SELECT u.*, s.id as subscriptionId, s.endDate as subscriptionEndDate FROM users u LEFT JOIN subscriptions s ON u.id = s.userId WHERE u.id = ?',
       [id]
     );
     const user = userRows[0];
 
     if (!user) {
+      await conn.rollback();
       return res.status(404).json({ success: false, error: '用户不存在' });
     }
 
@@ -282,16 +286,16 @@ router.put('/users/:id/adjust', async (req, res) => {
       const oldBalance = parseFloat(user.balance);
       const newBalance = Math.max(0, oldBalance + parseFloat(balanceDelta));
 
-      await db.query(
+      await conn.query(
         'UPDATE users SET balance = ?, updatedAt = NOW() WHERE id = ?',
         [newBalance, id]
       );
 
       // 记录交易流水
-      await db.query(
+      await conn.query(
         `INSERT INTO orders (id, userId, type, amount, balanceBefore, balanceAfter, status, notes, createdAt, updatedAt)
          VALUES (?, ?, 'ADMIN_ADJUST', ?, ?, ?, 'PAID', ?, NOW(), NOW())`,
-        [`ADJ_${Date.now()}`, id, parseFloat(balanceDelta), oldBalance, newBalance, `管理员手动调整: ${reason || '无备注'}`]
+        [uuidv4(), id, parseFloat(balanceDelta), oldBalance, newBalance, `管理员手动调整: ${reason || '无备注'}`]
       );
 
       logDetails.before.balance = oldBalance;
@@ -305,31 +309,40 @@ router.put('/users/:id/adjust', async (req, res) => {
         : new Date();
       const newEndDate = new Date(currentEndDate.getTime() + parseInt(daysDelta) * 24 * 60 * 60 * 1000);
 
-      await db.query(
+      await conn.query(
         'UPDATE subscriptions SET endDate = ?, updatedAt = NOW() WHERE userId = ?',
         [newEndDate, id]
       );
 
       logDetails.before.endDate = user.subscriptionEndDate || null;
       logDetails.after.endDate = newEndDate;
-
-      // 如果加了时间且服务没跑，启动它
-      if (daysDelta > 0 && user.isActive && !globalServiceManager.userServices.has(id)) {
-        await globalServiceManager.createUserService(id);
-      }
     }
 
     // 4. 记录管理员日志
-    await db.query(
+    await conn.query(
       `INSERT INTO admin_logs (id, adminId, targetUserId, action, details, createdAt)
        VALUES (?, ?, ?, 'ADJUST_ASSETS', ?, NOW())`,
-      [`AL_${Date.now()}`, adminId, id, JSON.stringify(logDetails)]
+      [uuidv4(), adminId, id, JSON.stringify(logDetails)]
     );
+
+    await conn.commit();
+
+    // 提交后再拉起服务实例（耗时操作不放进事务；失败也不影响已落库的调整）
+    if (daysDelta !== undefined && daysDelta > 0 && user.isActive && !globalServiceManager.userServices.has(id)) {
+      try {
+        await globalServiceManager.createUserService(id);
+      } catch (e) {
+        console.error('资产调整后拉起用户服务失败:', e.message);
+      }
+    }
 
     res.json({ success: true, message: '资产调整成功' });
   } catch (error) {
+    await conn.rollback();
     console.error('资产调整失败:', error);
     res.status(500).json({ success: false, error: '资产调整失败' });
+  } finally {
+    conn.release();
   }
 });
 
@@ -833,43 +846,55 @@ router.delete('/users/:id', async (req, res) => {
       await globalServiceManager.removeUserService(id, '管理员删除用户');
     }
 
-    // 获取服务器数量
-    const [serverCountResult] = await db.query(
-      'SELECT COUNT(*) as count FROM servers WHERE userId = ?',
-      [id]
-    );
+    // 6. 在事务中删除所有关联数据（任一步失败整体回滚，避免“服务已停但数据残留”的脏状态）
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
 
-    // 6. 删除数据库记录（手动级联删除）
-    // 先删除关联数据
-    const [serverIds] = await db.query('SELECT id FROM servers WHERE userId = ?', [id]);
-    if (serverIds.length > 0) {
-      const serverIdList = serverIds.map(s => s.id);
-      await db.query(`DELETE FROM devices WHERE serverId IN (?)`, [serverIdList]);
-      await db.query(`DELETE FROM event_logs WHERE serverId IN (?)`, [serverIdList]);
+      const [serverCountResult] = await conn.query(
+        'SELECT COUNT(*) as count FROM servers WHERE userId = ?',
+        [id]
+      );
+
+      const [serverIds] = await conn.query('SELECT id FROM servers WHERE userId = ?', [id]);
+      if (serverIds.length > 0) {
+        // db 层是 pool.execute(预处理)，IN(?) 不会展开数组，必须显式生成占位符
+        const placeholders = serverIds.map(() => '?').join(',');
+        const serverIdList = serverIds.map(s => s.id);
+        await conn.query(`DELETE FROM devices WHERE serverId IN (${placeholders})`, serverIdList);
+        await conn.query(`DELETE FROM event_logs WHERE serverId IN (${placeholders})`, serverIdList);
+      }
+      await conn.query('DELETE FROM servers WHERE userId = ?', [id]);
+      await conn.query('DELETE FROM orders WHERE userId = ?', [id]);
+      await conn.query('DELETE FROM subscriptions WHERE userId = ?', [id]);
+      await conn.query('DELETE FROM notification_settings WHERE userId = ?', [id]);
+      await conn.query('DELETE FROM extended_teammates WHERE userId = ?', [id]);
+      await conn.query('DELETE FROM users WHERE id = ?', [id]);
+
+      // 7. 记录管理员操作日志
+      await conn.query(
+        `INSERT INTO admin_logs (id, adminId, targetUserId, action, details, createdAt)
+         VALUES (?, ?, ?, 'DELETE_USER', ?, NOW())`,
+        [
+          uuidv4(),
+          adminId,
+          id,
+          JSON.stringify({
+            username: user.username,
+            email: user.email,
+            serversCount: serverCountResult[0].count,
+            reason: req.body.reason || '管理员操作'
+          })
+        ]
+      );
+
+      await conn.commit();
+    } catch (txErr) {
+      await conn.rollback();
+      throw txErr;
+    } finally {
+      conn.release();
     }
-    await db.query('DELETE FROM servers WHERE userId = ?', [id]);
-    await db.query('DELETE FROM orders WHERE userId = ?', [id]);
-    await db.query('DELETE FROM subscriptions WHERE userId = ?', [id]);
-    await db.query('DELETE FROM notification_settings WHERE userId = ?', [id]);
-    await db.query('DELETE FROM extended_teammates WHERE userId = ?', [id]);
-    await db.query('DELETE FROM users WHERE id = ?', [id]);
-
-    // 7. 记录管理员操作日志
-    await db.query(
-      `INSERT INTO admin_logs (id, adminId, targetUserId, action, details, createdAt)
-       VALUES (?, ?, ?, 'DELETE_USER', ?, NOW())`,
-      [
-        `log_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        adminId,
-        id,
-        JSON.stringify({
-          username: user.username,
-          email: user.email,
-          serversCount: serverCountResult[0].count,
-          reason: req.body.reason || '管理员操作'
-        })
-      ]
-    );
 
     console.log(`管理员 ${req.user.username} 删除了用户 ${user.username}`);
 

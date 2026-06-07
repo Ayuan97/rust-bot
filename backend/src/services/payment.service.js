@@ -621,11 +621,21 @@ class PaymentService {
     try {
       await conn.beginTransaction();
 
-      // 1. 更新订单状态
-      await conn.query(
-        `UPDATE orders SET status = 'PAID', tradeNo = ?, paidAt = NOW(), updatedAt = NOW() WHERE id = ?`,
+      // 1. 更新订单状态（幂等闸门：仅 PENDING→PAID，挡住支付宝重发/并发回调，避免订阅被重复延长）
+      const [updateResult] = await conn.query(
+        `UPDATE orders SET status = 'PAID', tradeNo = ?, paidAt = NOW(), updatedAt = NOW()
+         WHERE id = ? AND status = 'PENDING'`,
         [tradeNo, orderId]
       );
+      if (!updateResult.affectedRows) {
+        // 已被其它并发回调抢先处理，回滚并直接返回，绝不重复延长订阅
+        await conn.rollback();
+        return {
+          order: { id: orderId, status: 'PAID', tradeNo },
+          subscription: null,
+          alreadyProcessed: true
+        };
+      }
 
       // 2. 延长用户订阅时间
       const now = new Date();

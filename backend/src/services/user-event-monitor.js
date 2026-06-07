@@ -66,6 +66,9 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   crate_spawn: false,
   ch47_spawn: false,
   vending_new: false,
+  travelling_vendor_spawn: true,          // 流浪商人出现提醒
+  travelling_vendor_leave_warning: true,  // 流浪商人离开前提醒
+  travelling_vendor_leave: false,         // 流浪商人已离开提醒（默认关，与 cargo_leave/heli_leave 一致）
   day_night_enabled: true,
   day_notify_minutes: 5,
   night_notify_minutes: 8,
