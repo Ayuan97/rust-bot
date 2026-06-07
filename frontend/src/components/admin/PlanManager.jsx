@@ -225,7 +225,9 @@ const PlanManager = () => {
     });
   };
 
-  const PlanForm = ({ onSubmit, submitText }) => (
+  // 注意：必须是「返回 JSX 的函数」并内联调用，绝不能写成 <PlanForm/> 组件——
+  // 否则每次重渲染都会重建组件、导致输入框失焦（改金额时反复掉焦点）。
+  const renderPlanForm = (onSubmit, submitText) => (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -415,7 +417,7 @@ const PlanManager = () => {
             }`}
           >
             {editingPlan?.id === plan.id ? (
-              <PlanForm onSubmit={handleUpdate} submitText="保存修改" />
+              {renderPlanForm(handleUpdate, '保存修改')}
             ) : (
               <div className="flex justify-between items-start gap-4">
                 <div className="flex-1 min-w-0">
@@ -501,7 +503,7 @@ const PlanManager = () => {
             <div className="tac-label flex items-center gap-2 mb-4">
               <FaPlus className="text-hazard" /> 新建套餐 // CREATE PLAN
             </div>
-            <PlanForm onSubmit={handleCreate} submitText="创建套餐" />
+            {renderPlanForm(handleCreate, '创建套餐')}
           </div>
         </div>
       )}
@@ -509,4 +511,4 @@ const PlanManager = () => {
   );
 };
 
-export default PlanManager;
+export default React.memo(PlanManager);
