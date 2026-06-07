@@ -13,6 +13,7 @@ import { getItemName, getItemShortName, searchItems } from '../utils/item-info.j
 import { AppMarkerType } from '../utils/event-constants.js';
 import { formatPosition } from '../utils/coordinates.js';
 import { getLanguageCode } from '../utils/languages.js';
+import notificationService from './notification.service.js';
 
 const SHOP_SEARCH_CHINESE_REGEX = /[\u3400-\u9FFF]/;
 const SHOP_TRANSLATION_CACHE_LIMIT = 200;
@@ -384,6 +385,11 @@ class UserCommands extends EventEmitter {
         return this.handleLeader(serverId, args, context);
       }
     });
+
+    // 临时静音突袭警报（队友在游戏内即可关，默认 6 小时后自动恢复）
+    const muteHandler = async (serverId, args, context) => this.handleMuteAlert(serverId, args, context);
+    this.registerCommand('静音', { description: '临时静音突袭警报 6 小时', usage: '!静音', handler: muteHandler });
+    this.registerCommand('mute', { description: '临时静音突袭警报 6 小时', usage: '!mute', handler: muteHandler });
   }
 
   /**
@@ -1137,6 +1143,23 @@ class UserCommands extends EventEmitter {
     } catch (error) {
       logger.error('获取大油井状态失败:', error);
       return cmd('large', 'error');
+    }
+  }
+
+  /**
+   * !静音 / !mute - 临时静音突袭警报（默认 6 小时后自动恢复）
+   * 给"后台账号的人不在、但队友在游戏里"的场景兜底
+   */
+  async handleMuteAlert(serverId, args, context) {
+    try {
+      const result = await notificationService.snooze(this.userId);
+      const until = new Date(result.snoozeUntil);
+      const hh = String(until.getHours()).padStart(2, '0');
+      const mm = String(until.getMinutes()).padStart(2, '0');
+      return `🔕 突袭警报已静音 ${result.hours} 小时，${hh}:${mm} 自动恢复`;
+    } catch (error) {
+      logger.error('静音突袭警报失败:', error.message);
+      return '静音失败，请稍后再试';
     }
   }
 

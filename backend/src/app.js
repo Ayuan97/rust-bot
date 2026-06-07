@@ -28,6 +28,7 @@ import adminRoutes from './routes/admin.routes.js';
 import fcmRoutes from './routes/fcm.routes.js';
 import trackingRoutes from './routes/tracking.routes.js';
 import internalRoutes from './routes/internal.routes.js';
+import raidAlertRoutes from './routes/raid-alert.routes.js';
 
 // 中间件
 import { apiLimiter } from './middleware/rate-limiter.js';
@@ -84,6 +85,7 @@ app.use('/api/pairing', pairingRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/fcm', fcmRoutes);
 app.use('/api/tracking', trackingRoutes);
+app.use('/api/raid-alert', raidAlertRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {

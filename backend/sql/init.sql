@@ -100,6 +100,34 @@ CREATE TABLE IF NOT EXISTS `notification_settings` (
   CONSTRAINT `notification_settings_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 突袭警报通知人表（智能警报触发时给这些人发 Bark 等外部强提醒；每用户一套）
+CREATE TABLE IF NOT EXISTS `raid_alert_recipients` (
+  `id` VARCHAR(36) NOT NULL,
+  `userId` VARCHAR(36) NOT NULL,
+  `name` VARCHAR(64) NOT NULL,
+  `channel` VARCHAR(16) NOT NULL DEFAULT 'bark',
+  `barkServer` VARCHAR(255) NOT NULL DEFAULT 'https://api.day.app',
+  `barkKey` VARCHAR(255) NOT NULL,
+  `enabled` TINYINT(1) NOT NULL DEFAULT 1,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `raid_alert_recipients_userId_idx` (`userId`),
+  CONSTRAINT `raid_alert_recipients_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 突袭警报总开关与配置（每用户一条）。mode: ACTIVE 正常 / SNOOZED 临时静音(到 snoozeUntil 自动恢复) / DISABLED 彻底关闭
+CREATE TABLE IF NOT EXISTS `raid_alert_config` (
+  `userId` VARCHAR(36) NOT NULL,
+  `mode` VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
+  `snoozeUntil` DATETIME(3) DEFAULT NULL,
+  `snoozeHours` INT NOT NULL DEFAULT 6,
+  `mergeWindowSec` INT NOT NULL DEFAULT 300,
+  `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`userId`),
+  CONSTRAINT `raid_alert_config_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 订阅套餐表
 CREATE TABLE IF NOT EXISTS `subscription_plans` (
   `id` VARCHAR(36) NOT NULL,

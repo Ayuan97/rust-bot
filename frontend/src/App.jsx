@@ -18,6 +18,7 @@ import ChatPanel from './components/ChatPanel';
 import PairingWizard from './components/PairingWizard';
 import FCMSettings from './components/FCMSettings';
 import NotificationSettings from './components/NotificationSettings';
+import RaidAlertSettings from './components/RaidAlertSettings';
 import AdminPage from './pages/AdminPage';
 import MapView from './components/MapView';
 import ServerInfoView from './components/ServerInfoView';
@@ -526,6 +527,7 @@ function ServerSettingsView({ server, onNavigateToPairing }) {
   const tabs = [
     { id: 'fcm', label: 'FCM 推送', icon: <FaBell />, desc: '配对凭证管理' },
     { id: 'notifications', label: '通知设置', icon: <FaBell />, desc: '队伍聊天通知' },
+    { id: 'raid', label: '突袭通知', icon: <FaShieldAlt />, desc: '智能警报强提醒' },
     { id: 'alerts', label: '预警规则', icon: <FaShieldAlt />, desc: '自动化报警' },
   ];
 
@@ -580,6 +582,9 @@ function ServerSettingsView({ server, onNavigateToPairing }) {
 
           {/* 通知设置 */}
           {activeTab === 'notifications' && <NotificationSettingsEmbed />}
+
+          {/* 突袭通知（智能警报 → Bark 强提醒） */}
+          {activeTab === 'raid' && <RaidAlertSettings />}
 
           {/* 预警规则 */}
           {activeTab === 'alerts' && (
