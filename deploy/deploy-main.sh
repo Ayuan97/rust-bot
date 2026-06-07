@@ -3,14 +3,20 @@ set -Eeuo pipefail
 trap 'echo -e "\033[1;31m[deploy-main] 第 $LINENO 行出错，已中断\033[0m" >&2' ERR
 
 # ============================================================
-# 主节点(rust-main)一键部署脚本
-#   bash deploy-main.sh [install]   首次/重复部署主节点
-#   bash deploy-main.sh token <id>  为子节点签发 NODE_TOKEN
-#   bash deploy-main.sh allow <ip>  把某来源 IP 加入内部接口白名单并重启
+# 主节点(rust-main) 全新服务器一键部署
+#   全新机器一条命令（私有仓库用内置令牌）:
+#     curl -fsSL -H "Authorization: token <PAT>" \
+#       https://raw.githubusercontent.com/Ayuan97/rust-bot/main/deploy/deploy-main.sh \
+#       | DOMAIN=rustplusplus.com bash
+#   或本地已有脚本: DOMAIN=rustplusplus.com bash deploy-main.sh
 #
-# 关键变量可用环境变量覆盖（非交互自动化）：
-#   APP_DIR REPO_URL BRANCH WEB_DIR PORT DB_HOST DB_PORT DB_USER
-#   DB_PASSWORD DB_NAME FRONTEND_URL SKIP_FRONTEND
+# 自动完成：装 MariaDB/Node/PM2/Nginx → 建库建用户 → 拉代码 → 写.env(随机密钥)
+#           → 建表 → 装依赖 → 构建前端 → 配 Nginx+SSL → pm2 起 rust-main → 健康检查
+#
+# 子命令：
+#   bash deploy-main.sh provision <id>  生成子节点一键命令
+#   bash deploy-main.sh token <id>      仅签发子节点令牌
+#   bash deploy-main.sh allow <ip>      放行内部接口来源 IP
 # ============================================================
 
 APP_DIR=${APP_DIR:-/www/wwwroot/rust-bot}
@@ -18,56 +24,91 @@ REPO_URL=${REPO_URL:-https://github.com/Ayuan97/rust-bot.git}
 REPO_RAW=${REPO_RAW:-https://raw.githubusercontent.com/Ayuan97/rust-bot/main}
 REPO_TOKEN=${REPO_TOKEN:-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}
 BRANCH=${BRANCH:-main}
-WEB_DIR=${WEB_DIR:-/var/www/app.rustplusplus.com}
 NODE_MAJOR=20
-SKIP_FRONTEND=${SKIP_FRONTEND:-false}
+
+DOMAIN=${DOMAIN:-}
+PORT=${PORT:-3000}
+DB_HOST=${DB_HOST:-127.0.0.1}
+DB_PORT=${DB_PORT:-3306}
+DB_USER=${DB_USER:-rustapp}
+DB_NAME=${DB_NAME:-rustplus_db}
+WEB_DIR=${WEB_DIR:-/var/www/rustbot}
 
 log()  { echo -e "\033[1;32m[deploy-main]\033[0m $*"; }
 warn() { echo -e "\033[1;33m[deploy-main]\033[0m $*"; }
 die()  { echo -e "\033[1;31m[deploy-main] 错误:\033[0m $*" >&2; exit 1; }
 
-# ask VAR "提示" "默认值" [silent]：env 已给则跳过；非交互用默认；否则提示输入
-ask() {
-  local __var=$1 __prompt=$2 __def=${3:-} __silent=${4:-} __input
-  [ -n "${!__var:-}" ] && return 0
-  if [ ! -t 0 ]; then printf -v "$__var" '%s' "$__def"; return 0; fi
-  if [ "$__silent" = "silent" ]; then
-    read -r -s -p "$__prompt${__def:+ [默认: $__def]}: " __input; echo
-  else
-    read -r -p "$__prompt${__def:+ [默认: $__def]}: " __input
-  fi
-  printf -v "$__var" '%s' "${__input:-$__def}"
-}
-
-need_root() { [ "$(id -u)" = "0" ] || die "请用 root 运行（安装依赖 / pm2 需要）"; }
+need_root() { [ "$(id -u)" = "0" ] || die "请用 root 运行"; }
 
 pkg_install() {
-  if   command -v apt-get >/dev/null; then apt-get update -y && apt-get install -y "$@";
+  if   command -v apt-get >/dev/null; then DEBIAN_FRONTEND=noninteractive apt-get install -y "$@";
   elif command -v dnf     >/dev/null; then dnf install -y "$@";
   elif command -v yum     >/dev/null; then yum install -y "$@";
   else die "未识别包管理器，请手动安装: $*"; fi
 }
+pkg_refresh() {
+  if command -v apt-get >/dev/null; then apt-get update -y || true; fi
+}
 
 ensure_deps() {
-  command -v git    >/dev/null || pkg_install git
-  command -v curl   >/dev/null || pkg_install curl
-  command -v rsync  >/dev/null || pkg_install rsync
-  command -v openssl>/dev/null || pkg_install openssl
+  log "安装系统依赖（首次会比较久）"
+  pkg_refresh
+  command -v git     >/dev/null || pkg_install git
+  command -v curl    >/dev/null || pkg_install curl
+  command -v rsync   >/dev/null || pkg_install rsync
+  command -v openssl >/dev/null || pkg_install openssl
+
   if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)" -lt 18 ]; then
     log "安装 Node.js ${NODE_MAJOR}.x"
     if command -v apt-get >/dev/null; then
-      curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - && apt-get install -y nodejs
+      curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - && pkg_install nodejs
     else
       curl -fsSL "https://rpm.nodesource.com/setup_${NODE_MAJOR}.x" | bash - && pkg_install nodejs
     fi
   fi
   command -v pm2 >/dev/null || npm install -g pm2
-  command -v mysql >/dev/null || warn "未找到 mysql 客户端；若 DB 不在本机请先安装，否则将跳过自动建库"
+
+  # 数据库（MariaDB，兼容 MySQL 协议）
+  if ! command -v mariadbd >/dev/null && ! command -v mysqld >/dev/null && ! command -v mysql >/dev/null; then
+    log "安装 MariaDB 服务端"
+    pkg_install mariadb-server
+  fi
+  systemctl enable --now mariadb >/dev/null 2>&1 || systemctl enable --now mysql >/dev/null 2>&1 \
+    || service mariadb start >/dev/null 2>&1 || service mysql start >/dev/null 2>&1 || true
+
+  # 反代 + 证书（仅当配置了 DOMAIN 才真正用到）
+  if [ -n "$DOMAIN" ]; then
+    command -v nginx   >/dev/null || pkg_install nginx
+    command -v certbot >/dev/null || pkg_install certbot python3-certbot-nginx || warn "certbot 安装失败，稍后可手动配 SSL"
+  fi
+}
+
+# 以本机 root 身份连 MariaDB（全新安装默认 unix_socket 认证）
+mysql_root() {
+  if mysql -uroot -e "SELECT 1" >/dev/null 2>&1; then mysql -uroot "$@";
+  else mysql "$@"; fi
+}
+
+setup_mysql() {
+  log "配置数据库（建库 + 建用户）"
+  # 重复部署时复用已有密码，避免每次改密导致 .env 不一致
+  if [ -f "$APP_DIR/.env" ]; then
+    DB_PASSWORD=$(grep -E '^DB_PASSWORD=' "$APP_DIR/.env" | head -1 | cut -d= -f2- || true)
+  fi
+  [ -n "${DB_PASSWORD:-}" ] || DB_PASSWORD=$(openssl rand -hex 16)
+
+  mysql_root <<SQL || die "数据库初始化失败（检查 MariaDB 是否启动）"
+CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASSWORD';
+ALTER USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASSWORD';
+GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+  log "数据库就绪: $DB_NAME / 用户 $DB_USER@localhost"
 }
 
 ensure_repo() {
   local url="$REPO_URL"
-  # 私有仓库：用只读 PAT 注入 https URL（token 来自环境变量/主节点 .env，绝不写进脚本本身）
   [ -n "${REPO_TOKEN:-}" ] && url="https://oauth2:${REPO_TOKEN}@${REPO_URL#https://}"
   if [ -d "$APP_DIR/.git" ]; then
     log "更新已有代码: $APP_DIR ($BRANCH)"
@@ -82,12 +123,178 @@ ensure_repo() {
   fi
 }
 
-cmd_token() {
-  local nid=${1:-}
-  [ -n "$nid" ] || die "用法: $0 token <nodeId>（如 node-1）"
+setup_nginx() {
+  [ -n "$DOMAIN" ] || { warn "未提供 DOMAIN，跳过 Nginx/SSL（前端已构建到 $WEB_DIR，可稍后自行配反代）"; return 0; }
+  command -v nginx >/dev/null || { warn "nginx 未安装，跳过"; return 0; }
+  log "配置 Nginx: $DOMAIN -> 前端($WEB_DIR) + /api 反代 127.0.0.1:$PORT"
+
+  local block
+  block=$(cat <<NGINX
+server {
+    listen 80;
+    server_name $DOMAIN;
+
+    root $WEB_DIR;
+    index index.html;
+    location / { try_files \$uri \$uri/ /index.html; }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:$PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400;
+    }
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:$PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400;
+    }
+}
+NGINX
+)
+  if [ -d /etc/nginx/sites-enabled ]; then
+    echo "$block" > /etc/nginx/sites-available/rustbot
+    ln -sf /etc/nginx/sites-available/rustbot /etc/nginx/sites-enabled/rustbot
+    rm -f /etc/nginx/sites-enabled/default
+  else
+    mkdir -p /etc/nginx/conf.d
+    echo "$block" > /etc/nginx/conf.d/rustbot.conf
+  fi
+  nginx -t && { systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || service nginx restart; }
+
+  # 自动签发 SSL（域名需已解析到本机且 80 端口可达）
+  if command -v certbot >/dev/null; then
+    certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "admin@$DOMAIN" --redirect \
+      || warn "certbot 失败（多半是域名解析未生效或 80 端口被挡）；HTTP 已可用，稍后重跑: certbot --nginx -d $DOMAIN"
+  fi
+}
+
+open_firewall() {
+  if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -qi active; then
+    ufw allow 80,443/tcp >/dev/null 2>&1 || true
+    ufw allow ${PORT}/tcp >/dev/null 2>&1 || true
+    log "ufw 已放行 80/443/$PORT"
+  fi
+  warn "若用云服务器，记得在云控制台安全组放行 80/443，以及给子节点放行 $PORT"
+}
+
+cmd_install() {
+  need_root
+  [ -n "$DOMAIN" ] || warn "未设置 DOMAIN：将只起后端+子节点功能，前端面板需要域名才能用 (DOMAIN=xxx 重跑可补)"
+  ensure_deps
+  setup_mysql
+  ensure_repo
+
+  local JWT_SECRET NODE_TOKEN_SECRET env="$APP_DIR/.env"
+  JWT_SECRET=$(openssl rand -hex 32)
+  NODE_TOKEN_SECRET=$(openssl rand -hex 32)
+  # 复用已有密钥（重复部署不让 token/JWT 失效）
+  if [ -f "$env" ]; then
+    local ov
+    ov=$(grep -E '^JWT_SECRET=' "$env" | cut -d= -f2- || true); [ -n "$ov" ] && JWT_SECRET=$ov
+    ov=$(grep -E '^NODE_TOKEN_SECRET=' "$env" | cut -d= -f2- || true); [ -n "$ov" ] && NODE_TOKEN_SECRET=$ov
+    cp "$env" "$env.bak.$(date +%s)"
+  fi
+  cat > "$env" <<EOF
+NODE_ENV=production
+PORT=$PORT
+FRONTEND_URL=${DOMAIN:+https://$DOMAIN}
+TRUST_PROXY=true
+
+DB_HOST=$DB_HOST
+DB_PORT=$DB_PORT
+DB_USER=$DB_USER
+DB_PASSWORD=$DB_PASSWORD
+DB_NAME=$DB_NAME
+DB_POOL_LIMIT=30
+
+JWT_SECRET=$JWT_SECRET
+NODE_TOKEN_SECRET=$NODE_TOKEN_SECRET
+INTERNAL_ALLOWED_IPS=*
+
+RUST_CONN_MODE=distributed
+
+REPO_TOKEN=$REPO_TOKEN
+EOF
+  log ".env 已写入"
+
+  log "导入数据库结构"
+  mysql -u"$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" < "$APP_DIR/backend/sql/init.sql"
+
+  log "安装后端依赖"
+  ( cd "$APP_DIR/backend" && npm ci )
+
+  if [ -d "$APP_DIR/frontend" ]; then
+    log "构建前端 -> $WEB_DIR"
+    ( cd "$APP_DIR/frontend" && npm ci && npm run build )
+    mkdir -p "$WEB_DIR" && rsync -a --delete "$APP_DIR/frontend/dist/" "$WEB_DIR/"
+  fi
+
+  setup_nginx
+  open_firewall
+
+  if pm2 describe rust-main >/dev/null 2>&1; then
+    pm2 restart rust-main --update-env
+  else
+    pm2 start "$APP_DIR/backend/src/app.js" --name rust-main --cwd "$APP_DIR" --update-env
+  fi
+  pm2 save >/dev/null
+  pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || true
+
+  local i ok=0
+  for i in $(seq 1 20); do
+    if curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then ok=1; break; fi
+    sleep 2
+  done
+  [ "$ok" = 1 ] && log "后端健康检查 OK" || warn "后端健康检查未通过，查 'pm2 logs rust-main'"
+
+  cat <<EOF
+
+============================================================
+ 主节点部署完成 ✅
+   后端:  http://127.0.0.1:$PORT/api/health
+   面板:  ${DOMAIN:+https://$DOMAIN}${DOMAIN:-（未配域名，前端暂不可访问）}
+------------------------------------------------------------
+ 加子节点（两步）：
+   1) 本机:  bash $APP_DIR/deploy/deploy-main.sh provision node-1
+   2) 复制输出命令，到子节点机器粘贴执行（零交互）
+============================================================
+EOF
+}
+
+cmd_provision() {
+  local nid=${1:-} master
+  [ -n "$nid" ] || die "用法: $0 provision <nodeId>（如 node-1）"
   [[ "$nid" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || die "nodeId 只能含字母/数字/点/下划线/连字符，长度1-64"
   [ -f "$APP_DIR/.env" ] || die "未找到 $APP_DIR/.env，请先部署主节点"
-  log "为 $nid 签发 NODE_TOKEN（粘贴到子节点）:"
+  local token; token=$( cd "$APP_DIR" && node backend/scripts/issue-node-token.js "$nid" )
+  [ -n "$token" ] || die "签发失败"
+  master=${MASTER_HOST:-}
+  [ -n "$master" ] || master=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo "")
+  [ -n "$master" ] || master="<主节点IP>"
+  cat <<EOF
+
+============================================================
+ 子节点 [$nid] 一键部署命令（到子节点机器粘贴执行，零交互）
+------------------------------------------------------------
+ curl -fsSL -H "Authorization: token $REPO_TOKEN" $REPO_RAW/deploy/deploy-connector.sh | NODE_TOKEN='$token' MASTER_HOST='$master' bash
+============================================================
+EOF
+}
+
+cmd_token() {
+  local nid=${1:-}
+  [ -n "$nid" ] || die "用法: $0 token <nodeId>"
+  [[ "$nid" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || die "nodeId 格式非法"
+  [ -f "$APP_DIR/.env" ] || die "未找到 .env，请先部署主节点"
   ( cd "$APP_DIR" && node backend/scripts/issue-node-token.js "$nid" )
 }
 
@@ -100,132 +307,9 @@ cmd_allow() {
   local new="${cur:+$cur,}$ip"
   if grep -qE '^INTERNAL_ALLOWED_IPS=' "$env"; then
     sed -i "s|^INTERNAL_ALLOWED_IPS=.*|INTERNAL_ALLOWED_IPS=$new|" "$env"
-  else
-    echo "INTERNAL_ALLOWED_IPS=$new" >> "$env"
-  fi
-  log "白名单更新为: $new；重启 rust-main 生效"
-  pm2 restart rust-main --update-env >/dev/null 2>&1 || warn "rust-main 未运行，下次启动生效"
-}
-
-cmd_provision() {
-  local nid=${1:-} token master
-  [ -n "$nid" ] || die "用法: $0 provision <nodeId>（如 node-1）"
-  [[ "$nid" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || die "nodeId 只能含字母/数字/点/下划线/连字符，长度1-64"
-  [ -f "$APP_DIR/.env" ] || die "未找到 $APP_DIR/.env，请先部署主节点"
-  token=$( cd "$APP_DIR" && node backend/scripts/issue-node-token.js "$nid" )
-  [ -n "$token" ] || die "签发失败"
-  local master
-  # 默认用主节点公网 IP 直连(不依赖 nginx/域名)；可用 MASTER_HOST 环境变量改成域名
-  master=${MASTER_HOST:-}
-  [ -n "$master" ] || master=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo "")
-  [ -n "$master" ] || master="<主节点IP>"
-  cat <<EOF
-
-============================================================
- 子节点 [$nid] 一键部署命令（到子节点机器粘贴执行，零交互）
-------------------------------------------------------------
- 方式A（已把 deploy-connector.sh 传到子节点）:
-   NODE_TOKEN='$token' MASTER_HOST='$master' bash deploy-connector.sh
-
- 方式B（一条命令，自动拉脚本+代码，脚本已内置仓库令牌）:
-   curl -fsSL -H "Authorization: token $REPO_TOKEN" $REPO_RAW/deploy/deploy-connector.sh | NODE_TOKEN='$token' MASTER_HOST='$master' bash
-============================================================
-EOF
-}
-
-cmd_install() {
-  need_root
-  ensure_deps
-  ensure_repo
-
-  log "收集主节点配置（直接回车用默认值）"
-  ask DB_HOST     "MySQL 主机"      "127.0.0.1"
-  ask DB_PORT     "MySQL 端口"      "3306"
-  ask DB_USER     "MySQL 用户"      "rustapp"
-  ask DB_PASSWORD "MySQL 密码"      ""           silent
-  ask DB_NAME     "数据库名"        "rustplus_db"
-  ask PORT        "后端端口"        "3000"
-  ask FRONTEND_URL "前端地址(CORS)" "http://localhost:5173"
-  ask REPO_TOKEN  "GitHub 只读令牌(私有仓库 clone 用,子节点也会用到)" "" silent
-
-  local JWT_SECRET NODE_TOKEN_SECRET
-  JWT_SECRET=$(openssl rand -hex 32)
-  NODE_TOKEN_SECRET=$(openssl rand -hex 32)
-
-  local env="$APP_DIR/.env"
-  [ -f "$env" ] && { cp "$env" "$env.bak.$(date +%s)"; warn "已备份旧 .env"; }
-  cat > "$env" <<EOF
-NODE_ENV=production
-PORT=$PORT
-FRONTEND_URL=$FRONTEND_URL
-TRUST_PROXY=true
-
-DB_HOST=$DB_HOST
-DB_PORT=$DB_PORT
-DB_USER=$DB_USER
-DB_PASSWORD=$DB_PASSWORD
-DB_NAME=$DB_NAME
-DB_POOL_LIMIT=30
-
-JWT_SECRET=$JWT_SECRET
-NODE_TOKEN_SECRET=$NODE_TOKEN_SECRET
-# 内部接口来源限制：* = 不限(仅靠节点令牌鉴权，最省事)；要更严可改为具体 IP 列表
-INTERNAL_ALLOWED_IPS=*
-
-RUST_CONN_MODE=distributed
-
-# GitHub 只读令牌：私有仓库 clone/更新用，provision 会注入子节点命令（.env 不进 git）
-REPO_TOKEN=$REPO_TOKEN
-EOF
-  log ".env 已写入（密钥自动生成；REPO_TOKEN 仅存于 .env，不进版本库）"
-
-  if command -v mysql >/dev/null; then
-    local m=(mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER")
-    [ -n "$DB_PASSWORD" ] && m+=(-p"$DB_PASSWORD")
-    local ver; ver=$("${m[@]}" -N -e "SELECT VERSION();" 2>/dev/null | head -1 || true)
-    [ -n "$ver" ] || die "无法连接 MySQL，请检查 DB 配置"
-    log "MySQL 版本: $ver"
-    case "$ver" in 5.[0-6].*|5.[0-6]) die "需要 MySQL >= 5.7（生成列+唯一约束），当前 $ver";; esac
-    "${m[@]}" -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-    "${m[@]}" "$DB_NAME" < "$APP_DIR/backend/sql/init.sql"
-    log "数据库初始化完成"
-  else
-    warn "跳过自动建库，请手动执行: mysql ... \"$DB_NAME\" < backend/sql/init.sql"
-  fi
-
-  log "安装后端依赖"
-  ( cd "$APP_DIR/backend" && npm ci )
-  if [ "$SKIP_FRONTEND" != "true" ] && [ -d "$APP_DIR/frontend" ]; then
-    log "构建并部署前端到 $WEB_DIR"
-    ( cd "$APP_DIR/frontend" && npm ci && npm run build )
-    mkdir -p "$WEB_DIR" && rsync -a --delete "$APP_DIR/frontend/dist/" "$WEB_DIR/"
-  fi
-
-  if pm2 describe rust-main >/dev/null 2>&1; then
-    pm2 restart rust-main --update-env
-  else
-    pm2 start "$APP_DIR/backend/src/app.js" --name rust-main --cwd "$APP_DIR" --update-env
-  fi
-  pm2 save >/dev/null
-  pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || warn "如需开机自启，请按 'pm2 startup' 提示手动确认"
-
-  local i ok=0
-  for i in $(seq 1 20); do
-    if curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then ok=1; log "健康检查 OK"; break; fi
-    sleep 2
-  done
-  [ "$ok" = 1 ] || die "健康检查失败，请查 'pm2 logs rust-main'"
-
-  cat <<EOF
-
-============================================================
- 主节点部署完成 ✅   ( http://<本机IP>:$PORT/api/health )
-------------------------------------------------------------
- 加子节点（两步搞定，每台一个唯一 nodeId）：
-   1) 本机：  bash $0 provision node-1
-   2) 复制输出的命令，到子节点机器粘贴执行（零交互；不用配数据库/nginx/白名单）
-============================================================
-EOF
+  else echo "INTERNAL_ALLOWED_IPS=$new" >> "$env"; fi
+  log "白名单更新为: $new"
+  pm2 restart rust-main --update-env >/dev/null 2>&1 || true
 }
 
 case "${1:-install}" in
