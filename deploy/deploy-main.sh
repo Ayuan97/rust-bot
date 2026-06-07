@@ -230,11 +230,11 @@ EOF
   mysql -u"$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" < "$APP_DIR/backend/sql/init.sql"
 
   log "安装后端依赖"
-  ( cd "$APP_DIR/backend" && npm ci )
+  ( cd "$APP_DIR/backend" && npm install )
 
   if [ -d "$APP_DIR/frontend" ]; then
     log "构建前端 -> $WEB_DIR"
-    ( cd "$APP_DIR/frontend" && npm ci && npm run build )
+    ( cd "$APP_DIR/frontend" && npm install && npm run build )
     mkdir -p "$WEB_DIR" && rsync -a --delete "$APP_DIR/frontend/dist/" "$WEB_DIR/"
   fi
 

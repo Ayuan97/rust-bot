@@ -128,7 +128,7 @@ EOF
 log ".env 已写入（子节点不含任何数据库凭据）"
 
 log "安装后端依赖"
-( cd "$APP_DIR/backend" && npm ci )
+( cd "$APP_DIR/backend" && npm install )
 
 if pm2 describe "$NODE_NAME" >/dev/null 2>&1; then
   pm2 restart "$NODE_NAME" --update-env
