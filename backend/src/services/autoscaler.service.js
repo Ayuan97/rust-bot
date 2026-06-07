@@ -201,7 +201,14 @@ class AutoScalerService extends EventEmitter {
       return { action: 'noop', direction: 'down' };
     }
 
-    const nodeIds = idleNodeIds.slice(0, 1);
+    const nodeId = idleNodeIds[0];
+    // 两阶段缩容：先原子标记 DRAINING 且确认零会话（避免“判定空闲→下线”之间刚被分配会话）
+    const drained = await this.sessionService.markNodeDrainingIfIdle(nodeId);
+    if (!drained) {
+      return { action: 'noop', direction: 'down', reason: 'NODE_NOT_IDLE' };
+    }
+
+    const nodeIds = [nodeId];
     const result = await this.runScaleAction({
       direction: 'down',
       count: 1,
@@ -214,6 +221,9 @@ class AutoScalerService extends EventEmitter {
       this.lastActionAt = now;
       this.idleSince = null;
       this.emit('scale:down', { trigger, metrics, nodeIds, result });
+    } else {
+      // 下线动作失败：撤销 DRAINING，让节点继续服务
+      await this.sessionService.undrainNode(nodeId).catch(() => {});
     }
 
     return {

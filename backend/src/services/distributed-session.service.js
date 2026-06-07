@@ -312,7 +312,7 @@ class DistributedSessionService extends EventEmitter {
     const staleNodeIds = staleNodeRows.map((row) => row.id);
     const staleNodePlaceholders = staleNodeIds.map(() => '?').join(',');
 
-    await db.query(
+    await this.queryWithDeadlockRetry(
       `UPDATE gateway_nodes
        SET status = 'OFFLINE', updatedAt = NOW()
        WHERE id IN (${staleNodePlaceholders}) AND status = 'ONLINE'`,
@@ -342,7 +342,7 @@ class DistributedSessionService extends EventEmitter {
     const sessionIds = sessionRows.map((row) => row.id);
     const sessionPlaceholders = sessionIds.map(() => '?').join(',');
 
-    await db.query(
+    await this.queryWithDeadlockRetry(
       `UPDATE connection_sessions
        SET status = 'FAILED', lastError = ?, closedAt = NOW(), updatedAt = NOW()
        WHERE id IN (${sessionPlaceholders})
@@ -350,7 +350,7 @@ class DistributedSessionService extends EventEmitter {
       ['gateway heartbeat timeout', ...sessionIds]
     );
 
-    await db.query(
+    await this.queryWithDeadlockRetry(
       `UPDATE session_commands
        SET status = 'FAILED', error = ?, updatedAt = NOW()
        WHERE sessionId IN (${sessionPlaceholders})
@@ -840,17 +840,18 @@ class DistributedSessionService extends EventEmitter {
       throw new Error('nodeId is required');
     }
 
+    // DRAINING 节点保持 DRAINING（不被心跳重置回 ONLINE），保证缩容排空不被打断；其余刷新为 ONLINE
     await db.query(
       `UPDATE gateway_nodes
        SET
          publicIp = COALESCE(?, publicIp),
          region = COALESCE(?, region),
-         status = ?,
+         status = CASE WHEN status = 'DRAINING' THEN status ELSE 'ONLINE' END,
          metadata = COALESCE(?, metadata),
          lastHeartbeat = NOW(),
          updatedAt = NOW()
        WHERE id = ?`,
-      [publicIp, region, status, metadata ? stringifyJson(metadata) : null, nodeId]
+      [publicIp, region, metadata ? stringifyJson(metadata) : null, nodeId]
     );
     await this.tryAssignQueuedSessions();
   }
@@ -1130,6 +1131,24 @@ class DistributedSessionService extends EventEmitter {
   }
 
   async claimCommandsForNode(nodeId, limit = 20) {
+    let attempt = 0;
+    while (true) {
+      try {
+        return await this._claimCommandsOnce(nodeId, limit);
+      } catch (error) {
+        attempt += 1;
+        if (!isDeadlockError(error) || attempt >= DEADLOCK_RETRY_MAX_ATTEMPTS) {
+          throw error;
+        }
+        await delay(
+          DEADLOCK_RETRY_BASE_DELAY_MS * attempt +
+            Math.floor(Math.random() * DEADLOCK_RETRY_BASE_DELAY_MS)
+        );
+      }
+    }
+  }
+
+  async _claimCommandsOnce(nodeId, limit = 20) {
     const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
     const conn = await db.getConnection();
 
@@ -1345,6 +1364,59 @@ class DistributedSessionService extends EventEmitter {
       [this.gatewayHeartbeatTtlSec]
     );
     return rows.map((row) => row.id);
+  }
+
+  /**
+   * 原子地把空闲节点标记为 DRAINING（缩容第一阶段）。
+   * 先置 DRAINING 停止新分配，再核对零活跃会话；若标记瞬间已有会话落入则撤销并放弃。
+   * @returns {Promise<boolean>} 是否成功进入 DRAINING
+   */
+  async markNodeDrainingIfIdle(nodeId) {
+    if (!nodeId) return false;
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [res] = await conn.query(
+        `UPDATE gateway_nodes SET status = 'DRAINING', updatedAt = NOW()
+         WHERE id = ? AND status = 'ONLINE'`,
+        [nodeId]
+      );
+      if (!res.affectedRows) {
+        await conn.commit();
+        return false;
+      }
+      const [rows] = await conn.query(
+        `SELECT COUNT(*) AS cnt FROM connection_sessions
+         WHERE nodeId = ? AND status IN (${SESSION_STATUS_SQL})`,
+        [nodeId]
+      );
+      if (Number(rows[0]?.cnt || 0) > 0) {
+        await conn.query(
+          `UPDATE gateway_nodes SET status = 'ONLINE', updatedAt = NOW()
+           WHERE id = ? AND status = 'DRAINING'`,
+          [nodeId]
+        );
+        await conn.commit();
+        return false;
+      }
+      await conn.commit();
+      return true;
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /** 撤销 DRAINING（缩容下线动作失败时让节点恢复服务） */
+  async undrainNode(nodeId) {
+    if (!nodeId) return;
+    await db.query(
+      `UPDATE gateway_nodes SET status = 'ONLINE', updatedAt = NOW()
+       WHERE id = ? AND status = 'DRAINING'`,
+      [nodeId]
+    );
   }
 
   async getScalingMetrics() {
