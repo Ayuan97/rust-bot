@@ -101,6 +101,8 @@ class UserCommands extends EventEmitter {
     this.POP_HISTORY_MAX_POINTS = Math.ceil(this.POP_HISTORY_RETENTION_MS / POP_SAMPLING_INTERVAL_MS) + 120; // 防止极端刷屏导致内存增长
     this.popSamplingTimer = null;
     this.isCollectingPopSamples = false;
+    this.pendingTimers = new Set(); // 延迟设备命令(!sw on/off <时间>)的定时器，销毁时统一清理
+    this._destroyed = false;
     this.shopSearchTranslationCache = new Map();
 
     // 注册内置命令
@@ -621,8 +623,10 @@ class UserCommands extends EventEmitter {
           const delayMs = delaySeconds * 1000;
           const delayMinutes = Math.floor(delaySeconds / 60);
 
-          // 设置定时器
-          setTimeout(async () => {
+          // 设置定时器（句柄登记，销毁时统一清理；销毁后不再触发设备操作）
+          const onTimer = setTimeout(async () => {
+            this.pendingTimers.delete(onTimer);
+            if (this._destroyed) return;
             try {
               await this.rustPlusService.turnSmartSwitchOn(serverId, device.entityId);
               await this.rustPlusService.sendTeamMessage(
@@ -634,6 +638,7 @@ class UserCommands extends EventEmitter {
               logger.error(`定时开启失败:`, error);
             }
           }, delayMs);
+          this.pendingTimers.add(onTimer);
 
           return `[定时] ${device.name} 将在 ${delayMinutes} 分钟后开启`;
         } else {
@@ -657,8 +662,10 @@ class UserCommands extends EventEmitter {
           const delayMs = delaySeconds * 1000;
           const delayMinutes = Math.floor(delaySeconds / 60);
 
-          // 设置定时器
-          setTimeout(async () => {
+          // 设置定时器（句柄登记，销毁时统一清理；销毁后不再触发设备操作）
+          const offTimer = setTimeout(async () => {
+            this.pendingTimers.delete(offTimer);
+            if (this._destroyed) return;
             try {
               await this.rustPlusService.turnSmartSwitchOff(serverId, device.entityId);
               await this.rustPlusService.sendTeamMessage(
@@ -670,6 +677,7 @@ class UserCommands extends EventEmitter {
               logger.error(`定时关闭失败:`, error);
             }
           }, delayMs);
+          this.pendingTimers.add(offTimer);
 
           return `[定时] ${device.name} 将在 ${delayMinutes} 分钟后关闭`;
         } else {
@@ -1532,10 +1540,15 @@ class UserCommands extends EventEmitter {
    * 销毁服务，清理资源
    */
   destroy() {
+    this._destroyed = true;
     if (this.popSamplingTimer) {
       clearInterval(this.popSamplingTimer);
       this.popSamplingTimer = null;
     }
+    for (const timer of this.pendingTimers) {
+      clearTimeout(timer);
+    }
+    this.pendingTimers.clear();
     this.isCollectingPopSamples = false;
     this.commands.clear();
     this.deviceCommandsCache.clear();
