@@ -22,7 +22,7 @@ trap 'echo -e "\033[1;31m[deploy-main] 第 $LINENO 行出错，已中断\033[0m"
 APP_DIR=${APP_DIR:-/www/wwwroot/rust-bot}
 REPO_URL=${REPO_URL:-https://github.com/Ayuan97/rust-bot.git}
 REPO_RAW=${REPO_RAW:-https://raw.githubusercontent.com/Ayuan97/rust-bot/main}
-REPO_TOKEN=${REPO_TOKEN:-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}
+REPO_TOKEN=${REPO_TOKEN:-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}
 BRANCH=${BRANCH:-main}
 NODE_MAJOR=20
 
