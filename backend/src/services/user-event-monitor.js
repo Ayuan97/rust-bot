@@ -2205,23 +2205,12 @@ class UserEventMonitor extends EventEmitter {
           );
         }
 
-        // Upsert player_profiles: 同步更新名称
-        const [profileRows] = await db.query(
-          'SELECT steamId FROM player_profiles WHERE steamId = ?',
-          [steamId]
+        // Upsert player_profiles: 同步更新名称（ON DUPLICATE 避免多用户并发刷同一 steamId 撞主键）
+        await db.query(
+          `INSERT INTO player_profiles (steamId, name, lastUpdated) VALUES (?, ?, NOW())
+           ON DUPLICATE KEY UPDATE name = VALUES(name), lastUpdated = NOW()`,
+          [steamId, member.name]
         );
-
-        if (profileRows[0]) {
-          await db.query(
-            'UPDATE player_profiles SET name = ?, lastUpdated = NOW() WHERE steamId = ?',
-            [member.name, steamId]
-          );
-        } else {
-          await db.query(
-            'INSERT INTO player_profiles (steamId, name, lastUpdated) VALUES (?, ?, NOW())',
-            [steamId, member.name]
-          );
-        }
       } catch (e) {
         logger.debug(`[扩展队友] 同步失败 ${steamId}: ${e.message}`);
       }
@@ -2276,40 +2265,22 @@ class UserEventMonitor extends EventEmitter {
       for (const data of playersData) {
         if (!data.summary) continue;
 
-        // Upsert player_profiles
-        const [profileRows] = await db.query(
-          'SELECT steamId FROM player_profiles WHERE steamId = ?',
-          [data.steamId]
+        // Upsert player_profiles（ON DUPLICATE 避免多用户并发刷同一 steamId 撞主键）
+        await db.query(
+          `INSERT INTO player_profiles (steamId, name, avatar, playtime, vacBanned, gameBans, lastUpdated)
+           VALUES (?, ?, ?, ?, ?, ?, NOW())
+           ON DUPLICATE KEY UPDATE
+             name = VALUES(name), avatar = VALUES(avatar), playtime = VALUES(playtime),
+             vacBanned = VALUES(vacBanned), gameBans = VALUES(gameBans), lastUpdated = NOW()`,
+          [
+            data.steamId,
+            data.summary.personaname,
+            data.summary.avatarfull,
+            data.playtime?.playtime_forever || 0,
+            data.ban?.VACBanned ? 1 : 0,
+            data.ban?.NumberOfGameBans || 0
+          ]
         );
-
-        if (profileRows[0]) {
-          await db.query(
-            `UPDATE player_profiles SET
-              name = ?, avatar = ?, playtime = ?, vacBanned = ?, gameBans = ?, lastUpdated = NOW()
-             WHERE steamId = ?`,
-            [
-              data.summary.personaname,
-              data.summary.avatarfull,
-              data.playtime?.playtime_forever || 0,
-              data.ban?.VACBanned ? 1 : 0,
-              data.ban?.NumberOfGameBans || 0,
-              data.steamId
-            ]
-          );
-        } else {
-          await db.query(
-            `INSERT INTO player_profiles (steamId, name, avatar, playtime, vacBanned, gameBans, lastUpdated)
-             VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-            [
-              data.steamId,
-              data.summary.personaname,
-              data.summary.avatarfull,
-              data.playtime?.playtime_forever || 0,
-              data.ban?.VACBanned ? 1 : 0,
-              data.ban?.NumberOfGameBans || 0
-            ]
-          );
-        }
         updatedCount++;
 
         // 如果有统计数据，保存并检查快照

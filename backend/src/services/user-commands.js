@@ -1079,6 +1079,10 @@ class UserCommands extends EventEmitter {
 
       const now = Date.now();
       const minutesSince = Math.floor((now - smallOilRigTriggered) / 1000 / 60);
+      // 触发超过 30 分钟视为本轮活动已结束，避免返回几小时前的陈旧状态
+      if (minutesSince > 30) {
+        return cmd('small', 'empty');
+      }
       const minutesLeft = 15 - minutesSince; // 15分钟解锁
 
       if (smallOilRigCrateUnlocked && smallOilRigCrateUnlocked > smallOilRigTriggered) {
@@ -1116,6 +1120,10 @@ class UserCommands extends EventEmitter {
 
       const now = Date.now();
       const minutesSince = Math.floor((now - largeOilRigTriggered) / 1000 / 60);
+      // 触发超过 30 分钟视为本轮活动已结束，避免返回几小时前的陈旧状态
+      if (minutesSince > 30) {
+        return cmd('large', 'empty');
+      }
       const minutesLeft = 15 - minutesSince; // 15分钟解锁
 
       if (largeOilRigCrateUnlocked && largeOilRigCrateUnlocked > largeOilRigTriggered) {

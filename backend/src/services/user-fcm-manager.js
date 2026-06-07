@@ -216,9 +216,9 @@ class UserFCMManager extends EventEmitter {
       return;
     }
 
-    // 如果提供了新凭证，使用新凭证
+    // 如果提供了新凭证，使用新凭证（可能来自 DB 的 JSON 字符串或内存对象，统一归一化）
     if (credentials) {
-      this.credentials = credentials;
+      this.credentials = this._normalizeCredentials(credentials) || this.credentials;
     }
 
     if (!this.credentials) {
@@ -692,8 +692,35 @@ class UserFCMManager extends EventEmitter {
    * 加载凭证
    */
   loadCredentials(credentials) {
-    this.credentials = credentials;
+    this.credentials = this._normalizeCredentials(credentials) || credentials;
     logger.info(`✅ 用户 ${this.userId} FCM 凭证已加载`);
+  }
+
+  /**
+   * 归一化凭证格式：
+   * - DB 存的是 JSON 字符串（pairing 时 JSON.stringify），内存里是对象 → 统一 parse
+   * - 兼容标准嵌套(gcm.androidId)与 Companion 扁平(gcm_android_id)两种结构
+   */
+  _normalizeCredentials(raw) {
+    if (!raw) return null;
+    let creds = raw;
+    if (typeof creds === 'string') {
+      try {
+        creds = JSON.parse(creds);
+      } catch {
+        return null;
+      }
+    }
+    if (!creds || typeof creds !== 'object') return null;
+    if (creds.gcm && creds.gcm.androidId) return creds;
+    if (creds.gcm_android_id && creds.gcm_security_token) {
+      return {
+        gcm: { androidId: creds.gcm_android_id, securityToken: creds.gcm_security_token },
+        steam: creds.steam_id ? { steamId: creds.steam_id } : creds.steam,
+        companion: creds,
+      };
+    }
+    return creds;
   }
 
   /**

@@ -40,7 +40,7 @@ function isOutsideGridSystem(x, y, correctedMapSize, offset = 0) {
 function getGridPosLettersX(x, mapSize) {
   let counter = 1;
   for (let startGrid = 0; startGrid < mapSize; startGrid += GRID_DIAMETER) {
-    if (x >= startGrid && x <= (startGrid + GRID_DIAMETER)) {
+    if (x >= startGrid && x < (startGrid + GRID_DIAMETER)) {
       return numberToLetters(counter);
     }
     counter++;
@@ -56,7 +56,7 @@ function getGridPosNumberY(y, mapSize) {
 
   let counter = 1;
   for (let startGrid = 0; startGrid < mapSize; startGrid += GRID_DIAMETER) {
-    if (y >= startGrid && y <= (startGrid + GRID_DIAMETER)) {
+    if (y >= startGrid && y < (startGrid + GRID_DIAMETER)) {
       return numberOfGrids - counter;
     }
     counter++;
