@@ -32,6 +32,16 @@ const LEGACY_PLAN_DURATIONS = {
 // 订单过期时间 (单位:分钟)
 const ORDER_EXPIRE_MINUTES = 30;
 
+// 新版订单只有 planDuration、无 planType 时，按时长反推套餐类型（避免订阅记录被硬编码成 MONTHLY）
+function inferPlanType(durationDays) {
+  const d = Number(durationDays) || 0;
+  if (d >= 365) return 'YEARLY';
+  if (d >= 90) return 'QUARTERLY';
+  if (d >= 30) return 'MONTHLY';
+  if (d >= 7) return 'TRIAL';
+  return 'MONTHLY';
+}
+
 class PaymentService {
   /**
    * 获取所有启用的套餐配置
@@ -658,13 +668,13 @@ class PaymentService {
           `UPDATE subscriptions SET
             planType = ?, endDate = ?, amount = ?, paymentMethod = ?, transactionId = ?, updatedAt = NOW()
            WHERE userId = ?`,
-          [order.planType || 'MONTHLY', newEndDate, order.amount, order.paymentMethod, tradeNo, order.userId]
+          [order.planType || inferPlanType(duration), newEndDate, order.amount, order.paymentMethod, tradeNo, order.userId]
         );
       } else {
         await conn.query(
           `INSERT INTO subscriptions (id, userId, planType, startDate, endDate, amount, paymentMethod, transactionId, createdAt, updatedAt)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-          [uuidv4(), order.userId, order.planType || 'MONTHLY', now, newEndDate, order.amount, order.paymentMethod, tradeNo]
+          [uuidv4(), order.userId, order.planType || inferPlanType(duration), now, newEndDate, order.amount, order.paymentMethod, tradeNo]
         );
       }
 

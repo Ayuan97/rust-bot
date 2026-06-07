@@ -1077,8 +1077,8 @@ router.get('/:id/map-info', async (req, res) => {
 
     // 获取服务器的img字段
     const [serverRows] = await db.query(
-      'SELECT img FROM servers WHERE id = ?',
-      [req.params.id]
+      'SELECT img FROM servers WHERE id = ? AND userId = ?',
+      [req.params.id, req.user.id]
     );
     const server = serverRows[0];
 

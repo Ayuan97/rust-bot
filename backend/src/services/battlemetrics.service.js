@@ -452,12 +452,12 @@ class BattlemetricsService extends EventEmitter {
     return Array.from(onlinePlayers.values());
   }
 
-  _shouldLogActiveSessionsError(serverId, errorKey) {
+  _shouldLogActiveSessionsError(serverId, errorKey, silenceMs = ACTIVE_SESSIONS_ERROR_SILENCE_MS) {
     const key = `${serverId}:${errorKey}`;
     const now = Date.now();
     const last = this.lastActiveSessionsErrorLog.get(key) || 0;
 
-    if (now - last < ACTIVE_SESSIONS_ERROR_SILENCE_MS) {
+    if (now - last < silenceMs) {
       return false;
     }
 
@@ -470,8 +470,12 @@ class BattlemetricsService extends EventEmitter {
 
     if (error.response) {
       const status = error.response.status;
-      if (this._shouldLogActiveSessionsError(serverId, `status:${status}`)) {
-        console.warn(`[BATTLEMETRICS] 获取在线会话失败 server=${serverId} status=${status}`);
+      // 401/403 多为 BATTLEMETRICS_API_TOKEN 未配置或失效，用 1 小时长静默避免刷屏并提示原因
+      const isAuth = status === 401 || status === 403;
+      const silenceMs = isAuth ? ACTIVE_SESSIONS_403_SILENCE_MS : ACTIVE_SESSIONS_ERROR_SILENCE_MS;
+      if (this._shouldLogActiveSessionsError(serverId, `status:${status}`, silenceMs)) {
+        const hint = isAuth ? '（401/403 通常是未配置或失效的 BATTLEMETRICS_API_TOKEN）' : '';
+        console.warn(`[BATTLEMETRICS] 获取在线会话失败 server=${serverId} status=${status}${hint}`);
       }
       return;
     }
