@@ -108,10 +108,12 @@ class UserEventMonitor extends EventEmitter {
       let settings = rows[0];
 
       if (!settings) {
-        // 创建默认设置
+        // 创建默认设置（带主键 id；两个子服务可能并发插入，用 ON DUPLICATE 保证幂等）
         await db.query(
-          'INSERT INTO notification_settings (userId, settings, createdAt, updatedAt) VALUES (?, ?, NOW(), NOW())',
-          [this.userId, JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS)]
+          `INSERT INTO notification_settings (id, userId, settings, createdAt, updatedAt)
+           VALUES (?, ?, ?, NOW(), NOW())
+           ON DUPLICATE KEY UPDATE updatedAt = updatedAt`,
+          [uuidv4(), this.userId, JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS)]
         );
         settings = { userId: this.userId, settings: DEFAULT_NOTIFICATION_SETTINGS };
       }

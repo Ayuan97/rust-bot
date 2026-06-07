@@ -6,6 +6,7 @@
 
 import db from '../lib/db.js';
 import logger from '../utils/logger.js';
+import { v4 as uuidv4 } from 'uuid';
 
 // 默认通知设置
 const DEFAULT_SETTINGS = {
@@ -46,9 +47,12 @@ class DayNightNotifier {
       let settings = rows[0];
 
       if (!settings) {
+        // 带主键 id；两个子服务可能并发插入，用 ON DUPLICATE 保证幂等
         await db.query(
-          'INSERT INTO notification_settings (userId, settings, createdAt, updatedAt) VALUES (?, ?, NOW(), NOW())',
-          [this.userId, JSON.stringify(DEFAULT_SETTINGS)]
+          `INSERT INTO notification_settings (id, userId, settings, createdAt, updatedAt)
+           VALUES (?, ?, ?, NOW(), NOW())
+           ON DUPLICATE KEY UPDATE updatedAt = updatedAt`,
+          [uuidv4(), this.userId, JSON.stringify(DEFAULT_SETTINGS)]
         );
         settings = { settings: DEFAULT_SETTINGS };
       }
