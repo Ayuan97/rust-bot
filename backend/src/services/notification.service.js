@@ -151,6 +151,28 @@ class NotificationService {
 
   // ============ 通知人 CRUD ============
 
+  /**
+   * 解析用户填写的 Bark 地址：允许直接粘贴 App 复制的完整推送地址
+   *   https://api.day.app/{key}/可选推送内容  →  { server, key }
+   * 也兼容只填纯 key；后面的推送内容部分一律丢弃。
+   */
+  _parseBark(input, serverHint) {
+    const fallbackServer = (serverHint || DEFAULT_BARK_SERVER).replace(/\/+$/, '');
+    const raw = String(input || '').trim();
+    if (!raw) return { server: fallbackServer, key: '' };
+    if (/^https?:\/\//i.test(raw)) {
+      try {
+        const u = new URL(raw);
+        const seg = u.pathname.split('/').filter(Boolean);
+        return { server: `${u.protocol}//${u.host}`, key: seg[0] || '' };
+      } catch {
+        return { server: fallbackServer, key: '' };
+      }
+    }
+    // 非 URL：当作纯 key（防误粘 key/内容，取第一段）
+    return { server: fallbackServer, key: raw.split('/').filter(Boolean)[0] || raw };
+  }
+
   async _getEnabledRecipients(userId) {
     const [rows] = await db.query(
       "SELECT * FROM raid_alert_recipients WHERE userId = ? AND enabled = 1 AND channel = 'bark' AND barkKey <> ''",
@@ -168,11 +190,14 @@ class NotificationService {
   }
 
   async addRecipient(userId, { name, barkKey, barkServer } = {}) {
+    // barkKey 允许直接粘贴 Bark App 复制的完整地址，自动拆出 server + key，丢弃后面的推送内容
+    const parsed = this._parseBark(barkKey, barkServer);
+    if (!parsed.key) throw new Error('无效的 Bark 地址或 Key');
     const id = uuidv4();
     await db.query(
       `INSERT INTO raid_alert_recipients (id, userId, name, channel, barkServer, barkKey, enabled, createdAt, updatedAt)
        VALUES (?, ?, ?, 'bark', ?, ?, 1, NOW(3), NOW(3))`,
-      [id, userId, name, (barkServer || DEFAULT_BARK_SERVER).replace(/\/+$/, ''), barkKey]
+      [id, userId, name, parsed.server, parsed.key]
     );
     return id;
   }
@@ -181,8 +206,12 @@ class NotificationService {
     const updates = [];
     const params = [];
     if (fields.name !== undefined) { updates.push('name = ?'); params.push(fields.name); }
-    if (fields.barkKey !== undefined) { updates.push('barkKey = ?'); params.push(fields.barkKey); }
-    if (fields.barkServer !== undefined) {
+    if (fields.barkKey !== undefined) {
+      // 同样支持粘贴完整地址，自动拆 server + key
+      const parsed = this._parseBark(fields.barkKey, fields.barkServer);
+      updates.push('barkKey = ?'); params.push(parsed.key);
+      updates.push('barkServer = ?'); params.push(parsed.server);
+    } else if (fields.barkServer !== undefined) {
       updates.push('barkServer = ?');
       params.push(String(fields.barkServer || DEFAULT_BARK_SERVER).replace(/\/+$/, ''));
     }
