@@ -4,6 +4,7 @@ import db from '../lib/db.js';
 import globalServiceManager from './global-manager.service.js';
 import logger from '../utils/logger.js';
 import distributedSessionService from './distributed-session.service.js';
+import { isSubscriptionActive } from '../middleware/auth.middleware.js';
 
 class WebSocketService {
   constructor() {
@@ -54,10 +55,7 @@ class WebSocketService {
 
       // 3. 从数据库获取用户信息
       const [userRows] = await db.query(
-        `SELECT u.*, s.endDate as subscriptionEndDate
-         FROM users u
-         LEFT JOIN subscriptions s ON u.id = s.userId
-         WHERE u.id = ?`,
+        'SELECT id, username, email, isActive, isAdmin FROM users WHERE id = ?',
         [decoded.userId]
       );
 
@@ -72,15 +70,11 @@ class WebSocketService {
         return next(new Error('账号已被禁用'));
       }
 
-      // 5. 计算订阅状态（不拦截，只标记）
-      const isSubscriptionExpired = !user.subscriptionEndDate || new Date() > new Date(user.subscriptionEndDate);
-
-      // 6. 将用户信息附加到 socket
+      // 5. 将用户信息附加到 socket（订阅状态在每次写操作时实时校验，不缓存握手快照）
       socket.userId = user.id;
       socket.username = user.username;
       socket.email = user.email;
       socket.isAdmin = user.isAdmin;
-      socket.isSubscriptionExpired = isSubscriptionExpired;  // 订阅过期标记
 
       logger.debug(`✅ Socket 认证成功: 用户 ${user.username} (${user.id})`);
 
@@ -258,6 +252,19 @@ class WebSocketService {
         return userService;
       };
 
+      // 写操作前实时校验订阅（过期立即拦截，不依赖握手快照）
+      const ensureSubscription = async (errorEvent, extra = {}) => {
+        if (await isSubscriptionActive(socket.userId)) {
+          return true;
+        }
+        socket.emit(errorEvent, {
+          ...extra,
+          error: '订阅已过期，续费后即可使用此功能',
+          code: 'SUBSCRIPTION_EXPIRED',
+        });
+        return false;
+      };
+
       // 客户端请求连接到 Rust+ 服务器
       socket.on('server:connect', async (data) => {
         try {
@@ -265,6 +272,10 @@ class WebSocketService {
           const serverId = typeof data === 'string' ? data : data?.serverId;
           if (!serverId) {
             return socket.emit('server:connect:error', { error: '缺少必要参数: serverId' });
+          }
+
+          if (!(await ensureSubscription('server:connect:error', { serverId }))) {
+            return;
           }
 
           const userService = getUserService();
@@ -348,12 +359,8 @@ class WebSocketService {
       // 发送队伍消息（需要有效订阅）
       socket.on('message:send', async ({ serverId, message } = {}) => {
         try {
-          // 检查订阅状态
-          if (socket.isSubscriptionExpired) {
-            return socket.emit('message:send:error', {
-              error: '订阅已过期，续费后即可发送消息',
-              code: 'SUBSCRIPTION_EXPIRED'
-            });
+          if (!(await ensureSubscription('message:send:error', { serverId }))) {
+            return;
           }
 
           if (!serverId || !message) {
@@ -392,12 +399,8 @@ class WebSocketService {
       // 控制设备（需要有效订阅）
       socket.on('device:control', async ({ serverId, entityId, value } = {}) => {
         try {
-          // 检查订阅状态
-          if (socket.isSubscriptionExpired) {
-            return socket.emit('device:control:error', {
-              error: '订阅已过期，续费后即可控制设备',
-              code: 'SUBSCRIPTION_EXPIRED'
-            });
+          if (!(await ensureSubscription('device:control:error', { serverId, entityId }))) {
+            return;
           }
 
           if (!serverId || entityId === undefined || value === undefined) {
@@ -557,6 +560,9 @@ class WebSocketService {
       // 智能开关开/关
       socket.on('switch:on', async ({ serverId, entityId }) => {
         try {
+          if (!(await ensureSubscription('switch:on:error', { serverId, entityId }))) {
+            return;
+          }
           const userService = getUserService();
           await userService.rustPlusService.turnSmartSwitchOn(serverId, entityId);
           socket.emit('switch:on:success', { serverId, entityId });
@@ -567,6 +573,9 @@ class WebSocketService {
 
       socket.on('switch:off', async ({ serverId, entityId }) => {
         try {
+          if (!(await ensureSubscription('switch:off:error', { serverId, entityId }))) {
+            return;
+          }
           const userService = getUserService();
           await userService.rustPlusService.turnSmartSwitchOff(serverId, entityId);
           socket.emit('switch:off:success', { serverId, entityId });
@@ -578,6 +587,9 @@ class WebSocketService {
       // 摄像头订阅/控制
       socket.on('camera:subscribe', async ({ serverId, cameraId }) => {
         try {
+          if (!(await ensureSubscription('camera:subscribe:error', { serverId, cameraId }))) {
+            return;
+          }
           const userService = getUserService();
           const result = await userService.rustPlusService.subscribeCamera(serverId, cameraId);
           socket.emit('camera:subscribe:success', result);
@@ -598,6 +610,9 @@ class WebSocketService {
 
       socket.on('camera:move', async ({ serverId, cameraId, buttons, x, y }) => {
         try {
+          if (!(await ensureSubscription('camera:move:error', { serverId, cameraId }))) {
+            return;
+          }
           const userService = getUserService();
           const result = await userService.rustPlusService.cameraMove(serverId, cameraId, buttons, x, y);
           socket.emit('camera:move:success', { serverId, cameraId, result });
@@ -608,6 +623,9 @@ class WebSocketService {
 
       socket.on('camera:zoom', async ({ serverId, cameraId }) => {
         try {
+          if (!(await ensureSubscription('camera:zoom:error', { serverId, cameraId }))) {
+            return;
+          }
           const userService = getUserService();
           const result = await userService.rustPlusService.cameraZoom(serverId, cameraId);
           socket.emit('camera:zoom:success', { serverId, cameraId, result });
@@ -618,6 +636,9 @@ class WebSocketService {
 
       socket.on('camera:shoot', async ({ serverId, cameraId }) => {
         try {
+          if (!(await ensureSubscription('camera:shoot:error', { serverId, cameraId }))) {
+            return;
+          }
           const userService = getUserService();
           const result = await userService.rustPlusService.cameraShoot(serverId, cameraId);
           socket.emit('camera:shoot:success', { serverId, cameraId, result });
@@ -628,6 +649,9 @@ class WebSocketService {
 
       socket.on('camera:reload', async ({ serverId, cameraId }) => {
         try {
+          if (!(await ensureSubscription('camera:reload:error', { serverId, cameraId }))) {
+            return;
+          }
           const userService = getUserService();
           const result = await userService.rustPlusService.cameraReload(serverId, cameraId);
           socket.emit('camera:reload:success', { serverId, cameraId, result });
