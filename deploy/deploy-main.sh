@@ -109,20 +109,20 @@ cmd_provision() {
   [ -f "$APP_DIR/.env" ] || die "未找到 $APP_DIR/.env，请先部署主节点"
   token=$( cd "$APP_DIR" && node backend/scripts/issue-node-token.js "$nid" )
   [ -n "$token" ] || die "签发失败"
-  master=${MASTER_HOST:-api.rustplusplus.com}
+  # 默认用主节点公网 IP 直连(不依赖 nginx/域名)；可用 MASTER_HOST 环境变量改成域名
+  master=${MASTER_HOST:-}
+  [ -n "$master" ] || master=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo "")
+  [ -n "$master" ] || master="<主节点IP>"
   cat <<EOF
 
 ============================================================
- 子节点 [$nid] 一键部署命令（在子节点机器执行，零交互）
+ 子节点 [$nid] 一键部署命令（到子节点机器粘贴执行，零交互）
 ------------------------------------------------------------
  方式A（已把 deploy-connector.sh 传到子节点）:
    NODE_TOKEN='$token' MASTER_HOST='$master' bash deploy-connector.sh
 
  方式B（一条命令自动拉脚本，需仓库可公开访问）:
    curl -fsSL $REPO_RAW/deploy/deploy-connector.sh | NODE_TOKEN='$token' MASTER_HOST='$master' bash
-------------------------------------------------------------
- 跨机子节点需放行其来源 IP（或把主节点 INTERNAL_ALLOWED_IPS 设为 * 仅靠令牌鉴权）:
-   bash $0 allow <子节点公网IP>
 ============================================================
 EOF
 }
@@ -162,7 +162,8 @@ DB_POOL_LIMIT=30
 
 JWT_SECRET=$JWT_SECRET
 NODE_TOKEN_SECRET=$NODE_TOKEN_SECRET
-INTERNAL_ALLOWED_IPS=127.0.0.1,::1
+# 内部接口来源限制：* = 不限(仅靠节点令牌鉴权，最省事)；要更严可改为具体 IP 列表
+INTERNAL_ALLOWED_IPS=*
 
 RUST_CONN_MODE=distributed
 EOF
@@ -210,10 +211,9 @@ EOF
 ============================================================
  主节点部署完成 ✅   ( http://<本机IP>:$PORT/api/health )
 ------------------------------------------------------------
- 加子节点（完全自动化，每台一个唯一 nodeId）：
-   1) 本机生成一键命令：  bash $0 provision node-1
-   2) 复制输出的命令，在子节点机器粘贴执行（零交互）
-   3) 若子节点跨机：       bash $0 allow <子节点公网IP>
+ 加子节点（两步搞定，每台一个唯一 nodeId）：
+   1) 本机：  bash $0 provision node-1
+   2) 复制输出的命令，到子节点机器粘贴执行（零交互；不用配数据库/nginx/白名单）
 ============================================================
 EOF
 }
