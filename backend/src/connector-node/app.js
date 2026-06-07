@@ -392,8 +392,18 @@ async function shutdown(signal) {
   if (commandTimer) clearInterval(commandTimer);
   if (controlPlaneTimer) clearInterval(controlPlaneTimer);
 
+  // 重启/优雅停机：仅断开本地 Rust+ 连接，会话标记为 CONNECTING（待复连），
+  // 绝不 CLOSED——否则重启后 getAssignmentsForNode 不再返回它、无法自动复连。
+  // 用户主动断开走 closeSession 标记 CLOSED，与此区分；本节点若永久下线，
+  // 控制平面心跳超时会经 failover 接管这些会话。
   for (const sessionId of Array.from(activeSessions.keys())) {
-    await disconnectSession(sessionId, 'node_shutdown');
+    try {
+      await rustManager.disconnect(sessionId);
+    } catch {
+      // 忽略本地断开错误，仍上报待复连状态
+    }
+    activeSessions.delete(sessionId);
+    await updateSessionState(sessionId, 'CONNECTING', 'node_restart');
   }
 
   process.exit(0);
