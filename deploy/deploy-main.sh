@@ -65,15 +65,19 @@ ensure_deps() {
 }
 
 ensure_repo() {
+  local url="$REPO_URL"
+  # 私有仓库：用只读 PAT 注入 https URL（token 来自环境变量/主节点 .env，绝不写进脚本本身）
+  [ -n "${REPO_TOKEN:-}" ] && url="https://oauth2:${REPO_TOKEN}@${REPO_URL#https://}"
   if [ -d "$APP_DIR/.git" ]; then
     log "更新已有代码: $APP_DIR ($BRANCH)"
+    git -C "$APP_DIR" remote set-url origin "$url"
     git -C "$APP_DIR" fetch origin "$BRANCH"
     git -C "$APP_DIR" checkout -f "$BRANCH" 2>/dev/null || git -C "$APP_DIR" checkout -f -B "$BRANCH" "origin/$BRANCH"
     git -C "$APP_DIR" reset --hard "origin/$BRANCH"
   else
     log "克隆代码到 $APP_DIR"
     mkdir -p "$(dirname "$APP_DIR")"
-    git clone -b "$BRANCH" "$REPO_URL" "$APP_DIR"
+    git clone -b "$BRANCH" "$url" "$APP_DIR"
   fi
 }
 
@@ -109,6 +113,9 @@ cmd_provision() {
   [ -f "$APP_DIR/.env" ] || die "未找到 $APP_DIR/.env，请先部署主节点"
   token=$( cd "$APP_DIR" && node backend/scripts/issue-node-token.js "$nid" )
   [ -n "$token" ] || die "签发失败"
+  local repotoken master
+  repotoken=$(grep -E '^REPO_TOKEN=' "$APP_DIR/.env" | head -1 | cut -d= -f2- || true)
+  [ -n "$repotoken" ] || warn "主节点 .env 未配置 REPO_TOKEN：私有仓库下子节点将无法拉取代码"
   # 默认用主节点公网 IP 直连(不依赖 nginx/域名)；可用 MASTER_HOST 环境变量改成域名
   master=${MASTER_HOST:-}
   [ -n "$master" ] || master=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo "")
@@ -119,10 +126,10 @@ cmd_provision() {
  子节点 [$nid] 一键部署命令（到子节点机器粘贴执行，零交互）
 ------------------------------------------------------------
  方式A（已把 deploy-connector.sh 传到子节点）:
-   NODE_TOKEN='$token' MASTER_HOST='$master' bash deploy-connector.sh
+   REPO_TOKEN='$repotoken' NODE_TOKEN='$token' MASTER_HOST='$master' bash deploy-connector.sh
 
- 方式B（一条命令自动拉脚本，需仓库可公开访问）:
-   curl -fsSL $REPO_RAW/deploy/deploy-connector.sh | NODE_TOKEN='$token' MASTER_HOST='$master' bash
+ 方式B（一条命令；私有仓库用令牌下载脚本+拉代码）:
+   curl -fsSL -H "Authorization: token $repotoken" $REPO_RAW/deploy/deploy-connector.sh | REPO_TOKEN='$repotoken' NODE_TOKEN='$token' MASTER_HOST='$master' bash
 ============================================================
 EOF
 }
@@ -140,6 +147,7 @@ cmd_install() {
   ask DB_NAME     "数据库名"        "rustplus_db"
   ask PORT        "后端端口"        "3000"
   ask FRONTEND_URL "前端地址(CORS)" "http://localhost:5173"
+  ask REPO_TOKEN  "GitHub 只读令牌(私有仓库 clone 用,子节点也会用到)" "" silent
 
   local JWT_SECRET NODE_TOKEN_SECRET
   JWT_SECRET=$(openssl rand -hex 32)
@@ -166,8 +174,11 @@ NODE_TOKEN_SECRET=$NODE_TOKEN_SECRET
 INTERNAL_ALLOWED_IPS=*
 
 RUST_CONN_MODE=distributed
+
+# GitHub 只读令牌：私有仓库 clone/更新用，provision 会注入子节点命令（.env 不进 git）
+REPO_TOKEN=$REPO_TOKEN
 EOF
-  log ".env 已写入（密钥自动生成）"
+  log ".env 已写入（密钥自动生成；REPO_TOKEN 仅存于 .env，不进版本库）"
 
   if command -v mysql >/dev/null; then
     local m=(mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER")

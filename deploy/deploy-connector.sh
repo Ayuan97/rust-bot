@@ -59,15 +59,19 @@ ensure_deps() {
 }
 
 ensure_repo() {
+  local url="$REPO_URL"
+  # 私有仓库：用只读 PAT 注入 https URL（token 来自环境变量，绝不写进脚本本身）
+  [ -n "${REPO_TOKEN:-}" ] && url="https://oauth2:${REPO_TOKEN}@${REPO_URL#https://}"
   if [ -d "$APP_DIR/.git" ]; then
     log "更新已有代码: $APP_DIR ($BRANCH)"
+    git -C "$APP_DIR" remote set-url origin "$url"
     git -C "$APP_DIR" fetch origin "$BRANCH"
     git -C "$APP_DIR" checkout -f "$BRANCH" 2>/dev/null || git -C "$APP_DIR" checkout -f -B "$BRANCH" "origin/$BRANCH"
     git -C "$APP_DIR" reset --hard "origin/$BRANCH"
   else
     log "克隆代码到 $APP_DIR"
     mkdir -p "$(dirname "$APP_DIR")"
-    git clone -b "$BRANCH" "$REPO_URL" "$APP_DIR"
+    git clone -b "$BRANCH" "$url" "$APP_DIR"
   fi
 }
 
