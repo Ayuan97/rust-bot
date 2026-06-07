@@ -1,12 +1,13 @@
 import axios from 'axios';
 import os from 'os';
-import { randomUUID } from 'crypto';
+import jwt from 'jsonwebtoken';
 import '../utils/load-env.js';
 import UserRustPlusManager from '../services/user-rustplus-manager.js';
 
 const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://127.0.0.1:3000/api/internal';
-const INTERNAL_API_TOKEN = process.env.INTERNAL_API_TOKEN || '';
-const NODE_ID = process.env.NODE_ID || `node-${os.hostname()}-${randomUUID().slice(0, 8)}`;
+const NODE_TOKEN = process.env.NODE_TOKEN || '';
+// 节点身份由 NODE_TOKEN（节点 JWT）决定，nodeId 从令牌中解析，保证与主节点登记一致。
+const NODE_ID = jwt.decode(NODE_TOKEN)?.sub || process.env.NODE_ID || `node-${os.hostname()}`;
 const PUBLIC_IP = process.env.NODE_PUBLIC_IP || '127.0.0.1';
 const NODE_REGION = process.env.NODE_REGION || 'unknown';
 const NODE_CAPACITY = Number(process.env.NODE_CAPACITY || 120);
@@ -17,9 +18,11 @@ const POLL_COMMAND_INTERVAL_MS = Number(process.env.NODE_POLL_COMMAND_INTERVAL_M
 const CONTROL_PLANE_STALE_MS = Number(process.env.NODE_CONTROL_PLANE_STALE_MS || 45000);
 const CONTROL_PLANE_CHECK_INTERVAL_MS = Number(process.env.NODE_CONTROL_PLANE_CHECK_INTERVAL_MS || 2000);
 
-if (!INTERNAL_API_TOKEN) {
+if (!NODE_TOKEN) {
   // eslint-disable-next-line no-console
-  console.error('[connector-node] INTERNAL_API_TOKEN 未配置，无法启动');
+  console.error(
+    '[connector-node] NODE_TOKEN 未配置，无法启动（用 backend/scripts/issue-node-token.js 为本节点签发）'
+  );
   process.exit(1);
 }
 
@@ -27,11 +30,11 @@ const http = axios.create({
   baseURL: CONTROL_API_URL,
   timeout: 15000,
   headers: {
-    'x-internal-token': INTERNAL_API_TOKEN,
+    'x-node-token': NODE_TOKEN,
   },
 });
 
-const rustManager = new UserRustPlusManager(`connector:${NODE_ID}`);
+const rustManager = new UserRustPlusManager(`connector:${NODE_ID}`, { autoReconnect: false });
 
 const activeSessions = new Map();
 let heartbeatTimer = null;
@@ -83,7 +86,6 @@ async function apiGet(path, params = {}) {
 async function updateSessionState(sessionId, status, error = null) {
   try {
     await apiPost('/session/state', {
-      nodeId: NODE_ID,
       sessionId,
       status,
       error,
@@ -102,7 +104,6 @@ async function emitSessionEvent(sessionId, eventType, payload = {}) {
 
   try {
     await apiPost('/session/events', {
-      nodeId: NODE_ID,
       sessionId,
       eventType,
       payload,
@@ -193,7 +194,7 @@ async function monitorControlPlaneHealth() {
 async function syncAssignments() {
   if (stopped) return;
   try {
-    const res = await apiGet('/session/assignments', { nodeId: NODE_ID });
+    const res = await apiGet('/session/assignments');
     const assignments = res.assignments || [];
     const incomingIds = new Set(assignments.map((item) => item.sessionId));
 
@@ -272,19 +273,17 @@ async function pollCommands() {
   if (stopped || isPollingCommands) return;
   isPollingCommands = true;
   try {
-    const res = await apiGet('/session/commands', { nodeId: NODE_ID, limit: 20 });
+    const res = await apiGet('/session/commands', { limit: 20 });
     const commands = res.commands || [];
     for (const command of commands) {
       try {
         const result = await executeCommand(command);
         await apiPost(`/session/commands/${command.id}/result`, {
-          nodeId: NODE_ID,
           success: true,
           result: serializeResult(result),
         });
       } catch (error) {
         await apiPost(`/session/commands/${command.id}/result`, {
-          nodeId: NODE_ID,
           success: false,
           error: error.message || String(error),
         });
@@ -302,7 +301,6 @@ async function heartbeat() {
   if (stopped) return;
   try {
     await apiPost('/gateway/heartbeat', {
-      nodeId: NODE_ID,
       publicIp: PUBLIC_IP,
       region: NODE_REGION,
       status: 'ONLINE',
@@ -321,7 +319,6 @@ async function bootstrap() {
   console.log(`[connector-node] starting ${NODE_ID} -> ${CONTROL_API_URL}`);
 
   await apiPost('/gateway/register', {
-    nodeId: NODE_ID,
     publicIp: PUBLIC_IP,
     region: NODE_REGION,
     totalCapacity: NODE_CAPACITY,
@@ -357,7 +354,10 @@ async function bootstrap() {
   });
 
   rustManager.on('server:disconnected', ({ serverId }) => {
-    updateSessionState(serverId, 'CONNECTING', 'connection dropped, reconnecting');
+    // 本地不自动重连：从 activeSessions 移除并上报 CONNECTING，
+    // 由 syncAssignments 依据控制平面的 assignment 决定是否重连（避免与 failover 冲突造成双连接）
+    activeSessions.delete(serverId);
+    updateSessionState(serverId, 'CONNECTING', 'connection dropped, awaiting reassignment');
   });
 
   rustManager.on('server:error', ({ serverId, error }) => {

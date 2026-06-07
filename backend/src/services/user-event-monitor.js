@@ -336,7 +336,9 @@ class UserEventMonitor extends EventEmitter {
    * 停止所有服务器的监控
    */
   stopAll() {
-    for (const serverId of this.pollIntervals.keys()) {
+    // 快照 keys 再遍历：stop() 会同时删除 serverId 与 `${serverId}:players` 两个键，
+    // 直接迭代 keys() 会在迭代中改 Map 导致漏清定时器
+    for (const serverId of Array.from(this.pollIntervals.keys())) {
       this.stop(serverId);
     }
   }

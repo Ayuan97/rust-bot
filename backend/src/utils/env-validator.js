@@ -57,8 +57,8 @@ export function validateEnv() {
     }
   }
 
-  if (!process.env.INTERNAL_API_TOKEN) {
-    missing.push('INTERNAL_API_TOKEN');
+  if (!process.env.NODE_TOKEN_SECRET) {
+    missing.push('NODE_TOKEN_SECRET');
   }
   if (String(process.env.AUTOSCALER_ENABLED || 'false') === 'true') {
     if (!process.env.AUTOSCALER_WEBHOOK_URL &&

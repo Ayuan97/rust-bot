@@ -366,12 +366,20 @@ CREATE TABLE IF NOT EXISTS `connection_sessions` (
   `nodeId` VARCHAR(64) NULL,
   `status` ENUM('ASSIGNED', 'CONNECTING', 'CONNECTED', 'FAILED', 'CLOSED') NOT NULL DEFAULT 'ASSIGNED',
   `sourceQueueId` VARCHAR(36) NULL,
-  `lastError` VARCHAR(255) NULL,
+  `lastError` TEXT NULL,
   `connectedAt` DATETIME(3) NULL,
   `closedAt` DATETIME(3) NULL,
   `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updatedAt` DATETIME(3) NOT NULL,
+  -- 活跃会话唯一键：仅在 ASSIGNED/CONNECTING/CONNECTED 时取值，终态(FAILED/CLOSED)为 NULL（NULL 不参与唯一约束）。
+  -- 保证同一 (userId, serverId) 同时至多一条活跃会话，从 DB 层杜绝并发产生的重复会话/双连接。
+  `activeKey` VARCHAR(80) GENERATED ALWAYS AS (
+    CASE WHEN `status` IN ('ASSIGNED', 'CONNECTING', 'CONNECTED')
+         THEN CONCAT(`userId`, ':', `serverId`)
+         ELSE NULL END
+  ) STORED,
   PRIMARY KEY (`id`),
+  UNIQUE INDEX `connection_sessions_active_key` (`activeKey`),
   INDEX `connection_sessions_userId_status_idx` (`userId`, `status`),
   INDEX `connection_sessions_serverId_status_idx` (`serverId`, `status`),
   INDEX `connection_sessions_serverKey_status_idx` (`serverKey`, `status`),
@@ -427,7 +435,7 @@ CREATE TABLE IF NOT EXISTS `session_commands` (
   `payload` JSON NULL,
   `status` ENUM('PENDING', 'CLAIMED', 'DONE', 'FAILED', 'EXPIRED') NOT NULL DEFAULT 'PENDING',
   `result` JSON NULL,
-  `error` VARCHAR(255) NULL,
+  `error` TEXT NULL,
   `claimedAt` DATETIME(3) NULL,
   `expiresAt` DATETIME(3) NULL,
   `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),

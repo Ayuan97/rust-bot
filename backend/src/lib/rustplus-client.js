@@ -171,7 +171,21 @@ class RustPlusClient extends EventEmitter {
    * 断开连接
    */
   disconnect() {
+    // 让所有在途请求以“连接关闭”立即失败，避免悬挂到各自超时；并清理 seqCallbacks 防泄漏
+    if (this.seqCallbacks.size > 0) {
+      const closedMessage = { response: { error: { error: 'connection_closed' } } };
+      for (const [seq, callback] of Array.from(this.seqCallbacks.entries())) {
+        this.seqCallbacks.delete(seq);
+        try {
+          callback(closedMessage);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
     if (this.websocket) {
+      // 移除底层 socket 监听器，防止重连风暴下旧 ws 监听器累积
+      this.websocket.removeAllListeners();
       this.websocket.terminate();
       this.websocket = null;
     }
@@ -196,6 +210,11 @@ class RustPlusClient extends EventEmitter {
       this.seqCallbacks.set(currentSeq, callback);
     }
 
+    if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+      this.seqCallbacks.delete(currentSeq);
+      throw new Error('WebSocket 未连接');
+    }
+
     const request = this.AppRequest.fromObject({
       seq: currentSeq,
       playerId: this.playerId,
@@ -205,6 +224,7 @@ class RustPlusClient extends EventEmitter {
 
     this.websocket.send(this.AppRequest.encode(request).finish());
     this.emit('request', request);
+    return currentSeq;
   }
 
   /**
@@ -214,21 +234,29 @@ class RustPlusClient extends EventEmitter {
    */
   sendRequestAsync(data, timeoutMs = 10000) {
     return new Promise((resolve, reject) => {
+      let seq;
       const timeout = setTimeout(() => {
+        // 超时清理回调，避免死连接下 seqCallbacks 永久泄漏
+        if (seq !== undefined) this.seqCallbacks.delete(seq);
         reject(new Error('Timeout reached while waiting for response'));
       }, timeoutMs);
 
-      this.sendRequest(data, (message) => {
+      try {
+        seq = this.sendRequest(data, (message) => {
+          clearTimeout(timeout);
+
+          if (message.response.error) {
+            reject(normalizeRustError(message.response.error));
+          } else {
+            resolve(message.response);
+          }
+
+          return true; // 不触发 message 事件
+        });
+      } catch (err) {
         clearTimeout(timeout);
-
-        if (message.response.error) {
-          reject(normalizeRustError(message.response.error));
-        } else {
-          resolve(message.response);
-        }
-
-        return true; // 不触发 message 事件
-      });
+        reject(err);
+      }
     });
   }
 

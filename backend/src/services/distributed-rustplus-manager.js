@@ -432,8 +432,15 @@ class DistributedRustPlusManager extends EventEmitter {
       throw error;
     }
 
+    if (response.status === 'missing_session') {
+      // 自动 connect 后仍无会话（如刚被并发清理）：抛明确错误，而非退化成无意义信息
+      const error = new Error('服务器未连接');
+      error.code = response.reason || 'SESSION_NOT_FOUND';
+      throw error;
+    }
+
     if (response.status !== 'success') {
-      throw new Error(formatDispatchError(response.error));
+      throw new Error(formatDispatchError(response.error || response.reason));
     }
 
     return response.result;

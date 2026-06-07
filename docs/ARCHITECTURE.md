@@ -46,7 +46,7 @@ The system uses a distributed pattern:
 
 - User data queries must always include tenant checks
 - WebSocket handshake must validate JWT
-- Internal routes require `INTERNAL_API_TOKEN`
+- Internal routes require a per-node JWT (`NODE_TOKEN`, signed by `NODE_TOKEN_SECRET`); identity is taken from the token (client-supplied nodeId is ignored), and source IPs are limited by `INTERNAL_ALLOWED_IPS`
 - No cross-user broadcast for private data
 
 ## 6. Deployment notes

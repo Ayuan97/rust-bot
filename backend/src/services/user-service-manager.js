@@ -671,8 +671,9 @@ class UserServiceManager extends EventEmitter {
     try {
       console.log(`  🔧 停止子服务...`);
 
-      // 停止 FCM 监听
-      if (this.fcmService && this.fcmService.isListening) {
+      // 停止 FCM 监听（无条件停止：重连窗口内 isListening=false 但 reconnectTimer 仍挂着，
+      // stop() 会置 _manualStop 并清重连定时器，否则实例销毁后 FCM 会自行“复活”重连）
+      if (this.fcmService) {
         try {
           this.fcmService.stop();
         } catch (error) {

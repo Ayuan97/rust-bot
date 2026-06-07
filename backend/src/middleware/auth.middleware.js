@@ -187,3 +187,19 @@ export const requireActiveSubscription = (req, res, next) => {
 
   next();
 };
+
+/**
+ * 实时校验某用户订阅是否有效（不依赖任何握手期缓存/快照）。
+ * 供 WebSocket 写操作在每次请求时实时判断，订阅过期可立即拦截。
+ * @param {number|string} userId
+ * @returns {Promise<boolean>}
+ */
+export const isSubscriptionActive = async (userId) => {
+  if (!userId) return false;
+  const [rows] = await db.query(
+    'SELECT endDate FROM subscriptions WHERE userId = ? ORDER BY endDate DESC LIMIT 1',
+    [userId]
+  );
+  const sub = rows[0];
+  return !!sub && new Date() <= new Date(sub.endDate);
+};
