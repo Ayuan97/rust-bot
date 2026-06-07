@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   FaShieldAlt, FaSync, FaPlus, FaTrash, FaBellSlash, FaPowerOff,
-  FaPlay, FaPaperPlane, FaMoon, FaCheckCircle
+  FaPlay, FaPaperPlane, FaMoon, FaCheckCircle, FaMobileAlt, FaPhone
 } from 'react-icons/fa';
 import { useToast } from './Toast';
 import api from '../services/api';
@@ -22,6 +22,7 @@ function RaidAlertSettings() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ name: '', barkKey: '' });
+  const [channel, setChannel] = useState('bark'); // bark | phone（phone 为占位，测试中）
   const toast = useToast();
 
   useEffect(() => { load(); }, []);
@@ -198,17 +199,57 @@ function RaidAlertSettings() {
       {/* 添加通知人 */}
       <div className="p-4 bg-ink-850 border border-ink-line space-y-3">
         <div className="tac-label">ADD RECIPIENT // 添加通知人</div>
-        <input className="tac-input" placeholder="名字（如：队长 / 我）"
-          value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        <input className="tac-input font-mono text-[12px]" placeholder="粘贴 Bark 完整地址  https://api.day.app/xxxxxxxx"
-          value={form.barkKey} onChange={(e) => setForm({ ...form, barkKey: e.target.value })} />
-        <button onClick={addRecipient} disabled={busy} className="tac-btn tac-btn-primary w-full">
-          <FaPlus /> 添加
-        </button>
-        <div className="text-[11px] text-fg-mute leading-relaxed flex items-start gap-1.5">
-          <FaCheckCircle className="text-terminal mt-0.5 shrink-0" />
-          iPhone 装 Bark App → 首页直接复制整条推送地址粘进来（后面的推送内容部分不用删，系统会自动去掉）→ 点"测试"确认能收到。建议在 App 里开启"重要提醒"，突袭时才能绕过静音强制响铃。
+
+        {/* 渠道选择 */}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setChannel('bark')}
+            className={`p-2.5 border flex items-center justify-center gap-2 text-sm font-bold transition-colors ${
+              channel === 'bark' ? 'bg-hazard-dim border-hazard text-fg' : 'border-ink-line text-fg-dim hover:text-fg'
+            }`}
+          >
+            <FaMobileAlt /> Bark 强提醒
+          </button>
+          <button
+            onClick={() => setChannel('phone')}
+            className={`p-2.5 border flex items-center justify-center gap-2 text-sm font-bold transition-colors ${
+              channel === 'phone' ? 'bg-hazard-dim border-hazard text-fg' : 'border-ink-line text-fg-dim hover:text-fg'
+            }`}
+          >
+            <FaPhone /> 电话通知
+          </button>
         </div>
+
+        {channel === 'bark' ? (
+          <>
+            <input className="tac-input" placeholder="名字（如：队长 / 我）"
+              value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <input className="tac-input font-mono text-[12px]" placeholder="粘贴 Bark 完整地址  https://api.day.app/xxxxxxxx"
+              value={form.barkKey} onChange={(e) => setForm({ ...form, barkKey: e.target.value })} />
+            <button onClick={addRecipient} disabled={busy} className="tac-btn tac-btn-primary w-full">
+              <FaPlus /> 添加
+            </button>
+            <div className="text-[11px] text-fg-mute leading-relaxed flex items-start gap-1.5">
+              <FaCheckCircle className="text-terminal mt-0.5 shrink-0" />
+              iPhone 装 Bark App → 首页直接复制整条推送地址粘进来（后面的推送内容部分不用删，系统会自动去掉）→ 点"测试"确认能收到。建议在 App 里开启"重要提醒"，突袭时才能绕过静音强制响铃。
+            </div>
+          </>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 px-2.5 py-1 bg-hazard-dim border border-hazard/40 w-fit">
+              <span className="w-1.5 h-1.5 bg-hazard-bright animate-tac-blink" />
+              <span className="font-mono text-[10px] uppercase tracking-wider text-hazard">TESTING // 测试中</span>
+            </div>
+            <input className="tac-input opacity-50 cursor-not-allowed" placeholder="手机号（如：138xxxxxxxx）" disabled />
+            <button disabled className="tac-btn tac-btn-ghost w-full opacity-50 !cursor-not-allowed">
+              <FaPhone /> 敬请期待
+            </button>
+            <div className="text-[11px] text-fg-mute leading-relaxed flex items-start gap-1.5">
+              <FaPhone className="text-hazard mt-0.5 shrink-0" />
+              电话通知正在测试中，即将上线。届时突袭时会直接拨打你的手机，比推送更难错过——尤其适合熟睡或手机静音的场景。
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
