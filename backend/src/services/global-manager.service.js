@@ -15,6 +15,9 @@ class GlobalServiceManager extends EventEmitter {
     // 存储所有用户的服务实例 Map<userId, UserServiceManager>
     this.userServices = new Map();
 
+    // 创建中的用户（userId -> 创建 Promise），防止并发重复创建产生双实例/资源泄漏
+    this.creatingUsers = new Map();
+
     // 订阅检查定时器
     this.subscriptionCheckTimer = null;
 
@@ -153,13 +156,34 @@ class GlobalServiceManager extends EventEmitter {
    * @returns {Promise<UserServiceManager>} 用户服务实例
    */
   async createUserService(userId) {
-    try {
-      // 检查是否已存在
-      if (this.userServices.has(userId)) {
-        console.log(`⚠️  用户 ${userId} 的服务实例已存在`);
-        return this.userServices.get(userId);
-      }
+    // 已存在直接返回
+    if (this.userServices.has(userId)) {
+      console.log(`⚠️  用户 ${userId} 的服务实例已存在`);
+      return this.userServices.get(userId);
+    }
 
+    // 创建中去重：并发调用复用同一个创建 Promise，避免双实例（监听器/定时器/FCM 连接泄漏 + 重复连服务器）
+    if (this.creatingUsers.has(userId)) {
+      return this.creatingUsers.get(userId);
+    }
+
+    const creationPromise = this._createUserServiceInternal(userId);
+    this.creatingUsers.set(userId, creationPromise);
+    try {
+      return await creationPromise;
+    } finally {
+      this.creatingUsers.delete(userId);
+    }
+  }
+
+  /**
+   * 实际创建用户服务实例（受 createUserService 的并发去重保护）
+   * @param {string} userId - 用户 ID
+   * @returns {Promise<UserServiceManager>}
+   * @private
+   */
+  async _createUserServiceInternal(userId) {
+    try {
       // 验证用户存在且订阅有效
       const [userRows] = await db.query(
         `SELECT u.*, s.endDate as subscriptionEndDate
@@ -227,6 +251,9 @@ class GlobalServiceManager extends EventEmitter {
 
       // 从 Map 中移除
       this.userServices.delete(userId);
+
+      // 解绑 GlobalServiceManager 注册在该实例上的全部监听器，防止“销毁→重建”时累积泄漏
+      userService.removeAllListeners();
 
       this.emit('user:service:removed', { userId, reason });
 
