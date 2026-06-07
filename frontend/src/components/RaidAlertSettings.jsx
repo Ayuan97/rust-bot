@@ -182,7 +182,14 @@ function RaidAlertSettings() {
               <span className={`w-5 h-5 ${r.enabled ? 'bg-terminal' : 'bg-fg-mute'}`} />
             </button>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold text-fg truncate">{r.name}</div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-fg truncate">{r.name}</span>
+                <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 border border-ink-line text-[9px] font-mono uppercase tracking-wider text-fg-dim">
+                  {r.channel === 'phone'
+                    ? <><FaPhone className="text-[8px]" /> 电话</>
+                    : <><FaMobileAlt className="text-[8px]" /> Bark</>}
+                </span>
+              </div>
               <div className="text-[11px] text-fg-mute font-mono truncate">{maskKey(r.barkKey)}</div>
             </div>
             <button onClick={() => testOne(r.id)} className="tac-btn tac-btn-ghost !py-1.5 !px-2.5" title="发一条测试">
