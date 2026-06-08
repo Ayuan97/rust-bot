@@ -62,3 +62,4 @@ tools/dump-output/
 # Generated protocol artifacts (regenerated each run)
 tools/extracted.proto
 tools/extracted.json
+tools/rust-items-server.json
