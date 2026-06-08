@@ -238,7 +238,7 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
     if (teammates.length === 0) loadTeammates();
     fetchHeatmap([heatTab]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDemo, viewMode, heatTab, heatFilter]);
+  }, [isDemo, server?.id, viewMode, heatTab, heatFilter]);
 
   // 重置热力：二次确认 → 清空 → 重新拉取当前 tab
   const handleResetHeatmap = useCallback(async () => {
@@ -276,18 +276,25 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
     });
   }, []);
 
-  // 滚轮缩放：以光标为锚点、按比例缩放（比线性更顺手）
+  // 滚轮缩放：以光标为锚点、按比例缩放（比线性更顺手）。滚动期间关过渡 → 即时跟手，停滚 140ms 后恢复
+  const zoomEndTimer = useRef(null);
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const handleWheel = (e) => {
       e.preventDefault();
       e.stopPropagation();
+      setIsDragging(true);
+      clearTimeout(zoomEndTimer.current);
+      zoomEndTimer.current = setTimeout(() => setIsDragging(false), 140);
       const factor = Math.exp(-e.deltaY * 0.0015);
       applyZoom(s => s * factor, e.clientX, e.clientY);
     };
     container.addEventListener('wheel', handleWheel, { passive: false });
-    return () => container.removeEventListener('wheel', handleWheel);
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+      clearTimeout(zoomEndTimer.current);
+    };
   }, [applyZoom]);
 
   // 按钮缩放：以视口中心为锚点
@@ -384,8 +391,10 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
       const y_image = imageHeight - (focusTarget.y * scale + oceanMargin);
       const posPercent = { x: x_image / imageWidth, y: y_image / imageHeight };
       const targetScale = 2;
-      const newX = -(posPercent.x - 0.5) * rect.width * targetScale;
-      const newY = -(posPercent.y - 0.5) * rect.height * targetScale;
+      // 地图为正方形(height:100% + maxWidth:100%)，边长=容器宽高较小者；X/Y 须用同一边长，否则非正方形容器下定位会偏
+      const square = Math.min(rect.width, rect.height);
+      const newX = -(posPercent.x - 0.5) * square * targetScale;
+      const newY = -(posPercent.y - 0.5) * square * targetScale;
       setTransform({ scale: targetScale, x: newX, y: newY });
     }
   }, [focusTarget, mapInfo.mapSize, mapInfo.imageWidth, mapInfo.imageHeight, mapInfo.oceanMargin]);
@@ -571,7 +580,7 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
                 <HeatLayer points={activityPoints} getPos={getPos} hex={TONE_HEX.terminal} visible={heatTab === 'activity'} />
                 <HeatLayer points={deathPoints} getPos={getPos} hex={TONE_HEX.hazard} visible={heatTab === 'deaths' && deathMode === 'heat'} />
                 {heatTab === 'deaths' && deathMode === 'points' && deathPoints.map((p, i) => (
-                  <div key={`death-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-[18] pointer-events-auto group" style={getPos(p.x, p.y)}>
+                  <div key={`death-${p.x}-${p.y}-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-[18] pointer-events-auto group" style={getPos(p.x, p.y)}>
                     <FaTimes className="text-hazard text-[10px] drop-shadow-[0_0_2px_rgba(0,0,0,0.9)] group-hover:scale-150 transition-transform" />
                     <div className="absolute top-3.5 left-1/2 -translate-x-1/2 bg-ink-900/95 border border-ink-line px-2 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50">
                       <span className="text-[10px] font-bold text-fg">{p.name || '未知'}</span>
@@ -777,7 +786,7 @@ function HeatLayer({ points, getPos, hex, visible }) {
         const pos = getPos(p.x, p.y);
         const size = 70 + (p.w || 1) * 34;
         return (
-          <div key={i} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
+          <div key={`${p.x}-${p.y}-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
             style={{
               left: pos.left, top: pos.top, width: size, height: size,
               background: `radial-gradient(circle, ${hex}AA 0%, ${hex}55 35%, transparent 72%)`,
