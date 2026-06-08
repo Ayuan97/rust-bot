@@ -2117,14 +2117,17 @@ class UserEventMonitor extends EventEmitter {
           this.emit(EventType.PLAYER_DIED, payload);
           await this.saveEventLog(serverId, EventType.PLAYER_DIED, payload);
           // 死亡热力：记一个原始死亡点（精确坐标+时间+steamId），供地图热力/精确点展示
-          try {
-            await db.query(
-              `INSERT INTO map_death_points (id, userId, serverId, steamId, name, x, y, diedAt)
-               VALUES (?, ?, ?, ?, ?, ?, ?, NOW(3))`,
-              [uuidv4(), this.userId, serverId, steamId, member.name, Math.round(oldState.x), Math.round(oldState.y)]
-            );
-          } catch (e) {
-            logger.debug(`记录死亡热力点失败: ${e.message}`);
+          // 仅在坐标有效时记录（与活动采样一致，避免刚入队/无位置时插入 NaN）
+          if (Number.isFinite(oldState.x) && Number.isFinite(oldState.y)) {
+            try {
+              await db.query(
+                `INSERT INTO map_death_points (id, userId, serverId, steamId, name, x, y, diedAt)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, NOW(3))`,
+                [uuidv4(), this.userId, serverId, steamId, member.name, Math.round(oldState.x), Math.round(oldState.y)]
+              );
+            } catch (e) {
+              logger.debug(`记录死亡热力点失败: ${e.message}`);
+            }
           }
 
           if (this.isNotificationEnabled('player_death')) {
