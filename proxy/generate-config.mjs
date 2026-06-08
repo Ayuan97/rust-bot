@@ -85,12 +85,12 @@ const config = {
   'proxy-providers': providers,
   'proxy-groups': [
     {
+      // AUTO 为 select：节点由连接器侧分配器逐连接选中(目标可达感知 + 按服务器分散 + 失败冷却),
+      // 不用 Mihomo 自带 url-test(它只按通用延迟选优、不知道能否连上具体 Rust 服)。
+      // provider 已开 health-check,分配器据此过滤健康节点。
       name: 'AUTO',
-      type: 'url-test',
+      type: 'select',
       use: Object.keys(providers),
-      url: healthCheck.url,
-      interval: 300,
-      tolerance: 50,
     },
   ],
   // 订阅网关直连;其余(rust-bot 发来的被封服务器连接)整体走 AUTO 选优节点

@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import '../utils/load-env.js';
 import UserRustPlusManager from '../services/user-rustplus-manager.js';
 import { subsKey, applyProxy } from './proxy-agent.js';
+import ProxyPool from './proxy-pool.js';
 
 const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://127.0.0.1:3000/api/internal';
 const NODE_TOKEN = process.env.NODE_TOKEN || '';
@@ -39,6 +40,7 @@ const http = axios.create({
 });
 
 const rustManager = new UserRustPlusManager(`connector:${NODE_ID}`, { autoReconnect: false });
+const proxyPool = new ProxyPool();
 
 const activeSessions = new Map();
 let heartbeatTimer = null;
@@ -327,7 +329,7 @@ async function syncProxyConfig() {
     const res = await apiGet('/proxy-config');
     const enabled = !!res.enabled;
     const subs = res.subscriptions || [];
-    rustManager.setProxy({ enabled, socks: PROXY_SOCKS });
+    rustManager.setProxy({ enabled, socks: PROXY_SOCKS, pool: proxyPool });
     const key = subsKey(subs);
     if (enabled && subs.length > 0 && key !== lastProxySubsKey) {
       await applyProxy(subs);

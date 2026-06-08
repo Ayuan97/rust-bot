@@ -7,6 +7,9 @@ import RustPlusClient from '../lib/rustplus-client.js';
 import EventEmitter from 'events';
 import logger from '../utils/logger.js';
 
+// 代理回退最多尝试几个不同节点(失败即换下一个)
+const PROXY_MAX_ATTEMPTS = Number(process.env.PROXY_MAX_ATTEMPTS || 4);
+
 class UserRustPlusManager extends EventEmitter {
   constructor(userId, options = {}) {
     super();
@@ -30,7 +33,8 @@ class UserRustPlusManager extends EventEmitter {
     // 代理出口运行时状态：默认取自环境(向后兼容)；分布式下由连接器从控制平面动态下发后用 setProxy 更新
     this.proxy = {
       enabled: process.env.PROXY_ENABLED === '1',
-      socks: process.env.PROXY_SOCKS || ''
+      socks: process.env.PROXY_SOCKS || '',
+      pool: null // 连接器侧注入的节点分配器(分布式连接器才有;主节点为 null,走简单回退)
     };
 
     // 重连配置
@@ -50,9 +54,10 @@ class UserRustPlusManager extends EventEmitter {
   /**
    * 设置/更新代理出口（连接器从控制平面拉到代理配置后调用，运行时生效，无需重启）
    */
-  setProxy({ enabled, socks } = {}) {
+  setProxy({ enabled, socks, pool } = {}) {
     if (typeof enabled === 'boolean') this.proxy.enabled = enabled;
     if (typeof socks === 'string') this.proxy.socks = socks;
+    if (pool !== undefined) this.proxy.pool = pool;
   }
 
   /**
@@ -90,9 +95,6 @@ class UserRustPlusManager extends EventEmitter {
 
     // 保存配置用于重连
     this.serverConfigs.set(serverId, config);
-
-    // 出口策略：直连优先；开启代理时，直连失败后回退到 SOCKS 代理出口
-    const egresses = (this.proxy.enabled && this.proxy.socks) ? [null, this.proxy.socks] : [null];
 
     // 为单个 RustPlusClient 绑定全部事件监听（每次连接尝试各自一份）
     const attachHandlers = (rustplus) => {
@@ -155,6 +157,7 @@ class UserRustPlusManager extends EventEmitter {
         if (!wasConnected) return;
         logger.server(serverId, `❌ 用户 ${this.userId} 已断开`);
         this.connections.delete(serverId);
+        if (this.proxy.pool) this.proxy.pool.releaseServer(serverId); // 回收该连接占用的代理节点
         this.emit('server:disconnected', { userId: this.userId, serverId });
 
         // 仅对已建立过的连接自动重连，避免无限重试风暴。
@@ -189,27 +192,69 @@ class UserRustPlusManager extends EventEmitter {
 
     };
 
+    // 单次连接尝试：建客户端 + 绑监听 + 连接,成功入库返回,失败清理后抛出
+    const tryConnect = async (proxyUrl) => {
+      const rustplus = new RustPlusClient(ip, port, playerId, playerToken, proxyUrl);
+      attachHandlers(rustplus);
+      try {
+        await rustplus.connect();
+        this.connections.set(serverId, rustplus);
+        return rustplus;
+      } catch (err) {
+        try { rustplus.disconnect(); } catch { /* ignore */ }
+        throw err;
+      }
+    };
+
     try {
       let lastError;
-      for (let i = 0; i < egresses.length; i++) {
-        const eg = egresses[i];
-        const rustplus = new RustPlusClient(ip, port, playerId, playerToken, eg);
-        attachHandlers(rustplus);
-        try {
-          await rustplus.connect();
-          this.connections.set(serverId, rustplus);
-          if (eg) logger.server(serverId, `✅ 用户 ${this.userId} 已经代理出口连接`);
-          return rustplus;
-        } catch (err) {
-          lastError = err;
-          try { rustplus.disconnect(); } catch { /* ignore */ }
-          if (eg) {
-            logger.server(serverId, `代理出口连接失败: ${err.message || err}`);
-          } else if (egresses.length > 1) {
-            logger.server(serverId, `直连失败(${err.message || err})，回退代理出口…`);
+
+      // 1) 直连优先
+      try {
+        return await tryConnect(null);
+      } catch (err) {
+        lastError = err;
+      }
+
+      // 2) 直连失败 → 代理回退(开启时)
+      if (this.proxy.enabled && this.proxy.socks) {
+        const serverKey = `${ip}:${port}`;
+        if (this.proxy.pool) {
+          // 分配器驱动：逐节点尝试,失败即换节点(目标可达感知 + 按服务器分散)
+          logger.server(serverId, `直连失败(${lastError?.message || lastError})，经代理逐节点尝试…`);
+          const failed = new Set();
+          for (let k = 0; k < PROXY_MAX_ATTEMPTS; k++) {
+            let node;
+            try {
+              node = await this.proxy.pool.begin(serverKey, failed);
+            } catch (e) {
+              logger.warn(`代理分配器异常: ${e.message || e}`);
+              break;
+            }
+            if (!node) break; // 无可用节点(全冷却 / 无健康节点)
+            try {
+              const rp = await tryConnect(this.proxy.socks);
+              this.proxy.pool.endSuccess(serverId, node);
+              logger.server(serverId, `✅ 经代理节点 ${node} 连接成功`);
+              return rp;
+            } catch (err) {
+              lastError = err;
+              this.proxy.pool.endFailure(serverKey, node);
+              failed.add(node);
+              logger.server(serverId, `代理节点 ${node} 连接失败,换下一个…`);
+            }
+          }
+        } else {
+          // 无分配器(非分布式/主节点):直接走一次 SOCKS
+          try {
+            logger.server(serverId, `直连失败，回退代理出口…`);
+            return await tryConnect(this.proxy.socks);
+          } catch (err) {
+            lastError = err;
           }
         }
       }
+
       throw lastError || new Error('连接失败');
     } catch (error) {
       logger.error(`用户 ${this.userId} 连接失败 ${serverId}:`, error.message || error);
