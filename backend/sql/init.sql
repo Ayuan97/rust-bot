@@ -103,6 +103,38 @@ CREATE TABLE IF NOT EXISTS `event_logs` (
   CONSTRAINT `event_logs_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 地图死亡热力：每次队友死亡的原始点（精确坐标+时间+steamId），支持热力/精确点/按人筛选
+CREATE TABLE IF NOT EXISTS `map_death_points` (
+  `id` VARCHAR(36) NOT NULL,
+  `userId` VARCHAR(36) NOT NULL,
+  `serverId` VARCHAR(36) NOT NULL,
+  `steamId` VARCHAR(20) NOT NULL,
+  `name` VARCHAR(64) NULL,
+  `x` INT NOT NULL,
+  `y` INT NOT NULL,
+  `diedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  INDEX `map_death_points_server_idx` (`userId`, `serverId`),
+  INDEX `map_death_points_steam_idx` (`userId`, `serverId`, `steamId`),
+  CONSTRAINT `map_death_points_serverId_fkey` FOREIGN KEY (`serverId`) REFERENCES `servers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `map_death_points_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 地图活动热力：在线队友位置按 100m 网格聚合计数（gridX=floor(x/100)）；纯热力、按人筛选
+CREATE TABLE IF NOT EXISTS `map_activity_grid` (
+  `userId` VARCHAR(36) NOT NULL,
+  `serverId` VARCHAR(36) NOT NULL,
+  `steamId` VARCHAR(20) NOT NULL,
+  `gridX` INT NOT NULL,
+  `gridY` INT NOT NULL,
+  `count` INT NOT NULL DEFAULT 1,
+  `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`userId`, `serverId`, `steamId`, `gridX`, `gridY`),
+  INDEX `map_activity_grid_server_idx` (`userId`, `serverId`),
+  CONSTRAINT `map_activity_grid_serverId_fkey` FOREIGN KEY (`serverId`) REFERENCES `servers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `map_activity_grid_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 通知设置表
 CREATE TABLE IF NOT EXISTS `notification_settings` (
   `id` VARCHAR(36) NOT NULL,

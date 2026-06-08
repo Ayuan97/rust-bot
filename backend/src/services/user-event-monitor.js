@@ -94,6 +94,7 @@ class UserEventMonitor extends EventEmitter {
     this.monuments = new Map(); // serverId -> monuments array
     this.lastMonumentsRetry = new Map(); // serverId -> timestamp (节流重试)
     this.isPolling = new Map(); // serverId -> boolean
+    this.lastActivitySample = new Map(); // serverId -> timestamp（活动热力采样节流，每分钟一次）
 
     // 缓存用户的通知设置
     this.notificationSettings = null;
@@ -1868,10 +1869,24 @@ class UserEventMonitor extends EventEmitter {
 
       eventData.teamLeaderSteamId = currentLeaderSteamId;
 
+      // 活动热力：每分钟采样一次在线队友位置（避免每轮轮询都写库）
+      const sampleActivity = Date.now() - (this.lastActivitySample.get(serverId) || 0) >= 60000;
+      if (sampleActivity) this.lastActivitySample.set(serverId, Date.now());
+
       // 检测玩家状态变化
       for (const member of teamInfo.members) {
         const steamId = member.steamId?.toString();
         if (!steamId) continue;
+
+        // 活动热力采样（每分钟一次，在线队友按 100m 网格累加 count）
+        if (sampleActivity && member.isOnline && Number.isFinite(member.x) && Number.isFinite(member.y)) {
+          db.query(
+            `INSERT INTO map_activity_grid (userId, serverId, steamId, gridX, gridY, count, updatedAt)
+             VALUES (?, ?, ?, ?, ?, 1, NOW(3))
+             ON DUPLICATE KEY UPDATE count = count + 1, updatedAt = NOW(3)`,
+            [this.userId, serverId, steamId, Math.floor(member.x / 100), Math.floor(member.y / 100)]
+          ).catch((e) => logger.debug(`活动热力采样失败: ${e.message}`));
+        }
 
         const oldState = eventData.teamMembers.get(steamId);
 
@@ -2101,6 +2116,16 @@ class UserEventMonitor extends EventEmitter {
 
           this.emit(EventType.PLAYER_DIED, payload);
           await this.saveEventLog(serverId, EventType.PLAYER_DIED, payload);
+          // 死亡热力：记一个原始死亡点（精确坐标+时间+steamId），供地图热力/精确点展示
+          try {
+            await db.query(
+              `INSERT INTO map_death_points (id, userId, serverId, steamId, name, x, y, diedAt)
+               VALUES (?, ?, ?, ?, ?, ?, ?, NOW(3))`,
+              [uuidv4(), this.userId, serverId, steamId, member.name, Math.round(oldState.x), Math.round(oldState.y)]
+            );
+          } catch (e) {
+            logger.debug(`记录死亡热力点失败: ${e.message}`);
+          }
 
           if (this.isNotificationEnabled('player_death')) {
             try {

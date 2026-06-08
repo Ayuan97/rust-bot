@@ -835,6 +835,60 @@ router.put('/:id/extended-teammates/:steamId', async (req, res) => {
 });
 
 /**
+ * GET /api/servers/:id/heatmap/deaths?steamId=  死亡热力：原始死亡点(精确坐标+时间)，steamId 可选(不传=全队)
+ */
+router.get('/:id/heatmap/deaths', async (req, res) => {
+  try {
+    const [own] = await db.query('SELECT id FROM servers WHERE id = ? AND userId = ?', [req.params.id, req.user.id]);
+    if (own.length === 0) return res.status(404).json({ success: false, error: '服务器不存在' });
+    const { steamId } = req.query;
+    const params = [req.user.id, req.params.id];
+    let sql = 'SELECT steamId, name, x, y, diedAt FROM map_death_points WHERE userId = ? AND serverId = ?';
+    if (steamId) { sql += ' AND steamId = ?'; params.push(steamId); }
+    sql += ' ORDER BY diedAt DESC LIMIT 2000';
+    const [rows] = await db.query(sql, params);
+    res.json({ success: true, points: rows });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+/**
+ * GET /api/servers/:id/heatmap/activity?steamId=  活动热力：100m 网格密度，steamId 可选(不传=全队叠加)
+ */
+router.get('/:id/heatmap/activity', async (req, res) => {
+  try {
+    const [own] = await db.query('SELECT id FROM servers WHERE id = ? AND userId = ?', [req.params.id, req.user.id]);
+    if (own.length === 0) return res.status(404).json({ success: false, error: '服务器不存在' });
+    const { steamId } = req.query;
+    const params = [req.user.id, req.params.id];
+    let sql = 'SELECT gridX, gridY, SUM(count) AS c FROM map_activity_grid WHERE userId = ? AND serverId = ?';
+    if (steamId) { sql += ' AND steamId = ?'; params.push(steamId); }
+    sql += ' GROUP BY gridX, gridY';
+    const [rows] = await db.query(sql, params);
+    const points = rows.map(r => ({ x: r.gridX * 100 + 50, y: r.gridY * 100 + 50, w: Number(r.c) }));
+    res.json({ success: true, points });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+/**
+ * POST /api/servers/:id/heatmap/reset  清空本服务器热力(wipe 后手动重置；后续可接 BM wipeTime 自动)
+ */
+router.post('/:id/heatmap/reset', async (req, res) => {
+  try {
+    const [own] = await db.query('SELECT id FROM servers WHERE id = ? AND userId = ?', [req.params.id, req.user.id]);
+    if (own.length === 0) return res.status(404).json({ success: false, error: '服务器不存在' });
+    await db.query('DELETE FROM map_death_points WHERE userId = ? AND serverId = ?', [req.user.id, req.params.id]);
+    await db.query('DELETE FROM map_activity_grid WHERE userId = ? AND serverId = ?', [req.user.id, req.params.id]);
+    res.json({ success: true, message: '热力已重置' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+/**
  * GET /api/servers/:id/player-stats/:steamId
  * 获取玩家详细统计数据
  */

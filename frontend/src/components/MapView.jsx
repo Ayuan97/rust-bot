@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   FaMapMarkedAlt, FaPlus, FaMinus, FaExpand, FaSync,
   FaLayerGroup, FaUser, FaSkull, FaShoppingCart, FaHelicopter,
-  FaShip, FaParachuteBox, FaPlane, FaLandmark, FaEye, FaEyeSlash, FaFire, FaTruck
+  FaShip, FaParachuteBox, FaPlane, FaLandmark, FaEye, FaEyeSlash, FaFire, FaTruck,
+  FaUsers, FaTimes, FaTrashAlt, FaTh
 } from 'react-icons/fa';
-import { getMapInfo } from '../services/api';
+import api, { getMapInfo } from '../services/api';
 import socketService from '../services/socket';
+import { useConfirm } from './ConfirmModal';
 import { getCorrectedMapSize, coordsToGrid } from '../utils/mapUtils';
 
 // ============================================================
@@ -84,6 +86,15 @@ const LAYER_LABELS = {
   monuments: '纪念碑'
 };
 
+// 死亡时间格式化：MM-DD HH:MM
+function formatDiedAt(diedAt) {
+  if (!diedAt) return '';
+  const d = new Date(diedAt);
+  if (Number.isNaN(d.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 // ============================================================
 // 主组件
 // ============================================================
@@ -111,6 +122,15 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
   });
 
   const [showLayerPanel, setShowLayerPanel] = useState(false);
+
+  // 热力图数据（真实数据，按需 fetch）
+  const [heatData, setHeatData] = useState({ activityPoints: [], deathPoints: [] });
+  const [heatFilter, setHeatFilter] = useState(''); // '' = 全队，否则为某队友 steamId
+  const [deathMode, setDeathMode] = useState('heat'); // 'heat' | 'points'
+  const [teammates, setTeammates] = useState([]); // extended-teammates 完整名单
+  const [heatLoading, setHeatLoading] = useState(false);
+
+  const confirm = useConfirm();
 
   const isDemo = !server || !server.connected;
 
@@ -166,6 +186,80 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
       clearInterval(refreshInterval);
     };
   }, [server?.id, isDemo, fetchMapData]);
+
+  // ============================================================
+  // 热力图数据获取（真实数据，仅图层打开时请求）
+  // ============================================================
+  const fetchHeatmap = useCallback(async (types = ['activity', 'deaths']) => {
+    if (isDemo || !server?.id) return;
+    const sid = heatFilter ? `?steamId=${encodeURIComponent(heatFilter)}` : '';
+    setHeatLoading(true);
+    try {
+      const tasks = [];
+      if (types.includes('activity')) {
+        tasks.push(
+          api.get(`/servers/${server.id}/heatmap/activity${sid}`)
+            .then(res => { if (res?.data?.success) setHeatData(prev => ({ ...prev, activityPoints: res.data.points || [] })); })
+            .catch(() => {})
+        );
+      }
+      if (types.includes('deaths')) {
+        tasks.push(
+          api.get(`/servers/${server.id}/heatmap/deaths${sid}`)
+            .then(res => { if (res?.data?.success) setHeatData(prev => ({ ...prev, deathPoints: res.data.points || [] })); })
+            .catch(() => {})
+        );
+      }
+      await Promise.all(tasks);
+    } finally {
+      setHeatLoading(false);
+    }
+  }, [server?.id, isDemo, heatFilter]);
+
+  // 拉取扩展队友名单（用于筛选下拉），首次开启任一热力图层时按需加载
+  const loadTeammates = useCallback(async () => {
+    if (isDemo || !server?.id) return;
+    try {
+      const res = await api.get(`/servers/${server.id}/extended-teammates`);
+      if (res?.data?.success) setTeammates(res.data.teammates || []);
+    } catch { /* ignore */ }
+  }, [server?.id, isDemo]);
+
+  const heatActive = layerVisibility.activity || layerVisibility.deaths;
+
+  // 图层打开 / 筛选变化时，按当前可见图层重新拉取；同时按需加载队友名单
+  useEffect(() => {
+    if (isDemo || !heatActive) return;
+    if (teammates.length === 0) loadTeammates();
+    const types = [];
+    if (layerVisibility.activity) types.push('activity');
+    if (layerVisibility.deaths) types.push('deaths');
+    if (types.length) fetchHeatmap(types);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDemo, layerVisibility.activity, layerVisibility.deaths, heatFilter]);
+
+  // 重置热力：二次确认 → 清空 → 重新拉取
+  const handleResetHeatmap = useCallback(async () => {
+    if (isDemo || !server?.id) return;
+    const ok = await confirm({
+      type: 'danger',
+      title: '重置热力数据',
+      message: '这将清空本服务器全部活动与死亡热力采样数据，且无法撤销。确定要继续吗？',
+      confirmText: '重置',
+      cancelText: '取消'
+    });
+    if (!ok) return;
+    try {
+      await api.post(`/servers/${server.id}/heatmap/reset`);
+      setHeatData({ activityPoints: [], deathPoints: [] });
+      if (heatActive) {
+        const types = [];
+        if (layerVisibility.activity) types.push('activity');
+        if (layerVisibility.deaths) types.push('deaths');
+        if (types.length) fetchHeatmap(types);
+      }
+    } catch { /* ignore */ }
+  }, [server?.id, isDemo, confirm, heatActive, layerVisibility.activity, layerVisibility.deaths, fetchHeatmap]);
 
   // ============================================================
   // 地图交互
@@ -238,8 +332,8 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
   });
 
   const teamMembers = isDemo ? DEMO_TEAM : (teamData?.members || []);
-  const activityPoints = isDemo ? DEMO_ACTIVITY : (mapInfo.activityHeat || []);
-  const deathPoints = isDemo ? DEMO_DEATHS : (mapInfo.deathHeat || []);
+  const activityPoints = isDemo ? DEMO_ACTIVITY : heatData.activityPoints;
+  const deathPoints = isDemo ? DEMO_DEATHS : heatData.deathPoints;
 
   const mapImageUrl = server?.id
     ? `${import.meta.env.VITE_API_URL || '/api'}/servers/${server.id}/map-image?token=${localStorage.getItem('token')}`
@@ -273,7 +367,7 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
           <div className="relative">
             <CtrlBtn onClick={() => setShowLayerPanel(!showLayerPanel)} active={showLayerPanel} bordered><FaLayerGroup size={10} /></CtrlBtn>
             {showLayerPanel && (
-              <div className="absolute right-0 top-full mt-2 tac-panel p-3 z-50 min-w-[180px]">
+              <div className="absolute right-0 top-full mt-2 tac-panel p-3 z-50 min-w-[220px]">
                 <div className="tac-label mb-2">图层控制 // LAYERS</div>
                 {/* 热力图层（醒目，置顶） */}
                 {['activity', 'deaths'].map((layer) => (
@@ -281,6 +375,55 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
                     onToggle={() => setLayerVisibility(prev => ({ ...prev, [layer]: !prev[layer] }))}
                     icon={<FaFire className={layer === 'deaths' ? 'text-hazard' : 'text-terminal'} size={10} />} />
                 ))}
+
+                {/* 热力专属控件：队友筛选 + 死亡双视图 + 重置（仅非演示且有热力图层打开时） */}
+                {!isDemo && heatActive && (
+                  <div className="mt-2 pl-2 border-l border-ink-line space-y-2">
+                    {/* 队友筛选 */}
+                    <div>
+                      <div className="tac-label !text-[9px] mb-1 flex items-center gap-1.5">
+                        <FaUsers className="text-fg-mute" size={9} /> 筛选范围
+                      </div>
+                      <select
+                        value={heatFilter}
+                        onChange={(e) => setHeatFilter(e.target.value)}
+                        className="w-full bg-ink-900 border border-ink-line text-xs text-fg px-2 py-1.5 focus:border-hazard/50 focus:outline-none"
+                      >
+                        <option value="">全队</option>
+                        {teammates.map((t) => (
+                          <option key={t.steamId} value={t.steamId}>{t.name || t.steamId}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 死亡双视图子开关：仅 deaths 图层打开时 */}
+                    {layerVisibility.deaths && (
+                      <div>
+                        <div className="tac-label !text-[9px] mb-1 flex items-center gap-1.5">
+                          <FaSkull className="text-hazard" size={9} /> 死亡视图
+                        </div>
+                        <div className="flex border border-ink-line divide-x divide-ink-line">
+                          {[
+                            { mode: 'heat', label: '热力', icon: FaFire },
+                            { mode: 'points', label: '点位', icon: FaTh }
+                          ].map(({ mode, label, icon: Icon }) => (
+                            <button key={mode} onClick={() => setDeathMode(mode)}
+                              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-bold transition-colors ${deathMode === mode ? 'bg-hazard-dim text-hazard' : 'text-fg-mute hover:text-fg hover:bg-ink-800'}`}>
+                              <Icon size={9} /> {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 重置按钮 */}
+                    <button onClick={handleResetHeatmap}
+                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-bold border border-hazard/40 text-hazard hover:bg-hazard-dim transition-colors">
+                      <FaTrashAlt size={9} /> 重置热力数据
+                    </button>
+                  </div>
+                )}
+
                 <div className="h-px bg-ink-line my-2" />
                 {['players', 'events', 'vehicles', 'vending', 'monuments'].map((layer) => (
                   <LayerToggle key={layer} layer={layer} visible={layerVisibility[layer]}
@@ -332,9 +475,20 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
               }} />
             )}
 
-            {/* 热力图层：活动（terminal）+ 死亡（hazard） */}
+            {/* 热力图层：活动（terminal）纯热力 */}
             <HeatLayer points={activityPoints} getPos={getPos} hex={TONE_HEX.terminal} visible={layerVisibility.activity} />
-            <HeatLayer points={deathPoints} getPos={getPos} hex={TONE_HEX.hazard} visible={layerVisibility.deaths} />
+
+            {/* 死亡热力：heat 模式 = 径向热力；points 模式 = 逐点小叉 */}
+            <HeatLayer points={deathPoints} getPos={getPos} hex={TONE_HEX.hazard} visible={layerVisibility.deaths && deathMode === 'heat'} />
+            {layerVisibility.deaths && deathMode === 'points' && deathPoints.map((p, i) => (
+              <div key={`death-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-[18] pointer-events-auto group" style={getPos(p.x, p.y)}>
+                <FaTimes className="text-hazard text-[10px] drop-shadow-[0_0_2px_rgba(0,0,0,0.9)] group-hover:scale-150 transition-transform" />
+                <div className="absolute top-3.5 left-1/2 -translate-x-1/2 bg-ink-900/95 border border-ink-line px-2 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50">
+                  <span className="text-[10px] font-bold text-fg">{p.name || '未知'}</span>
+                  <span className="font-mono text-[9px] text-hazard ml-1.5">{formatDiedAt(p.diedAt)}</span>
+                </div>
+              </div>
+            ))}
 
             {/* 纪念碑 */}
             {layerVisibility.monuments && mapInfo.monuments?.map((mon, i) => (
@@ -429,7 +583,8 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
             <LegendItem className="bg-ink-line2" label="离线" />
             <LegendItem className="border border-fg-mute rotate-45" label="纪念碑" solid={false} />
             {layerVisibility.activity && <LegendItem className="bg-terminal/50" label="活动热力" />}
-            {layerVisibility.deaths && <LegendItem className="bg-hazard/50" label="死亡热力" />}
+            {layerVisibility.deaths && deathMode === 'heat' && <LegendItem className="bg-hazard/50" label="死亡热力" />}
+            {layerVisibility.deaths && deathMode === 'points' && <LegendItem className="bg-hazard" label="死亡点位" />}
           </div>
         </div>
       </div>
