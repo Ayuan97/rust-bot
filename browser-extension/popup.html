@@ -5,6 +5,23 @@
     <meta charset="UTF-8">
     <title>Rust+ Credentials Helper</title>
     <style>
+        :root {
+            --bg: #0A0A0A;
+            --panel: #0F0F0F;
+            --sink: #1A1A1A;
+            --line: #2A2A2A;
+            --line2: #3A3A3A;
+            --fg: #EAEAEA;
+            --fg-dim: #9A9A9A;
+            --fg-mute: #6A6A6A;
+            --hazard: #E0452E;
+            --hazard-bright: #FF5A3C;
+            --hazard-dim: rgba(224, 69, 46, 0.12);
+            --terminal: #4AF626;
+            --mono: 'JetBrains Mono', 'SF Mono', 'Consolas', 'Courier New', monospace;
+            --sans: 'PingFang SC', 'Microsoft YaHei', 'Source Han Sans SC', 'Noto Sans SC', system-ui, sans-serif;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -13,80 +30,245 @@
 
         body {
             width: 320px;
-            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: #fff;
-            padding: 24px;
+            background: var(--bg);
+            color: var(--fg);
+            font-family: var(--sans);
+            position: relative;
+            overflow: hidden;
         }
 
-        h1 {
-            font-size: 18px;
-            margin-bottom: 8px;
+        /* CRT 扫描线质感层 */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            z-index: 60;
+            pointer-events: none;
+            opacity: 0.5;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, 0.22) 3px, transparent 4px);
+        }
+
+        /* 外框 + 四角战术角标 */
+        .frame {
+            position: relative;
+            border: 1px solid var(--line);
+        }
+
+        .frame::before,
+        .frame::after {
+            content: '';
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .frame::before {
+            top: -1px;
+            left: -1px;
+            border-top: 2px solid var(--hazard);
+            border-left: 2px solid var(--hazard);
+        }
+
+        .frame::after {
+            bottom: -1px;
+            right: -1px;
+            border-bottom: 2px solid var(--hazard);
+            border-right: 2px solid var(--hazard);
+        }
+
+        .label {
+            font-family: var(--mono);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.18em;
+            color: var(--fg-dim);
+        }
+
+        /* ===== header ===== */
+        .hdr {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
+            padding: 16px;
+            border-bottom: 1px solid var(--line);
         }
 
-        .subtitle {
-            font-size: 12px;
-            color: #888;
-            margin-bottom: 20px;
-        }
-
-        .btn {
-            width: 100%;
-            padding: 14px 20px;
-            font-size: 14px;
-            font-weight: 600;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
+        .logo {
+            width: 34px;
+            height: 34px;
+            background: var(--hazard);
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
-            transition: all 0.2s;
-            margin-bottom: 12px;
+            flex-shrink: 0;
         }
 
-        .btn-primary {
-            background: linear-gradient(135deg, #e94560, #ff6b6b);
-            color: white;
+        .logo img {
+            width: 22px;
+            height: 22px;
+            object-fit: contain;
         }
 
-        .btn-primary:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4);
+        .hdr-t {
+            flex: 1;
+            min-width: 0;
+            line-height: 1.35;
         }
 
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: #ccc;
+        .hdr-t .brand {
+            font-family: var(--mono);
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.22em;
+            color: var(--fg);
         }
 
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.15);
+        .hdr-t .sub {
+            font-size: 12px;
+            color: var(--fg-dim);
         }
 
-        .info {
-            font-size: 11px;
-            color: #666;
-            text-align: center;
+        .live {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            background: var(--terminal);
+            flex-shrink: 0;
+        }
+
+        .blink {
+            animation: blink 1.4s steps(1) infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* ===== main ===== */
+        .main {
+            padding: 16px;
+        }
+
+        .intro {
+            margin-bottom: 16px;
+        }
+
+        .intro .label {
+            margin-bottom: 6px;
+        }
+
+        .intro p {
+            font-size: 12px;
+            color: var(--fg-dim);
             line-height: 1.5;
         }
 
+        /* 已缓存凭证状态条 */
         .status {
-            background: rgba(0, 217, 160, 0.1);
-            border: 1px solid rgba(0, 217, 160, 0.3);
-            border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 16px;
-            font-size: 12px;
-            text-align: center;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            margin-bottom: 14px;
         }
 
-        .status.has-token {
-            background: rgba(0, 217, 160, 0.15);
+        .status .txt {
+            font-size: 12px;
+            color: var(--fg);
+        }
+
+        .status a {
+            margin-left: auto;
+            font-family: var(--mono);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--hazard);
+            text-decoration: none;
+        }
+
+        .status a:hover {
+            color: var(--hazard-bright);
+        }
+
+        /* ===== 按钮 ===== */
+        .btn {
+            width: 100%;
+            padding: 13px 16px;
+            border: 1px solid;
+            background: none;
+            cursor: pointer;
+            font-family: var(--sans);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--fg);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.15s;
+            margin-bottom: 10px;
+        }
+
+        .btn .n {
+            font-family: var(--mono);
+            font-size: 10px;
+            letter-spacing: 0.1em;
+            opacity: 0.7;
+        }
+
+        .btn .arr {
+            margin-left: auto;
+            font-family: var(--mono);
+        }
+
+        .btn-primary {
+            background: var(--hazard);
+            border-color: var(--hazard);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: var(--hazard-bright);
+            border-color: var(--hazard-bright);
+        }
+
+        .btn-ghost {
+            border-color: var(--line);
+            color: var(--fg-dim);
+        }
+
+        .btn-ghost:hover {
+            border-color: var(--fg-dim);
+            color: var(--fg);
+        }
+
+        .btn-danger {
+            border-color: var(--line);
+            color: var(--fg-dim);
+        }
+
+        .btn-danger:hover {
+            border-color: var(--hazard);
+            color: var(--hazard-bright);
+        }
+
+        .info {
+            margin-top: 4px;
+            padding-top: 14px;
+            border-top: 1px solid var(--line);
+            font-size: 11px;
+            color: var(--fg-mute);
+            line-height: 1.6;
         }
 
         .hidden {
@@ -96,29 +278,43 @@
 </head>
 
 <body>
-    <h1>🎮 Rust+ Token Helper</h1>
-    <p class="subtitle">获取 Steam Auth Token</p>
+    <div class="frame">
+        <div class="hdr">
+            <div class="logo"><img src="icons/logo.png" alt="Rust+"></div>
+            <div class="hdr-t">
+                <div class="brand">RUST+</div>
+                <div class="sub">凭证助手</div>
+            </div>
+            <div class="live"><span class="dot blink"></span><span class="label">READY</span></div>
+        </div>
 
-    <div class="status hidden" id="tokenStatus">
-        ✅ 已有 Token - <a href="#" id="viewTokenLink" style="color: #00d9a0;">查看</a>
+        <div class="main">
+            <div class="intro">
+                <div class="label">Credentials Helper</div>
+                <p>获取 Steam Auth Token 与 FCM 推送凭证</p>
+            </div>
+
+            <div class="status hidden" id="tokenStatus">
+                <span class="dot"></span>
+                <span class="txt">本地已缓存凭证</span>
+                <a href="#" id="viewTokenLink">查看 →</a>
+            </div>
+
+            <button class="btn btn-primary" id="startBtn">
+                <span class="n">01</span> 使用 Steam 登录 <span class="arr">→</span>
+            </button>
+
+            <button class="btn btn-ghost hidden" id="viewResultBtn">
+                <span class="n">02</span> 查看已获取凭证 <span class="arr">→</span>
+            </button>
+
+            <button class="btn btn-danger hidden" id="clearBtn">
+                <span class="n">DEL</span> 清除本地凭证
+            </button>
+
+            <p class="info">登录成功后自动跳转结果页，复制凭证命令配合 FCM 使用。</p>
+        </div>
     </div>
-
-    <button class="btn btn-primary" id="startBtn">
-        🔐 使用 Steam 登录
-    </button>
-
-    <button class="btn btn-secondary hidden" id="viewResultBtn">
-        📋 查看已获取的 Token
-    </button>
-
-    <button class="btn btn-secondary hidden" id="clearBtn">
-        🗑️ 清除已保存的 Token
-    </button>
-
-    <p class="info">
-        登录成功后会自动跳转到结果页面<br>
-        你可以复制 Token 配合 FCM 凭证使用
-    </p>
 
     <script src="popup-simple.js"></script>
 </body>

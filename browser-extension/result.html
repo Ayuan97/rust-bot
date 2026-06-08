@@ -5,6 +5,24 @@
     <meta charset="UTF-8">
     <title>Rust+ 凭证结果</title>
     <style>
+        :root {
+            --bg: #0A0A0A;
+            --panel: #0F0F0F;
+            --panel2: #141414;
+            --sink: #1A1A1A;
+            --line: #2A2A2A;
+            --line2: #3A3A3A;
+            --fg: #EAEAEA;
+            --fg-dim: #9A9A9A;
+            --fg-mute: #6A6A6A;
+            --hazard: #E0452E;
+            --hazard-bright: #FF5A3C;
+            --hazard-dim: rgba(224, 69, 46, 0.12);
+            --terminal: #4AF626;
+            --mono: 'JetBrains Mono', 'SF Mono', 'Consolas', 'Courier New', monospace;
+            --sans: 'PingFang SC', 'Microsoft YaHei', 'Source Han Sans SC', 'Noto Sans SC', system-ui, sans-serif;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -12,208 +30,268 @@
         }
 
         body {
-            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: #fff;
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--fg);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 24px;
+            position: relative;
+        }
+
+        /* CRT 扫描线质感层 */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            z-index: 60;
+            pointer-events: none;
+            opacity: 0.5;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, 0.22) 3px, transparent 4px);
         }
 
         .container {
-            max-width: 600px;
+            max-width: 620px;
             width: 100%;
+            position: relative;
+            z-index: 1;
         }
 
+        /* 面板：直角 + 发丝线边框 + 四角角标 */
         .card {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 32px;
-            text-align: center;
+            position: relative;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            padding: 36px;
+        }
+
+        .card::before,
+        .card::after {
+            content: '';
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .card::before {
+            top: -1px;
+            left: -1px;
+            border-top: 2px solid var(--hazard);
+            border-left: 2px solid var(--hazard);
+        }
+
+        .card::after {
+            bottom: -1px;
+            right: -1px;
+            border-bottom: 2px solid var(--hazard);
+            border-right: 2px solid var(--hazard);
+        }
+
+        .eyebrow {
+            font-family: var(--mono);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: var(--hazard);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .eyebrow .tick {
+            width: 6px;
+            height: 6px;
+            background: var(--terminal);
         }
 
         h1 {
-            font-size: 28px;
-            margin-bottom: 8px;
-            color: #00d9a0;
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -0.01em;
+            color: var(--fg);
+            margin-bottom: 6px;
         }
 
         .subtitle {
-            color: #a0a0a0;
+            color: var(--fg-dim);
+            font-size: 14px;
             margin-bottom: 24px;
         }
 
+        .label {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--fg-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.18em;
+            margin-bottom: 8px;
+        }
+
         .token-box {
-            background: #0d0d1a;
-            border: 1px solid #333;
-            border-radius: 8px;
+            background: var(--sink);
+            border: 1px solid var(--line);
             padding: 16px;
-            margin: 20px 0;
+            margin: 8px 0 0;
             text-align: left;
-            font-family: 'Consolas', 'Monaco', monospace;
+            font-family: var(--mono);
             font-size: 12px;
-            color: #00d9a0;
+            line-height: 1.6;
+            color: var(--fg);
             word-break: break-all;
             max-height: 200px;
             overflow-y: auto;
         }
 
-        .label {
-            color: #888;
-            font-size: 12px;
-            text-align: left;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+        .token-box::-webkit-scrollbar {
+            width: 6px;
         }
 
+        .token-box::-webkit-scrollbar-thumb {
+            background: var(--line2);
+        }
+
+        .token-box.mini {
+            max-height: 64px;
+            font-size: 11px;
+            color: var(--fg-dim);
+            margin: 4px 0 14px;
+        }
+
+        .token-box.single-line {
+            max-height: none;
+            overflow: visible;
+            padding: 12px;
+        }
+
+        /* ===== 按钮 ===== */
         .actions {
             display: flex;
             gap: 12px;
-            justify-content: center;
             margin-top: 24px;
             flex-wrap: wrap;
         }
 
         .btn {
-            padding: 12px 24px;
+            padding: 12px 22px;
+            font-family: var(--sans);
             font-size: 14px;
             font-weight: 600;
-            border: none;
-            border-radius: 8px;
+            border: 1px solid;
+            background: none;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            transition: all 0.2s;
+            transition: all 0.15s;
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #00d9a0, #00b894);
-            color: #000;
+            background: var(--hazard);
+            border-color: var(--hazard);
+            color: #fff;
         }
 
         .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0, 217, 160, 0.3);
+            background: var(--hazard-bright);
+            border-color: var(--hazard-bright);
         }
 
         .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: none;
+            border-color: var(--line);
+            color: var(--fg-dim);
         }
 
         .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.15);
+            border-color: var(--fg-dim);
+            color: var(--fg);
         }
 
-        .info {
-            background: rgba(0, 217, 160, 0.1);
-            border: 1px solid rgba(0, 217, 160, 0.3);
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-top: 24px;
-            font-size: 13px;
-            color: #a0a0a0;
-            text-align: left;
-        }
-
-        .info strong {
-            color: #00d9a0;
-        }
-
-        .loading {
-            padding: 60px;
-        }
-
-        .loading h1 {
-            color: #e94560;
-        }
-
-        .hidden {
-            display: none !important;
-        }
-
+        /* ===== 加载 / spinner ===== */
         .spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid rgba(0, 217, 160, 0.1);
-            border-top-color: #00d9a0;
+            width: 36px;
+            height: 36px;
+            border: 3px solid var(--line);
+            border-top-color: var(--hazard);
             border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
+            animation: spin 0.9s linear infinite;
+            margin: 24px auto 4px;
         }
 
         @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
+            to { transform: rotate(360deg); }
         }
 
+        /* ===== 注册时间 / 有效期信息条 ===== */
+        .expire-info {
+            background: var(--panel2);
+            border: 1px solid var(--line);
+            padding: 12px 14px;
+            margin-bottom: 22px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: var(--fg-dim);
+        }
+
+        .expire-icon {
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--hazard);
+            letter-spacing: 0.05em;
+            flex-shrink: 0;
+        }
+
+        .expire-info strong {
+            color: var(--fg);
+            font-weight: 700;
+        }
+
+        /* ===== 凭证详情项 ===== */
         .details-section {
-            margin-top: 20px;
+            margin-top: 22px;
             text-align: left;
         }
 
         details summary {
             cursor: pointer;
-            color: #888;
-            font-size: 13px;
-            margin-bottom: 10px;
+            font-family: var(--mono);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--fg-dim);
+            padding: 10px 0;
+            border-top: 1px solid var(--line);
+            list-style: none;
+            user-select: none;
         }
 
-        .token-box.mini {
-            max-height: 60px;
-            font-size: 11px;
-            margin: 5px 0 15px 0;
+        details summary::-webkit-details-marker {
+            display: none;
         }
 
-        .copy-feedback {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #00d9a0;
-            color: #000;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            opacity: 0;
-            transition: opacity 0.3s;
+        details summary::before {
+            content: '+ ';
+            color: var(--hazard);
         }
 
-        .copy-feedback.show {
-            opacity: 1;
+        details[open] summary::before {
+            content: '− ';
         }
 
-        /* 信息提示样式 */
-        .expire-info {
-            background: rgba(0, 217, 160, 0.1);
-            border: 1px solid rgba(0, 217, 160, 0.3);
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
+        details summary:hover {
+            color: var(--fg);
         }
 
-        .expire-icon {
-            font-size: 18px;
-        }
-
-        .expire-info strong {
-            color: #00d9a0;
-        }
-
-        /* 凭证项样式 */
         .credential-item {
-            margin-bottom: 16px;
+            margin-bottom: 14px;
             text-align: left;
         }
 
@@ -221,7 +299,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
 
         .credential-header .label {
@@ -229,29 +307,53 @@
         }
 
         .copy-btn {
-            background: rgba(0, 217, 160, 0.2);
-            border: 1px solid rgba(0, 217, 160, 0.3);
-            color: #00d9a0;
+            background: none;
+            border: 1px solid var(--line);
+            color: var(--fg-dim);
             padding: 4px 12px;
-            border-radius: 4px;
-            font-size: 12px;
+            font-family: var(--mono);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.15s;
         }
 
         .copy-btn:hover {
-            background: rgba(0, 217, 160, 0.3);
+            border-color: var(--hazard);
+            color: var(--hazard-bright);
         }
 
         .copy-btn.copied {
-            background: #00d9a0;
-            color: #000;
+            background: var(--hazard);
+            border-color: var(--hazard);
+            color: #fff;
         }
 
-        .token-box.single-line {
-            max-height: none;
-            overflow: visible;
-            padding: 12px;
+        /* ===== 复制反馈 toast ===== */
+        .copy-feedback {
+            position: fixed;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--hazard);
+            color: #fff;
+            padding: 12px 22px;
+            font-family: var(--sans);
+            font-size: 14px;
+            font-weight: 600;
+            opacity: 0;
+            transition: opacity 0.25s;
+            z-index: 80;
+            pointer-events: none;
+        }
+
+        .copy-feedback.show {
+            opacity: 1;
+        }
+
+        .hidden {
+            display: none !important;
         }
     </style>
 </head>
@@ -260,42 +362,46 @@
     <div class="container">
         <!-- 加载状态 -->
         <div class="card loading" id="loadingState">
-            <h1>⏳ 等待登录...</h1>
+            <div class="eyebrow">// AWAITING AUTH</div>
+            <h1>等待登录</h1>
             <p class="subtitle">请在 Rust+ 页面完成 Steam 登录</p>
+            <div class="spinner"></div>
         </div>
 
         <!-- 注册中状态 -->
         <div class="card hidden" id="registeringState">
-            <h1>⏳ 正在注册 FCM...</h1>
+            <div class="eyebrow">// FCM REGISTRATION</div>
+            <h1>正在注册 FCM</h1>
             <p class="subtitle">正在与后端通信获取推送凭证</p>
             <div class="spinner"></div>
         </div>
 
         <!-- 成功状态 -->
         <div class="card hidden" id="successState">
-            <h1>✅ 凭证获取成功!</h1>
+            <div class="eyebrow"><span class="tick"></span>// CREDENTIALS READY</div>
+            <h1>凭证获取成功</h1>
             <p class="subtitle">复制以下命令到程序中使用</p>
 
-            <!-- 注册时间提示 -->
+            <!-- 注册 / 有效期信息 -->
             <div class="expire-info">
-                <span class="expire-icon">📅</span>
+                <span class="expire-icon">[i]</span>
                 <span>注册时间: <strong id="registerDate">-</strong></span>
             </div>
 
             <!-- 程序需要的命令格式 -->
-            <div class="label">凭证命令 (复制到程序)</div>
-            <div class="token-box" id="credentialsCommand" style="font-size: 11px;"></div>
+            <div class="label">凭证命令 // COMMAND</div>
+            <div class="token-box" id="credentialsCommand"></div>
 
             <div class="actions">
-                <button class="btn btn-primary" id="copyCommandBtn">📋 复制命令</button>
-                <button class="btn btn-secondary" id="downloadBtn">💾 下载配置</button>
+                <button class="btn btn-primary" id="copyCommandBtn">复制命令</button>
+                <button class="btn btn-secondary" id="downloadBtn">下载配置</button>
             </div>
 
             <div class="details-section">
                 <details>
-                    <summary>查看详细字段</summary>
+                    <summary>查看详细字段 // RAW FIELDS</summary>
 
-                    <div class="credential-item">
+                    <div class="credential-item" style="margin-top: 14px;">
                         <div class="credential-header">
                             <span class="label">GCM Android ID</span>
                             <button class="copy-btn" data-target="gcmAndroidId">复制</button>
@@ -319,7 +425,7 @@
                         <div class="token-box mini" id="steamId"></div>
                     </div>
 
-                    <div class="label" style="margin-top: 15px;">完整 JSON (调试用)</div>
+                    <div class="label" style="margin-top: 8px;">完整 JSON // DEBUG</div>
                     <div class="token-box mini" id="fullCredentialsDisplay"></div>
                 </details>
             </div>
@@ -327,10 +433,11 @@
 
         <!-- 错误状态 -->
         <div class="card hidden" id="errorState">
-            <h1>❌ 获取失败</h1>
+            <div class="eyebrow">// ERROR</div>
+            <h1>获取失败</h1>
             <p class="subtitle" id="errorMessage">未能捕获认证数据</p>
             <div class="actions">
-                <button class="btn btn-secondary" id="retryBtn">🔄 重试</button>
+                <button class="btn btn-secondary" id="retryBtn">重试</button>
             </div>
         </div>
     </div>

@@ -212,15 +212,15 @@ function showSuccess(fcmCreds, expoToken) {
         const expireIcon = document.querySelector('.expire-icon');
 
         if (daysLeft > 0) {
-            expireIcon.textContent = '⏰';
+            expireIcon.textContent = '[+]';
             expireInfo.querySelector('span:nth-child(2)').innerHTML =
                 `有效期至: <strong id="registerDate">${expireDateStr}</strong> (剩余 ${daysLeft} 天)`;
         } else {
-            expireIcon.textContent = '⚠️';
-            expireInfo.style.background = 'rgba(233, 69, 96, 0.1)';
-            expireInfo.style.borderColor = 'rgba(233, 69, 96, 0.3)';
+            expireIcon.textContent = '[!]';
+            expireInfo.style.background = 'rgba(224, 69, 46, 0.12)';
+            expireInfo.style.borderColor = 'rgba(224, 69, 46, 0.4)';
             expireInfo.querySelector('span:nth-child(2)').innerHTML =
-                `<strong style="color: #e94560;">已过期!</strong> (${expireDateStr})`;
+                `<strong style="color: #FF5A3C;">已过期!</strong> (${expireDateStr})`;
         }
     } else {
         // 没有过期时间，显示注册时间
