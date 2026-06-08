@@ -4,6 +4,7 @@
  */
 
 import WebSocket from 'ws';
+import { SocksProxyAgent } from 'socks-proxy-agent';
 import protobuf from 'protobufjs';
 import { EventEmitter } from 'events';
 import path from 'path';
@@ -60,13 +61,15 @@ class RustPlusClient extends EventEmitter {
    * @param {string} playerId - Steam ID
    * @param {number|string} playerToken - 玩家 Token（通常是负数）
    */
-  constructor(server, port, playerId, playerToken) {
+  constructor(server, port, playerId, playerToken, proxyUrl = null) {
     super();
 
     this.server = server;
     this.port = parseInt(port);
     this.playerId = playerId;
     this.playerToken = parseInt(playerToken);
+    // 可选：经此 SOCKS 代理出口连接（出口 IP 未被目标服封锁时用于绕过）
+    this.proxyUrl = proxyUrl;
 
     this.websocket = null;
     this.AppRequest = null;
@@ -110,7 +113,12 @@ class RustPlusClient extends EventEmitter {
       handshakeTimeout: 10000, // 10秒握手超时
     };
 
-    console.log(`🔌 直连服务器: ${address}`);
+    // 指定了代理则经 SOCKS 出口建连（绕过对本机 IP 的封锁）
+    if (this.proxyUrl) {
+      wsOptions.agent = new SocksProxyAgent(this.proxyUrl);
+    }
+
+    console.log(`🔌 ${this.proxyUrl ? '经代理' : '直连'}服务器: ${address}`);
 
     // 触发 connecting 事件
     this.emit('connecting');

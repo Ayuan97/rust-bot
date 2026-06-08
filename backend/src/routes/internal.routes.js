@@ -1,5 +1,6 @@
 import express from 'express';
 import distributedSessionService from '../services/distributed-session.service.js';
+import proxyService from '../services/proxy.service.js';
 import { verifyNodeToken, isAllowedInternalIp } from '../utils/node-auth.js';
 
 const router = express.Router();
@@ -75,6 +76,15 @@ router.post('/gateway/heartbeat', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// 子节点拉取代理配置(开关 + 启用的订阅);连接器据此生成 Mihomo 配置并决定是否走代理出口
+router.get('/proxy-config', async (req, res) => {
+  try {
+    res.json({ success: true, ...(await proxyService.getConnectorConfig()) });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

@@ -9,6 +9,7 @@ import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
 import db, { getConnection } from '../lib/db.js';
 import globalServiceManager from '../services/global-manager.service.js';
 import appConfigService from '../services/app-config.service.js';
+import proxyService from '../services/proxy.service.js';
 import paymentService from '../services/payment.service.js';
 import distributedSessionService from '../services/distributed-session.service.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -51,6 +52,63 @@ router.put('/config', async (req, res) => {
     res.json({ success: true, message: '配置已更新', data: updated });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message || '更新配置失败' });
+  }
+});
+
+/**
+ * 代理出口管理（机场订阅 + 总开关）。实际 Mihomo 引擎在子节点,这里只存+下发。
+ */
+router.get('/proxy', async (req, res) => {
+  try {
+    res.json({ success: true, data: await proxyService.getAdminView() });
+  } catch (error) {
+    console.error('获取代理配置失败:', error);
+    res.status(500).json({ success: false, error: '获取代理配置失败' });
+  }
+});
+
+router.put('/proxy', async (req, res) => {
+  try {
+    if (typeof req.body.enabled !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'enabled 必须是布尔值' });
+    }
+    await proxyService.setEnabled(req.body.enabled);
+    res.json({
+      success: true,
+      message: req.body.enabled ? '代理已开启' : '代理已关闭',
+      data: await proxyService.getAdminView()
+    });
+  } catch (error) {
+    console.error('更新代理开关失败:', error);
+    res.status(500).json({ success: false, error: '更新代理开关失败' });
+  }
+});
+
+router.post('/proxy/subscriptions', async (req, res) => {
+  try {
+    const name = String(req.body.name || '').trim();
+    const url = String(req.body.url || '').trim();
+    if (!name || !url) {
+      return res.status(400).json({ success: false, error: '请填写名称和订阅链接' });
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      return res.status(400).json({ success: false, error: '订阅链接必须是 http(s) 链接' });
+    }
+    const sub = await proxyService.addSubscription({ name, url });
+    res.json({ success: true, message: '订阅已添加', data: sub });
+  } catch (error) {
+    console.error('添加订阅失败:', error);
+    res.status(500).json({ success: false, error: '添加订阅失败' });
+  }
+});
+
+router.delete('/proxy/subscriptions/:id', async (req, res) => {
+  try {
+    await proxyService.deleteSubscription(req.params.id);
+    res.json({ success: true, message: '订阅已删除' });
+  } catch (error) {
+    console.error('删除订阅失败:', error);
+    res.status(500).json({ success: false, error: '删除订阅失败' });
   }
 });
 

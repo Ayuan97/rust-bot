@@ -3,6 +3,7 @@ import os from 'os';
 import jwt from 'jsonwebtoken';
 import '../utils/load-env.js';
 import UserRustPlusManager from '../services/user-rustplus-manager.js';
+import { subsKey, applyProxy } from './proxy-agent.js';
 
 const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://127.0.0.1:3000/api/internal';
 const NODE_TOKEN = process.env.NODE_TOKEN || '';
@@ -17,6 +18,9 @@ const POLL_ASSIGNMENT_INTERVAL_MS = Number(process.env.NODE_POLL_ASSIGNMENT_INTE
 const POLL_COMMAND_INTERVAL_MS = Number(process.env.NODE_POLL_COMMAND_INTERVAL_MS || 300);
 const CONTROL_PLANE_STALE_MS = Number(process.env.NODE_CONTROL_PLANE_STALE_MS || 45000);
 const CONTROL_PLANE_CHECK_INTERVAL_MS = Number(process.env.NODE_CONTROL_PLANE_CHECK_INTERVAL_MS || 2000);
+// 代理出口(本机 Mihomo 的 SOCKS) + 拉取代理配置的间隔
+const PROXY_SOCKS = process.env.PROXY_SOCKS || 'socks5://127.0.0.1:7899';
+const PROXY_POLL_INTERVAL_MS = Number(process.env.PROXY_POLL_INTERVAL_MS || 15000);
 
 if (!NODE_TOKEN) {
   // eslint-disable-next-line no-console
@@ -41,6 +45,8 @@ let heartbeatTimer = null;
 let assignmentTimer = null;
 let commandTimer = null;
 let controlPlaneTimer = null;
+let proxyTimer = null;
+let lastProxySubsKey = null;
 let isPollingCommands = false;
 let lastControlPlaneSuccessAt = Date.now();
 let staleDisconnectTriggered = false;
@@ -314,6 +320,29 @@ async function heartbeat() {
   }
 }
 
+// 从控制平面拉代理配置：运行时开关代理出口;订阅有变化则重生成 Mihomo 配置并热重载
+async function syncProxyConfig() {
+  if (stopped) return;
+  try {
+    const res = await apiGet('/proxy-config');
+    const enabled = !!res.enabled;
+    const subs = res.subscriptions || [];
+    rustManager.setProxy({ enabled, socks: PROXY_SOCKS });
+    const key = subsKey(subs);
+    if (enabled && subs.length > 0 && key !== lastProxySubsKey) {
+      await applyProxy(subs);
+      lastProxySubsKey = key;
+      // eslint-disable-next-line no-console
+      console.log(`[connector-node] proxy 已更新: ${subs.length} 个订阅, Mihomo 已重载`);
+    } else if (!enabled) {
+      lastProxySubsKey = null; // 关闭后重置,下次开启重新生成
+    }
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('[connector-node] sync proxy config failed:', error.message);
+  }
+}
+
 async function bootstrap() {
   // eslint-disable-next-line no-console
   console.log(`[connector-node] starting ${NODE_ID} -> ${CONTROL_API_URL}`);
@@ -344,6 +373,10 @@ async function bootstrap() {
       console.error('[connector-node] control plane health check failed:', error.message);
     });
   }, CONTROL_PLANE_CHECK_INTERVAL_MS);
+
+  proxyTimer = setInterval(() => {
+    syncProxyConfig();
+  }, PROXY_POLL_INTERVAL_MS);
 
   rustManager.on('server:connected', ({ serverId }) => {
     updateSessionState(serverId, 'CONNECTED');
@@ -377,6 +410,7 @@ async function bootstrap() {
   rustManager.on('camera:rays', (data) => forwardRustEvent('camera:rays', data));
 
   await heartbeat();
+  await syncProxyConfig();
   await syncAssignments();
 }
 
@@ -391,6 +425,7 @@ async function shutdown(signal) {
   if (assignmentTimer) clearInterval(assignmentTimer);
   if (commandTimer) clearInterval(commandTimer);
   if (controlPlaneTimer) clearInterval(controlPlaneTimer);
+  if (proxyTimer) clearInterval(proxyTimer);
 
   // 重启/优雅停机：仅断开本地 Rust+ 连接，会话标记为 CONNECTING（待复连），
   // 绝不 CLOSED——否则重启后 getAssignmentsForNode 不再返回它、无法自动复连。

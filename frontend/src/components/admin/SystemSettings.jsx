@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FaSlidersH, FaSync, FaSave, FaDoorOpen, FaUserShield, FaGift } from 'react-icons/fa';
+import { FaSlidersH, FaSync, FaSave, FaDoorOpen, FaUserShield, FaGift, FaNetworkWired, FaPlus, FaTrashAlt } from 'react-icons/fa';
 import api from '../../services/api';
 import { useToast } from '../Toast';
 
@@ -12,6 +12,9 @@ export default function SystemSettings() {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [proxy, setProxy] = useState(null);
+  const [subForm, setSubForm] = useState({ name: '', url: '' });
+  const [proxyBusy, setProxyBusy] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -25,7 +28,49 @@ export default function SystemSettings() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  const loadProxy = async () => {
+    try {
+      const res = await api.get('/admin/proxy');
+      if (res.data.success) setProxy(res.data.data);
+    } catch (err) {
+      // 静默：代理表可能尚未就绪
+    }
+  };
+
+  useEffect(() => { load(); loadProxy(); }, []);
+
+  const toggleProxy = async (enabled) => {
+    setProxyBusy(true);
+    try {
+      const res = await api.put('/admin/proxy', { enabled });
+      if (res.data.success) { setProxy(res.data.data); toast.success(res.data.message); }
+    } catch (err) {
+      toast.error(err.response?.data?.error || '操作失败');
+    } finally { setProxyBusy(false); }
+  };
+
+  const addSub = async () => {
+    const name = subForm.name.trim();
+    const url = subForm.url.trim();
+    if (!name || !url) { toast.error('请填写名称和订阅链接'); return; }
+    setProxyBusy(true);
+    try {
+      const res = await api.post('/admin/proxy/subscriptions', { name, url });
+      if (res.data.success) { setSubForm({ name: '', url: '' }); loadProxy(); toast.success('订阅已添加'); }
+    } catch (err) {
+      toast.error(err.response?.data?.error || '添加失败');
+    } finally { setProxyBusy(false); }
+  };
+
+  const delSub = async (id) => {
+    setProxyBusy(true);
+    try {
+      const res = await api.delete(`/admin/proxy/subscriptions/${id}`);
+      if (res.data.success) { loadProxy(); toast.success('已删除'); }
+    } catch (err) {
+      toast.error(err.response?.data?.error || '删除失败');
+    } finally { setProxyBusy(false); }
+  };
 
   const update = (patch) => setConfig((prev) => ({ ...prev, ...patch }));
 
@@ -143,6 +188,60 @@ export default function SystemSettings() {
           <FaSave className={saving ? 'animate-spin' : ''} /> 保存设置
         </button>
       </div>
+
+      {/* 代理出口（机场订阅） */}
+      {proxy && (
+        <div className="tac-panel p-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FaNetworkWired className="text-hazard text-sm" />
+              <h3 className="text-sm font-bold text-fg">代理出口</h3>
+            </div>
+            <Toggle checked={proxy.enabled} onChange={toggleProxy} />
+          </div>
+          <p className="text-[12px] text-fg-mute mt-1">
+            子节点出口 IP 被目标服(如某些 Rust 服的 DDoS 防护)封锁时,直连失败会自动经代理出口连接;直连正常的服不受影响。需先在子节点装好 Mihomo 引擎。
+          </p>
+
+          <div className="mt-4 space-y-2">
+            <div className="tac-label">机场订阅 // SUBSCRIPTIONS</div>
+            {proxy.subscriptions.length === 0 ? (
+              <p className="text-[12px] text-fg-mute">暂无订阅,添加机场订阅链接后,子节点自动拉取节点池。</p>
+            ) : proxy.subscriptions.map((s) => (
+              <div key={s.id} className="flex items-center gap-3 bg-ink-850 border border-ink-line px-3 py-2">
+                <span className="text-sm font-bold text-fg shrink-0">{s.name}</span>
+                <span className="text-[11px] text-fg-mute font-mono truncate flex-1">{s.url}</span>
+                <button
+                  onClick={() => delSub(s.id)}
+                  disabled={proxyBusy}
+                  className="p-1.5 border border-ink-line bg-ink-800 text-fg-dim hover:border-hazard hover:text-hazard transition-colors shrink-0"
+                  title="删除订阅"
+                >
+                  <FaTrashAlt className="text-xs" />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 flex flex-col sm:flex-row gap-2">
+            <input
+              value={subForm.name}
+              onChange={(e) => setSubForm({ ...subForm, name: e.target.value })}
+              placeholder="名称(如 airport1)"
+              className="tac-input !py-2 sm:!w-44"
+            />
+            <input
+              value={subForm.url}
+              onChange={(e) => setSubForm({ ...subForm, url: e.target.value })}
+              placeholder="订阅链接 https://..."
+              className="tac-input !py-2 flex-1 font-mono"
+            />
+            <button onClick={addSub} disabled={proxyBusy} className="tac-btn tac-btn-ghost !py-2 shrink-0">
+              <FaPlus className="text-[10px]" /> 添加
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

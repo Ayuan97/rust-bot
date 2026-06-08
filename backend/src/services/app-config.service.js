@@ -10,13 +10,15 @@ import db from '../lib/db.js';
 export const CONFIG_KEYS = {
   REGISTRATION_MODE: 'registration_mode', // 'open' 开放注册即用 | 'approval' 注册后需审核
   FREE_TRIAL_ENABLED: 'free_trial_enabled', // '0' | '1'
-  FREE_TRIAL_DAYS: 'free_trial_days' // 整数字符串
+  FREE_TRIAL_DAYS: 'free_trial_days', // 整数字符串
+  PROXY_ENABLED: 'proxy_enabled' // '0' | '1'：子节点出口被封时，是否启用"直连失败回退代理"
 };
 
 const DEFAULTS = {
   [CONFIG_KEYS.REGISTRATION_MODE]: 'open',
   [CONFIG_KEYS.FREE_TRIAL_ENABLED]: '0',
-  [CONFIG_KEYS.FREE_TRIAL_DAYS]: '30'
+  [CONFIG_KEYS.FREE_TRIAL_DAYS]: '30',
+  [CONFIG_KEYS.PROXY_ENABLED]: '0'
 };
 
 const REGISTRATION_MODES = new Set(['open', 'approval']);
@@ -96,6 +98,21 @@ class AppConfigService {
       freeTrialEnabled: this._raw(CONFIG_KEYS.FREE_TRIAL_ENABLED) === '1',
       freeTrialDays: this._normalizeDays(this._raw(CONFIG_KEYS.FREE_TRIAL_DAYS))
     };
+  }
+
+  /** 通用：按键读布尔('1' 为 true) */
+  getBool(key) {
+    return this._raw(key) === '1';
+  }
+
+  /** 通用：写入单个键并刷新缓存 */
+  async setValue(key, value) {
+    await db.query(
+      'INSERT INTO `app_config` (`configKey`, `configValue`, `updatedAt`) VALUES (?, ?, NOW(3)) ' +
+      'ON DUPLICATE KEY UPDATE `configValue` = VALUES(`configValue`), `updatedAt` = NOW(3)',
+      [key, String(value)]
+    );
+    await this.reload();
   }
 
   /**
