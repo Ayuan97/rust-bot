@@ -42,6 +42,10 @@ const MARKER_CONFIG = {
 
 const TONE_HEX = { hazard: '#E0452E', terminal: '#4AF626', fg: '#EAEAEA', mute: '#6A6A6A' };
 
+const ZOOM_MIN = 0.3;
+const ZOOM_MAX = 5;
+const clampScale = (s) => Math.min(Math.max(ZOOM_MIN, s), ZOOM_MAX);
+
 // 演示数据
 const DEMO_MARKERS = [
   { id: 'd1', type: AppMarkerType.CH47, x: 1500, y: 2000, name: '支奴干' },
@@ -72,13 +76,14 @@ const DEMO_ACTIVITY = [
   { x: 2260, y: 2740, w: 1 }, { x: 1880, y: 2520, w: 2 }
 ];
 const DEMO_DEATHS = [
-  { x: 2500, y: 3000, w: 3 }, { x: 2560, y: 2950, w: 2 }, { x: 2470, y: 3060, w: 2 },
-  { x: 3000, y: 2000, w: 2 }, { x: 1200, y: 1820, w: 1 }, { x: 2520, y: 3020, w: 1 }
+  { x: 2500, y: 3000, w: 3, name: '演示队员A', diedAt: '2026-06-07T14:20:00' },
+  { x: 2560, y: 2950, w: 2, name: '演示队员A', diedAt: '2026-06-07T15:02:00' },
+  { x: 2470, y: 3060, w: 2, name: '演示指挥官', diedAt: '2026-06-07T18:41:00' },
+  { x: 3000, y: 2000, w: 2, name: '演示队员B', diedAt: '2026-06-08T09:13:00' },
+  { x: 1200, y: 1820, w: 1, name: '演示队员A', diedAt: '2026-06-08T10:55:00' }
 ];
 
 const LAYER_LABELS = {
-  activity: '活动热力',
-  deaths: '死亡热力',
   players: '玩家',
   events: '事件',
   vehicles: '载具',
@@ -108,22 +113,22 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
 
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  // 图层可见性（热力图默认关闭）
+  // 视图模式：tactical=实时战术地图；heatmap=热力分析（与实时标记彻底分开）
+  const [viewMode, setViewMode] = useState('tactical');
+  const [heatTab, setHeatTab] = useState('activity'); // 热力页一次看一张：'activity' | 'deaths'
+
+  // 图层可见性（仅战术地图模式生效；热力已独立成视图，不再是图层）
   const [layerVisibility, setLayerVisibility] = useState({
-    activity: false,
-    deaths: false,
     players: true,
     events: true,
     vehicles: true,
     vending: false,
     monuments: true
   });
-
   const [showLayerPanel, setShowLayerPanel] = useState(false);
 
-  // 热力图数据（真实数据，按需 fetch）
+  // 热力图数据（真实数据，仅热力视图打开时按 tab 拉取）
   const [heatData, setHeatData] = useState({ activityPoints: [], deathPoints: [] });
   const [heatFilter, setHeatFilter] = useState(''); // '' = 全队，否则为某队友 steamId
   const [deathMode, setDeathMode] = useState('heat'); // 'heat' | 'points'
@@ -131,8 +136,11 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
   const [heatLoading, setHeatLoading] = useState(false);
 
   const confirm = useConfirm();
-
   const isDemo = !server || !server.connected;
+
+  // transform 镜像 ref：供原生事件监听器（wheel/touch）读取最新值，避免闭包陈旧
+  const transformRef = useRef(transform);
+  useEffect(() => { transformRef.current = transform; }, [transform]);
 
   // ============================================================
   // 数据获取
@@ -145,7 +153,6 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
       });
       return;
     }
-
     try {
       const res = await getMapInfo(server.id);
       if (res?.data?.success) {
@@ -188,9 +195,9 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
   }, [server?.id, isDemo, fetchMapData]);
 
   // ============================================================
-  // 热力图数据获取（真实数据，仅图层打开时请求）
+  // 热力图数据获取（真实数据，仅热力视图打开时按 tab 请求）
   // ============================================================
-  const fetchHeatmap = useCallback(async (types = ['activity', 'deaths']) => {
+  const fetchHeatmap = useCallback(async (types) => {
     if (isDemo || !server?.id) return;
     const sid = heatFilter ? `?steamId=${encodeURIComponent(heatFilter)}` : '';
     setHeatLoading(true);
@@ -216,7 +223,7 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
     }
   }, [server?.id, isDemo, heatFilter]);
 
-  // 拉取扩展队友名单（用于筛选下拉），首次开启任一热力图层时按需加载
+  // 拉取扩展队友名单（用于筛选下拉），首次进入热力视图时按需加载
   const loadTeammates = useCallback(async () => {
     if (isDemo || !server?.id) return;
     try {
@@ -225,20 +232,15 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
     } catch { /* ignore */ }
   }, [server?.id, isDemo]);
 
-  const heatActive = layerVisibility.activity || layerVisibility.deaths;
-
-  // 图层打开 / 筛选变化时，按当前可见图层重新拉取；同时按需加载队友名单
+  // 进入热力视图 / 切 tab / 切筛选时，只拉当前 tab 的数据；首次按需加载队友名单
   useEffect(() => {
-    if (isDemo || !heatActive) return;
+    if (isDemo || viewMode !== 'heatmap') return;
     if (teammates.length === 0) loadTeammates();
-    const types = [];
-    if (layerVisibility.activity) types.push('activity');
-    if (layerVisibility.deaths) types.push('deaths');
-    if (types.length) fetchHeatmap(types);
+    fetchHeatmap([heatTab]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDemo, layerVisibility.activity, layerVisibility.deaths, heatFilter]);
+  }, [isDemo, viewMode, heatTab, heatFilter]);
 
-  // 重置热力：二次确认 → 清空 → 重新拉取
+  // 重置热力：二次确认 → 清空 → 重新拉取当前 tab
   const handleResetHeatmap = useCallback(async () => {
     if (isDemo || !server?.id) return;
     const ok = await confirm({
@@ -252,50 +254,129 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
     try {
       await api.post(`/servers/${server.id}/heatmap/reset`);
       setHeatData({ activityPoints: [], deathPoints: [] });
-      if (heatActive) {
-        const types = [];
-        if (layerVisibility.activity) types.push('activity');
-        if (layerVisibility.deaths) types.push('deaths');
-        if (types.length) fetchHeatmap(types);
-      }
+      fetchHeatmap([heatTab]);
     } catch { /* ignore */ }
-  }, [server?.id, isDemo, confirm, heatActive, layerVisibility.activity, layerVisibility.deaths, fetchHeatmap]);
+  }, [server?.id, isDemo, confirm, heatTab, fetchHeatmap]);
 
   // ============================================================
-  // 地图交互
+  // 地图交互：光标锚点缩放 + 跟手拖拽 + 触屏手势
   // ============================================================
+
+  // 把 scale 变到 resolveScale(oldScale)，并保持 (clientX,clientY) 处的内容点不动（光标锚点）
+  const applyZoom = useCallback((resolveScale, clientX, clientY) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const px = clientX - rect.left - rect.width / 2;  // 相对视口中心（origin-center）
+    const py = clientY - rect.top - rect.height / 2;
+    setTransform(t => {
+      const newScale = clampScale(resolveScale(t.scale));
+      const k = newScale / t.scale;
+      return { scale: newScale, x: px - (px - t.x) * k, y: py - (py - t.y) * k };
+    });
+  }, []);
+
+  // 滚轮缩放：以光标为锚点、按比例缩放（比线性更顺手）
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const handleWheel = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const scaleSensitivity = 0.001;
-      setTransform(t => {
-        const newScale = Math.min(Math.max(0.3, t.scale - e.deltaY * scaleSensitivity), 5);
-        return { ...t, scale: newScale };
-      });
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      applyZoom(s => s * factor, e.clientX, e.clientY);
     };
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
-  }, []);
+  }, [applyZoom]);
 
+  // 按钮缩放：以视口中心为锚点
+  const zoomByButton = useCallback((delta) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    applyZoom(s => s + delta, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }, [applyZoom]);
+
+  // 鼠标拖拽（跟手：拖拽期间变换容器关闭过渡）
+  const dragRef = useRef({ active: false, startX: 0, startY: 0 });
   const handleMouseDown = (e) => {
-    if (e.button === 0) {
-      setIsDragging(true);
-      setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
-    }
+    if (e.button !== 0) return;
+    dragRef.current = { active: true, startX: e.clientX - transform.x, startY: e.clientY - transform.y };
+    setIsDragging(true);
   };
   const handleMouseMove = (e) => {
-    if (isDragging) {
-      setTransform(p => ({ ...p, x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }));
-    }
+    if (!dragRef.current.active) return;
+    setTransform(p => ({ ...p, x: e.clientX - dragRef.current.startX, y: e.clientY - dragRef.current.startY }));
   };
-  const handleMouseUp = () => setIsDragging(false);
+  const handleMouseUp = () => {
+    dragRef.current.active = false;
+    setIsDragging(false);
+  };
 
-  // 聚焦到目标
+  // 触屏：单指平移 + 双指捏合缩放（以双指中点为锚点）。用原生监听 passive:false 才能 preventDefault
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const ts = { mode: null, startDist: 0, startScale: 1, dragX: 0, dragY: 0 };
+
+    const dist = (t0, t1) => Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY) || 1;
+
+    const onStart = (e) => {
+      if (e.touches.length === 1) {
+        ts.mode = 'pan';
+        ts.dragX = e.touches[0].clientX - transformRef.current.x;
+        ts.dragY = e.touches[0].clientY - transformRef.current.y;
+        setIsDragging(true);
+      } else if (e.touches.length === 2) {
+        ts.mode = 'pinch';
+        ts.startDist = dist(e.touches[0], e.touches[1]);
+        ts.startScale = transformRef.current.scale;
+        setIsDragging(true);
+      }
+    };
+    const onMove = (e) => {
+      if (ts.mode === 'pan' && e.touches.length === 1) {
+        e.preventDefault();
+        const t = e.touches[0];
+        setTransform(p => ({ ...p, x: t.clientX - ts.dragX, y: t.clientY - ts.dragY }));
+      } else if (ts.mode === 'pinch' && e.touches.length === 2) {
+        e.preventDefault();
+        const d = dist(e.touches[0], e.touches[1]);
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        const target = ts.startScale * (d / ts.startDist);
+        applyZoom(() => target, midX, midY);
+      }
+    };
+    const onEnd = (e) => {
+      if (e.touches.length === 0) {
+        ts.mode = null;
+        setIsDragging(false);
+      } else if (e.touches.length === 1) {
+        // 捏合松开一指 → 转平移，重置基准
+        ts.mode = 'pan';
+        ts.dragX = e.touches[0].clientX - transformRef.current.x;
+        ts.dragY = e.touches[0].clientY - transformRef.current.y;
+      }
+    };
+
+    container.addEventListener('touchstart', onStart, { passive: false });
+    container.addEventListener('touchmove', onMove, { passive: false });
+    container.addEventListener('touchend', onEnd);
+    container.addEventListener('touchcancel', onEnd);
+    return () => {
+      container.removeEventListener('touchstart', onStart);
+      container.removeEventListener('touchmove', onMove);
+      container.removeEventListener('touchend', onEnd);
+      container.removeEventListener('touchcancel', onEnd);
+    };
+  }, [applyZoom]);
+
+  // 聚焦到目标（定位队友：切回战术地图并居中放大）
   useEffect(() => {
     if (focusTarget && containerRef.current) {
+      setViewMode('tactical');
       const rect = containerRef.current.getBoundingClientRect();
       const { mapSize, imageWidth, imageHeight, oceanMargin } = mapInfo;
       const scale = (imageWidth - 2 * oceanMargin) / mapSize;
@@ -334,6 +415,7 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
   const teamMembers = isDemo ? DEMO_TEAM : (teamData?.members || []);
   const activityPoints = isDemo ? DEMO_ACTIVITY : heatData.activityPoints;
   const deathPoints = isDemo ? DEMO_DEATHS : heatData.deathPoints;
+  const isHeatmap = viewMode === 'heatmap';
 
   const mapImageUrl = server?.id
     ? `${import.meta.env.VITE_API_URL || '/api'}/servers/${server.id}/map-image?token=${localStorage.getItem('token')}`
@@ -356,91 +438,94 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
           </p>
         </div>
 
-        {/* 控制按钮 */}
-        <div className="flex items-center gap-2">
+        {/* 控制区 */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* 视图切换：战术地图 / 热力分析 */}
           <div className="flex border border-ink-line divide-x divide-ink-line">
-            <CtrlBtn onClick={() => setTransform(p => ({ ...p, scale: Math.min(p.scale + 0.3, 5) }))}><FaPlus size={10} /></CtrlBtn>
-            <CtrlBtn onClick={() => setTransform(p => ({ ...p, scale: Math.max(p.scale - 0.3, 0.3) }))}><FaMinus size={10} /></CtrlBtn>
+            <ViewBtn active={!isHeatmap} onClick={() => setViewMode('tactical')} icon={FaMapMarkedAlt} label="战术地图" />
+            <ViewBtn active={isHeatmap} onClick={() => setViewMode('heatmap')} icon={FaFire} label="热力分析" />
+          </div>
+          {/* 缩放控制 */}
+          <div className="flex border border-ink-line divide-x divide-ink-line">
+            <CtrlBtn onClick={() => zoomByButton(0.3)}><FaPlus size={10} /></CtrlBtn>
+            <CtrlBtn onClick={() => zoomByButton(-0.3)}><FaMinus size={10} /></CtrlBtn>
             <CtrlBtn onClick={() => setTransform({ scale: 1, x: 0, y: 0 })}><FaExpand size={10} /></CtrlBtn>
           </div>
           <CtrlBtn onClick={fetchMapData} bordered><FaSync size={10} className={mapInfo.loading ? 'animate-spin' : ''} /></CtrlBtn>
-          <div className="relative">
-            <CtrlBtn onClick={() => setShowLayerPanel(!showLayerPanel)} active={showLayerPanel} bordered><FaLayerGroup size={10} /></CtrlBtn>
-            {showLayerPanel && (
-              <div className="absolute right-0 top-full mt-2 tac-panel p-3 z-50 min-w-[220px]">
-                <div className="tac-label mb-2">图层控制 // LAYERS</div>
-                {/* 热力图层（醒目，置顶） */}
-                {['activity', 'deaths'].map((layer) => (
-                  <LayerToggle key={layer} layer={layer} visible={layerVisibility[layer]}
-                    onToggle={() => setLayerVisibility(prev => ({ ...prev, [layer]: !prev[layer] }))}
-                    icon={<FaFire className={layer === 'deaths' ? 'text-hazard' : 'text-terminal'} size={10} />} />
-                ))}
-
-                {/* 热力专属控件：队友筛选 + 死亡双视图 + 重置（仅非演示且有热力图层打开时） */}
-                {!isDemo && heatActive && (
-                  <div className="mt-2 pl-2 border-l border-ink-line space-y-2">
-                    {/* 队友筛选 */}
-                    <div>
-                      <div className="tac-label !text-[9px] mb-1 flex items-center gap-1.5">
-                        <FaUsers className="text-fg-mute" size={9} /> 筛选范围
-                      </div>
-                      <select
-                        value={heatFilter}
-                        onChange={(e) => setHeatFilter(e.target.value)}
-                        className="w-full bg-ink-900 border border-ink-line text-xs text-fg px-2 py-1.5 focus:border-hazard/50 focus:outline-none"
-                      >
-                        <option value="">全队</option>
-                        {teammates.map((t) => (
-                          <option key={t.steamId} value={t.steamId}>{t.name || t.steamId}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* 死亡双视图子开关：仅 deaths 图层打开时 */}
-                    {layerVisibility.deaths && (
-                      <div>
-                        <div className="tac-label !text-[9px] mb-1 flex items-center gap-1.5">
-                          <FaSkull className="text-hazard" size={9} /> 死亡视图
-                        </div>
-                        <div className="flex border border-ink-line divide-x divide-ink-line">
-                          {[
-                            { mode: 'heat', label: '热力', icon: FaFire },
-                            { mode: 'points', label: '点位', icon: FaTh }
-                          ].map(({ mode, label, icon: Icon }) => (
-                            <button key={mode} onClick={() => setDeathMode(mode)}
-                              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-bold transition-colors ${deathMode === mode ? 'bg-hazard-dim text-hazard' : 'text-fg-mute hover:text-fg hover:bg-ink-800'}`}>
-                              <Icon size={9} /> {label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 重置按钮 */}
-                    <button onClick={handleResetHeatmap}
-                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-bold border border-hazard/40 text-hazard hover:bg-hazard-dim transition-colors">
-                      <FaTrashAlt size={9} /> 重置热力数据
-                    </button>
-                  </div>
-                )}
-
-                <div className="h-px bg-ink-line my-2" />
-                {['players', 'events', 'vehicles', 'vending', 'monuments'].map((layer) => (
-                  <LayerToggle key={layer} layer={layer} visible={layerVisibility[layer]}
-                    onToggle={() => setLayerVisibility(prev => ({ ...prev, [layer]: !prev[layer] }))} />
-                ))}
-              </div>
-            )}
-          </div>
+          {/* 图层按钮：仅战术地图模式 */}
+          {!isHeatmap && (
+            <div className="relative">
+              <CtrlBtn onClick={() => setShowLayerPanel(!showLayerPanel)} active={showLayerPanel} bordered><FaLayerGroup size={10} /></CtrlBtn>
+              {showLayerPanel && (
+                <div className="absolute right-0 top-full mt-2 tac-panel p-3 z-50 min-w-[180px]">
+                  <div className="tac-label mb-2">图层控制 // LAYERS</div>
+                  {['players', 'events', 'vehicles', 'vending', 'monuments'].map((layer) => (
+                    <LayerToggle key={layer} layer={layer} visible={layerVisibility[layer]}
+                      onToggle={() => setLayerVisibility(prev => ({ ...prev, [layer]: !prev[layer] }))} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* 热力分析工具条：仅热力视图。活动/死亡一次看一张，与实时标记彻底分开 */}
+      {isHeatmap && (
+        <div className="tac-panel px-3 py-2.5 flex flex-wrap items-center gap-3">
+          <div className="flex border border-ink-line divide-x divide-ink-line">
+            <HeatTabBtn active={heatTab === 'activity'} onClick={() => setHeatTab('activity')} tone="terminal" label="活动热力" />
+            <HeatTabBtn active={heatTab === 'deaths'} onClick={() => setHeatTab('deaths')} tone="hazard" label="死亡热力" />
+          </div>
+
+          {!isDemo && (
+            <div className="flex items-center gap-2">
+              <span className="tac-label !text-[9px] flex items-center gap-1.5"><FaUsers className="text-fg-mute" size={10} /> 范围</span>
+              <select
+                value={heatFilter}
+                onChange={(e) => setHeatFilter(e.target.value)}
+                className="bg-ink-900 border border-ink-line text-xs text-fg px-2 py-1.5 focus:border-hazard/50 focus:outline-none min-w-[120px]"
+              >
+                <option value="">全队</option>
+                {teammates.map((t) => (
+                  <option key={t.steamId} value={t.steamId}>{t.name || t.steamId}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* 死亡视图：热力 / 点位（仅死亡 tab） */}
+          {heatTab === 'deaths' && (
+            <div className="flex items-center gap-2">
+              <span className="tac-label !text-[9px] flex items-center gap-1.5"><FaSkull className="text-hazard" size={10} /> 视图</span>
+              <div className="flex border border-ink-line divide-x divide-ink-line">
+                {[{ mode: 'heat', label: '热力', icon: FaFire }, { mode: 'points', label: '点位', icon: FaTh }].map(({ mode, label, icon: Icon }) => (
+                  <button key={mode} onClick={() => setDeathMode(mode)}
+                    className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-bold transition-colors ${deathMode === mode ? 'bg-hazard-dim text-hazard' : 'text-fg-mute hover:text-fg hover:bg-ink-800'}`}>
+                    <Icon size={9} /> {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {heatLoading && <span className="font-mono text-[10px] text-fg-mute animate-pulse">加载中…</span>}
+
+          {!isDemo && (
+            <button onClick={handleResetHeatmap}
+              className="ml-auto flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-bold border border-hazard/40 text-hazard hover:bg-hazard-dim transition-colors">
+              <FaTrashAlt size={9} /> 重置热力
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 演示模式提示 */}
       {isDemo && (
         <div className="tac-panel p-4 flex items-center gap-3">
           <span className="font-mono text-hazard text-xs shrink-0">[DEMO]</span>
           <div className="text-sm text-fg-dim">
-            <span className="text-fg font-bold">演示模式</span> — 连接服务器后同步实时地图、队友坐标。热力图基于队友历史足迹与死亡事件生成（需后端采样）。
+            <span className="text-fg font-bold">演示模式</span> — 连接服务器后同步实时地图、队友坐标。热力分析基于队友历史足迹与死亡事件生成（需后端采样）。
           </div>
         </div>
       )}
@@ -448,16 +533,21 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
       {/* 地图容器 */}
       <div
         ref={containerRef}
-        className="flex-1 relative bg-ink-900 border border-ink-line overflow-hidden cursor-crosshair"
+        className="flex-1 relative bg-ink-900 border border-ink-line overflow-hidden select-none"
+        style={{ cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        {/* 变换容器 */}
+        {/* 变换容器：拖拽/捏合时关闭过渡 → 跟手；缩放按钮/聚焦时保留过渡 → 平滑 */}
         <div
-          className="absolute inset-0 transition-transform duration-75 ease-out origin-center flex items-center justify-center"
-          style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }}
+          className="absolute inset-0 origin-center flex items-center justify-center"
+          style={{
+            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+            transition: isDragging ? 'none' : 'transform 0.12s ease-out',
+            willChange: 'transform'
+          }}
         >
           <div className="relative" style={{ aspectRatio: '1 / 1', height: '100%', maxWidth: '100%' }}>
             {/* 地图背景 */}
@@ -475,94 +565,112 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
               }} />
             )}
 
-            {/* 热力图层：活动（terminal）纯热力 */}
-            <HeatLayer points={activityPoints} getPos={getPos} hex={TONE_HEX.terminal} visible={layerVisibility.activity} />
-
-            {/* 死亡热力：heat 模式 = 径向热力；points 模式 = 逐点小叉 */}
-            <HeatLayer points={deathPoints} getPos={getPos} hex={TONE_HEX.hazard} visible={layerVisibility.deaths && deathMode === 'heat'} />
-            {layerVisibility.deaths && deathMode === 'points' && deathPoints.map((p, i) => (
-              <div key={`death-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-[18] pointer-events-auto group" style={getPos(p.x, p.y)}>
-                <FaTimes className="text-hazard text-[10px] drop-shadow-[0_0_2px_rgba(0,0,0,0.9)] group-hover:scale-150 transition-transform" />
-                <div className="absolute top-3.5 left-1/2 -translate-x-1/2 bg-ink-900/95 border border-ink-line px-2 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50">
-                  <span className="text-[10px] font-bold text-fg">{p.name || '未知'}</span>
-                  <span className="font-mono text-[9px] text-hazard ml-1.5">{formatDiedAt(p.diedAt)}</span>
-                </div>
-              </div>
-            ))}
-
-            {/* 纪念碑 */}
-            {layerVisibility.monuments && mapInfo.monuments?.map((mon, i) => (
-              <div key={`mon-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-10 group cursor-pointer" style={getPos(mon.x, mon.y)}>
-                <div className="w-2.5 h-2.5 border border-fg-mute rotate-45 group-hover:border-fg-dim transition-colors" />
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 font-mono text-[8px] text-fg-dim whitespace-nowrap uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity bg-ink-900/90 border border-ink-line px-2 py-1">
-                  {mon.name || mon.token}
-                </div>
-              </div>
-            ))}
-
-            {/* 事件/载具标记 */}
-            {filteredMarkers.map((marker, i) => {
-              const config = MARKER_CONFIG[marker.type];
-              if (!config) return null;
-              const Icon = config.icon;
-              const hex = TONE_HEX[config.tone];
-              return (
-                <div key={`marker-${marker.id || i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-20 cursor-pointer group" style={getPos(marker.x, marker.y)}>
-                  <div className="relative">
-                    <div className="w-6 h-6 flex items-center justify-center border-2 transition-transform group-hover:scale-125"
-                      style={{ backgroundColor: `${hex}1A`, borderColor: hex }}>
-                      <Icon className="text-[11px]" style={{ color: hex }} />
-                    </div>
-                    <div className="absolute top-7 left-1/2 -translate-x-1/2 bg-ink-900/95 border border-ink-line px-2 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50">
-                      <span className="font-mono text-[9px] font-bold uppercase tracking-wider" style={{ color: hex }}>{config.label}</span>
-                      {marker.name && <div className="text-[8px] text-fg-mute">{marker.name}</div>}
+            {/* ===== 热力分析视图：只有底图 + 热力，无实时标记 ===== */}
+            {isHeatmap && (
+              <>
+                <HeatLayer points={activityPoints} getPos={getPos} hex={TONE_HEX.terminal} visible={heatTab === 'activity'} />
+                <HeatLayer points={deathPoints} getPos={getPos} hex={TONE_HEX.hazard} visible={heatTab === 'deaths' && deathMode === 'heat'} />
+                {heatTab === 'deaths' && deathMode === 'points' && deathPoints.map((p, i) => (
+                  <div key={`death-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-[18] pointer-events-auto group" style={getPos(p.x, p.y)}>
+                    <FaTimes className="text-hazard text-[10px] drop-shadow-[0_0_2px_rgba(0,0,0,0.9)] group-hover:scale-150 transition-transform" />
+                    <div className="absolute top-3.5 left-1/2 -translate-x-1/2 bg-ink-900/95 border border-ink-line px-2 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50">
+                      <span className="text-[10px] font-bold text-fg">{p.name || '未知'}</span>
+                      <span className="font-mono text-[9px] text-hazard ml-1.5">{formatDiedAt(p.diedAt)}</span>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-
-            {/* 队友标记 */}
-            {layerVisibility.players && teamMembers.map((member, index) => {
-              const grid = coordsToGrid(member.x, member.y, mapInfo.mapSize);
-              const isLocked = focusTarget?.steamId === member.steamId || (focusTarget?.x === member.x && focusTarget?.y === member.y);
-              return (
-                <div key={member.steamId} className="absolute -translate-x-1/2 -translate-y-1/2 transition-all duration-1000 cursor-pointer group"
-                  style={{ ...getPos(member.x, member.y), zIndex: 30 + index }} onClick={() => onLocatePlayer?.(member)}>
-                  <div className="relative">
-                    <div className={`w-5 h-5 relative z-10 border border-ink-900 flex items-center justify-center ${!member.isAlive ? 'bg-hazard' : member.isOnline ? 'bg-terminal' : 'bg-ink-line2'}`}>
-                      <FaUser className={`text-[8px] ${member.isAlive && member.isOnline ? 'text-ink-900' : 'text-white'}`} />
+                ))}
+                {/* 空数据提示 */}
+                {!isDemo && !heatLoading && (heatTab === 'activity' ? activityPoints.length === 0 : deathPoints.length === 0) && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="bg-ink-900/85 border border-ink-line px-4 py-3 text-center">
+                      <div className="font-mono text-[11px] text-fg-mute uppercase tracking-wider">NO DATA</div>
+                      <div className="text-xs text-fg-dim mt-1">
+                        {heatTab === 'activity' ? '队友在线活动后逐步生成' : '队友死亡后逐步生成'}
+                      </div>
                     </div>
-                    <div className="absolute top-7 left-1/2 -translate-x-1/2 bg-ink-900/95 border border-ink-line px-2.5 py-1.5 whitespace-nowrap z-40 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span className="text-[11px] font-bold text-fg flex items-center gap-1.5">
-                        {member.name}
-                        {!member.isAlive && <span className="font-mono text-hazard text-[9px] uppercase">DEAD</span>}
-                        {!member.isOnline && <span className="font-mono text-fg-mute text-[9px] uppercase">OFF</span>}
-                      </span>
-                      <div className="font-mono text-[8px] text-fg-mute mt-0.5">{grid}</div>
-                    </div>
-                    {isLocked && (
-                      <>
-                        <div className="absolute -inset-8 border border-hazard animate-ping opacity-30" />
-                        <div className="absolute -inset-5 border border-dashed border-hazard animate-spin-slow opacity-50" />
-                      </>
-                    )}
                   </div>
-                </div>
-              );
-            })}
+                )}
+              </>
+            )}
 
-            {/* 锁定目标十字线 */}
-            {focusTarget && (
-              <div className="absolute -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none transition-all duration-500" style={getPos(focusTarget.x, focusTarget.y)}>
-                <div className="relative">
-                  <div className="absolute w-20 h-px bg-hazard/60 -translate-x-1/2 left-1/2" />
-                  <div className="absolute h-20 w-px bg-hazard/60 -translate-y-1/2 top-1/2" />
-                  <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-hazard text-white font-mono text-[10px] font-bold px-3 py-1 whitespace-nowrap">
-                    已锁定: {focusTarget.name}
+            {/* ===== 战术地图视图：实时标记 ===== */}
+            {!isHeatmap && (
+              <>
+                {/* 纪念碑 */}
+                {layerVisibility.monuments && mapInfo.monuments?.map((mon, i) => (
+                  <div key={`mon-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-10 group cursor-pointer" style={getPos(mon.x, mon.y)}>
+                    <div className="w-2.5 h-2.5 border border-fg-mute rotate-45 group-hover:border-fg-dim transition-colors" />
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 font-mono text-[8px] text-fg-dim whitespace-nowrap uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity bg-ink-900/90 border border-ink-line px-2 py-1">
+                      {mon.name || mon.token}
+                    </div>
                   </div>
-                </div>
-              </div>
+                ))}
+
+                {/* 事件/载具标记 */}
+                {filteredMarkers.map((marker, i) => {
+                  const config = MARKER_CONFIG[marker.type];
+                  if (!config) return null;
+                  const Icon = config.icon;
+                  const hex = TONE_HEX[config.tone];
+                  return (
+                    <div key={`marker-${marker.id || i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-20 cursor-pointer group" style={getPos(marker.x, marker.y)}>
+                      <div className="relative">
+                        <div className="w-6 h-6 flex items-center justify-center border-2 transition-transform group-hover:scale-125"
+                          style={{ backgroundColor: `${hex}1A`, borderColor: hex }}>
+                          <Icon className="text-[11px]" style={{ color: hex }} />
+                        </div>
+                        <div className="absolute top-7 left-1/2 -translate-x-1/2 bg-ink-900/95 border border-ink-line px-2 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50">
+                          <span className="font-mono text-[9px] font-bold uppercase tracking-wider" style={{ color: hex }}>{config.label}</span>
+                          {marker.name && <div className="text-[8px] text-fg-mute">{marker.name}</div>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* 队友标记 */}
+                {layerVisibility.players && teamMembers.map((member, index) => {
+                  const grid = coordsToGrid(member.x, member.y, mapInfo.mapSize);
+                  const isLocked = focusTarget?.steamId === member.steamId || (focusTarget?.x === member.x && focusTarget?.y === member.y);
+                  return (
+                    <div key={member.steamId} className="absolute -translate-x-1/2 -translate-y-1/2 transition-all duration-1000 cursor-pointer group"
+                      style={{ ...getPos(member.x, member.y), zIndex: 30 + index }} onClick={() => onLocatePlayer?.(member)}>
+                      <div className="relative">
+                        <div className={`w-5 h-5 relative z-10 border border-ink-900 flex items-center justify-center ${!member.isAlive ? 'bg-hazard' : member.isOnline ? 'bg-terminal' : 'bg-ink-line2'}`}>
+                          <FaUser className={`text-[8px] ${member.isAlive && member.isOnline ? 'text-ink-900' : 'text-white'}`} />
+                        </div>
+                        <div className="absolute top-7 left-1/2 -translate-x-1/2 bg-ink-900/95 border border-ink-line px-2.5 py-1.5 whitespace-nowrap z-40 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="text-[11px] font-bold text-fg flex items-center gap-1.5">
+                            {member.name}
+                            {!member.isAlive && <span className="font-mono text-hazard text-[9px] uppercase">DEAD</span>}
+                            {!member.isOnline && <span className="font-mono text-fg-mute text-[9px] uppercase">OFF</span>}
+                          </span>
+                          <div className="font-mono text-[8px] text-fg-mute mt-0.5">{grid}</div>
+                        </div>
+                        {isLocked && (
+                          <>
+                            <div className="absolute -inset-8 border border-hazard animate-ping opacity-30" />
+                            <div className="absolute -inset-5 border border-dashed border-hazard animate-spin-slow opacity-50" />
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* 锁定目标十字线 */}
+                {focusTarget && (
+                  <div className="absolute -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none transition-all duration-500" style={getPos(focusTarget.x, focusTarget.y)}>
+                    <div className="relative">
+                      <div className="absolute w-20 h-px bg-hazard/60 -translate-x-1/2 left-1/2" />
+                      <div className="absolute h-20 w-px bg-hazard/60 -translate-y-1/2 top-1/2" />
+                      <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-hazard text-white font-mono text-[10px] font-bold px-3 py-1 whitespace-nowrap">
+                        已锁定: {focusTarget.name}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -570,21 +678,34 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
         {/* 右下角信息 */}
         <div className="absolute bottom-4 right-4 flex items-center gap-4 font-mono text-[10px] uppercase tracking-wider text-fg-mute bg-ink-900/85 border border-ink-line px-3 py-2">
           <span>缩放 <span className="text-fg">{(transform.scale * 100).toFixed(0)}%</span></span>
-          <span>在线 <span className="text-terminal">{teamMembers.filter(m => m.isOnline).length}</span>/{teamMembers.length}</span>
-          <span>标记 <span className="text-hazard">{filteredMarkers.length}</span></span>
+          {isHeatmap ? (
+            <span>热力点 <span className="text-hazard">{heatTab === 'activity' ? activityPoints.length : deathPoints.length}</span></span>
+          ) : (
+            <>
+              <span>在线 <span className="text-terminal">{teamMembers.filter(m => m.isOnline).length}</span>/{teamMembers.length}</span>
+              <span>标记 <span className="text-hazard">{filteredMarkers.length}</span></span>
+            </>
+          )}
         </div>
 
         {/* 图例 */}
         <div className="absolute bottom-4 left-4 bg-ink-900/85 border border-ink-line p-3">
           <div className="tac-label !text-[9px] mb-2">图例 // LEGEND</div>
           <div className="flex flex-wrap gap-x-3 gap-y-1.5 max-w-[260px]">
-            <LegendItem className="bg-terminal" label="在线" />
-            <LegendItem className="bg-hazard" label="阵亡" />
-            <LegendItem className="bg-ink-line2" label="离线" />
-            <LegendItem className="border border-fg-mute rotate-45" label="纪念碑" solid={false} />
-            {layerVisibility.activity && <LegendItem className="bg-terminal/50" label="活动热力" />}
-            {layerVisibility.deaths && deathMode === 'heat' && <LegendItem className="bg-hazard/50" label="死亡热力" />}
-            {layerVisibility.deaths && deathMode === 'points' && <LegendItem className="bg-hazard" label="死亡点位" />}
+            {isHeatmap ? (
+              heatTab === 'activity'
+                ? <LegendItem className="bg-terminal/50" label="活动热力" />
+                : (deathMode === 'heat'
+                    ? <LegendItem className="bg-hazard/50" label="死亡热力" />
+                    : <LegendItem className="bg-hazard" label="死亡点位" />)
+            ) : (
+              <>
+                <LegendItem className="bg-terminal" label="在线" />
+                <LegendItem className="bg-hazard" label="阵亡" />
+                <LegendItem className="bg-ink-line2" label="离线" />
+                <LegendItem className="border border-fg-mute rotate-45" label="纪念碑" solid={false} />
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -595,6 +716,29 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
 // ============================================================
 // 子组件
 // ============================================================
+function ViewBtn({ active, onClick, icon: Icon, label }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-3 h-9 text-xs font-bold transition-colors ${active ? 'bg-hazard-dim text-hazard' : 'text-fg-dim hover:text-fg hover:bg-ink-800'}`}
+    >
+      <Icon size={11} /> {label}
+    </button>
+  );
+}
+
+function HeatTabBtn({ active, onClick, tone, label }) {
+  const activeCls = tone === 'hazard' ? 'bg-hazard-dim text-hazard' : 'bg-terminal/15 text-terminal';
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-colors ${active ? activeCls : 'text-fg-dim hover:text-fg hover:bg-ink-800'}`}
+    >
+      <FaFire size={10} /> {label}
+    </button>
+  );
+}
+
 function CtrlBtn({ children, onClick, active, bordered }) {
   return (
     <button
@@ -606,12 +750,11 @@ function CtrlBtn({ children, onClick, active, bordered }) {
   );
 }
 
-function LayerToggle({ layer, visible, onToggle, icon }) {
+function LayerToggle({ layer, visible, onToggle }) {
   return (
     <button className="flex items-center gap-2.5 w-full px-2 py-1.5 hover:bg-ink-800 transition-colors" onClick={onToggle}>
-      {icon || (visible ? <FaEye className="text-terminal" size={10} /> : <FaEyeSlash className="text-fg-mute" size={10} />)}
+      {visible ? <FaEye className="text-terminal" size={10} /> : <FaEyeSlash className="text-fg-mute" size={10} />}
       <span className={`text-xs font-bold ${visible ? 'text-fg' : 'text-fg-mute'}`}>{LAYER_LABELS[layer]}</span>
-      {icon && <span className="ml-auto">{visible ? <FaEye className="text-fg-dim" size={9} /> : <FaEyeSlash className="text-fg-mute" size={9} />}</span>}
     </button>
   );
 }
