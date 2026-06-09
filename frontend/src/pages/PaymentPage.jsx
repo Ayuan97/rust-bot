@@ -10,6 +10,9 @@ const PLANS = {
   YEARLY: { name: '年度尊享', price: 299, duration: 365, description: '全能基地管家 (省¥49)', level: '至尊版' },
 };
 
+// 支付总开关：支付渠道接入前置为 false，前端禁用下单并提示"暂未开通"；接通后改回 true 即可。
+const PAYMENT_ENABLED = false;
+
 export default function PaymentPage() {
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -39,6 +42,10 @@ export default function PaymentPage() {
 
   const handleCreateOrder = async () => {
     setError('');
+    if (!PAYMENT_ENABLED) {
+      setError('支付功能正在接入中，暂未开通，敬请期待～');
+      return;
+    }
     setLoading(true);
     try {
       const orderResult = await paymentApi.createOrder(selectedPlan, 'ALIPAY');
@@ -97,6 +104,13 @@ export default function PaymentPage() {
           <h1 className="text-3xl font-extrabold text-fg tracking-tight">开通实时报警与远程控制</h1>
           <p className="mt-2 text-sm text-fg-dim">选择订阅档位，扫码完成支付后即刻拉起服务实例。</p>
         </div>
+
+        {!PAYMENT_ENABLED && (
+          <div className="mb-8 px-4 py-3 bg-hazard-dim border border-hazard/40 text-fg text-sm flex items-start gap-2.5">
+            <span className="font-mono text-hazard-bright text-xs mt-0.5 shrink-0">[!]</span>
+            <span>支付渠道正在接入中，<span className="font-bold text-hazard">暂未开通</span>。如需开通服务请联系管理员，上线后会第一时间通知。</span>
+          </div>
+        )}
 
         {error && (
           <div className="mb-8 px-4 py-3 bg-hazard-dim border border-hazard/40 text-fg text-sm flex items-start gap-2.5">
@@ -192,10 +206,10 @@ export default function PaymentPage() {
                 </div>
                 <button
                   onClick={handleCreateOrder}
-                  disabled={loading}
-                  className="tac-btn tac-btn-primary w-full mt-auto !py-4 group"
+                  disabled={loading || !PAYMENT_ENABLED}
+                  className="tac-btn tac-btn-primary w-full mt-auto !py-4 group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? '生成订单 // CREATING...' : (
+                  {!PAYMENT_ENABLED ? '支付暂未开通 // SOON' : loading ? '生成订单 // CREATING...' : (
                     <>
                       <FaQrcode className="group-hover:scale-110 transition-transform" />
                       确认支付 // PAY
