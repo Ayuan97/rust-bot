@@ -16,9 +16,11 @@ import {
   FaShip,
   FaHelicopter,
   FaBoxOpen,
+  FaTerminal,
 } from 'react-icons/fa';
 import api from '../services/api';
 import useSEO from '../hooks/useSEO';
+import { GAME_COMMANDS } from '../constants/commands';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -85,6 +87,12 @@ export default function HomePage() {
               className="tac-label hover:text-hazard transition-colors"
             >
               功能 // FEATURES
+            </button>
+            <button
+              onClick={() => scrollToSection('commands')}
+              className="tac-label hover:text-hazard transition-colors"
+            >
+              命令 // COMMANDS
             </button>
             <button
               onClick={() => scrollToSection('pricing')}
@@ -400,6 +408,46 @@ export default function HomePage() {
               <LogLine ts="10:24:18" prefix=">" text="实时数据：队友 大王 采集 5000 硫磺" tone="fg" />
               <LogLine ts="10:24:20" text="系统运行稳定，持续监听中" tone="mute" />
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============ 游戏内命令 ============ */}
+      <section id="commands" className="border-b border-ink-line">
+        <div className="max-w-[1400px] mx-auto px-5 md:px-8 py-20 md:py-28">
+          <div className="mb-12">
+            <div className="tac-label mb-2 flex items-center gap-2">
+              <FaTerminal className="text-hazard text-[11px]" /> GAME COMMANDS // 游戏内指令
+            </div>
+            <h2 className="text-4xl md:text-5xl font-extrabold text-fg tracking-tightest">队友聊天里直接发</h2>
+            <p className="mt-3 text-sm text-fg-dim">
+              在 Rust 游戏内「队伍聊天」输入这些指令，机器人即时回复——无需切出游戏，队友共享。
+            </p>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-px bg-ink-line border border-ink-line">
+            {GAME_COMMANDS.map((g) => (
+              <div key={g.group} className="bg-ink-900 p-5">
+                <div className="tac-label mb-4 text-hazard flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-hazard" /> {g.group}
+                </div>
+                <div className="space-y-3.5">
+                  {g.items.map((it) => (
+                    <div key={it.cmd}>
+                      <code className="font-mono text-[13px] text-hazard font-bold">{it.cmd}</code>
+                      <div className="text-[12px] text-fg-dim mt-0.5 leading-snug">{it.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-px flex items-center gap-3 px-4 py-3 border border-ink-line bg-hazard-dim">
+            <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-hazard shrink-0">TIP</span>
+            <span className="text-[13px] text-fg-dim">
+              发 <code className="font-mono text-hazard">!help</code> 可随时在游戏内列出全部命令；<code className="font-mono text-hazard">!静音</code> 能一键临时关闭突袭警报。
+            </span>
           </div>
         </div>
       </section>

@@ -23,6 +23,7 @@ import AdminPage from './pages/AdminPage';
 import MapView from './components/MapView';
 import ServerInfoView from './components/ServerInfoView';
 import TrackingView from './components/TrackingView';
+import CommandsView from './components/CommandsView';
 import {
   CONNECTION_STATES,
   getConnectionStateMeta
@@ -330,6 +331,8 @@ function App() {
             onBack={() => setActiveView('hud')}
           />
         );
+      case 'commands':
+        return <CommandsView />;
       case 'raid':
         return <RaidAlertSettings />;
       case 'settings':
@@ -371,6 +374,7 @@ function App() {
           <NavIcon id="devices" icon={<FaCogs />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="智能中控" />
           <NavIcon id="tracking" icon={<FaCrosshairs />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="玩家追踪" />
           <NavIcon id="serverinfo" icon={<FaServer />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="服务器信息" />
+          <NavIcon id="commands" icon={<FaRobot />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="游戏命令" />
           <div className="h-px bg-ink-line my-2 mx-1" />
           <NavIcon id="raid" icon={<FaShieldAlt />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="突袭通知" />
           <NavIcon id="settings" icon={<FaCog />} active={activeView} onClick={setActiveView} expanded={navExpanded} label="系统配置" />
