@@ -3,11 +3,18 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { authApi } from '../services/auth';
 import { useAuth } from '../context/AuthContext';
 import { FaArrowRight, FaArrowLeft } from 'react-icons/fa';
+import useSEO from '../hooks/useSEO';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { setUser } = useAuth();
+
+  useSEO({
+    title: '免费注册 - Rust+ 网页控制台（7 天免费试用）',
+    description: '注册 Rust+ 控制台，享 7 天免费试用：离线监控 Rust 服务器、队友位置追踪、智能设备远程控制、基地遭袭警报推送。',
+    path: '/register',
+  });
   const [formData, setFormData] = useState({ username: '', password: '', confirmPassword: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

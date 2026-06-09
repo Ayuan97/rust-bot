@@ -1,0 +1,10 @@
+# Rust+ 控制台 robots.txt
+User-agent: *
+Allow: /
+# 登录后的私有区域，不索引
+Disallow: /dashboard
+Disallow: /account
+Disallow: /payment
+Disallow: /admin
+
+Sitemap: https://www.rustplusplus.com/sitemap.xml

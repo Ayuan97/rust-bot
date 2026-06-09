@@ -18,10 +18,18 @@ import {
   FaBoxOpen,
 } from 'react-icons/fa';
 import api from '../services/api';
+import useSEO from '../hooks/useSEO';
 
 export default function HomePage() {
   const navigate = useNavigate();
   const [plans, setPlans] = useState([]);
+
+  useSEO({
+    title: 'Rust+ 网页控制台 · 离线监控基地、队友追踪、设备远程控制 | Rust 服务器管理',
+    description:
+      'Rust+ 网页版控制台：离线也能实时监控 Rust 服务器、追踪队友位置、远程控制智能设备、第一时间收到基地遭袭警报推送。基于 Facepunch 官方 Rust+ API，安全不封号，注册即享 7 天免费试用。',
+    path: '/',
+  });
 
   // 如果已登录，跳转到 dashboard
   useEffect(() => {

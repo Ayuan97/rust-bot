@@ -3,11 +3,18 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { authApi } from '../services/auth';
 import { useAuth } from '../context/AuthContext';
 import { FaArrowLeft, FaArrowRight, FaEye, FaEyeSlash } from 'react-icons/fa';
+import useSEO from '../hooks/useSEO';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { setUser } = useAuth();
+
+  useSEO({
+    title: '登录 - Rust+ 网页控制台',
+    description: '登录 Rust+ 控制台，实时监控你的 Rust 服务器、队友动向与基地防御，离线也能远程控制设备。',
+    path: '/login',
+  });
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

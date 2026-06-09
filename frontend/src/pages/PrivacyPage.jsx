@@ -1,7 +1,14 @@
 import { Link } from 'react-router-dom';
 import { FaArrowLeft, FaShieldAlt } from 'react-icons/fa';
+import useSEO from '../hooks/useSEO';
 
 export default function PrivacyPage() {
+  useSEO({
+    title: '隐私政策 - Rust+ 控制台',
+    description: 'Rust+ 控制台隐私政策：说明我们如何收集、使用与保护你的账户与服务器数据。',
+    path: '/privacy',
+  });
+
   return (
     <div className="tac-fx min-h-[100dvh] bg-ink-900 text-fg font-sans flex flex-col">
       {/* 顶部 status bar */}

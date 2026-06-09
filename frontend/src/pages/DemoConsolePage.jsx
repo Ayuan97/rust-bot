@@ -16,6 +16,7 @@ import {
   FaBell,
   FaShieldAlt
 } from 'react-icons/fa';
+import useSEO from '../hooks/useSEO';
 
 const DEMO_EVENTS = [
   { id: 1, time: '刚刚', text: '核心区报警器触发（领地柜房）', level: 'high' },
@@ -69,6 +70,12 @@ const TABS = [
 ];
 
 function DemoConsolePage() {
+  useSEO({
+    title: '在线演示 - Rust+ 网页控制台（免登录体验）',
+    description: '无需登录，在线体验 Rust+ 控制台完整界面：实时地图、设备远程控制、事件监控、队友追踪、报警推送。',
+    path: '/demo',
+  });
+
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState(
