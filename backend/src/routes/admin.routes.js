@@ -17,6 +17,10 @@ import { v4 as uuidv4 } from 'uuid';
 const router = express.Router();
 const SALT_ROUNDS = 10;
 const VALID_PLAN_TYPES = new Set(['TRIAL', 'MONTHLY', 'QUARTERLY', 'YEARLY']);
+
+// 安全：响应前剥离敏感字段，绝不把密码哈希 / Rust+ 控制令牌 / FCM 凭证下发给前端
+const stripUserSecrets = (u) => { if (!u || typeof u !== 'object') return u; const { password, ...rest } = u; return rest; };
+const stripServerSecrets = (s) => { if (!s || typeof s !== 'object') return s; const { playerToken, fcmCredentials, securityToken, ...rest } = s; return rest; };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_NOTIFICATION_SETTINGS = {
   player_death: true,
@@ -691,7 +695,7 @@ router.get('/users', async (req, res) => {
       }
 
       return {
-        ...user,
+        ...stripUserSecrets(user),
         isActive: !!user.isActive,
         isAdmin: !!user.isAdmin,
         subscriptions: user.subscriptionId ? {
@@ -821,7 +825,7 @@ router.get('/users/:id', async (req, res) => {
 
     // 格式化用户数据
     const formattedUser = {
-      ...user,
+      ...stripUserSecrets(user),
       isActive: !!user.isActive,
       isAdmin: !!user.isAdmin,
       subscriptions: user.subscriptionId ? {
@@ -832,7 +836,7 @@ router.get('/users/:id', async (req, res) => {
         endDate: user.endDate
       } : null,
       servers: servers.map(s => ({
-        ...s,
+        ...stripServerSecrets(s),
         _count: { devices: s.deviceCount }
       })),
       orders
@@ -910,7 +914,7 @@ router.put('/users/:id/status', async (req, res) => {
     res.json({
       success: true,
       message: isActive ? '用户已启用' : '用户已禁用',
-      data: { ...user, isActive }
+      data: { ...stripUserSecrets(user), isActive }
     });
   } catch (error) {
     console.error('更新用户状态失败:', error);
@@ -1158,7 +1162,7 @@ router.get('/users/:id/servers', async (req, res) => {
       }
 
       return {
-        ...server,
+        ...stripServerSecrets(server),
         connected
       };
     });

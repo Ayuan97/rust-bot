@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
+import helmet from 'helmet';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
@@ -58,6 +59,14 @@ if (trustProxyEnabled) {
 // 设置 server 超时，加速优雅关闭
 server.keepAliveTimeout = 5000;
 server.headersTimeout = 6000;
+
+// 安全响应头（HSTS / X-Frame-Options / nosniff / Referrer-Policy 等）。
+// CSP 因前端是 SPA + 内联样式需单独定制，暂不开启以免误伤；COEP/CORP 放开以允许前端跨域取 API。
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
 
 // 中间件 - 允许所有来源跨域访问
 app.use(cors({

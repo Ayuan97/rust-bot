@@ -39,6 +39,17 @@ const loginLimiter = rateLimit({
   }
 });
 
+// 纯账号维度限流：堵住"换 IP / 代理池狂试同一个账号"的暴力破解（与上面 IP+账号限流叠加）
+const loginUserLimiter = rateLimit({
+  limit: 15,
+  windowMs: 10 * 60 * 1000,
+  message: '该账号登录尝试过于频繁，请 10 分钟后再试',
+  keyGenerator: (req, clientIp) => {
+    const username = String(req.body?.username || '').trim().toLowerCase();
+    return username ? `loginuser:${username}` : `loginip:${clientIp}`;
+  }
+});
+
 /**
  * GET /api/auth/registration-info
  * 公开：当前注册模式与免费策略，供注册页动态展示提示
@@ -87,11 +98,17 @@ router.post('/register', registerLimiter, async (req, res) => {
       });
     }
 
-    // 验证密码长度
-    if (password.length < 6) {
+    // 验证密码强度（运营前加固：长度 + 字母数字组合，降低弱口令被暴破的成功率）
+    if (password.length < 8) {
       return res.status(400).json({
         success: false,
-        error: '密码长度至少为 6 个字符'
+        error: '密码长度至少为 8 个字符'
+      });
+    }
+    if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+      return res.status(400).json({
+        success: false,
+        error: '密码需同时包含字母和数字'
       });
     }
 
@@ -225,7 +242,7 @@ router.post('/register', registerLimiter, async (req, res) => {
  * POST /api/auth/login
  * 用户登录
  */
-router.post('/login', loginLimiter, async (req, res) => {
+router.post('/login', loginLimiter, loginUserLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
 
