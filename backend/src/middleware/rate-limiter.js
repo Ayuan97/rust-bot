@@ -112,9 +112,10 @@ export function rateLimit(options = {}) {
  * 预设的速率限制配置
  */
 
-// 通用 API 限制：每分钟 300 次
+// 通用 API 限制：每分钟 1000 次/IP。放宽到 1000 是为了给运营商级 NAT(CGNAT，尤其手机网络)
+// 后大量用户共享同一出口 IP 留足余量，避免误伤正常用户；单用户正常使用约 25 次/分钟。
 export const apiLimiter = rateLimit({
-  limit: 300,
+  limit: 1000,
   windowMs: 60 * 1000,
   message: '请求过于频繁，请稍后再试'
 });
