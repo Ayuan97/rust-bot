@@ -43,7 +43,8 @@ export default function RegisterPage() {
 
   const validateForm = () => {
     if (formData.username.length < 3) { setError('用户名长度至少为 3 位'); return false; }
-    if (formData.password.length < 6) { setError('密码长度至少为 6 位'); return false; }
+    if (formData.password.length < 8) { setError('密码长度至少为 8 位'); return false; }
+    if (!/[a-zA-Z]/.test(formData.password) || !/[0-9]/.test(formData.password)) { setError('密码需同时包含字母和数字'); return false; }
     if (formData.password !== formData.confirmPassword) { setError('两次输入的密码不一致'); return false; }
     return true;
   };
