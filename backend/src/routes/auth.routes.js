@@ -21,9 +21,10 @@ const JWT_EXPIRES_IN = '7d';
 // 密码加密轮数
 const SALT_ROUNDS = 10;
 
-// 注册限流：每分钟最多 10 次
+// 注册限流：每分钟最多 30 次/IP。放宽到 30 是给推广期 + CGNAT(移动网络)共享 IP 的多人同时注册留余量；
+// 批量/机器人注册另有"注册审核模式"兜底，不靠限流卡死正常用户。
 const registerLimiter = rateLimit({
-  limit: 10,
+  limit: 30,
   windowMs: 60 * 1000,
   message: '注册尝试过于频繁，请稍后再试'
 });
