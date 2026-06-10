@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   FaMapMarkedAlt, FaPlus, FaMinus, FaExpand, FaSync,
   FaLayerGroup, FaUser, FaSkull, FaShoppingCart, FaHelicopter,
@@ -577,8 +577,16 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
             {/* ===== 热力分析视图：只有底图 + 热力，无实时标记 ===== */}
             {isHeatmap && (
               <>
-                <HeatLayer points={activityPoints} getPos={getPos} hex={TONE_HEX.terminal} visible={heatTab === 'activity'} />
-                <HeatLayer points={deathPoints} getPos={getPos} hex={TONE_HEX.hazard} visible={heatTab === 'deaths' && deathMode === 'heat'} />
+                <HeatCanvas points={activityPoints} mapInfo={mapInfo} visible={heatTab === 'activity'}
+                  stops={ACTIVITY_STOPS} radius={13} blur={9} baseAlpha={0.85} useWeight />
+                <HeatCanvas points={deathPoints} mapInfo={mapInfo} visible={heatTab === 'deaths' && deathMode === 'heat'}
+                  stops={DEATH_STOPS} radius={14} blur={10} baseAlpha={0.6} useWeight={false} />
+                {/* 死亡热力：在热力面上叠加精确散点，既见热区又见每次死亡的确切位置 */}
+                {heatTab === 'deaths' && deathMode === 'heat' && deathPoints.map((p, i) => (
+                  <div key={`dh-${p.x}-${p.y}-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-[16] pointer-events-none" style={getPos(p.x, p.y)}>
+                    <div className="w-1 h-1 rounded-full bg-white/85 ring-1 ring-hazard/90" />
+                  </div>
+                ))}
                 {heatTab === 'deaths' && deathMode === 'points' && deathPoints.map((p, i) => (
                   <div key={`death-${p.x}-${p.y}-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-[18] pointer-events-auto group" style={getPos(p.x, p.y)}>
                     <FaTimes className="text-hazard text-[10px] drop-shadow-[0_0_2px_rgba(0,0,0,0.9)] group-hover:scale-150 transition-transform" />
@@ -703,9 +711,9 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
           <div className="flex flex-wrap gap-x-3 gap-y-1.5 max-w-[260px]">
             {isHeatmap ? (
               heatTab === 'activity'
-                ? <LegendItem className="bg-terminal/50" label="活动热力" />
+                ? <HeatLegendBar kind="activity" />
                 : (deathMode === 'heat'
-                    ? <LegendItem className="bg-hazard/50" label="死亡热力" />
+                    ? <HeatLegendBar kind="death" />
                     : <LegendItem className="bg-hazard" label="死亡点位" />)
             ) : (
               <>
@@ -777,23 +785,127 @@ function LegendItem({ className, label, solid = true }) {
   );
 }
 
-// 热力层：把点渲染成叠加的径向渐变（mix-blend-mode: screen 让重叠处更亮）
-function HeatLayer({ points, getPos, hex, visible }) {
+// ============================================================
+// 热力渲染：密度场 + 调色板（simpleheat / heatmap.js 同款两遍算法）
+//  ① 用预渲染的灰度径向画刷，把每个点按权重累积到 canvas 的 alpha 通道（重叠即叠加 = 真正的密度场）
+//  ② 逐像素读 alpha，查 256 级调色板着色 → 连续的冷→热渐变，而非一堆半透明色块硬叠
+// canvas 固定 1024² 内部分辨率、CSS 铺满地图，随父级 transform 一起缩放，坐标始终与标记对齐。
+// 半径固定（不再随权重线性放大），彻底根除"高频点撑成全屏巨圆"的 bug。
+// ============================================================
+
+const HEAT_RES = 1024;
+
+// 活动热力：暗红 → hazard 红 → 橙 → 黄 → 白热（热成像观感，贴合 hazard 主色，符合设计系统禁绿）
+const ACTIVITY_STOPS = [
+  [0.00, 'rgba(60,12,12,0)'],
+  [0.20, 'rgba(130,22,18,0.50)'],
+  [0.45, 'rgba(224,69,46,0.80)'],
+  [0.65, 'rgba(255,124,52,0.88)'],
+  [0.82, 'rgba(255,198,64,0.93)'],
+  [1.00, 'rgba(255,255,238,0.97)'],
+];
+// 死亡热力：深血红 → 红 → hazard → 亮（不带黄，更沉、更"血"，与活动一眼区分）
+const DEATH_STOPS = [
+  [0.00, 'rgba(48,0,0,0)'],
+  [0.28, 'rgba(120,10,10,0.55)'],
+  [0.58, 'rgba(196,28,28,0.80)'],
+  [0.82, 'rgba(224,69,46,0.90)'],
+  [1.00, 'rgba(255,176,140,0.96)'],
+];
+
+// 256 级 alpha(0-255) → [r,g,b,a] 查找表：用 1×256 渐变条采样得到
+function buildPalette(stops) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 1;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 256, 0);
+  stops.forEach(([pos, color]) => grad.addColorStop(pos, color));
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 1);
+  return ctx.getImageData(0, 0, 256, 1).data;
+}
+
+// 预渲染灰度径向画刷：中心实心黑 → 边缘透明，半径含模糊扩散
+function buildBrush(radius, blur) {
+  const r = radius + blur;
+  const c = document.createElement('canvas');
+  c.width = c.height = r * 2;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createRadialGradient(r, r, 0, r, r, r);
+  grad.addColorStop(0, 'rgba(0,0,0,1)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, r * 2, r * 2);
+  return c;
+}
+
+// 游戏坐标 → 0~1 归一化（与 getPos 同一套投影，保证热力与标记严格对齐）
+function gameToNorm(x, y, mapInfo) {
+  const { mapSize, imageWidth, imageHeight, oceanMargin } = mapInfo;
+  const scale = (imageWidth - 2 * oceanMargin) / mapSize;
+  const xi = x * scale + oceanMargin;
+  const yi = imageHeight - (y * scale + oceanMargin);
+  return [xi / imageWidth, yi / imageHeight];
+}
+
+function HeatCanvas({ points, mapInfo, visible, stops, radius = 24, blur = 16, baseAlpha = 0.9, useWeight = true }) {
+  const canvasRef = useRef(null);
+  const lut = useMemo(() => buildPalette(stops), [stops]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !visible || !points?.length) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, HEAT_RES, HEAT_RES);
+
+    // 归一化上限：取第 92 百分位，避免个别超高频网格把其余点全部压成不可见
+    let maxW = 1;
+    if (useWeight) {
+      const ws = points.map(p => p.w || 1).sort((a, b) => a - b);
+      maxW = Math.max(1, ws[Math.min(ws.length - 1, Math.floor(ws.length * 0.92))]);
+    }
+
+    // ① 密度累积：每个点按归一化权重画灰度画刷到 alpha 通道
+    const brush = buildBrush(radius, blur);
+    const bs = brush.width;
+    for (const p of points) {
+      const [nx, ny] = gameToNorm(p.x, p.y, mapInfo);
+      if (!Number.isFinite(nx) || !Number.isFinite(ny)) continue;
+      const intensity = useWeight ? Math.min((p.w || 1) / maxW, 1) : 1;
+      ctx.globalAlpha = Math.max(0.1, intensity * baseAlpha);
+      ctx.drawImage(brush, nx * HEAT_RES - bs / 2, ny * HEAT_RES - bs / 2);
+    }
+    ctx.globalAlpha = 1;
+
+    // ② 着色：逐像素按 alpha 查调色板
+    const img = ctx.getImageData(0, 0, HEAT_RES, HEAT_RES);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const a = d[i + 3];
+      if (a === 0) continue;
+      const j = a << 2;
+      d[i] = lut[j]; d[i + 1] = lut[j + 1]; d[i + 2] = lut[j + 2]; d[i + 3] = lut[j + 3];
+    }
+    ctx.putImageData(img, 0, 0);
+  }, [points, visible, mapInfo, radius, blur, baseAlpha, useWeight, lut]);
+
   if (!visible || !points?.length) return null;
   return (
-    <div className="absolute inset-0 z-[15] pointer-events-none" style={{ mixBlendMode: 'screen' }}>
-      {points.map((p, i) => {
-        const pos = getPos(p.x, p.y);
-        const size = 70 + (p.w || 1) * 34;
-        return (
-          <div key={`${p.x}-${p.y}-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
-            style={{
-              left: pos.left, top: pos.top, width: size, height: size,
-              background: `radial-gradient(circle, ${hex}AA 0%, ${hex}55 35%, transparent 72%)`,
-              filter: 'blur(6px)'
-            }} />
-        );
-      })}
+    <canvas ref={canvasRef} width={HEAT_RES} height={HEAT_RES}
+      className="absolute inset-0 w-full h-full z-[15] pointer-events-none" />
+  );
+}
+
+// 热力图例：迷你冷→热渐变条
+function HeatLegendBar({ kind }) {
+  const grad = kind === 'death'
+    ? 'linear-gradient(90deg, rgba(120,10,10,0.5), #C41C1C, #E0452E, #FFB08C)'
+    : 'linear-gradient(90deg, rgba(130,22,18,0.5), #E0452E, #FF7C34, #FFC640, #FFFFEE)';
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="font-mono text-[9px] text-fg-mute uppercase tracking-wider">低</span>
+      <div className="w-16 h-2.5 border border-ink-line" style={{ background: grad }} />
+      <span className="font-mono text-[9px] text-fg-mute uppercase tracking-wider">高</span>
     </div>
   );
 }
