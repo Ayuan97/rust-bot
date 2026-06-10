@@ -602,9 +602,9 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
             {/* ===== 热力分析视图：只有底图 + 热力，无实时标记 ===== */}
             {isHeatmap && (
               <>
-                <HeatCanvas points={activityPoints} mapInfo={mapInfo} visible={heatTab === 'activity'}
+                <HeatCanvas points={activityPoints} proj={proj} mapSize={mapInfo.mapSize} visible={heatTab === 'activity'}
                   stops={ACTIVITY_STOPS} radius={13} blur={9} baseAlpha={0.85} useWeight />
-                <HeatCanvas points={deathPoints} mapInfo={mapInfo} visible={heatTab === 'deaths' && deathMode === 'heat'}
+                <HeatCanvas points={deathPoints} proj={proj} mapSize={mapInfo.mapSize} visible={heatTab === 'deaths' && deathMode === 'heat'}
                   stops={DEATH_STOPS} radius={14} blur={10} baseAlpha={0.6} useWeight={false} />
                 {/* 死亡热力：在热力面上叠加精确散点，既见热区又见每次死亡的确切位置 */}
                 {heatTab === 'deaths' && deathMode === 'heat' && deathPoints.map((p, i) => (
@@ -864,16 +864,16 @@ function buildBrush(radius, blur) {
   return c;
 }
 
-// 游戏坐标 → 0~1 归一化（与 getPos 同一套投影，保证热力与标记严格对齐）
-function gameToNorm(x, y, mapInfo) {
-  const { mapSize, imageWidth, imageHeight, oceanMargin } = mapInfo;
-  const scale = (imageWidth - 2 * oceanMargin) / mapSize;
-  const xi = x * scale + oceanMargin;
-  const yi = imageHeight - (y * scale + oceanMargin);
-  return [xi / imageWidth, yi / imageHeight];
+// 游戏坐标 → 0~1 归一化（与 getPos 用同一套投影 proj，保证热力面与底图/标记/散点严格对齐）
+function gameToNorm(x, y, proj, mapSize) {
+  const { iw, ih, om } = proj;
+  const scale = (iw - 2 * om) / mapSize;
+  const xi = x * scale + om;
+  const yi = ih - (y * scale + om);
+  return [xi / iw, yi / ih];
 }
 
-function HeatCanvas({ points, mapInfo, visible, stops, radius = 24, blur = 16, baseAlpha = 0.9, useWeight = true }) {
+function HeatCanvas({ points, proj, mapSize, visible, stops, radius = 24, blur = 16, baseAlpha = 0.9, useWeight = true }) {
   const canvasRef = useRef(null);
   const lut = useMemo(() => buildPalette(stops), [stops]);
 
@@ -894,7 +894,7 @@ function HeatCanvas({ points, mapInfo, visible, stops, radius = 24, blur = 16, b
     const brush = buildBrush(radius, blur);
     const bs = brush.width;
     for (const p of points) {
-      const [nx, ny] = gameToNorm(p.x, p.y, mapInfo);
+      const [nx, ny] = gameToNorm(p.x, p.y, proj, mapSize);
       if (!Number.isFinite(nx) || !Number.isFinite(ny)) continue;
       const intensity = useWeight ? Math.min((p.w || 1) / maxW, 1) : 1;
       ctx.globalAlpha = Math.max(0.1, intensity * baseAlpha);
@@ -912,7 +912,7 @@ function HeatCanvas({ points, mapInfo, visible, stops, radius = 24, blur = 16, b
       d[i] = lut[j]; d[i + 1] = lut[j + 1]; d[i + 2] = lut[j + 2]; d[i + 3] = lut[j + 3];
     }
     ctx.putImageData(img, 0, 0);
-  }, [points, visible, mapInfo, radius, blur, baseAlpha, useWeight, lut]);
+  }, [points, visible, proj.iw, proj.ih, proj.om, mapSize, radius, blur, baseAlpha, useWeight, lut]);
 
   if (!visible || !points?.length) return null;
   return (
