@@ -306,11 +306,15 @@ class UserEventMonitor extends EventEmitter {
 
     this.pollIntervals.set(`${serverId}:players`, playerInterval);
 
-    // 初始刷新一次
-    console.log(`[Steam] 🚀 执行初始刷新...`);
-    this.refreshPlayerData(serverId).catch(e => {
-      console.error(`[Steam] ❌ 初始刷新失败:`, e.message);
-    });
+    // 初始刷新：延迟 90 秒等队伍信息首次加载（否则刚启动时队伍还空，初始刷新会"没有需要刷新的玩家"，
+    // 导致每次重启后头像/资料要干等到下一个 10 分钟周期）。回调里校验该服务器仍在监控中，避免在已停止状态上执行。
+    console.log(`[Steam] 🚀 将在 90 秒后执行初始刷新（等队伍数据就绪）...`);
+    setTimeout(() => {
+      if (!this.pollIntervals.has(serverId)) return;
+      this.refreshPlayerData(serverId).catch(e => {
+        console.error(`[Steam] ❌ 初始刷新失败:`, e.message);
+      });
+    }, 90 * 1000);
   }
 
   /**
