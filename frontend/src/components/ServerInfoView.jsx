@@ -676,6 +676,7 @@ function ServerInfoView({ server, onBack }) {
                 <div className="relative border border-ink-line bg-ink-900">
                   <svg
                     viewBox={`0 0 ${POP_CHART_WIDTH} ${POP_CHART_HEIGHT}`}
+                    preserveAspectRatio="none"
                     className="w-full h-40 cursor-crosshair"
                     onMouseMove={handlePopChartMouseMove}
                     onMouseLeave={() => setPopHoverIndex(null)}
@@ -683,7 +684,7 @@ function ServerInfoView({ server, onBack }) {
                     onTouchStart={handlePopChartTouchMove}
                     onTouchEnd={() => setPopHoverIndex(null)}
                   >
-                    <path d={popPath} fill="none" stroke="#E0452E" strokeWidth="3" strokeLinecap="round" />
+                    <path d={popPath} fill="none" stroke="#E0452E" strokeWidth="3" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
                     {hoveredPopPoint && (
                       <>
                         <line
@@ -694,18 +695,17 @@ function ServerInfoView({ server, onBack }) {
                           stroke="rgba(224,69,46,0.45)"
                           strokeWidth="1.5"
                           strokeDasharray="4 3"
-                        />
-                        <circle
-                          cx={hoveredPopPoint.x}
-                          cy={hoveredPopPoint.y}
-                          r="5"
-                          fill="#E0452E"
-                          stroke="#0A0A0A"
-                          strokeWidth="2"
+                          vectorEffect="non-scaling-stroke"
                         />
                       </>
                     )}
                   </svg>
+                  {hoveredPopPoint && (
+                    <div
+                      className="absolute pointer-events-none z-10 w-2.5 h-2.5 rounded-full bg-hazard border-2 border-ink-900 -translate-x-1/2 -translate-y-1/2"
+                      style={{ left: `${(hoveredPopPoint.x / POP_CHART_WIDTH) * 100}%`, top: `${(hoveredPopPoint.y / POP_CHART_HEIGHT) * 100}%` }}
+                    />
+                  )}
                   {hoveredPopPoint && (
                     <div
                       className="absolute pointer-events-none z-10 bg-ink-900/90 border border-hazard/40 px-2 py-1 text-xs text-fg"
