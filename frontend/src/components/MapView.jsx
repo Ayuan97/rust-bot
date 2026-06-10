@@ -3,7 +3,7 @@ import {
   FaMapMarkedAlt, FaPlus, FaMinus, FaExpand, FaSync,
   FaLayerGroup, FaUser, FaSkull, FaShoppingCart, FaHelicopter,
   FaShip, FaParachuteBox, FaPlane, FaLandmark, FaEye, FaEyeSlash, FaFire, FaTruck,
-  FaUsers, FaTimes, FaTrashAlt, FaTh
+  FaUsers, FaTimes, FaTrashAlt
 } from 'react-icons/fa';
 import api, { getMapInfo } from '../services/api';
 import socketService from '../services/socket';
@@ -134,7 +134,6 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
   // 热力图数据（真实数据，仅热力视图打开时按 tab 拉取）
   const [heatData, setHeatData] = useState({ activityPoints: [], deathPoints: [] });
   const [heatFilter, setHeatFilter] = useState(''); // '' = 全队，否则为某队友 steamId
-  const [deathMode, setDeathMode] = useState('heat'); // 'heat' | 'points'
   const [teammates, setTeammates] = useState([]); // extended-teammates 完整名单
   const [heatLoading, setHeatLoading] = useState(false);
 
@@ -525,21 +524,6 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
             </div>
           )}
 
-          {/* 死亡视图：热力 / 点位（仅死亡 tab） */}
-          {heatTab === 'deaths' && (
-            <div className="flex items-center gap-2">
-              <span className="tac-label !text-[9px] flex items-center gap-1.5"><FaSkull className="text-hazard" size={10} /> 视图</span>
-              <div className="flex border border-ink-line divide-x divide-ink-line">
-                {[{ mode: 'heat', label: '热力', icon: FaFire }, { mode: 'points', label: '点位', icon: FaTh }].map(({ mode, label, icon: Icon }) => (
-                  <button key={mode} onClick={() => setDeathMode(mode)}
-                    className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-bold transition-colors ${deathMode === mode ? 'bg-hazard-dim text-hazard' : 'text-fg-mute hover:text-fg hover:bg-ink-800'}`}>
-                    <Icon size={9} /> {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {heatLoading && <span className="font-mono text-[10px] text-fg-mute animate-pulse">加载中…</span>}
 
           {!isDemo && (
@@ -604,20 +588,17 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
               <>
                 <HeatCanvas points={activityPoints} proj={proj} mapSize={mapInfo.mapSize} visible={heatTab === 'activity'}
                   stops={ACTIVITY_STOPS} radius={13} blur={9} baseAlpha={0.85} useWeight />
-                <HeatCanvas points={deathPoints} proj={proj} mapSize={mapInfo.mapSize} visible={heatTab === 'deaths' && deathMode === 'heat'}
+                <HeatCanvas points={deathPoints} proj={proj} mapSize={mapInfo.mapSize} visible={heatTab === 'deaths'}
                   stops={DEATH_STOPS} radius={14} blur={10} baseAlpha={0.6} useWeight={false} />
-                {/* 死亡热力：在热力面上叠加精确散点，既见热区又见每次死亡的确切位置 */}
-                {heatTab === 'deaths' && deathMode === 'heat' && deathPoints.map((p, i) => (
-                  <div key={`dh-${p.x}-${p.y}-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-[16] pointer-events-none" style={getPos(p.x, p.y)}>
-                    <div className="w-1 h-1 rounded-full bg-white/85 ring-1 ring-hazard/90" />
-                  </div>
-                ))}
-                {heatTab === 'deaths' && deathMode === 'points' && deathPoints.map((p, i) => (
-                  <div key={`death-${p.x}-${p.y}-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-[18] pointer-events-auto group" style={getPos(p.x, p.y)}>
-                    <FaTimes className="text-hazard text-[10px] drop-shadow-[0_0_2px_rgba(0,0,0,0.9)] group-hover:scale-150 transition-transform" />
-                    <div className="absolute top-3.5 left-1/2 -translate-x-1/2 bg-ink-900/95 border border-ink-line px-2 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50">
-                      <span className="text-[10px] font-bold text-fg">{p.name || '未知'}</span>
-                      <span className="font-mono text-[9px] text-hazard ml-1.5">{formatDiedAt(p.diedAt)}</span>
+                {/* 死亡点位：热力面之上叠加精确点位（含死者+时间提示）。点位与提示用反向缩放，地图放多大它都恒定大小、不糊脸 */}
+                {heatTab === 'deaths' && deathPoints.map((p, i) => (
+                  <div key={`death-${p.x}-${p.y}-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-[18] group" style={getPos(p.x, p.y)}>
+                    <div className="pointer-events-auto" style={{ transform: `scale(${1 / transform.scale})`, transformOrigin: 'center' }}>
+                      <FaTimes className="text-hazard text-[11px] drop-shadow-[0_0_2px_rgba(0,0,0,0.95)] group-hover:text-hazard-bright transition-colors" />
+                      <div className="absolute top-3.5 left-1/2 -translate-x-1/2 bg-ink-900/95 border border-ink-line px-2 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                        <span className="text-[10px] font-bold text-fg">{p.name || '未知'}</span>
+                        <span className="font-mono text-[9px] text-hazard ml-1.5">{formatDiedAt(p.diedAt)}</span>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -737,9 +718,7 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
             {isHeatmap ? (
               heatTab === 'activity'
                 ? <HeatLegendBar kind="activity" />
-                : (deathMode === 'heat'
-                    ? <HeatLegendBar kind="death" />
-                    : <LegendItem className="bg-hazard" label="死亡点位" />)
+                : <HeatLegendBar kind="death" />
             ) : (
               <>
                 <LegendItem className="bg-terminal" label="在线" />
