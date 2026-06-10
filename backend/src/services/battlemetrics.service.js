@@ -366,6 +366,10 @@ class BattlemetricsService extends EventEmitter {
         // 地图信息
         rustMapsUrl: details.rust_maps?.url || null,
         rustMapsThumbnail: details.rust_maps?.thumbnailUrl || null,
+        // RustMaps 高清原图(5500²彩色专业渲染、无图标)：缩略图同目录的 map_raw.png，免 key CDN 直链
+        rustMapsRaw: details.rust_maps?.thumbnailUrl
+          ? details.rust_maps.thumbnailUrl.replace(/thumbnail\.\w+$/, 'map_raw.png')
+          : null,
         monuments: details.rust_maps?.monuments || null,
         mapDownloadUrl: details.rust_world_levelurl || null, // 地图文件下载 URL
 

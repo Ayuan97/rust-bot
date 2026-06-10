@@ -46,6 +46,9 @@ const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 5;
 const clampScale = (s) => Math.min(Math.max(ZOOM_MIN, s), ZOOM_MAX);
 
+// RustMaps map_raw 高清底图的海洋边距≈9%/每边（实测：与 Rust+ 底图叠加配准，海陆 IoU 峰值）
+const RUSTMAPS_OCEAN_RATIO = 0.09;
+
 // 演示数据
 const DEMO_MARKERS = [
   { id: 'd1', type: AppMarkerType.CH47, x: 1500, y: 2000, name: '支奴干' },
@@ -135,6 +138,10 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
   const [teammates, setTeammates] = useState([]); // extended-teammates 完整名单
   const [heatLoading, setHeatLoading] = useState(false);
 
+  // RustMaps 高清底图：加载成功后读取的实际像素尺寸 + 加载失败标志（失败则回退 Rust+ 底图）
+  const [hdSize, setHdSize] = useState(null);
+  const [hdFailed, setHdFailed] = useState(false);
+
   const confirm = useConfirm();
   const isDemo = !server || !server.connected;
 
@@ -179,6 +186,12 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
   useEffect(() => {
     fetchMapData();
   }, [fetchMapData]);
+
+  // 切换服务器时重置高清底图状态（新服务器对应新地图）
+  useEffect(() => {
+    setHdSize(null);
+    setHdFailed(false);
+  }, [server?.id]);
 
   // 监听队伍变化
   useEffect(() => {
@@ -385,11 +398,16 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
     if (focusTarget && containerRef.current) {
       setViewMode('tactical');
       const rect = containerRef.current.getBoundingClientRect();
-      const { mapSize, imageWidth, imageHeight, oceanMargin } = mapInfo;
-      const scale = (imageWidth - 2 * oceanMargin) / mapSize;
-      const x_image = focusTarget.x * scale + oceanMargin;
-      const y_image = imageHeight - (focusTarget.y * scale + oceanMargin);
-      const posPercent = { x: x_image / imageWidth, y: y_image / imageHeight };
+      const { mapSize } = mapInfo;
+      // 与底图一致的投影参数（高清图用 RustMaps 实际尺寸 + 9% 海洋边距）
+      const useHdNow = !isDemo && !!server?.battlemetricsId && !hdFailed && !!hdSize;
+      const iw = useHdNow ? hdSize.w : mapInfo.imageWidth;
+      const ih = useHdNow ? hdSize.h : mapInfo.imageHeight;
+      const om = useHdNow ? hdSize.w * RUSTMAPS_OCEAN_RATIO : mapInfo.oceanMargin;
+      const scale = (iw - 2 * om) / mapSize;
+      const x_image = focusTarget.x * scale + om;
+      const y_image = ih - (focusTarget.y * scale + om);
+      const posPercent = { x: x_image / iw, y: y_image / ih };
       const targetScale = 2;
       // 地图为正方形(height:100% + maxWidth:100%)，边长=容器宽高较小者；X/Y 须用同一边长，否则非正方形容器下定位会偏
       const square = Math.min(rect.width, rect.height);
@@ -397,19 +415,23 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
       const newY = -(posPercent.y - 0.5) * square * targetScale;
       setTransform({ scale: targetScale, x: newX, y: newY });
     }
-  }, [focusTarget, mapInfo.mapSize, mapInfo.imageWidth, mapInfo.imageHeight, mapInfo.oceanMargin]);
+  }, [focusTarget, mapInfo.mapSize, mapInfo.imageWidth, mapInfo.imageHeight, mapInfo.oceanMargin, hdSize, hdFailed, isDemo, server?.battlemetricsId]);
 
   // ============================================================
-  // 坐标转换
+  // 坐标转换（RustMaps 高清底图 / Rust+ 底图自适应）
   // ============================================================
+  // 高清底图：有 BattleMetrics 关联且未加载失败时优先使用；坐标按 RustMaps 9% 海洋边距对齐
+  const useHd = !isDemo && !!server?.battlemetricsId && !hdFailed;
+  const proj = (useHd && hdSize)
+    ? { iw: hdSize.w, ih: hdSize.h, om: hdSize.w * RUSTMAPS_OCEAN_RATIO }
+    : { iw: mapInfo.imageWidth, ih: mapInfo.imageHeight, om: mapInfo.oceanMargin };
   const getPos = (x, y) => {
-    const { mapSize, imageWidth, imageHeight, oceanMargin } = mapInfo;
-    const scale = (imageWidth - 2 * oceanMargin) / mapSize;
-    const x_image = x * scale + oceanMargin;
-    const y_image = imageHeight - (y * scale + oceanMargin);
-    const left = (x_image / imageWidth) * 100;
-    const top = (y_image / imageHeight) * 100;
-    return { left: `${left}%`, top: `${top}%` };
+    const { mapSize } = mapInfo;
+    const { iw, ih, om } = proj;
+    const scale = (iw - 2 * om) / mapSize;
+    const x_image = x * scale + om;
+    const y_image = ih - (y * scale + om);
+    return { left: `${(x_image / iw) * 100}%`, top: `${(y_image / ih) * 100}%` };
   };
 
   // ============================================================
@@ -427,7 +449,7 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
   const isHeatmap = viewMode === 'heatmap';
 
   const mapImageUrl = server?.id
-    ? `${import.meta.env.VITE_API_URL || '/api'}/servers/${server.id}/map-image?token=${localStorage.getItem('token')}`
+    ? `${import.meta.env.VITE_API_URL || '/api'}/servers/${server.id}/${useHd ? 'map-image-hd' : 'map-image'}?token=${localStorage.getItem('token')}`
     : null;
 
   // ============================================================
@@ -562,8 +584,11 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
             {/* 地图背景 */}
             {mapImageUrl && (
               <img src={mapImageUrl} alt="Rust Map"
-                className="absolute inset-0 w-full h-full object-fill z-0 opacity-80"
-                style={{ filter: 'grayscale(0.3) contrast(1.1)' }} draggable={false} />
+                className="absolute inset-0 w-full h-full object-fill z-0"
+                style={{ opacity: useHd ? 1 : 0.8, filter: useHd ? 'none' : 'grayscale(0.3) contrast(1.1)' }}
+                draggable={false}
+                onLoad={useHd ? (e) => setHdSize({ w: e.target.naturalWidth, h: e.target.naturalHeight }) : undefined}
+                onError={useHd ? () => setHdFailed(true) : undefined} />
             )}
 
             {/* 演示模式背景：发丝网格 */}

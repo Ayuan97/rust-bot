@@ -10,6 +10,9 @@ import globalServiceManager from '../services/global-manager.service.js';
 import battlemetricsService from '../services/battlemetrics.service.js';
 import { v4 as uuidv4 } from 'uuid';
 import EventTimerManager from '../utils/event-timer.js';
+import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
 
 const router = express.Router();
 
@@ -1178,6 +1181,45 @@ router.get('/:id/map-image', async (req, res) => {
     res.set('Content-Type', 'image/jpeg');
     res.set('Cache-Control', 'public, max-age=3600');
     res.send(imageBuffer);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// RustMaps 高清底图缓存目录（按 mapId 落盘，wipe 换图即新 mapId、自动失效）
+const HD_MAP_CACHE = path.resolve(process.cwd(), 'cache/maps');
+
+/**
+ * GET /api/servers/:id/map-image-hd
+ * RustMaps 高清底图（5500² 彩色专业渲染、无图标）。从 BattleMetrics 的 rust_maps 推出 CDN 直链(免 key)，
+ * 后端代理 + 磁盘缓存。前端按 9% 海洋边距对齐坐标。无 BM 关联或无高清图时返回 404，前端回退 Rust+ 底图。
+ */
+router.get('/:id/map-image-hd', async (req, res) => {
+  try {
+    const [own] = await db.query('SELECT battlemetricsId FROM servers WHERE id = ? AND userId = ?', [req.params.id, req.user.id]);
+    if (own.length === 0) return res.status(404).json({ success: false, error: '服务器不存在' });
+    const bmId = own[0].battlemetricsId;
+    if (!bmId) return res.status(404).json({ success: false, error: '无 BattleMetrics 关联' });
+
+    const info = await battlemetricsService.getServerInfo(bmId);
+    const rawUrl = info?.rustMapsRaw;
+    if (!rawUrl) return res.status(404).json({ success: false, error: '无 RustMaps 高清图' });
+
+    // mapId = CDN 路径倒数第二段，唯一标识该地图（换图即变 → 缓存自动失效）
+    const mapId = (rawUrl.split('/').slice(-2, -1)[0] || String(bmId)).replace(/[^a-zA-Z0-9_-]/g, '');
+    const cacheFile = path.join(HD_MAP_CACHE, `${mapId}.png`);
+
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=86400');
+
+    if (fs.existsSync(cacheFile)) {
+      return fs.createReadStream(cacheFile).pipe(res);
+    }
+    const resp = await axios.get(rawUrl, { responseType: 'arraybuffer', timeout: 60000 });
+    const buf = Buffer.from(resp.data);
+    fs.mkdirSync(HD_MAP_CACHE, { recursive: true });
+    fs.writeFileSync(cacheFile, buf);
+    res.send(buf);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
