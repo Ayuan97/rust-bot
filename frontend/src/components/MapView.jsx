@@ -589,7 +589,7 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
             {isHeatmap && (
               <>
                 <HeatCanvas points={activityPoints} proj={proj} mapSize={mapInfo.mapSize} visible={heatTab === 'activity'}
-                  stops={ACTIVITY_STOPS} radius={heatPx(30)} blur={heatPx(18)} baseAlpha={0.78} useWeight />
+                  stops={ACTIVITY_STOPS} radius={heatPx(42)} blur={heatPx(42)} baseAlpha={0.5} useWeight />
                 <HeatCanvas points={deathPoints} proj={proj} mapSize={mapInfo.mapSize} visible={heatTab === 'deaths'}
                   stops={DEATH_STOPS} radius={heatPx(35)} blur={heatPx(20)} baseAlpha={0.7} useWeight={false} />
                 {/* 死亡点位：热力面之上叠加精确点位（含死者+时间提示）。点位与提示用反向缩放，地图放多大它都恒定大小、不糊脸 */}
