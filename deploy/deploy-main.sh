@@ -198,11 +198,20 @@ cmd_install() {
   local JWT_SECRET NODE_TOKEN_SECRET env="$APP_DIR/.env"
   JWT_SECRET=$(openssl rand -hex 32)
   NODE_TOKEN_SECRET=$(openssl rand -hex 32)
-  # 复用已有密钥（重复部署不让 token/JWT 失效）
+  # 这些是"运营中手动配/调整过、重新部署绝不能丢"的变量：先给默认值，下面若已有 .env 则复用旧值
+  local INTERNAL_ALLOWED_IPS=127.0.0.1,::1
+  local STEAM_API_KEY=
+  local VITE_API_URL=${DOMAIN:+https://api.$DOMAIN/api}
+  local VITE_SOCKET_URL=${DOMAIN:+https://api.$DOMAIN}
+  # 复用已有密钥与关键运营变量（重复部署不让 token/JWT 失效，不覆盖白名单/Steam key/前端地址）
   if [ -f "$env" ]; then
     local ov
     ov=$(grep -E '^JWT_SECRET=' "$env" | cut -d= -f2- || true); [ -n "$ov" ] && JWT_SECRET=$ov
     ov=$(grep -E '^NODE_TOKEN_SECRET=' "$env" | cut -d= -f2- || true); [ -n "$ov" ] && NODE_TOKEN_SECRET=$ov
+    ov=$(grep -E '^INTERNAL_ALLOWED_IPS=' "$env" | cut -d= -f2- || true); [ -n "$ov" ] && INTERNAL_ALLOWED_IPS=$ov
+    ov=$(grep -E '^STEAM_API_KEY=' "$env" | cut -d= -f2- || true); [ -n "$ov" ] && STEAM_API_KEY=$ov
+    ov=$(grep -E '^VITE_API_URL=' "$env" | cut -d= -f2- || true); [ -n "$ov" ] && VITE_API_URL=$ov
+    ov=$(grep -E '^VITE_SOCKET_URL=' "$env" | cut -d= -f2- || true); [ -n "$ov" ] && VITE_SOCKET_URL=$ov
     cp "$env" "$env.bak.$(date +%s)"
   fi
   cat > "$env" <<EOF
@@ -221,7 +230,14 @@ DB_POOL_LIMIT=30
 JWT_SECRET=$JWT_SECRET
 NODE_TOKEN_SECRET=$NODE_TOKEN_SECRET
 # 内部接口默认仅允许本机(子节点本机直连 127.0.0.1:3000)；跨机子节点需把其公网IP逗号追加进来
-INTERNAL_ALLOWED_IPS=127.0.0.1,::1
+INTERNAL_ALLOWED_IPS=$INTERNAL_ALLOWED_IPS
+
+# Steam Web API key（队友头像/战绩；运营中手动配，重新部署复用旧值）
+STEAM_API_KEY=$STEAM_API_KEY
+
+# 前端 API/Socket 地址（api 子域，vite 构建时读取；漏配前端会回退 localhost 致登录失败）
+VITE_API_URL=$VITE_API_URL
+VITE_SOCKET_URL=$VITE_SOCKET_URL
 
 RUST_CONN_MODE=distributed
 
