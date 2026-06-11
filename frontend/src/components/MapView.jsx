@@ -424,6 +424,8 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
   const proj = (useHd && hdSize)
     ? { iw: hdSize.w, ih: hdSize.h, om: hdSize.w * RUSTMAPS_OCEAN_RATIO }
     : { iw: mapInfo.imageWidth, ih: mapInfo.imageHeight, om: mapInfo.oceanMargin };
+  // 热斑影响半径按地图实际尺寸换算（米 → 1024 内部画布像素），不同 mapSize 自动适配、不糊盖底图
+  const heatPx = (meters) => Math.max(5, Math.round((meters / mapInfo.mapSize) * HEAT_RES));
   const getPos = (x, y) => {
     const { mapSize } = mapInfo;
     const { iw, ih, om } = proj;
@@ -587,9 +589,9 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
             {isHeatmap && (
               <>
                 <HeatCanvas points={activityPoints} proj={proj} mapSize={mapInfo.mapSize} visible={heatTab === 'activity'}
-                  stops={ACTIVITY_STOPS} radius={20} blur={16} baseAlpha={0.9} useWeight />
+                  stops={ACTIVITY_STOPS} radius={heatPx(60)} blur={heatPx(34)} baseAlpha={0.6} useWeight />
                 <HeatCanvas points={deathPoints} proj={proj} mapSize={mapInfo.mapSize} visible={heatTab === 'deaths'}
-                  stops={DEATH_STOPS} radius={22} blur={18} baseAlpha={0.7} useWeight={false} />
+                  stops={DEATH_STOPS} radius={heatPx(85)} blur={heatPx(48)} baseAlpha={0.55} useWeight={false} />
                 {/* 死亡点位：热力面之上叠加精确点位（含死者+时间提示）。点位与提示用反向缩放，地图放多大它都恒定大小、不糊脸 */}
                 {heatTab === 'deaths' && deathPoints.map((p, i) => (
                   <div key={`death-${p.x}-${p.y}-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-[18] group" style={getPos(p.x, p.y)}>
@@ -802,19 +804,19 @@ const HEAT_RES = 1024;
 // 活动热力：暗红 → hazard 红 → 橙 → 黄 → 白热（热成像观感，贴合 hazard 主色，符合设计系统禁绿）
 const ACTIVITY_STOPS = [
   [0.00, 'rgba(60,12,12,0)'],
-  [0.20, 'rgba(130,22,18,0.50)'],
-  [0.45, 'rgba(224,69,46,0.80)'],
-  [0.65, 'rgba(255,124,52,0.88)'],
-  [0.82, 'rgba(255,198,64,0.93)'],
-  [1.00, 'rgba(255,255,238,0.97)'],
+  [0.30, 'rgba(150,32,20,0.24)'],
+  [0.55, 'rgba(224,69,46,0.42)'],
+  [0.75, 'rgba(255,130,55,0.54)'],
+  [0.90, 'rgba(255,200,75,0.64)'],
+  [1.00, 'rgba(255,250,225,0.76)'],
 ];
 // 死亡热力：深血红 → 红 → hazard → 亮（不带黄，更沉、更"血"，与活动一眼区分）
 const DEATH_STOPS = [
   [0.00, 'rgba(48,0,0,0)'],
-  [0.28, 'rgba(120,10,10,0.55)'],
-  [0.58, 'rgba(196,28,28,0.80)'],
-  [0.82, 'rgba(224,69,46,0.90)'],
-  [1.00, 'rgba(255,176,140,0.96)'],
+  [0.32, 'rgba(130,14,14,0.28)'],
+  [0.60, 'rgba(200,32,32,0.46)'],
+  [0.84, 'rgba(224,69,46,0.58)'],
+  [1.00, 'rgba(255,165,135,0.72)'],
 ];
 
 // 256 级 alpha(0-255) → [r,g,b,a] 查找表：用 1×256 渐变条采样得到
@@ -877,7 +879,7 @@ function HeatCanvas({ points, proj, mapSize, visible, stops, radius = 24, blur =
       const [nx, ny] = gameToNorm(p.x, p.y, proj, mapSize);
       if (!Number.isFinite(nx) || !Number.isFinite(ny)) continue;
       const intensity = useWeight ? Math.sqrt(Math.min((p.w || 1) / maxW, 1)) : 1;
-      ctx.globalAlpha = Math.max(0.25, intensity * baseAlpha);
+      ctx.globalAlpha = Math.max(0.1, intensity * baseAlpha);
       ctx.drawImage(brush, nx * HEAT_RES - bs / 2, ny * HEAT_RES - bs / 2);
     }
     ctx.globalAlpha = 1;
