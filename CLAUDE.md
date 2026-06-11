@@ -86,23 +86,17 @@
 - 需要修改线上数据时，必须先记录影响范围与回滚点，再执行修复；输出结论时必须包含“根因 + 修复动作 + 回滚方案”。
 - 若怀疑 BattleMetrics 匹配逻辑问题，必须同时核对 IP 与端口，禁止只按 IP 唯一匹配后直接落库。
 
-## 线上排查固定连接信息（敏感）
-- 仅用于线上复杂问题排查与日志定位，禁止外传、禁止发到公开仓库或工单截图中。
-- SSH 主节点：`38.76.201.25`
-- SSH 账号：`root`
-- SSH 密码：`7q4ao2M2NosF`
-- 服务器项目目录：`/www/wwwroot/rust-bot`
-- 线上环境变量文件：`/www/wwwroot/rust-bot/.env`
-- PM2 日志目录：`/root/.pm2/logs`
-- 关键日志文件：`/root/.pm2/logs/rust-main-out.log`、`/root/.pm2/logs/rust-main-error.log`、`/root/.pm2/logs/rust-connector-1-out.log`、`/root/.pm2/logs/rust-connector-1-error.log`
-- MySQL 连接信息：`DB_HOST=127.0.0.1`，`DB_PORT=3306`，`DB_USER=rustapp`，`DB_PASSWORD=xlCodReFpZxUBrv3mFF1jk6x`，`DB_NAME=rustplus_db`
-- MySQL 排查命令示例：`mysql -h127.0.0.1 -P3306 -urustapp -p'xlCodReFpZxUBrv3mFF1jk6x' rustplus_db`
 
 ## 开发命令
 - 后端开发：`cd backend && npm run dev`
 - 后端生产：`cd backend && npm start`
 - 前端开发：`cd frontend && npm run dev`
 - 前端构建：`cd frontend && npm run build`
+
+## 部署（动线上前务必先看）
+- **完整部署目录、流程、服务器信息、环境变量一律以根目录 `DEPLOYMENT.md` 为准**（生产机 `160.202.47.238` / `rustplusplus.com`，API 子域 `api.rustplusplus.com`，nginx 服务目录 `/var/www/rustbot`）。
+- 🩸 前端构建后**必须** `rsync -a --delete frontend/dist/ /var/www/rustbot/`（nginx 服务的是 `/var/www/rustbot`、不是 `frontend/dist`）；**推荐直接 `bash deploy/rustbot-update.sh` 一键**（已封装 git 拉取 + 构建 + rsync + 重启 + 健康检查）。
+- 🩸 根 `.env` 必须有 `VITE_API_URL=https://api.rustplusplus.com/api` 与 `VITE_SOCKET_URL=https://api.rustplusplus.com`，漏配前端会回退 localhost、用户登录全挂。
 
 ## 变更自检清单
 - SQL 是否满足多租户隔离（`userId` 过滤/归属校验）？

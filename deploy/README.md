@@ -23,7 +23,7 @@
 ## 子节点清单文件（仅放服务器，不进仓库）
 
 - `/etc/rustbot/connector-nodes.list`（免密模式）  
-  每行一个 SSH 目标，例如 `root@38.76.201.26`。
+  每行一个 SSH 目标，例如 `root@<子节点公网IP>`。
 - `/etc/rustbot/connector-nodes.auth`（密码模式）  
   每行格式：`host|user|password`。
 
@@ -45,3 +45,7 @@ bash deploy/rustbot-restart.sh
 # 仅清理日志
 bash deploy/rustbot-clean-logs.sh
 ```
+
+---
+
+> 📖 服务器信息、关键目录、环境变量、部署流程与血泪教训，统一见根目录 **`DEPLOYMENT.md`**（部署权威文档）。本文件只讲各脚本职责。

@@ -10,7 +10,9 @@
 
 ---
 
-## Quick Start
+## Quick Start (local development)
+
+> 🚀 Production deployment & operations → see **[`DEPLOYMENT.md`](DEPLOYMENT.md)** (server, directories, env vars, deploy scripts, gotchas).
 
 ### 1) Prerequisites
 
@@ -65,6 +67,7 @@ Default URLs:
 
 ## Docs
 
+- **Deployment & operations (production): [`DEPLOYMENT.md`](DEPLOYMENT.md)**
 - Docs index: `docs/README.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Database: `docs/DATABASE.md`

@@ -10,7 +10,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 APP_DIR=${APP_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}
-WEB_DIR=${WEB_DIR:-/var/www/app.rustplusplus.com}
+WEB_DIR=${WEB_DIR:-/var/www/rustbot}
 
 BRANCH=${1:-main}
 REQUIRED_FILE=backend/src/connector-node/app.js
