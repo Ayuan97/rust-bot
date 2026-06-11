@@ -425,7 +425,7 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
     ? { iw: hdSize.w, ih: hdSize.h, om: hdSize.w * RUSTMAPS_OCEAN_RATIO }
     : { iw: mapInfo.imageWidth, ih: mapInfo.imageHeight, om: mapInfo.oceanMargin };
   // 热斑影响半径按地图实际尺寸换算（米 → 1024 内部画布像素），不同 mapSize 自动适配、不糊盖底图
-  const heatPx = (meters) => Math.max(5, Math.round((meters / mapInfo.mapSize) * HEAT_RES));
+  const heatPx = (meters) => Math.max(2, Math.round((meters / mapInfo.mapSize) * HEAT_RES));
   const getPos = (x, y) => {
     const { mapSize } = mapInfo;
     const { iw, ih, om } = proj;
@@ -589,9 +589,9 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
             {isHeatmap && (
               <>
                 <HeatCanvas points={activityPoints} proj={proj} mapSize={mapInfo.mapSize} visible={heatTab === 'activity'}
-                  stops={ACTIVITY_STOPS} radius={heatPx(90)} blur={heatPx(45)} baseAlpha={0.72} useWeight />
+                  stops={ACTIVITY_STOPS} radius={heatPx(12)} blur={heatPx(9)} baseAlpha={0.8} useWeight />
                 <HeatCanvas points={deathPoints} proj={proj} mapSize={mapInfo.mapSize} visible={heatTab === 'deaths'}
-                  stops={DEATH_STOPS} radius={heatPx(110)} blur={heatPx(55)} baseAlpha={0.62} useWeight={false} />
+                  stops={DEATH_STOPS} radius={heatPx(14)} blur={heatPx(10)} baseAlpha={0.72} useWeight={false} />
                 {/* 死亡点位：热力面之上叠加精确点位（含死者+时间提示）。点位与提示用反向缩放，地图放多大它都恒定大小、不糊脸 */}
                 {heatTab === 'deaths' && deathPoints.map((p, i) => (
                   <div key={`death-${p.x}-${p.y}-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-[18] group" style={getPos(p.x, p.y)}>
