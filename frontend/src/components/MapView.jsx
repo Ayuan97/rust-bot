@@ -587,9 +587,9 @@ export default function MapView({ server, teamData, focusTarget, onLocatePlayer 
             {isHeatmap && (
               <>
                 <HeatCanvas points={activityPoints} proj={proj} mapSize={mapInfo.mapSize} visible={heatTab === 'activity'}
-                  stops={ACTIVITY_STOPS} radius={13} blur={9} baseAlpha={0.85} useWeight />
+                  stops={ACTIVITY_STOPS} radius={20} blur={16} baseAlpha={0.9} useWeight />
                 <HeatCanvas points={deathPoints} proj={proj} mapSize={mapInfo.mapSize} visible={heatTab === 'deaths'}
-                  stops={DEATH_STOPS} radius={14} blur={10} baseAlpha={0.6} useWeight={false} />
+                  stops={DEATH_STOPS} radius={22} blur={18} baseAlpha={0.7} useWeight={false} />
                 {/* 死亡点位：热力面之上叠加精确点位（含死者+时间提示）。点位与提示用反向缩放，地图放多大它都恒定大小、不糊脸 */}
                 {heatTab === 'deaths' && deathPoints.map((p, i) => (
                   <div key={`death-${p.x}-${p.y}-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 z-[18] group" style={getPos(p.x, p.y)}>
@@ -862,21 +862,22 @@ function HeatCanvas({ points, proj, mapSize, visible, stops, radius = 24, blur =
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, HEAT_RES, HEAT_RES);
 
-    // 归一化上限：取第 92 百分位，避免个别超高频网格把其余点全部压成不可见
+    // 归一化上限：取第 75 百分位，让大多数网格都能达到较高强度，不被个别超高频点（基地）压暗
     let maxW = 1;
     if (useWeight) {
       const ws = points.map(p => p.w || 1).sort((a, b) => a - b);
-      maxW = Math.max(1, ws[Math.min(ws.length - 1, Math.floor(ws.length * 0.92))]);
+      maxW = Math.max(1, ws[Math.min(ws.length - 1, Math.floor(ws.length * 0.75))]);
     }
 
-    // ① 密度累积：每个点按归一化权重画灰度画刷到 alpha 通道
+    // ① 密度累积：每个点按归一化权重画灰度画刷到 alpha 通道。
+    // 用 sqrt 压缩动态范围 → 低频点也清晰可见，不会只剩一个亮点；alpha 下限抬高保证每个点都看得见。
     const brush = buildBrush(radius, blur);
     const bs = brush.width;
     for (const p of points) {
       const [nx, ny] = gameToNorm(p.x, p.y, proj, mapSize);
       if (!Number.isFinite(nx) || !Number.isFinite(ny)) continue;
-      const intensity = useWeight ? Math.min((p.w || 1) / maxW, 1) : 1;
-      ctx.globalAlpha = Math.max(0.1, intensity * baseAlpha);
+      const intensity = useWeight ? Math.sqrt(Math.min((p.w || 1) / maxW, 1)) : 1;
+      ctx.globalAlpha = Math.max(0.25, intensity * baseAlpha);
       ctx.drawImage(brush, nx * HEAT_RES - bs / 2, ny * HEAT_RES - bs / 2);
     }
     ctx.globalAlpha = 1;
