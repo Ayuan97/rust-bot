@@ -182,7 +182,7 @@ CREATE TABLE IF NOT EXISTS `raid_alert_config` (
   `mode` VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
   `snoozeUntil` DATETIME(3) DEFAULT NULL,
   `snoozeHours` INT NOT NULL DEFAULT 6,
-  `mergeWindowSec` INT NOT NULL DEFAULT 300,
+  `mergeWindowSec` INT NOT NULL DEFAULT 5,
   `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`userId`),
   CONSTRAINT `raid_alert_config_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE

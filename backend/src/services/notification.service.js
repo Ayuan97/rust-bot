@@ -59,7 +59,7 @@ class NotificationService {
       // 2) 合并窗口：窗口内多次触发只发一条
       const now = Date.now();
       const last = this.lastNotifiedAt.get(userId) || 0;
-      if (now - last < (config.mergeWindowSec || 300) * 1000) {
+      if (now - last < (config.mergeWindowSec || 5) * 1000) {
         return;
       }
       this.lastNotifiedAt.set(userId, now);
@@ -96,7 +96,7 @@ class NotificationService {
   async _getConfig(userId) {
     const [rows] = await db.query('SELECT * FROM raid_alert_config WHERE userId = ?', [userId]);
     if (rows[0]) return rows[0];
-    return { userId, mode: 'ACTIVE', snoozeUntil: null, snoozeHours: 6, mergeWindowSec: 300 };
+    return { userId, mode: 'ACTIVE', snoozeUntil: null, snoozeHours: 6, mergeWindowSec: 5 };
   }
 
   /** 对外状态查询：顺便把已过期的 SNOOZED 归一化为 ACTIVE */

@@ -1260,9 +1260,11 @@ router.get('/:id/devices', async (req, res) => {
       devices.map(async (device) => {
         let currentValue = false;
 
-        if (isConnected) {
+        // 只有开关/储物监视器有持续状态需要实时查询；Smart Alarm 是触发型设备、没有 on/off 状态，
+        // 对它查 getEntityInfo 会一直等到命令超时（多个 ALARM 并发时把整个设备列表拖到几十秒）。跳过它，并对其余设备加 6 秒超时保护。
+        if (isConnected && device.type !== 'ALARM') {
           try {
-            const entityInfo = await rustPlusService.getEntityInfo(req.params.id, device.entityId);
+            const entityInfo = await rustPlusService.getEntityInfo(req.params.id, device.entityId, { timeoutMs: 6000 });
             if (entityInfo && entityInfo.payload) {
               currentValue = entityInfo.payload.value || false;
             }
