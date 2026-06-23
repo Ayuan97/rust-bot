@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS `devices` (
   `id` VARCHAR(36) NOT NULL,
   `serverId` VARCHAR(36) NOT NULL,
   `userId` VARCHAR(36) NOT NULL,
-  `entityId` INT NOT NULL,
+  `entityId` BIGINT NOT NULL,
   `name` VARCHAR(100) NOT NULL,
   `type` ENUM('SWITCH', 'ALARM', 'STORAGE') NOT NULL,
   `command` VARCHAR(50) NULL,
