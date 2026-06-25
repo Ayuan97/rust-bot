@@ -23,18 +23,21 @@ function RaidAlertSettings() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ name: '', barkKey: '' });
   const [channel, setChannel] = useState('bark'); // bark | phone（phone 为占位，测试中）
+  const [apiToken, setApiToken] = useState('');
   const toast = useToast();
 
   useEffect(() => { load(); }, []);
 
   const load = async () => {
     try {
-      const [s, r] = await Promise.all([
+      const [s, r, t] = await Promise.all([
         api.get('/raid-alert/status'),
         api.get('/raid-alert/recipients'),
+        api.get('/raid-alert/api-token'),
       ]);
       if (s.data.success) setStatus(s.data.status);
       if (r.data.success) setRecipients(r.data.recipients || []);
+      if (t.data.success) setApiToken(t.data.token || '');
     } catch (e) {
       toast.error('加载突袭警报配置失败');
     } finally {
@@ -89,13 +92,22 @@ function RaidAlertSettings() {
   return (
     <div className="space-y-6 font-sans">
       {/* Header */}
-      <div className="flex items-center gap-4 pb-4 border-b border-ink-line">
+      <div className="flex items-start gap-4 pb-4 border-b border-ink-line">
         <div className="w-11 h-11 bg-hazard flex items-center justify-center shrink-0">
           <FaShieldAlt className="text-white text-lg" />
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="tac-label">突袭强提醒 // RAID ALERT</div>
           <h3 className="text-lg font-extrabold text-fg tracking-tight mt-0.5">智能警报触发 → 电话级强提醒</h3>
+          <p className="text-[13px] text-fg-dim mt-1">手机静音也能把你叫醒，守住下线后的家。</p>
+          <div className="flex flex-wrap gap-1.5 mt-2.5">
+            {['绕过静音', '警报铃声', '响30秒', '叫醒你'].map((t) => (
+              <span key={t} className="inline-flex items-center gap-1.5 px-2 py-1 border border-hazard/30 bg-hazard-dim text-[11px] font-medium text-fg">
+                <span className="w-1 h-1 bg-hazard shrink-0" />
+                {t}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -238,7 +250,9 @@ function RaidAlertSettings() {
             </button>
             <div className="text-[11px] text-fg-mute leading-relaxed flex items-start gap-1.5">
               <FaCheckCircle className="text-terminal mt-0.5 shrink-0" />
-              iPhone 装 Bark App → 首页直接复制整条推送地址粘进来（后面的推送内容部分不用删，系统会自动去掉）→ 点"测试"确认能收到。建议在 App 里开启"重要提醒"，突袭时才能绕过静音强制响铃。
+              <span>
+                <span className="text-fg-dim">Bark 是 App Store 上的免费推送 App（直接搜「Bark」）。</span>装好后打开 → 首页复制整条推送地址粘进来（后面的推送内容不用删，系统会自动去掉）→ 点"测试"确认能收到。<span className="text-hazard-bright">务必在 Bark 里开启"重要提醒"</span>，否则手机静音时收不到强提醒。
+              </span>
             </div>
           </>
         ) : (
@@ -257,6 +271,44 @@ function RaidAlertSettings() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* 外部接口 */}
+      <div className="p-4 bg-ink-850 border border-ink-line space-y-3">
+        <div className="tac-label border-l-2 border-hazard pl-2">EXTERNAL API // 外部接口</div>
+        <p className="text-[12px] text-fg-dim leading-relaxed">
+          你的外部系统（脚本、监控、其它服务）调用一下这个接口，就能用上面配好的 Bark 通知人推送告警，标题和内容自定义。
+        </p>
+
+        <div>
+          <div className="tac-label !text-[9px] mb-1.5">你的 API TOKEN（请保密）</div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input readOnly value={apiToken} onFocus={(e) => e.target.select()}
+              className="tac-input font-mono text-[12px] flex-1 min-w-[200px]" />
+            <button onClick={() => { navigator.clipboard?.writeText(apiToken); toast.success('已复制 token'); }}
+              className="tac-btn tac-btn-ghost !py-2 !px-3 shrink-0">复制</button>
+            <button onClick={() => act(async () => {
+              const res = await api.post('/raid-alert/api-token/reset');
+              if (res.data.success) setApiToken(res.data.token);
+            }, '已重置 token，旧的立即失效')} disabled={busy}
+              className="tac-btn tac-btn-ghost !py-2 !px-3 shrink-0 hover:!border-hazard/50">
+              <FaSync className="text-xs" /> 重置
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div className="tac-label !text-[9px] mb-1.5">调用示例（POST）</div>
+          <pre className="p-3 bg-ink-900 border border-ink-line text-[11px] font-mono text-fg-dim overflow-x-auto whitespace-pre leading-relaxed">{`curl -X POST https://api.rustplusplus.com/api/external/bark \\
+  -H "Authorization: Bearer ${apiToken || '<你的TOKEN>'}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"title":"服务器告警","body":"CPU 超过 90%"}'`}</pre>
+        </div>
+
+        <div className="text-[11px] text-fg-mute leading-relaxed flex items-start gap-1.5">
+          <FaCheckCircle className="text-terminal mt-0.5 shrink-0" />
+          <span><span className="text-fg-dim">title</span>=标题、<span className="text-fg-dim">body</span>=内容，都可自定义；推送会发给上面配好且启用的所有 Bark 通知人。token 万一泄露，点「重置」即可作废旧的。</span>
+        </div>
       </div>
     </div>
   );

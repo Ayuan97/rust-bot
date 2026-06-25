@@ -108,4 +108,24 @@ router.post('/activate', async (req, res) => {
   }
 });
 
+// 外部接口 API token：获取（没有则自动生成）
+router.get('/api-token', async (req, res) => {
+  try {
+    const token = await notificationService.getOrCreateApiToken(req.user.id);
+    res.json({ success: true, token });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// 重置 API token（旧 token 立即失效）
+router.post('/api-token/reset', async (req, res) => {
+  try {
+    const token = await notificationService.resetApiToken(req.user.id);
+    res.json({ success: true, token });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 export default router;

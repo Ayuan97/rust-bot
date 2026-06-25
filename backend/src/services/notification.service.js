@@ -15,6 +15,7 @@
 
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import db from '../lib/db.js';
 
 const DEFAULT_BARK_SERVER = 'https://api.day.app';
@@ -298,6 +299,43 @@ class NotificationService {
     } catch (err) {
       console.error('❌ Bark 推送失败:', err.message);
     }
+  }
+
+  // ============ 外部接口：自定义内容直推 + API token ============
+
+  /** 外部接口直推：给用户已配的通知人推自定义 title/body。外部主动调用即推，不走总开关/合并窗口。 */
+  async sendCustom(userId, title, body) {
+    const recipients = await this._getEnabledRecipients(userId);
+    if (recipients.length === 0) {
+      if (this.fallbackEnabled && this.fallbackKey) {
+        await this._sendBark(this.fallbackServer, this.fallbackKey, title, body);
+        return { sent: 1 };
+      }
+      return { sent: 0 };
+    }
+    await Promise.all(recipients.map((r) => this._sendBark(r.barkServer, r.barkKey, title, body)));
+    return { sent: recipients.length };
+  }
+
+  /** 取用户的外部接口 token；没有则生成并保存。 */
+  async getOrCreateApiToken(userId) {
+    const [rows] = await db.query('SELECT apiToken FROM users WHERE id = ?', [userId]);
+    if (rows[0] && rows[0].apiToken) return rows[0].apiToken;
+    return this.resetApiToken(userId);
+  }
+
+  /** 重置（生成新的）外部接口 token，旧的立即失效。 */
+  async resetApiToken(userId) {
+    const token = 'rbk_' + crypto.randomBytes(24).toString('hex');
+    await db.query('UPDATE users SET apiToken = ?, updatedAt = NOW(3) WHERE id = ?', [token, userId]);
+    return token;
+  }
+
+  /** 用 token 反查 userId（外部接口鉴权用）。 */
+  async getUserIdByApiToken(token) {
+    if (!token || typeof token !== 'string') return null;
+    const [rows] = await db.query('SELECT id FROM users WHERE apiToken = ?', [token]);
+    return rows[0] ? rows[0].id : null;
   }
 }
 
