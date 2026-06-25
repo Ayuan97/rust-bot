@@ -57,8 +57,8 @@ mkdir -p "$WEB_DIR"
 rsync -a --delete dist/ "$WEB_DIR/"
 
 # 重启前先清日志，方便后续排障
-"$SCRIPT_DIR/rustbot-clean-logs.sh"
-"$SCRIPT_DIR/rustbot-restart.sh"
+bash "$SCRIPT_DIR/rustbot-clean-logs.sh"
+bash "$SCRIPT_DIR/rustbot-restart.sh"
 
 # 主节点健康检查，避免发布后静默失败
 for i in $(seq 1 "$HEALTH_RETRIES"); do
@@ -75,7 +75,7 @@ done
 
 # 可选：从主节点自动触发远程子节点更新
 if [ "$FANOUT_CONNECTOR_UPDATES" = "true" ]; then
-  if "$SCRIPT_DIR/rustbot-update-connectors.sh" "$BRANCH"; then
+  if bash "$SCRIPT_DIR/rustbot-update-connectors.sh" "$BRANCH"; then
     echo "[rustbot-update] connector fanout update done"
   else
     if [ "$FANOUT_CONNECTOR_STRICT" = "true" ]; then
