@@ -3,7 +3,7 @@ import {
   FaTerminal, FaUsers, FaCogs, FaMapMarkedAlt, FaCog,
   FaSignOutAlt, FaPlus, FaClock, FaSatellite, FaShieldAlt,
   FaTimes, FaExpandArrowsAlt, FaPlay, FaRobot, FaBolt, FaLightbulb, FaCrosshairs, FaDoorOpen, FaChartLine,
-  FaGlobe, FaTools, FaBell, FaServer, FaAngleDoubleLeft, FaAngleDoubleRight
+  FaGlobe, FaTools, FaBell, FaServer, FaAngleDoubleLeft, FaAngleDoubleRight, FaWeixin
 } from 'react-icons/fa';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
@@ -28,6 +28,7 @@ import {
   CONNECTION_STATES,
   getConnectionStateMeta
 } from './constants/connection.constants';
+import { openContactUs } from './components/ContactUsModal';
 
 function App() {
   const location = useLocation();
@@ -489,6 +490,14 @@ function App() {
                 {connectionLoading ? activeConnectionMeta.loadingLabel : activeConnectionMeta.actionLabel}
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => openContactUs()}
+              className="tac-btn tac-btn-ghost !py-2"
+              title="联系我们"
+            >
+              <FaWeixin className="text-hazard" /> 联系我们
+            </button>
             <button
               onClick={() => {
                 setMapFocusTarget(null);

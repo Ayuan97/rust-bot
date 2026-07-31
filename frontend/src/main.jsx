@@ -14,6 +14,7 @@ import { ToastProvider } from './components/Toast';
 import { ConfirmProvider } from './components/ConfirmModal';
 import { AuthProvider } from './context/AuthContext';
 import ServicePausedBanner from './components/ServicePausedBanner';
+import ContactUsModal from './components/ContactUsModal';
 import PendingApprovalView from './components/PendingApprovalView';
 import { useAuth } from './context/AuthContext';
 import './styles/index.css';
@@ -62,8 +63,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <AuthProvider>
         <ToastProvider>
           <ConfirmProvider>
-            {/* 订阅过期提醒条 */}
+            {/* 订阅过期提醒条 + 联系我们（微信二维码）弹窗 */}
             <ServicePausedBanner />
+            <ContactUsModal />
 
             <Routes>
               {/* 公开路由 */}

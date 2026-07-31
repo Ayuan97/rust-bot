@@ -1,12 +1,12 @@
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { openContactUs } from './ContactUsModal';
 
 /**
  * 服务暂停提醒条
  * 当用户订阅过期或未激活时显示，固定在顶部，不可关闭
+ * 当前为私有运营：引导扫码联系开通，而非跳转支付页
  */
 export default function ServicePausedBanner() {
-  const navigate = useNavigate();
   const { isSubscriptionExpired, user } = useAuth();
 
   // 未登录或订阅未过期时不显示
@@ -36,8 +36,8 @@ export default function ServicePausedBanner() {
   };
 
   const getSubText = () => {
-    if (isNotActivated) return '· 订阅后即可使用全部功能';
-    return '· 数据停止更新 · 续费后立即恢复';
+    if (isNotActivated) return '· 联系管理员开通后即可使用全部功能';
+    return '· 数据停止更新 · 连接已中断 · 联系开通后立即恢复';
   };
 
   return (
@@ -66,12 +66,13 @@ export default function ServicePausedBanner() {
           </div>
         </div>
 
-        {/* 按钮 */}
+        {/* 私有运营：扫码联系开通 */}
         <button
-          onClick={() => navigate('/payment')}
+          type="button"
+          onClick={() => openContactUs()}
           className="shrink-0 px-4 py-1.5 bg-hazard hover:bg-hazard-bright text-white text-xs font-bold transition-colors"
         >
-          {isNotActivated ? '立即订阅' : '立即续费'}
+          联系开通
         </button>
       </div>
     </div>
