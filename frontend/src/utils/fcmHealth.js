@@ -19,20 +19,20 @@ export function getFcmGate(status) {
 
   let restoreTitle = '请先恢复 FCM';
   let restoreDesc = s.restoreMessage || '完成 FCM 凭证配置后，才能连接服务器或进行游戏内配对。';
-  let ctaLabel = '去恢复 FCM 凭证';
+  let ctaLabel = '打开配对向导';
 
   if (s.restoreReason === 'expired' || isExpired) {
     restoreTitle = 'FCM 凭证已过期';
-    restoreDesc = '推送凭证已失效。请先在设置中更新 FCM 凭证，再连接服务器或配对新服。';
-    ctaLabel = '去更新 FCM 凭证';
+    restoreDesc = '推送凭证已失效。请先在配对向导中更新 FCM 凭证，再连接服务器或配对新服。';
+    ctaLabel = '更新 FCM 凭证';
   } else if (s.restoreReason === 'missing' || !hasCredentials) {
     restoreTitle = '尚未配置 FCM';
     restoreDesc = '请先完成 Edge 插件凭证配置，再进行服务器连接或配对。';
-    ctaLabel = '去配置 FCM 凭证';
+    ctaLabel = '打开配对向导';
   } else if (s.restoreReason === 'error' || s.lastError) {
     restoreTitle = 'FCM 连接异常';
     restoreDesc = s.restoreMessage || `FCM 监听失败${s.lastError?.message ? `：${s.lastError.message}` : ''}。请先恢复凭证。`;
-    ctaLabel = '去恢复 FCM 凭证';
+    ctaLabel = '打开配对向导';
   }
 
   return {

@@ -24,7 +24,7 @@ import {
  * PairingWizard - 服务器配对向导
  * 作为独立视图而非弹窗，提供更好的 UX
  */
-function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus, onRestoreFcm }) {
+function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
   const { isSubscriptionExpired, user } = useAuth();
   const toast = useToast();
   const [browser] = useState(detectBrowser);
@@ -52,6 +52,12 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus, onRe
     { id: 4, label: 'PAIRED', title: '完成配对', icon: FaCheckCircle }
   ];
 
+  // 进入向导时刷新一次 FCM 状态（避免父组件缓存过旧）
+  useEffect(() => {
+    refreshFcmStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 根据状态计算初始步骤
   useEffect(() => {
     if (isSubscriptionExpired) return;
@@ -60,20 +66,21 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus, onRe
     const isExpired = Boolean(fcmStatus.isExpired);
     const needsRestore = Boolean(fcmStatus.needsRestore);
 
-    // FCM 过期/失效：强制停留在凭证步骤，禁止跳到游戏配对
+    // FCM 过期/失效：与首次配置相同，停在「获取凭证」步骤更新命令
     if (isExpired || (needsRestore && fcmStatus.restoreReason === 'error')) {
       setCurrentStep(2);
       return;
     }
 
-    if (hasCredentials && fcmStatus.isListening && !isExpired) {
+    if (!hasCredentials) {
+      // 首次：从安装插件开始
+      setCurrentStep(1);
+    } else if (hasCredentials && fcmStatus.isListening && !isExpired) {
       // FCM 已就绪，进入监听/游戏配对
       setCurrentStep(3);
     } else if (hasCredentials && !isExpired) {
       // 有有效凭证但未监听：进入启动监听
       setCurrentStep(3);
-    } else if (!hasCredentials) {
-      setCurrentStep(1);
     }
   }, [fcmStatus, isSubscriptionExpired]);
 
@@ -268,17 +275,8 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus, onRe
               </p>
               <p className="text-[13px] text-fg-dim mt-1 leading-relaxed">
                 {fcmStatus.restoreMessage
-                  || '请先在下方重新粘贴最新 /credentials add 命令更新凭证，恢复成功后再进行服务器配对。'}
+                  || '请按下方步骤重新获取并粘贴最新 /credentials add 命令，恢复成功后再进行服务器配对。'}
               </p>
-              {typeof onRestoreFcm === 'function' && (
-                <button
-                  type="button"
-                  onClick={onRestoreFcm}
-                  className="tac-btn tac-btn-ghost !py-2 mt-3 !border-hazard/30 !text-hazard"
-                >
-                  前往设置更新 FCM
-                </button>
-              )}
             </div>
           )}
 

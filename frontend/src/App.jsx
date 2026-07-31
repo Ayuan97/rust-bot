@@ -52,7 +52,7 @@ function App() {
     needsRestore: false,
     isExpired: false
   });
-  const [settingsInitialTab, setSettingsInitialTab] = useState('fcm');
+
   const [wipeCountdownTick, setWipeCountdownTick] = useState(0);
   const activeConnectionState = activeServer?.connectionState || CONNECTION_STATES.DISCONNECTED;
   const activeConnectionMeta = getConnectionStateMeta(activeConnectionState);
@@ -180,9 +180,9 @@ function App() {
     setTimeout(() => setAlertLevel(null), 8000);
   };
 
+  // FCM 过期/失效：走配对向导（与首次进入一致的凭证配置流程），不要跳到系统设置
   const goRestoreFcm = () => {
-    setSettingsInitialTab('fcm');
-    setActiveView('settings');
+    setActiveView('pairing');
   };
 
   const handleConnect = async (server) => {
@@ -281,14 +281,8 @@ function App() {
 
   // --- Render Views ---
   const renderView = () => {
+    // 统一进配对向导：凭证过期时向导内部会停在「获取凭证」步骤（与首次配置一致）
     const openPairing = () => {
-      const gate = getFcmGate(fcmStatus);
-      // FCM 过期/失效：禁止直接走服务器配对，先恢复凭证
-      if (gate.needsRestore && (gate.isExpired || gate.restoreReason === 'error' || !gate.hasCredentials)) {
-        toast.warning(gate.restoreDesc);
-        goRestoreFcm();
-        return;
-      }
       setActiveView('pairing');
     };
 
@@ -303,7 +297,6 @@ function App() {
             setActiveView('hud');
           }}
           onCancel={() => setActiveView('hud')}
-          onRestoreFcm={goRestoreFcm}
         />
       );
     }
@@ -312,7 +305,6 @@ function App() {
       return (
         <ServerSettingsView
           server={activeServer}
-          initialTab={settingsInitialTab}
           onNavigateToPairing={openPairing}
         />
       );
@@ -626,13 +618,9 @@ function NavIcon({ id, icon, active, onClick, label, expanded }) {
   );
 }
 
-function ServerSettingsView({ server, onNavigateToPairing, initialTab = 'fcm' }) {
+function ServerSettingsView({ server, onNavigateToPairing }) {
   const isDemo = !server;
-  const [activeTab, setActiveTab] = useState(initialTab || 'fcm');
-
-  useEffect(() => {
-    if (initialTab) setActiveTab(initialTab);
-  }, [initialTab]);
+  const [activeTab, setActiveTab] = useState('fcm');
 
   const tabs = [
     { id: 'fcm', label: 'FCM 推送', icon: <FaBell />, desc: '配对凭证管理' },
