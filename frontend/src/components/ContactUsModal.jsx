@@ -12,7 +12,7 @@ export function openContactUs() {
 }
 
 /**
- * 联系我们弹窗 — 展示微信二维码（扫码开通/续费/咨询）
+ * 联系我们弹窗 — 展示微信二维码
  * 图片放在 frontend/public/wechat-qr.png
  */
 export default function ContactUsModal() {
@@ -75,7 +75,7 @@ export default function ContactUsModal() {
         <div className="p-5 flex flex-col items-center gap-4">
           <div className="flex items-center gap-2 text-fg-dim text-xs">
             <FaWeixin className="text-hazard text-base" />
-            <span>微信扫码 · 开通 / 续费 / 问题咨询</span>
+            <span>微信扫码 · 添加好友咨询</span>
           </div>
 
           <div className="text-center">
@@ -104,7 +104,7 @@ export default function ContactUsModal() {
           </div>
 
           <p className="text-[11px] text-fg-mute text-center leading-relaxed">
-            当前为私有运营模式，扫码添加微信后由管理员为你开通或续期订阅。
+            扫码添加微信，使用中有问题可直接联系。
           </p>
 
           <button type="button" onClick={close} className="tac-btn tac-btn-primary w-full !py-2.5">

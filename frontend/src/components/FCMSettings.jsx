@@ -186,19 +186,13 @@ function FCMSettings({ onNavigateToPairing }) {
     }
   };
 
-  // 检查是否过期或即将过期
-  const isExpired = diagnosis?.info?.isExpired;
-  // 临时调整为 30 天以确保用户能看到提示 (调试用)
-  const isExpiringSoon = diagnosis?.info?.daysUntilExpire <= 30;
-  const hasConnectionError = diagnosis?.info?.lastError;
-
-  // 调试日志
-  useEffect(() => {
-    if (diagnosis) {
-      console.log('FCM Diagnosis:', diagnosis);
-      console.log('Flags:', { isExpired, isExpiringSoon, hasConnectionError });
-    }
-  }, [diagnosis, isExpired, isExpiringSoon, hasConnectionError]);
+  // 过期以 status（/pairing/status）与 diagnose 双源为准，任一判定过期即过期
+  const isExpired = Boolean(status.isExpired || diagnosis?.info?.isExpired);
+  const daysUntilExpire = status.daysUntilExpire ?? diagnosis?.info?.daysUntilExpire;
+  // 即将过期：未过期且剩余 ≤ 7 天
+  const isExpiringSoon = !isExpired && typeof daysUntilExpire === 'number' && daysUntilExpire <= 7;
+  const hasConnectionError = Boolean(status.lastError || diagnosis?.info?.lastError);
+  const lastErrorMessage = status.lastError?.message || diagnosis?.info?.lastError?.message;
 
   if (loading) {
     return (
@@ -209,6 +203,32 @@ function FCMSettings({ onNavigateToPairing }) {
   }
 
   const hasCredentials = status.hasCredentials || status.hasStoredCredentials;
+  // 凭证已过期时，即使底层仍 isListening 也不展示「监听中 / LIVE」
+  const showAsListening = Boolean(status.isListening) && !isExpired;
+
+  let statusTitle = '未配置凭证';
+  let statusDesc = '请点击下方按钮添加 FCM 凭证';
+  let badgeLabel = 'NONE';
+  let badgeTone = 'mute'; // mute | hazard | terminal
+
+  if (isExpired) {
+    statusTitle = 'FCM 凭证已过期';
+    statusDesc = '推送凭证已失效，无法可靠接收配对；请立即更新凭证。';
+    badgeLabel = 'EXPIRED';
+    badgeTone = 'hazard';
+  } else if (showAsListening) {
+    statusTitle = 'FCM 监听中';
+    statusDesc = `类型: ${status.credentialType || 'GCM'}${status.steamId ? ` | STEAM: ${status.steamId}` : ''}`;
+    badgeLabel = 'LIVE';
+    badgeTone = 'terminal';
+  } else if (hasCredentials) {
+    statusTitle = '已配置凭证';
+    statusDesc = hasConnectionError
+      ? `连接异常${lastErrorMessage ? `：${lastErrorMessage}` : ''}，请尝试重连或更新凭证`
+      : 'FCM 未在监听（可能断开或未启动）';
+    badgeLabel = hasConnectionError ? 'ERROR' : 'IDLE';
+    badgeTone = 'hazard';
+  }
 
   return (
     <div className="space-y-6">
@@ -220,27 +240,27 @@ function FCMSettings({ onNavigateToPairing }) {
           </div>
           <div className="flex-1 min-w-0">
             <div className="tac-label mb-1 text-hazard">
-              {hasConnectionError ? 'CONNECTION FAILED' : isExpired ? 'CREDENTIALS EXPIRED' : 'EXPIRING SOON'}
+              {isExpired ? 'CREDENTIALS EXPIRED' : hasConnectionError ? 'CONNECTION FAILED' : 'EXPIRING SOON'}
             </div>
             <h3 className="font-extrabold text-fg">
-              {hasConnectionError
-                ? 'FCM 连接失败'
-                : isExpired
-                  ? 'FCM 凭证已过期'
+              {isExpired
+                ? 'FCM 凭证已过期'
+                : hasConnectionError
+                  ? 'FCM 连接失败'
                   : 'FCM 凭证即将过期'}
             </h3>
             <p className="text-fg-dim text-sm mt-1 leading-relaxed">
-              {hasConnectionError
-                ? `最近一次连接尝试失败: ${diagnosis.info.lastError.message}。如果持续失败，您的凭证可能已在其他设备重置。`
-                : isExpired
-                  ? '您的推送凭证已失效，无法接收配对请求。请立即更新凭证。'
-                  : `您的凭证将在 ${diagnosis.info.daysUntilExpire} 天后过期，建议及时更新。`
+              {isExpired
+                ? '您的推送凭证已失效，无法接收配对请求。请立即更新凭证后再连接服务器或配对。'
+                : hasConnectionError
+                  ? `最近一次连接尝试失败: ${lastErrorMessage || '未知错误'}。如果持续失败，您的凭证可能已在其他设备重置。`
+                  : `您的凭证将在 ${daysUntilExpire} 天后过期，建议及时更新。`
               }
             </p>
             <button
               onClick={() => {
                 if (isSubscriptionExpired) {
-                  toast.warning('订阅已过期，请先续费后再更新凭证');
+                  toast.warning('订阅已过期，请先联系管理员后再更新凭证');
                   return;
                 }
                 setShowUpdateModal(true);
@@ -260,39 +280,43 @@ function FCMSettings({ onNavigateToPairing }) {
         </div>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className={`w-10 h-10 shrink-0 flex items-center justify-center border ${status.isListening ? 'border-terminal/40 bg-ink-800 text-terminal' : 'border-ink-line bg-ink-800 text-fg-dim'
+            <div className={`w-10 h-10 shrink-0 flex items-center justify-center border ${
+              badgeTone === 'terminal'
+                ? 'border-terminal/40 bg-ink-800 text-terminal'
+                : badgeTone === 'hazard'
+                  ? 'border-hazard/40 bg-hazard-dim text-hazard'
+                  : 'border-ink-line bg-ink-800 text-fg-dim'
               }`}>
               <FaBell />
             </div>
             <div className="min-w-0">
               <div className="font-bold text-fg">
-                {status.isListening ? 'FCM 监听中' : hasCredentials ? '已配置凭证' : '未配置凭证'}
+                {statusTitle}
               </div>
               <div className="text-sm text-fg-dim truncate">
-                {status.isListening
-                  ? <span className="font-mono tabular-nums">类型: {status.credentialType || 'GCM'}{status.steamId ? ` | STEAM: ${status.steamId}` : ''}</span>
-                  : hasCredentials
-                    ? 'FCM 未在监听（可能断开或未启动）'
-                    : '请点击下方按钮添加 FCM 凭证'
-                }
+                {showAsListening
+                  ? <span className="font-mono tabular-nums">{statusDesc}</span>
+                  : statusDesc}
               </div>
             </div>
           </div>
 
-          <span className={`inline-flex items-center gap-1.5 px-2 py-1 border shrink-0 ${status.isListening
-            ? 'text-terminal border-terminal/30'
-            : hasCredentials
-              ? 'text-hazard border-hazard/30 bg-hazard-dim'
-              : 'text-fg-mute border-ink-line'
+          <span className={`inline-flex items-center gap-1.5 px-2 py-1 border shrink-0 ${
+            badgeTone === 'terminal'
+              ? 'text-terminal border-terminal/30'
+              : badgeTone === 'hazard'
+                ? 'text-hazard border-hazard/30 bg-hazard-dim'
+                : 'text-fg-mute border-ink-line'
             }`}>
-            <span className={`w-1.5 h-1.5 ${status.isListening
-              ? 'bg-terminal animate-tac-blink'
-              : hasCredentials
-                ? 'bg-hazard'
-                : 'bg-fg-mute'
+            <span className={`w-1.5 h-1.5 ${
+              badgeTone === 'terminal'
+                ? 'bg-terminal animate-tac-blink'
+                : badgeTone === 'hazard'
+                  ? 'bg-hazard'
+                  : 'bg-fg-mute'
               }`} />
             <span className="font-mono text-[11px] uppercase tracking-wider">
-              {status.isListening ? 'LIVE' : hasCredentials ? 'IDLE' : 'NONE'}
+              {badgeLabel}
             </span>
           </span>
         </div>
@@ -345,8 +369,8 @@ function FCMSettings({ onNavigateToPairing }) {
           )}
         </button>
 
-        {/* 重连按钮 - 有凭证但未连接时显示 */}
-        {hasCredentials && !status.isListening && (
+        {/* 重连：仅未过期且未监听时显示；过期应走更新凭证 */}
+        {hasCredentials && !showAsListening && !isExpired && (
           <button
             onClick={handleReconnect}
             disabled={reconnecting}
@@ -365,14 +389,14 @@ function FCMSettings({ onNavigateToPairing }) {
             <button
               onClick={() => {
                 if (isSubscriptionExpired) {
-                  toast.warning('订阅已过期，请先续费后再更新凭证');
+                  toast.warning('订阅已过期，请先联系管理员后再更新凭证');
                   return;
                 }
                 setShowUpdateModal(true);
               }}
-              className="tac-btn tac-btn-ghost"
+              className={`tac-btn ${isExpired ? 'tac-btn-primary' : 'tac-btn-ghost'}`}
             >
-              <FaSync /> 更新凭证 // UPDATE
+              <FaSync /> {isExpired ? '更新凭证 // UPDATE' : '更新凭证 // UPDATE'}
             </button>
             <button
               onClick={handleReset}
