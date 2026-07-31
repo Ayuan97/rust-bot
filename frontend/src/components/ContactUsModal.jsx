@@ -75,7 +75,7 @@ export default function ContactUsModal() {
         <div className="p-5 flex flex-col items-center gap-4">
           <div className="flex items-center gap-2 text-fg-dim text-xs">
             <FaWeixin className="text-hazard text-base" />
-            <span>微信扫码 · 添加好友咨询</span>
+            <span>微信扫码 · 添加好友</span>
           </div>
 
           <div className="text-center">
@@ -103,9 +103,15 @@ export default function ContactUsModal() {
             )}
           </div>
 
-          <p className="text-[11px] text-fg-mute text-center leading-relaxed">
-            扫码添加微信，使用中有问题可直接联系。
-          </p>
+          <div className="w-full border border-ink-line bg-ink-800 px-3 py-3 space-y-2">
+            <div className="tac-label !text-hazard">NOTICE</div>
+            <p className="text-[12px] text-fg-dim leading-relaxed text-left">
+              目前服务尚未正式上线，仍处内测阶段。若你想使用，请扫码添加我的微信。
+            </p>
+            <p className="text-[12px] text-fg-dim leading-relaxed text-left">
+              当前服务器资源有限，仅支持少量用户免费使用；名额有限，会按申请情况开通。
+            </p>
+          </div>
 
           <button type="button" onClick={close} className="tac-btn tac-btn-primary w-full !py-2.5">
             关闭
