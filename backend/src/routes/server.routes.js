@@ -13,6 +13,7 @@ import EventTimerManager from '../utils/event-timer.js';
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
+import { getUserFcmHealth } from '../utils/fcm-health.js';
 
 const router = express.Router();
 
@@ -251,6 +252,22 @@ router.post('/:id/connect', requireActiveSubscription, async (req, res) => {
 
     if (!server) {
       return res.status(404).json({ success: false, error: '服务器不存在' });
+    }
+
+    const userService = globalServiceManager.getUserService(req.user.id);
+    const fcmHealth = await getUserFcmHealth(db, req.user.id, userService?.fcmService || null);
+    if (!fcmHealth.canConnectServer) {
+      return res.status(403).json({
+        success: false,
+        error: fcmHealth.restoreMessage || '请先恢复 FCM 凭证后再连接服务器',
+        code: 'FCM_RESTORE_REQUIRED',
+        fcm: {
+          needsRestore: fcmHealth.needsRestore,
+          restoreReason: fcmHealth.restoreReason,
+          isExpired: fcmHealth.isExpired,
+          isListening: fcmHealth.isListening
+        }
+      });
     }
 
     const rustPlusService = getUserRustPlusService(req.user.id);

@@ -8,6 +8,7 @@ import db from '../lib/db.js';
 import { authenticate, requireActiveSubscription } from '../middleware/auth.middleware.js';
 import globalServiceManager from '../services/global-manager.service.js';
 import { v4 as uuidv4 } from 'uuid';
+import { getUserFcmHealth } from '../utils/fcm-health.js';
 
 const router = express.Router();
 
@@ -29,40 +30,46 @@ function getUserFCMService(userId) {
 
 /**
  * GET /api/pairing/status
- * 获取 FCM 配对状态
+ * 获取 FCM 配对状态（含过期/是否需先恢复）
  */
 router.get('/status', async (req, res) => {
   try {
     const fcmService = getUserFCMService(req.user.id);
+    const health = await getUserFcmHealth(db, req.user.id, fcmService);
 
-    if (!fcmService) {
+    if (!fcmService && !health.hasCredentials) {
       return res.json({
         success: true,
         status: {
           isListening: false,
           hasCredentials: false,
+          hasStoredCredentials: false,
+          needsRestore: true,
+          restoreReason: 'missing',
+          restoreMessage: '用户服务未初始化或未配置 FCM 凭证',
+          canConnectServer: false,
+          canPairServer: false,
           message: '用户服务未初始化'
         }
       });
     }
 
-    // 检查是否有保存的凭证（从数据库）
-    const [servers] = await db.query(
-      `SELECT fcmCredentials FROM servers
-       WHERE userId = ? AND fcmCredentials IS NOT NULL
-       LIMIT 1`,
-      [req.user.id]
-    );
-
-    const hasStoredCredentials = servers.length > 0 && servers[0].fcmCredentials;
-
     res.json({
       success: true,
       status: {
-        isListening: fcmService.isListening || false,
-        hasCredentials: hasStoredCredentials,
-        hasStoredCredentials: hasStoredCredentials, // 兼容前端
-        credentialType: hasStoredCredentials ? 'GCM' : null
+        isListening: health.isListening,
+        hasCredentials: health.hasCredentials,
+        hasStoredCredentials: health.hasStoredCredentials,
+        credentialType: health.hasCredentials ? 'GCM' : null,
+        isExpired: health.isExpired,
+        daysUntilExpire: health.daysUntilExpire,
+        expiresAt: health.expiresAt,
+        lastError: health.lastError,
+        needsRestore: health.needsRestore,
+        restoreReason: health.restoreReason,
+        restoreMessage: health.restoreMessage,
+        canConnectServer: health.canConnectServer,
+        canPairServer: health.canPairServer
       }
     });
   } catch (error) {

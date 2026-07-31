@@ -29,6 +29,7 @@ import {
   getConnectionStateMeta
 } from './constants/connection.constants';
 import { openContactUs } from './components/ContactUsModal';
+import { getFcmGate } from './utils/fcmHealth';
 
 function App() {
   const location = useLocation();
@@ -45,7 +46,13 @@ function App() {
   const [alertLevel, setAlertLevel] = useState(null); // 'none', 'warn', 'critical'
   const [wipeInfo, setWipeInfo] = useState(null);
   const [mapFocusTarget, setMapFocusTarget] = useState(null);
-  const [fcmStatus, setFcmStatus] = useState({ isListening: false, hasCredentials: false });
+  const [fcmStatus, setFcmStatus] = useState({
+    isListening: false,
+    hasCredentials: false,
+    needsRestore: false,
+    isExpired: false
+  });
+  const [settingsInitialTab, setSettingsInitialTab] = useState('fcm');
   const [wipeCountdownTick, setWipeCountdownTick] = useState(0);
   const activeConnectionState = activeServer?.connectionState || CONNECTION_STATES.DISCONNECTED;
   const activeConnectionMeta = getConnectionStateMeta(activeConnectionState);
@@ -173,7 +180,19 @@ function App() {
     setTimeout(() => setAlertLevel(null), 8000);
   };
 
+  const goRestoreFcm = () => {
+    setSettingsInitialTab('fcm');
+    setActiveView('settings');
+  };
+
   const handleConnect = async (server) => {
+    const fcmGate = getFcmGate(fcmStatus);
+    if (!fcmGate.canConnectServer) {
+      toast.warning(fcmGate.restoreDesc);
+      goRestoreFcm();
+      return;
+    }
+
     setConnectionLoading(true);
     try {
       const res = await connectServer(server.id);
@@ -186,7 +205,14 @@ function App() {
         fetchServers();
       }
     } catch (e) {
-      toast.error(e.response?.data?.error || '建立连接失败');
+      const code = e.response?.data?.code;
+      const errMsg = e.response?.data?.error || '建立连接失败';
+      if (code === 'FCM_RESTORE_REQUIRED') {
+        toast.warning(errMsg);
+        goRestoreFcm();
+      } else {
+        toast.error(errMsg);
+      }
     } finally {
       setConnectionLoading(false);
     }
@@ -255,6 +281,17 @@ function App() {
 
   // --- Render Views ---
   const renderView = () => {
+    const openPairing = () => {
+      const gate = getFcmGate(fcmStatus);
+      // FCM 过期/失效：禁止直接走服务器配对，先恢复凭证
+      if (gate.needsRestore && (gate.isExpired || gate.restoreReason === 'error' || !gate.hasCredentials)) {
+        toast.warning(gate.restoreDesc);
+        goRestoreFcm();
+        return;
+      }
+      setActiveView('pairing');
+    };
+
     // 配对向导视图（独立处理）
     if (activeView === 'pairing') {
       return (
@@ -262,9 +299,21 @@ function App() {
           fcmStatus={fcmStatus}
           onComplete={() => {
             fetchServers();
+            fetchFCMStatus();
             setActiveView('hud');
           }}
           onCancel={() => setActiveView('hud')}
+          onRestoreFcm={goRestoreFcm}
+        />
+      );
+    }
+
+    if (activeView === 'settings') {
+      return (
+        <ServerSettingsView
+          server={activeServer}
+          initialTab={settingsInitialTab}
+          onNavigateToPairing={openPairing}
         />
       );
     }
@@ -272,7 +321,14 @@ function App() {
     // 只有在 HUD 视图且完全没有任何服务器节点时，显示 EmptyState
     // 其他视图允许以演示模式显示
     if (servers.length === 0 && activeView === 'hud') {
-      return <EmptyState onPair={() => setActiveView('pairing')} fcmStatus={fcmStatus} isSubscriptionExpired={isSubscriptionExpired} />;
+      return (
+        <EmptyState
+          onPair={openPairing}
+          onRestoreFcm={goRestoreFcm}
+          fcmStatus={fcmStatus}
+          isSubscriptionExpired={isSubscriptionExpired}
+        />
+      );
     }
 
     // 如果选择了服务器但未连接
@@ -282,7 +338,8 @@ function App() {
           server={activeServer}
           onConnect={() => handleConnect(activeServer)}
           onDisconnect={handleDisconnect}
-          onPair={() => setActiveView('pairing')}
+          onPair={openPairing}
+          onRestoreFcm={goRestoreFcm}
           loading={connectionLoading}
           fcmStatus={fcmStatus}
           isSubscriptionExpired={isSubscriptionExpired}
@@ -300,7 +357,7 @@ function App() {
             teamData={teamData}
             fcmStatus={fcmStatus}
             isSubscriptionExpired={isSubscriptionExpired}
-            onPair={() => setActiveView('pairing')}
+            onPair={openPairing}
             onLockdown={handleLockdown}
           />
         );
@@ -336,8 +393,6 @@ function App() {
         return <CommandsView />;
       case 'raid':
         return <RaidAlertSettings />;
-      case 'settings':
-        return <ServerSettingsView server={activeServer} onNavigateToPairing={() => setActiveView('pairing')} />;
       case 'admin':
         return (
           <div className="h-full animate-fade-in">
@@ -345,7 +400,14 @@ function App() {
           </div>
         );
       default:
-        return <HUDView server={activeServer} teamData={teamData} isSubscriptionExpired={isSubscriptionExpired} onPair={() => setActiveView('pairing')} />;
+        return (
+          <HUDView
+            server={activeServer}
+            teamData={teamData}
+            isSubscriptionExpired={isSubscriptionExpired}
+            onPair={openPairing}
+          />
+        );
     }
   };
 
@@ -452,9 +514,21 @@ function App() {
               <div className="flex flex-col">
                 <span className="tac-label mb-1.5">推送 FCM</span>
                 <div className="flex items-center gap-1.5">
-                  <div className={`w-1.5 h-1.5 ${fcmStatus.isListening ? 'bg-terminal animate-tac-blink' : 'bg-ink-line2'}`} />
-                  <span className={`font-mono text-[10px] uppercase tracking-wider ${fcmStatus.isListening ? 'text-fg' : 'text-fg-mute'}`}>
-                    {fcmStatus.isListening ? 'ONLINE' : 'OFFLINE'}
+                  <div className={`w-1.5 h-1.5 ${
+                    fcmStatus.isExpired || fcmStatus.needsRestore
+                      ? 'bg-hazard animate-tac-blink'
+                      : fcmStatus.isListening
+                        ? 'bg-terminal animate-tac-blink'
+                        : 'bg-ink-line2'
+                  }`} />
+                  <span className={`font-mono text-[10px] uppercase tracking-wider ${
+                    fcmStatus.isExpired || fcmStatus.needsRestore
+                      ? 'text-hazard'
+                      : fcmStatus.isListening
+                        ? 'text-fg'
+                        : 'text-fg-mute'
+                  }`}>
+                    {fcmStatus.isExpired ? 'EXPIRED' : fcmStatus.needsRestore ? 'RESTORE' : fcmStatus.isListening ? 'ONLINE' : 'OFFLINE'}
                   </span>
                 </div>
               </div>
@@ -552,9 +626,13 @@ function NavIcon({ id, icon, active, onClick, label, expanded }) {
   );
 }
 
-function ServerSettingsView({ server, onNavigateToPairing }) {
+function ServerSettingsView({ server, onNavigateToPairing, initialTab = 'fcm' }) {
   const isDemo = !server;
-  const [activeTab, setActiveTab] = useState('fcm');
+  const [activeTab, setActiveTab] = useState(initialTab || 'fcm');
+
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
 
   const tabs = [
     { id: 'fcm', label: 'FCM 推送', icon: <FaBell />, desc: '配对凭证管理' },
@@ -637,20 +715,24 @@ function DisconnectedView({
   onConnect,
   onDisconnect,
   onPair,
+  onRestoreFcm,
   loading,
   fcmStatus,
   isSubscriptionExpired,
   connectionState = 'DISCONNECTED'
 }) {
   const connectionMeta = getConnectionStateMeta(connectionState);
-  const isDisabled = loading || (isSubscriptionExpired && !connectionMeta.isPending);
+  const fcmGate = getFcmGate(fcmStatus);
+  const fcmBlocked = !fcmGate.canConnectServer && !connectionMeta.isPending;
+  const isDisabled = loading || (isSubscriptionExpired && !connectionMeta.isPending) || fcmBlocked;
   const actionText = connectionMeta.actionLabel;
   const loadingText = connectionMeta.loadingLabel;
-  const fcmReady = Boolean(fcmStatus?.isListening);
-  const nextStep = !fcmReady
+  const fcmReady = fcmGate.isListening && !fcmGate.isExpired && !fcmGate.needsRestore;
+
+  const nextStep = fcmBlocked
     ? {
-      title: '先完成 Edge 配对',
-      desc: '当前 FCM 未就绪，先去配对向导完成凭证配置，再回来连接服务器。'
+      title: fcmGate.restoreTitle,
+      desc: fcmGate.restoreDesc
     }
     : connectionMeta.isPending
       ? {
@@ -667,14 +749,22 @@ function DisconnectedView({
           desc: 'FCM 与服务器信息已就绪，点击下方按钮即可进入实时控制台。'
         };
 
+  const fcmStatusText = fcmGate.isExpired
+    ? '凭证已过期，须先更新后再连接。'
+    : fcmReady
+      ? '已就绪，可接收游戏内配对推送。'
+      : fcmGate.hasCredentials
+        ? '未监听或异常，请先恢复 FCM。'
+        : '未配置，无法配对设备或安全连接。';
+
   return (
     <div className="h-full flex items-center justify-center animate-fade-in relative font-sans px-4">
       <div className="max-w-md w-full tac-panel tac-corners relative z-10">
         <div className="p-8">
           {/* 链路图标 */}
           <div className="flex justify-center items-center gap-3 mb-7">
-            <div className="w-14 h-14 border border-ink-line flex flex-col items-center justify-center">
-              <FaBell className={`text-lg ${fcmReady ? 'text-terminal' : 'text-fg-mute'}`} />
+            <div className={`w-14 h-14 border flex flex-col items-center justify-center ${fcmBlocked ? 'border-hazard/40 bg-hazard-dim' : 'border-ink-line'}`}>
+              <FaBell className={`text-lg ${fcmReady ? 'text-terminal' : 'text-hazard'}`} />
               <span className="font-mono text-[8px] uppercase mt-1 text-fg-mute">FCM</span>
             </div>
             <div className="font-mono text-fg-mute">· · ·</div>
@@ -698,21 +788,31 @@ function DisconnectedView({
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-ink-line">
               <span className="tac-label">系统就绪状态</span>
               <span className="font-mono text-[10px] uppercase tracking-wider text-hazard">
-                {connectionMeta.isPending ? '连接中' : isSubscriptionExpired ? '已暂停' : '等待授权'}
+                {connectionMeta.isPending
+                  ? '连接中'
+                  : isSubscriptionExpired
+                    ? '已暂停'
+                    : fcmBlocked
+                      ? 'FCM 待恢复'
+                      : '等待授权'}
               </span>
             </div>
             <div className="px-4 py-3 space-y-2.5">
               <div className="flex items-start gap-2.5">
-                <span className={`mt-1 w-1.5 h-1.5 shrink-0 ${fcmReady ? 'bg-terminal' : 'bg-fg-mute'}`} />
+                <span className={`mt-1 w-1.5 h-1.5 shrink-0 ${fcmReady ? 'bg-terminal' : 'bg-hazard'}`} />
                 <p className="text-[13px] text-fg-dim leading-snug">
-                  <span className="text-fg font-bold">推送 FCM:</span> {fcmReady ? '已就绪，可接收游戏内配对推送。' : '未连接，无法在游戏中直接配对设备。'}
+                  <span className="text-fg font-bold">推送 FCM:</span> {fcmStatusText}
                 </p>
               </div>
               <div className="flex items-start gap-2.5">
                 <span className="mt-1 w-1.5 h-1.5 shrink-0 bg-fg-mute" />
                 <p className="text-[13px] text-fg-dim leading-snug">
                   <span className="text-fg font-bold">链路 WS:</span>{' '}
-                  {connectionMeta.isPending ? '连接请求已提交，可点击下方取消。' : '需手动启动远程连接以激活实时控制台。'}
+                  {connectionMeta.isPending
+                    ? '连接请求已提交，可点击下方取消。'
+                    : fcmBlocked
+                      ? 'FCM 恢复前禁止发起连接。'
+                      : '需手动启动远程连接以激活实时控制台。'}
                 </p>
               </div>
             </div>
@@ -725,36 +825,47 @@ function DisconnectedView({
             <p className="text-[13px] text-fg-dim leading-relaxed mt-1">{nextStep.desc}</p>
           </div>
 
-          {/* 连接按钮 */}
-          <button
-            onClick={connectionMeta.isPending ? onDisconnect : onConnect}
-            disabled={isDisabled}
-            title={isSubscriptionExpired && !connectionMeta.isPending ? '续费后可连接服务器' : ''}
-            className={`tac-btn w-full !py-4 ${isDisabled
-              ? '!border-ink-line text-fg-mute cursor-not-allowed'
-              : connectionMeta.isPending
-                ? 'bg-hazard-dim !border-hazard/50 text-hazard hover:bg-hazard/20'
-                : 'tac-btn-primary'
-              }`}
-          >
-            {loading ? (
-              <>{loadingText}</>
-            ) : isSubscriptionExpired && !connectionMeta.isPending ? (
-              <>服务已暂停 · 续费后可用</>
-            ) : (
-              <>
-                {connectionMeta.isPending ? <FaTimes className="text-[10px]" /> : <FaPlay className="text-[10px]" />}
-                {actionText}
-              </>
-            )}
-          </button>
+          {/* FCM 需先恢复：主按钮改为恢复凭证 */}
+          {fcmBlocked ? (
+            <button
+              type="button"
+              onClick={onRestoreFcm}
+              className="tac-btn tac-btn-primary w-full !py-4"
+            >
+              <FaBell className="text-[10px]" />
+              {fcmGate.ctaLabel}
+            </button>
+          ) : (
+            <button
+              onClick={connectionMeta.isPending ? onDisconnect : onConnect}
+              disabled={isDisabled}
+              title={isSubscriptionExpired && !connectionMeta.isPending ? '续费后可连接服务器' : ''}
+              className={`tac-btn w-full !py-4 ${isDisabled
+                ? '!border-ink-line text-fg-mute cursor-not-allowed'
+                : connectionMeta.isPending
+                  ? 'bg-hazard-dim !border-hazard/50 text-hazard hover:bg-hazard/20'
+                  : 'tac-btn-primary'
+                }`}
+            >
+              {loading ? (
+                <>{loadingText}</>
+              ) : isSubscriptionExpired && !connectionMeta.isPending ? (
+                <>服务已暂停 · 续费后可用</>
+              ) : (
+                <>
+                  {connectionMeta.isPending ? <FaTimes className="text-[10px]" /> : <FaPlay className="text-[10px]" />}
+                  {actionText}
+                </>
+              )}
+            </button>
+          )}
 
-          {!fcmReady && (
+          {!fcmBlocked && !fcmReady && (
             <button
               onClick={onPair}
               className="tac-btn tac-btn-ghost w-full !py-3 mt-3 !border-hazard/30 !text-hazard hover:!bg-hazard-dim"
             >
-              去完成配对（FCM 未就绪）
+              打开配对向导
             </button>
           )}
         </div>
@@ -763,12 +874,15 @@ function DisconnectedView({
   );
 }
 
-function EmptyState({ onPair, fcmStatus, isSubscriptionExpired }) {
-  const hasCredentials = fcmStatus?.hasCredentials || fcmStatus?.hasStoredCredentials;
-  const onboardingTip = !hasCredentials
+function EmptyState({ onPair, onRestoreFcm, fcmStatus, isSubscriptionExpired }) {
+  const fcmGate = getFcmGate(fcmStatus);
+  const hasCredentials = fcmGate.hasCredentials;
+  const fcmBlocked = fcmGate.needsRestore;
+
+  const onboardingTip = fcmBlocked
     ? {
-      title: '第一步：先准备 Edge 插件凭证',
-      desc: '进入配对向导后，按提示完成插件安装、复制 /credentials add 命令并保存。'
+      title: fcmGate.restoreTitle,
+      desc: fcmGate.restoreDesc
     }
     : isSubscriptionExpired
       ? {
@@ -805,13 +919,27 @@ function EmptyState({ onPair, fcmStatus, isSubscriptionExpired }) {
         {/* 状态卡 */}
         <div className="mb-8 border border-ink-line">
           <div className="tac-label px-4 py-2.5 border-b border-ink-line">当前状态 // STATUS</div>
-          <StatusRow label="FCM 凭证" ok={hasCredentials} okText="已配置" noText="未配置" />
+          <StatusRow
+            label="FCM 凭证"
+            ok={hasCredentials && !fcmGate.isExpired}
+            okText={fcmGate.isListening ? '监听中' : '已配置'}
+            noText={fcmGate.isExpired ? '已过期' : '未配置'}
+            warn={fcmGate.isExpired || fcmGate.needsRestore}
+          />
           <StatusRow label="服务器" ok={false} okText="已配对" noText="未配对" />
           <StatusRow label="订阅状态" ok={!isSubscriptionExpired} okText="有效" noText="已过期" warn={isSubscriptionExpired} />
         </div>
 
-        <button onClick={onPair} className="tac-btn tac-btn-primary w-full !py-4">
-          <FaPlus /> 打开配对向导
+        <button
+          type="button"
+          onClick={fcmBlocked ? onRestoreFcm : onPair}
+          className="tac-btn tac-btn-primary w-full !py-4"
+        >
+          {fcmBlocked ? (
+            <><FaBell /> {fcmGate.ctaLabel}</>
+          ) : (
+            <><FaPlus /> 打开配对向导</>
+          )}
         </button>
       </div>
     </div>

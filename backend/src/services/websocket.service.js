@@ -4,6 +4,7 @@ import db from '../lib/db.js';
 import globalServiceManager from './global-manager.service.js';
 import logger from '../utils/logger.js';
 import distributedSessionService from './distributed-session.service.js';
+import { getUserFcmHealth } from '../utils/fcm-health.js';
 import { isSubscriptionActive } from '../middleware/auth.middleware.js';
 
 class WebSocketService {
@@ -265,6 +266,16 @@ class WebSocketService {
           // 检查是否已连接
           if (userService.rustPlusService.isConnected(serverId)) {
             return socket.emit('server:connect:error', { serverId, error: '服务器已连接' });
+          }
+
+          // FCM 过期/失效时禁止继续连接，必须先恢复凭证
+          const fcmHealth = await getUserFcmHealth(db, socket.userId, userService.fcmService || null);
+          if (!fcmHealth.canConnectServer) {
+            return socket.emit('server:connect:error', {
+              serverId,
+              error: fcmHealth.restoreMessage || '请先恢复 FCM 凭证后再连接服务器',
+              code: 'FCM_RESTORE_REQUIRED'
+            });
           }
 
           // 从数据库获取服务器配置，同时验证所有权

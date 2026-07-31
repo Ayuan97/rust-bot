@@ -14,6 +14,7 @@ import UserCommands from './user-commands.js';
 import DayNightNotifier from './day-night-notifier.js';
 import UserTrackingService from './user-tracking.service.js';
 import battlemetricsService from './battlemetrics.service.js';
+import { getUserFcmHealth } from '../utils/fcm-health.js';
 
 const SERVER_ID_NAMESPACE = 'c94a3f4a-6b0d-4ad6-b8ee-71f8fd0e9a4d';
 const DEVICE_ID_NAMESPACE = '2d6e02e6-8c75-4f87-9e8f-b2e6996f3f5c';
@@ -570,6 +571,24 @@ class UserServiceManager extends EventEmitter {
       if (!this.user.servers || this.user.servers.length === 0) {
         console.log(`  ℹ️  用户没有配置服务器`);
         return;
+      }
+
+      // FCM 过期/失效时禁止自动重连服务器，避免用户绕过「先恢复 FCM」
+      try {
+        const fcmHealth = await getUserFcmHealth(db, this.userId, this.fcmService);
+        if (!fcmHealth.canConnectServer) {
+          console.log(
+            `  ⏩ 跳过自动连接：FCM 需先恢复 (${fcmHealth.restoreReason || 'unknown'}) — ${fcmHealth.restoreMessage || ''}`
+          );
+          this.log(
+            'FCM',
+            `自动连接已跳过：${fcmHealth.restoreMessage || '请先恢复 FCM 凭证'}`,
+            'WARN'
+          );
+          return;
+        }
+      } catch (fcmCheckError) {
+        console.log(`  ⚠️  FCM 健康检查失败，继续尝试连接: ${fcmCheckError.message}`);
       }
 
       console.log(`  🔌 连接到 ${this.user.servers.length} 个服务器...`);

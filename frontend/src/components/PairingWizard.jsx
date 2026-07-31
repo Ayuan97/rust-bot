@@ -24,7 +24,7 @@ import {
  * PairingWizard - 服务器配对向导
  * 作为独立视图而非弹窗，提供更好的 UX
  */
-function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
+function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus, onRestoreFcm }) {
   const { isSubscriptionExpired, user } = useAuth();
   const toast = useToast();
   const [browser] = useState(detectBrowser);
@@ -34,7 +34,9 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
   const [fcmStatus, setFcmStatus] = useState(initialFcmStatus || {
     isListening: false,
     hasCredentials: false,
-    hasStoredCredentials: false
+    hasStoredCredentials: false,
+    isExpired: false,
+    needsRestore: false
   });
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -55,15 +57,24 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
     if (isSubscriptionExpired) return;
 
     const hasCredentials = fcmStatus.hasCredentials || fcmStatus.hasStoredCredentials;
+    const isExpired = Boolean(fcmStatus.isExpired);
+    const needsRestore = Boolean(fcmStatus.needsRestore);
 
-    if (hasCredentials && fcmStatus.isListening) {
-      // FCM 已就绪，直接到游戏配对
-      setCurrentStep(3);
-    } else if (hasCredentials) {
-      // 有凭证但未监听，需要重连或直接到配对
-      setCurrentStep(3);
+    // FCM 过期/失效：强制停留在凭证步骤，禁止跳到游戏配对
+    if (isExpired || (needsRestore && fcmStatus.restoreReason === 'error')) {
+      setCurrentStep(2);
+      return;
     }
-    // 否则从步骤1开始
+
+    if (hasCredentials && fcmStatus.isListening && !isExpired) {
+      // FCM 已就绪，进入监听/游戏配对
+      setCurrentStep(3);
+    } else if (hasCredentials && !isExpired) {
+      // 有有效凭证但未监听：进入启动监听
+      setCurrentStep(3);
+    } else if (!hasCredentials) {
+      setCurrentStep(1);
+    }
   }, [fcmStatus, isSubscriptionExpired]);
 
   // 监听服务器配对事件
@@ -128,6 +139,11 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
 
   // 开始监听配对
   const handleStartListening = async () => {
+    if (fcmStatus.isExpired || fcmStatus.needsRestore) {
+      toast.warning(fcmStatus.restoreMessage || 'FCM 凭证异常，请先更新凭证');
+      setCurrentStep(2);
+      return;
+    }
     setLoading(true);
     try {
       await startPairing();
@@ -242,6 +258,30 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
             </div>
           )}
 
+          {(fcmStatus.isExpired || (fcmStatus.needsRestore && fcmStatus.restoreReason !== 'missing')) && currentStep < 4 && (
+            <div className="mx-6 mt-6 p-4 border border-hazard/40 bg-hazard-dim">
+              <div className="tac-label !text-hazard mb-1">
+                {fcmStatus.isExpired ? 'FCM EXPIRED' : 'FCM RESTORE REQUIRED'}
+              </div>
+              <p className="text-sm font-bold text-fg">
+                {fcmStatus.isExpired ? 'FCM 凭证已过期' : 'FCM 需要先恢复'}
+              </p>
+              <p className="text-[13px] text-fg-dim mt-1 leading-relaxed">
+                {fcmStatus.restoreMessage
+                  || '请先在下方重新粘贴最新 /credentials add 命令更新凭证，恢复成功后再进行服务器配对。'}
+              </p>
+              {typeof onRestoreFcm === 'function' && (
+                <button
+                  type="button"
+                  onClick={onRestoreFcm}
+                  className="tac-btn tac-btn-ghost !py-2 mt-3 !border-hazard/30 !text-hazard"
+                >
+                  前往设置更新 FCM
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="mx-6 mt-6 p-4 bg-ink-800 border border-ink-line">
             <div className="flex flex-wrap items-center gap-2.5 text-[11px]">
               <StatusPill
@@ -252,13 +292,13 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
               />
               <StatusPill
                 label="FCM"
-                active={hasCredentials}
-                activeText="已配置"
-                inactiveText="未配置"
+                active={hasCredentials && !fcmStatus.isExpired}
+                activeText={fcmStatus.isExpired ? '已过期' : '已配置'}
+                inactiveText={fcmStatus.isExpired ? '已过期' : '未配置'}
               />
               <StatusPill
                 label="LISTEN"
-                active={isPairingListening}
+                active={isPairingListening && !fcmStatus.isExpired}
                 activeText="监听中"
                 inactiveText="未启动"
               />
