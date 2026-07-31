@@ -243,6 +243,9 @@ class UserServiceManager extends EventEmitter {
             console.error(`事件监控重启失败 ${data.serverId}:`, err.message);
           });
         }
+        if (this.automationService && !this.automationService.pollIntervals.has(data.serverId)) {
+          this.automationService.start(data.serverId);
+        }
         if (this.dayNightNotifier && !this.dayNightNotifier.timers.has(data.serverId)) {
           this.dayNightNotifier.start(data.serverId).catch(err => {
             console.error(`昼夜提醒重启失败 ${data.serverId}:`, err.message);
@@ -252,8 +255,12 @@ class UserServiceManager extends EventEmitter {
 
       this.rustPlusService.on('server:disconnected', (data) => {
         // this.log('RUST+', `服务器 ${data.serverId} 已断开`, 'WARN');
+        // 必须停掉所有会发命令的轮询，否则会触发隐式重连
         if (this.eventMonitorService) {
           this.eventMonitorService.stop(data.serverId);
+        }
+        if (this.automationService) {
+          this.automationService.stop(data.serverId);
         }
         if (this.dayNightNotifier) {
           this.dayNightNotifier.stop(data.serverId);
@@ -567,7 +574,7 @@ class UserServiceManager extends EventEmitter {
 
       console.log(`  🔌 连接到 ${this.user.servers.length} 个服务器...`);
 
-      // 连接到所有服务器（并发连接）
+      // 连接到用户期望保持在线的服务器（isActive=1）；用户主动断开后 isActive=0，服务重启也不应强行连回
       const connectionPromises = this.user.servers.map(async (server) => {
         try {
           // 跳过 FCM 占位符服务器，仅用于保存凭证，不参与 Rust 连接
@@ -576,12 +583,21 @@ class UserServiceManager extends EventEmitter {
             return;
           }
 
+          if (Number(server.isActive) === 0) {
+            console.log(`  ⏩ 跳过用户已断开的服务器: ${server.name || server.id}`);
+            if (this.rustPlusService?.manualDisconnect) {
+              this.rustPlusService.manualDisconnect.add(server.id);
+            }
+            return;
+          }
+
           const connectResult = await this.rustPlusService.connect({
             serverId: server.id,
             ip: server.ip,
             port: server.port,
             playerId: server.playerId,
-            playerToken: server.playerToken
+            playerToken: server.playerToken,
+            reason: 'service_startup'
           });
           if (connectResult?.queued) {
             console.log(`  ⏳ 服务器进入分布式连接队列: ${server.name || server.id} (position=${connectResult.queuePosition || 1})`);
@@ -1041,6 +1057,20 @@ class UserServiceManager extends EventEmitter {
    */
   async _handleServerPairing(data) {
     try {
+      if (!data?.ip || data.port === undefined || data.port === null || data.port === '') {
+        this.log('PAIRING', `配对数据不完整，缺少 ip/port: ${JSON.stringify({
+          name: data?.name,
+          ip: data?.ip,
+          port: data?.port,
+          playerId: data?.playerId ? '***' : null
+        })}`, 'ERROR');
+        this.emit('server:paired:error', {
+          userId: this.userId,
+          error: '配对数据不完整，缺少服务器地址'
+        });
+        return;
+      }
+
       this.log('PAIRING', `正在处理服务器配对: ${data.name} (${data.ip}:${data.port})`);
 
       // 1. 检查用户现有的真实服务器（排除 FCM 占位符）
@@ -1050,29 +1080,71 @@ class UserServiceManager extends EventEmitter {
         [this.userId]
       );
 
-      // 2. 检查是否是同一服务器的更新（IP:Port 相同）
-      const isSameServer = existingServers.some(
-        s => s.ip === data.ip && s.port === String(data.port)
+      const newPort = String(data.port);
+      const sameServer = existingServers.find(
+        (s) => s.ip === data.ip && String(s.port) === newPort
+      );
+      const differentServers = existingServers.filter(
+        (s) => !(s.ip === data.ip && String(s.port) === newPort)
       );
 
-      // 3. 如果已有不同服务器，直接执行替换
-      if (existingServers.length > 0 && !isSameServer) {
-        const oldServer = existingServers[0];
-
-        this.log('PAIRING', `检测到需要替换服务器: ${oldServer.name} -> ${data.name}`);
-
-        // 直接执行替换
-        await this._executeServerReplace(oldServer, data);
-        return;
+      // 2. 单服务器策略：已有其他真实服务器时全部移除再配对新服
+      if (differentServers.length > 0) {
+        this.log(
+          'PAIRING',
+          `检测到需要替换服务器: ${differentServers.map((s) => s.name).join(', ')} -> ${data.name}`
+        );
+        for (const oldServer of differentServers) {
+          await this._removeServerCompletely(oldServer);
+        }
       }
 
-      // 4. 无需替换，直接执行配对
+      // 3. 同一 IP:Port 更新凭证，或首次配对
       await this._executeServerPairing(data);
 
+      this.emit('server:paired:success', {
+        userId: this.userId,
+        serverName: data.name,
+        ip: data.ip,
+        port: newPort,
+        replaced: differentServers.map((s) => ({ id: s.id, name: s.name })),
+        updatedExisting: Boolean(sameServer)
+      });
     } catch (error) {
       this.log('PAIRING', `配对处理失败: ${error.message}`, 'ERROR');
       console.error(error);
+      this.emit('server:paired:error', {
+        userId: this.userId,
+        error: error.message || '服务器配对失败'
+      });
     }
+  }
+
+  /**
+   * 完整移除一台真实服务器：断连、停服务、删库（级联清理关联数据）
+   * @private
+   */
+  async _removeServerCompletely(oldServer) {
+    this.log('PAIRING', `正在移除旧服务器: ${oldServer.name} (${oldServer.id})`);
+
+    // 先停轮询，避免删除过程中命令路径触发异常
+    try { this.eventMonitorService?.stop(oldServer.id); } catch { /* ignore */ }
+    try { this.automationService?.stop(oldServer.id); } catch { /* ignore */ }
+    try { this.dayNightNotifier?.stop(oldServer.id); } catch { /* ignore */ }
+
+    // 无论内存态是否 CONNECTED，都关闭分布式会话（僵尸会话也要清）
+    try {
+      await this.rustPlusService.disconnect(oldServer.id);
+    } catch (error) {
+      this.log('PAIRING', `断开旧服务器失败（继续删除）: ${error.message}`, 'WARN');
+    }
+
+    // 关联表大多 ON DELETE CASCADE；显式删 devices/event_logs 以兼容旧库
+    await db.query('DELETE FROM devices WHERE serverId = ? AND userId = ?', [oldServer.id, this.userId]);
+    await db.query('DELETE FROM event_logs WHERE serverId = ? AND userId = ?', [oldServer.id, this.userId]);
+    await db.query('DELETE FROM servers WHERE id = ? AND userId = ?', [oldServer.id, this.userId]);
+
+    this.log('PAIRING', `已删除旧服务器: ${oldServer.name}`);
   }
 
   /**
@@ -1082,30 +1154,12 @@ class UserServiceManager extends EventEmitter {
   async _executeServerReplace(oldServer, newServer) {
     try {
       this.log('PAIRING', `正在替换服务器: ${oldServer.name} -> ${newServer.name}`);
-
-      // 1. 断开旧服务器连接
-      if (this.rustPlusService.isConnected(oldServer.id)) {
-        await this.rustPlusService.disconnect(oldServer.id);
-      }
-
-      // 2. 停止旧服务器的相关服务
-      this.eventMonitorService.stop(oldServer.id);
-      this.automationService.stop(oldServer.id);
-      this.dayNightNotifier.stop(oldServer.id);
-
-      // 3. 删除旧服务器（先删除关联的设备和事件日志）
-      await db.query('DELETE FROM devices WHERE serverId = ?', [oldServer.id]);
-      await db.query('DELETE FROM event_logs WHERE serverId = ?', [oldServer.id]);
-      await db.query('DELETE FROM servers WHERE id = ?', [oldServer.id]);
-
-      this.log('PAIRING', `已删除旧服务器: ${oldServer.name}`);
-
-      // 4. 执行新服务器配对
+      await this._removeServerCompletely(oldServer);
       await this._executeServerPairing(newServer);
-
     } catch (error) {
       this.log('PAIRING', `替换服务器失败: ${error.message}`, 'ERROR');
       console.error(error);
+      throw error;
     }
   }
 
@@ -1182,21 +1236,25 @@ class UserServiceManager extends EventEmitter {
     // 2. 更新内存中的用户数据
     await this._loadUserData();
 
-    // 3. 发起新连接
+    // 3. 发起新连接（配对成功即视为用户期望在线）
     this.log('PAIRING', `正在连接到服务器...`);
+    if (this.rustPlusService?.manualDisconnect) {
+      this.rustPlusService.manualDisconnect.delete(userServerId);
+    }
     await this.rustPlusService.connect({
       serverId: userServerId,
       ip: data.ip,
       port: data.port,
       playerId: data.playerId,
-      playerToken: data.playerToken
+      playerToken: data.playerToken,
+      reason: 'pairing'
     });
 
-    // 4. 启动相关子服务
+    // 4. 启动相关子服务（真正 CONNECTED 后 server:connected 也会兜底启动）
     this.log('PAIRING', `正在启动实时监控与自动化服务...`);
     try {
       await this.eventMonitorService.start(userServerId);
-      await this.automationService.start(userServerId);
+      this.automationService.start(userServerId);
       await this.dayNightNotifier.start(userServerId);
       this.log('PAIRING', `所有实时服务已就绪`);
     } catch (svcError) {
@@ -1256,6 +1314,18 @@ class UserServiceManager extends EventEmitter {
             data.serverId = existingServerId;
             userServerId = existingServerId;
           } else {
+            // 单服务器策略：设备配对自动建服前，先移除其他真实服务器
+            const [otherServers] = await db.query(
+              `SELECT * FROM servers
+               WHERE userId = ? AND ip != '0.0.0.0' AND id NOT LIKE 'fcm-%'
+                 AND NOT (ip = ? AND port = ?)`,
+              [this.userId, data.serverInfo.ip, String(data.serverInfo.port)]
+            );
+            for (const oldServer of otherServers) {
+              this.log('ENTITY_PAIRING', `设备配对触发替换旧服务器: ${oldServer.name}`);
+              await this._removeServerCompletely(oldServer);
+            }
+
             if (!userServerId) {
               userServerId = this._buildScopedServerId(`${data.serverInfo.ip}:${data.serverInfo.port}`);
             }

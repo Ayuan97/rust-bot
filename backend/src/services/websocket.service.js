@@ -141,22 +141,8 @@ class WebSocketService {
   }
 
   createDistributedUserService(socket) {
-    const ensureSession = async (serverId, reason) => {
-      const result = await distributedSessionService.openSession({
-        userId: socket.userId,
-        serverId,
-        reason,
-      });
-      if (result.status === 'queued') {
-        const error = new Error('连接排队中，请稍后重试');
-        error.code = 'SESSION_QUEUED';
-        throw error;
-      }
-      return result;
-    };
-
     const dispatch = async (serverId, action, payload = {}, timeoutMs) => {
-      let response = await distributedSessionService.dispatchCommand({
+      const response = await distributedSessionService.dispatchCommand({
         userId: socket.userId,
         serverId,
         action,
@@ -164,15 +150,11 @@ class WebSocketService {
         timeoutMs,
       });
 
+      // 不在命令路径隐式建连：用户主动断开后，前端轮询/操作不得自动重连
       if (response.status === 'missing_session') {
-        await ensureSession(serverId, `command:${action}`);
-        response = await distributedSessionService.dispatchCommand({
-          userId: socket.userId,
-          serverId,
-          action,
-          payload,
-          timeoutMs,
-        });
+        const error = new Error('服务器未连接');
+        error.code = 'SESSION_NOT_FOUND';
+        throw error;
       }
 
       if (response.status === 'queued') {
@@ -347,6 +329,14 @@ class WebSocketService {
 
           const userService = getUserService();
           await userService.rustPlusService.disconnect(serverId);
+          // 主动停轮询，避免事件竞态导致自动化/监控继续发命令并隐式重连
+          try {
+            userService.eventMonitorService?.stop(serverId);
+            userService.automationService?.stop(serverId);
+            userService.dayNightNotifier?.stop(serverId);
+          } catch {
+            // ignore
+          }
           socket.emit('server:disconnect:success', { serverId });
         } catch (error) {
           socket.emit('server:disconnect:error', {
@@ -824,6 +814,14 @@ class WebSocketService {
 
     addListener('server:paired', (data) => {
       this.io.to(`user:${data.userId}`).emit('server:paired', data);
+    });
+
+    addListener('server:paired:success', (data) => {
+      this.io.to(`user:${data.userId}`).emit('server:paired:success', data);
+    });
+
+    addListener('server:paired:error', (data) => {
+      this.io.to(`user:${data.userId}`).emit('server:paired:error', data);
     });
 
     addListener('entity:paired', (data) => {

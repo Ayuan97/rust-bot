@@ -43,6 +43,8 @@ const rustManager = new UserRustPlusManager(`connector:${NODE_ID}`, { autoReconn
 const proxyPool = new ProxyPool();
 
 const activeSessions = new Map();
+// 主动关闭中的会话：断开事件不得再上报 CONNECTING（避免与 manual_disconnect 打架）
+const intentionalCloseSessions = new Set();
 let heartbeatTimer = null;
 let assignmentTimer = null;
 let commandTimer = null;
@@ -161,12 +163,15 @@ async function connectSession(assignment) {
 }
 
 async function disconnectSession(sessionId, reason = 'assignment_removed') {
+  intentionalCloseSessions.add(sessionId);
   try {
     await rustManager.disconnect(sessionId);
   } catch {
     // Ignore local disconnect errors and still publish closed state.
+  } finally {
+    activeSessions.delete(sessionId);
+    intentionalCloseSessions.delete(sessionId);
   }
-  activeSessions.delete(sessionId);
   await updateSessionState(sessionId, 'CLOSED', reason);
 }
 
@@ -381,21 +386,29 @@ async function bootstrap() {
   }, PROXY_POLL_INTERVAL_MS);
 
   rustManager.on('server:connected', ({ serverId }) => {
+    if (!activeSessions.has(serverId)) return;
     updateSessionState(serverId, 'CONNECTED');
   });
 
   rustManager.on('server:reconnecting', ({ serverId }) => {
+    // 仅对仍在分配中的会话上报重连；主动关闭不进入 CONNECTING
+    if (!activeSessions.has(serverId) || intentionalCloseSessions.has(serverId)) return;
     updateSessionState(serverId, 'CONNECTING');
   });
 
   rustManager.on('server:disconnected', ({ serverId }) => {
-    // 本地不自动重连：从 activeSessions 移除并上报 CONNECTING，
-    // 由 syncAssignments 依据控制平面的 assignment 决定是否重连（避免与 failover 冲突造成双连接）
+    // 主动关闭（manual_disconnect / assignment_removed）：disconnectSession 会写 CLOSED，这里不要改回 CONNECTING
+    if (intentionalCloseSessions.has(serverId)) {
+      return;
+    }
+    // 意外掉线：本地不自动重连，从 activeSessions 移除并上报 CONNECTING，
+    // 由 syncAssignments 依据控制平面 assignment 决定是否重连（避免 failover 双连接）
     activeSessions.delete(serverId);
     updateSessionState(serverId, 'CONNECTING', 'connection dropped, awaiting reassignment');
   });
 
   rustManager.on('server:error', ({ serverId, error }) => {
+    if (!activeSessions.has(serverId) || intentionalCloseSessions.has(serverId)) return;
     updateSessionState(serverId, 'FAILED', error || 'server error');
   });
 

@@ -466,6 +466,8 @@ class GlobalServiceManager extends EventEmitter {
 
     // === FCM 推送事件 ===
     forward('server:paired');
+    forward('server:paired:success');
+    forward('server:paired:error');
     forward('entity:paired');
     forward('entity:paired:success');
     forward('fcm:listening');

@@ -88,15 +88,18 @@
 
 ## 线上排查固定连接信息（敏感）
 - 仅用于线上复杂问题排查与日志定位，禁止外传、禁止发到公开仓库或工单截图中。
-- SSH 主节点：`38.76.201.25`
+- 业务域名：`https://rustplusplus.com` / API：`https://api.rustplusplus.com`
+- SSH 主节点：`160.202.47.238`
 - SSH 账号：`root`
-- SSH 密码：`7q4ao2M2NosF`
+- SSH 密码：`DQenDwOLTJh0`
+- SSH 端口：`22`（默认）
 - 服务器项目目录：`/www/wwwroot/rust-bot`
 - 线上环境变量文件：`/www/wwwroot/rust-bot/.env`
 - PM2 日志目录：`/root/.pm2/logs`
 - 关键日志文件：`/root/.pm2/logs/rust-main-out.log`、`/root/.pm2/logs/rust-main-error.log`、`/root/.pm2/logs/rust-connector-1-out.log`、`/root/.pm2/logs/rust-connector-1-error.log`
 - MySQL 连接信息：`DB_HOST=127.0.0.1`，`DB_PORT=3306`，`DB_USER=rustapp`，`DB_PASSWORD=xlCodReFpZxUBrv3mFF1jk6x`，`DB_NAME=rustplus_db`
 - MySQL 排查命令示例：`mysql -h127.0.0.1 -P3306 -urustapp -p'xlCodReFpZxUBrv3mFF1jk6x' rustplus_db`
+- 备注：旧 IP `38.76.201.25` 已弃用，勿再用于本业务排查
 
 ## 开发命令
 - 后端开发：`cd backend && npm run dev`

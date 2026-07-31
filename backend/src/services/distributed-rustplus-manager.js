@@ -76,6 +76,8 @@ class DistributedRustPlusManager extends EventEmitter {
     this.serverConfigs = new Map(); // serverId -> server config cache
     this.sessionStates = new Map(); // serverId -> latest session status metadata
     this.mapCache = new Map(); // serverId -> { width, height, oceanMargin, lastUpdate }
+    // 用户主动断开的服务器：禁止任何隐式自动建连（轮询/命令 dispatch 不得重连）
+    this.manualDisconnect = new Set();
 
     this.chatQueues = new Map(); // serverId -> { queue, processing, timeout }
     this.messagesSentByBot = new Map(); // serverId -> recent bot messages
@@ -248,6 +250,7 @@ class DistributedRustPlusManager extends EventEmitter {
     this.serverConfigs.clear();
     this.sessionStates.clear();
     this.mapCache.clear();
+    this.manualDisconnect.clear();
     this.removeAllListeners();
   }
 
@@ -303,75 +306,103 @@ class DistributedRustPlusManager extends EventEmitter {
     return merged;
   }
 
+  async _setServerDesiredActive(serverId, isActive) {
+    try {
+      await db.query(
+        `UPDATE servers
+         SET isActive = ?, updatedAt = NOW()
+         WHERE id = ? AND userId = ?`,
+        [isActive ? 1 : 0, serverId, this.userId]
+      );
+    } catch (error) {
+      logger.warn(
+        `[distributed-rustplus] user=${this.userId} update isActive server=${serverId} failed: ${error.message}`
+      );
+    }
+  }
+
   async connect(config = {}) {
     const serverId = config.serverId || config.id;
     if (!serverId) {
       throw new Error('serverId is required');
     }
 
+    // 显式连接（用户点击 / 配对 / 服务启动）会清除手动断开标记
+    this.manualDisconnect.delete(serverId);
+    await this._setServerDesiredActive(serverId, true);
+
     await this._ensureServerConfig(serverId, config.serverId ? config : null);
     this.connecting.add(serverId);
 
-    const result = await distributedSessionService.openSession({
-      userId: this.userId,
-      serverId,
-      reason: 'service_connect',
-    });
-
-    if (result.status === 'queued') {
-      this.sessionStates.set(serverId, {
-        sessionId: null,
-        nodeId: null,
-        status: 'QUEUED',
-        queuedAt: Date.now(),
-      });
-      return {
-        queued: true,
-        reason: 'SESSION_QUEUED',
+    try {
+      const result = await distributedSessionService.openSession({
+        userId: this.userId,
         serverId,
-        queueId: result.queueId,
-        queuePosition: result.queuePosition,
-      };
-    }
-
-    if (result.status === 'connected') {
-      this.connecting.delete(serverId);
-      this.connections.set(serverId, {
-        sessionId: result.sessionId,
-        nodeId: result.nodeId || null,
-        connectedAt: Date.now(),
+        reason: config.reason || 'service_connect',
       });
+
+      if (result.status === 'queued') {
+        this.sessionStates.set(serverId, {
+          sessionId: null,
+          nodeId: null,
+          status: 'QUEUED',
+          queuedAt: Date.now(),
+        });
+        return {
+          queued: true,
+          reason: 'SESSION_QUEUED',
+          serverId,
+          queueId: result.queueId,
+          queuePosition: result.queuePosition,
+        };
+      }
+
+      if (result.status === 'connected') {
+        this.connecting.delete(serverId);
+        this.connections.set(serverId, {
+          sessionId: result.sessionId,
+          nodeId: result.nodeId || null,
+          connectedAt: Date.now(),
+        });
+        this.sessionStates.set(serverId, {
+          sessionId: result.sessionId,
+          nodeId: result.nodeId || null,
+          status: 'CONNECTED',
+          updatedAt: Date.now(),
+        });
+        return {
+          connected: true,
+          serverId,
+          sessionId: result.sessionId,
+          nodeId: result.nodeId || null,
+        };
+      }
+
       this.sessionStates.set(serverId, {
-        sessionId: result.sessionId,
+        sessionId: result.sessionId || null,
         nodeId: result.nodeId || null,
-        status: 'CONNECTED',
+        status: 'ASSIGNED',
         updatedAt: Date.now(),
       });
       return {
-        connected: true,
+        connected: false,
+        assigned: true,
+        reason: 'SESSION_CONNECTING',
         serverId,
-        sessionId: result.sessionId,
+        sessionId: result.sessionId || null,
         nodeId: result.nodeId || null,
       };
+    } catch (error) {
+      this.connecting.delete(serverId);
+      throw error;
     }
-
-    this.sessionStates.set(serverId, {
-      sessionId: result.sessionId || null,
-      nodeId: result.nodeId || null,
-      status: 'ASSIGNED',
-      updatedAt: Date.now(),
-    });
-    return {
-      connected: false,
-      assigned: true,
-      reason: 'SESSION_CONNECTING',
-      serverId,
-      sessionId: result.sessionId || null,
-      nodeId: result.nodeId || null,
-    };
   }
 
   async disconnect(serverId) {
+    // 标记为用户主动断开：后续 missing_session 不得隐式重连
+    this.manualDisconnect.add(serverId);
+    await this._setServerDesiredActive(serverId, false);
+
     const closeResult = await distributedSessionService.closeSession({
       userId: this.userId,
       serverId,
@@ -407,7 +438,7 @@ class DistributedRustPlusManager extends EventEmitter {
   async _dispatch(serverId, action, payload = {}, timeoutMs) {
     await this._ensureServerConfig(serverId);
 
-    let response = await distributedSessionService.dispatchCommand({
+    const response = await distributedSessionService.dispatchCommand({
       userId: this.userId,
       serverId,
       action,
@@ -415,27 +446,16 @@ class DistributedRustPlusManager extends EventEmitter {
       timeoutMs,
     });
 
+    // 禁止在命令路径隐式建连：用户主动断开后，轮询/自动化/前端查询都不得自动重连
     if (response.status === 'missing_session') {
-      await this.connect({ serverId });
-      response = await distributedSessionService.dispatchCommand({
-        userId: this.userId,
-        serverId,
-        action,
-        payload,
-        timeoutMs,
-      });
+      const error = new Error('服务器未连接');
+      error.code = response.reason || 'SESSION_NOT_FOUND';
+      throw error;
     }
 
     if (response.status === 'queued') {
       const error = new Error('服务器未连接');
       error.code = response.reason || 'SESSION_QUEUED';
-      throw error;
-    }
-
-    if (response.status === 'missing_session') {
-      // 自动 connect 后仍无会话（如刚被并发清理）：抛明确错误，而非退化成无意义信息
-      const error = new Error('服务器未连接');
-      error.code = response.reason || 'SESSION_NOT_FOUND';
       throw error;
     }
 

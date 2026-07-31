@@ -328,16 +328,31 @@ router.post('/:id/disconnect', async (req, res) => {
     const cancelledQueue = Number(result?.cancelledQueue || 0);
     const disconnected = result?.closed === true;
 
+    // 主动停掉轮询侧服务，避免 disconnect 事件竞态导致自动化继续发命令
+    try {
+      const userService = globalServiceManager.getUserService(req.user.id);
+      userService?.eventMonitorService?.stop(serverId);
+      userService?.automationService?.stop(serverId);
+      userService?.dayNightNotifier?.stop(serverId);
+    } catch {
+      // ignore cleanup errors
+    }
+
     let message = '当前没有活动连接';
     if (disconnected) {
       message = `已断开 ${server.name} 的连接`;
     } else if (cancelledQueue > 0) {
       message = `已取消 ${server.name} 的连接请求`;
+    } else {
+      // 即使当时没有活动会话，也已写入 isActive=0，后续不会自动重连
+      message = `已标记断开 ${server.name}，不会自动重连`;
     }
 
     return res.json({
       success: true,
       disconnected,
+      // 无论当时是否有活动会话，disconnect 都会写入 isActive=0，禁止自动重连
+      desiredOffline: true,
       cancelledQueue,
       message
     });
