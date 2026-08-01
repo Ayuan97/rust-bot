@@ -5,6 +5,7 @@ import '../utils/load-env.js';
 import UserRustPlusManager from '../services/user-rustplus-manager.js';
 import { subsKey, applyProxy } from './proxy-agent.js';
 import ProxyPool from './proxy-pool.js';
+import { createAssignmentSynchronizer } from './assignment-sync.js';
 
 const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://127.0.0.1:3000/api/internal';
 const NODE_TOKEN = process.env.NODE_TOKEN || '';
@@ -204,24 +205,20 @@ async function monitorControlPlaneHealth() {
   await drainActiveSessionsForSafety('control_plane_stale');
 }
 
+const syncAssignmentState = createAssignmentSynchronizer({
+  activeSessions,
+  fetchAssignments: async () => {
+    const res = await apiGet('/session/assignments');
+    return res.assignments || [];
+  },
+  connectSession,
+  disconnectSession,
+});
+
 async function syncAssignments() {
   if (stopped) return;
   try {
-    const res = await apiGet('/session/assignments');
-    const assignments = res.assignments || [];
-    const incomingIds = new Set(assignments.map((item) => item.sessionId));
-
-    for (const assignment of assignments) {
-      if (!activeSessions.has(assignment.sessionId)) {
-        await connectSession(assignment);
-      }
-    }
-
-    for (const existingSessionId of Array.from(activeSessions.keys())) {
-      if (!incomingIds.has(existingSessionId)) {
-        await disconnectSession(existingSessionId);
-      }
-    }
+    await syncAssignmentState();
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('[connector-node] sync assignments failed:', error.message);
