@@ -398,15 +398,17 @@ class DistributedRustPlusManager extends EventEmitter {
     }
   }
 
-  async disconnect(serverId) {
-    // 标记为用户主动断开：后续 missing_session 不得隐式重连
-    this.manualDisconnect.add(serverId);
-    await this._setServerDesiredActive(serverId, false);
+  async disconnect(serverId, { preserveDesiredState = false, reason = null } = {}) {
+    if (!preserveDesiredState) {
+      // 标记为用户主动断开：后续 missing_session 不得隐式重连
+      this.manualDisconnect.add(serverId);
+      await this._setServerDesiredActive(serverId, false);
+    }
 
     const closeResult = await distributedSessionService.closeSession({
       userId: this.userId,
       serverId,
-      reason: 'manual_disconnect',
+      reason: reason || (preserveDesiredState ? 'service_shutdown' : 'manual_disconnect'),
     });
 
     this.connecting.delete(serverId);
@@ -422,11 +424,11 @@ class DistributedRustPlusManager extends EventEmitter {
     return closeResult;
   }
 
-  async disconnectAll() {
+  async disconnectAll(options = {}) {
     const activeSessions = await distributedSessionService.getUserActiveSessions(this.userId);
     for (const session of activeSessions) {
       try {
-        await this.disconnect(session.serverId);
+        await this.disconnect(session.serverId, options);
       } catch (error) {
         logger.warn(
           `[distributed-rustplus] user=${this.userId} disconnect server=${session.serverId} failed: ${error.message}`

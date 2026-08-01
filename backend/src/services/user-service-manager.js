@@ -14,7 +14,6 @@ import UserCommands from './user-commands.js';
 import DayNightNotifier from './day-night-notifier.js';
 import UserTrackingService from './user-tracking.service.js';
 import battlemetricsService from './battlemetrics.service.js';
-import { getUserFcmHealth } from '../utils/fcm-health.js';
 
 const SERVER_ID_NAMESPACE = 'c94a3f4a-6b0d-4ad6-b8ee-71f8fd0e9a4d';
 const DEVICE_ID_NAMESPACE = '2d6e02e6-8c75-4f87-9e8f-b2e6996f3f5c';
@@ -573,43 +572,24 @@ class UserServiceManager extends EventEmitter {
         return;
       }
 
-      // FCM 过期/失效时禁止自动重连服务器，避免用户绕过「先恢复 FCM」
-      try {
-        const fcmHealth = await getUserFcmHealth(db, this.userId, this.fcmService);
-        if (!fcmHealth.canConnectServer) {
-          console.log(
-            `  ⏩ 跳过自动连接：FCM 需先恢复 (${fcmHealth.restoreReason || 'unknown'}) — ${fcmHealth.restoreMessage || ''}`
-          );
-          this.log(
-            'FCM',
-            `自动连接已跳过：${fcmHealth.restoreMessage || '请先恢复 FCM 凭证'}`,
-            'WARN'
-          );
-          return;
-        }
-      } catch (fcmCheckError) {
-        console.log(`  ⚠️  FCM 健康检查失败，继续尝试连接: ${fcmCheckError.message}`);
+      // 连接到用户期望保持在线的服务器（isActive=1）；用户主动断开后 isActive=0，服务重启也不应强行连回
+      // FCM 仅负责推送和新配对；已有 Rust+ 凭证的自动恢复不依赖 FCM 健康状态。
+      const realServers = this.user.servers.filter((server) => server.ip !== '0.0.0.0');
+      const targetServers = realServers.filter((server) => Number(server.isActive) !== 0);
+      const inactiveServers = realServers.filter((server) => Number(server.isActive) === 0);
+
+      if (this.user.servers.length > realServers.length) {
+        console.log(`  ⏩ 跳过 ${this.user.servers.length - realServers.length} 个 FCM 凭证占位符`);
+      }
+      for (const server of inactiveServers) {
+        console.log(`  ⏩ 跳过用户已断开的服务器: ${server.name || server.id}`);
+        this.rustPlusService?.manualDisconnect?.add(server.id);
       }
 
-      console.log(`  🔌 连接到 ${this.user.servers.length} 个服务器...`);
+      console.log(`  🔌 恢复 ${targetServers.length} 个期望在线的服务器...`);
 
-      // 连接到用户期望保持在线的服务器（isActive=1）；用户主动断开后 isActive=0，服务重启也不应强行连回
-      const connectionPromises = this.user.servers.map(async (server) => {
+      const connectionPromises = targetServers.map(async (server) => {
         try {
-          // 跳过 FCM 占位符服务器，仅用于保存凭证，不参与 Rust 连接
-          if (server.ip === '0.0.0.0') {
-            console.log(`  ⏩ 跳过占位符服务器: ${server.name || server.id}`);
-            return;
-          }
-
-          if (Number(server.isActive) === 0) {
-            console.log(`  ⏩ 跳过用户已断开的服务器: ${server.name || server.id}`);
-            if (this.rustPlusService?.manualDisconnect) {
-              this.rustPlusService.manualDisconnect.add(server.id);
-            }
-            return;
-          }
-
           const connectResult = await this.rustPlusService.connect({
             serverId: server.id,
             ip: server.ip,
@@ -643,15 +623,17 @@ class UserServiceManager extends EventEmitter {
             }
           }
 
-          // 连接成功后启动事件监控和自动化
-          if (this.eventMonitorService) {
-            await this.eventMonitorService.start(server.id);
-          }
-          if (this.automationService) {
-            this.automationService.start(server.id);
-          }
-          if (this.dayNightNotifier) {
-            await this.dayNightNotifier.start(server.id);
+          // 分布式 assigned/queued 只是受理成功；依赖服务由 server:connected 事件启动。
+          if (connectResult?.connected) {
+            if (this.eventMonitorService) {
+              await this.eventMonitorService.start(server.id);
+            }
+            if (this.automationService) {
+              this.automationService.start(server.id);
+            }
+            if (this.dayNightNotifier) {
+              await this.dayNightNotifier.start(server.id);
+            }
           }
         } catch (error) {
           console.error(`  ❌ 连接服务器 ${server.name || server.id} 失败:`, error.message);
@@ -662,8 +644,13 @@ class UserServiceManager extends EventEmitter {
       // 等待所有连接尝试完成
       await Promise.allSettled(connectionPromises);
 
-      const connectedCount = this.rustPlusService.getConnectedServers().length;
-      console.log(`  [OK] 服务器连接完成: ${connectedCount}/${this.user.servers.length} 个成功`);
+      const states = targetServers.map((server) => this.rustPlusService.getServerConnectionState(server.id));
+      const connectedCount = states.filter((state) => state === 'CONNECTED').length;
+      const pendingCount = states.filter((state) => ['QUEUED', 'ASSIGNED', 'CONNECTING'].includes(state)).length;
+      const failedCount = targetServers.length - connectedCount - pendingCount;
+      console.log(
+        `  [OK] 服务器恢复请求完成: ${connectedCount} 已连接, ${pendingCount} 等待连接, ${failedCount} 失败 (目标 ${targetServers.length})`
+      );
 
       // 启动玩家追踪服务
       if (this.trackingService) {
@@ -689,7 +676,10 @@ class UserServiceManager extends EventEmitter {
 
       // 使用 RustPlus 服务断开所有连接
       if (this.rustPlusService) {
-        await this.rustPlusService.disconnectAll();
+        await this.rustPlusService.disconnectAll({
+          preserveDesiredState: true,
+          reason: 'service_shutdown'
+        });
       }
 
       console.log(`  ✅ 服务器已断开`);
