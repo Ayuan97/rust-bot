@@ -5,11 +5,11 @@
  */
 
 import express from 'express';
-import { authenticate } from '../middleware/auth.middleware.js';
+import { authenticate, requireApprovedAccount } from '../middleware/auth.middleware.js';
 import notificationService from '../services/notification.service.js';
 
 const router = express.Router();
-router.use(authenticate);
+router.use(authenticate, requireApprovedAccount);
 
 // 状态（总开关模式 + 配置）
 router.get('/status', async (req, res) => {

@@ -56,7 +56,7 @@ class WebSocketService {
 
       // 3. 从数据库获取用户信息
       const [userRows] = await db.query(
-        'SELECT id, username, email, isActive, isAdmin FROM users WHERE id = ?',
+        'SELECT id, username, email, isActive, isAdmin, approvalStatus FROM users WHERE id = ?',
         [decoded.userId]
       );
 
@@ -69,6 +69,10 @@ class WebSocketService {
       // 4. 检查用户状态
       if (!user.isActive) {
         return next(new Error('账号已被禁用'));
+      }
+
+      if (user.approvalStatus !== 'APPROVED') {
+        return next(new Error(user.approvalStatus === 'REJECTED' ? '账号审核未通过' : '账号正在审核中'));
       }
 
       // 5. 将用户信息附加到 socket（订阅状态在每次写操作时实时校验，不缓存握手快照）
@@ -105,6 +109,13 @@ class WebSocketService {
     this.setupGlobalServiceListeners();
 
     console.log('✅ WebSocket 服务已启动（已启用认证 + 房间隔离）');
+  }
+
+  disconnectUser(userId, approvalStatus = 'REJECTED') {
+    if (!this.io || !userId) return;
+    const roomName = `user:${userId}`;
+    this.io.to(roomName).emit('account:approval:changed', { approvalStatus });
+    this.io.in(roomName).disconnectSockets(true);
   }
 
   _getSessionCacheKey(userId, serverId) {
@@ -1010,4 +1021,3 @@ class WebSocketService {
 }
 
 export default new WebSocketService();
-

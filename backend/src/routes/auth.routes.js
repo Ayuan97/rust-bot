@@ -231,6 +231,12 @@ router.post('/register', registerLimiter, async (req, res) => {
       conn.release();
     }
   } catch (error) {
+    if (error?.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({
+        success: false,
+        error: '用户名已被占用'
+      });
+    }
     console.error('注册错误:', error);
     res.status(500).json({
       success: false,

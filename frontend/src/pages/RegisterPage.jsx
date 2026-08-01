@@ -11,8 +11,8 @@ export default function RegisterPage() {
   const { setUser } = useAuth();
 
   useSEO({
-    title: '免费注册 - Rust+ 网页控制台（7 天免费试用）',
-    description: '注册 Rust+ 控制台，享 7 天免费试用：离线监控 Rust 服务器、队友位置追踪、智能设备远程控制、基地遭袭警报推送。',
+    title: '注册 - Rust+ 网页控制台',
+    description: '注册 Rust+ 控制台：离线监控 Rust 服务器、队友位置追踪、智能设备远程控制、基地遭袭警报推送。',
     path: '/register',
   });
   const [formData, setFormData] = useState({ username: '', password: '', confirmPassword: '' });
@@ -109,10 +109,12 @@ export default function RegisterPage() {
           </h1>
           <p className="mt-6 max-w-sm text-sm leading-relaxed text-fg-dim">
             {approvalMode
-              ? '注册后由管理员审核开通，通过后即可连接 Rust 服务器，体验完整的基地监控、队友追踪与战术指挥能力。'
+              ? trialOn
+                ? `注册后由管理员审核，通过即送 ${trialDays} 天免费使用，随后即可连接 Rust 服务器。`
+                : '注册后由管理员审核，通过后可选择订阅方案并开通 Rust 服务器服务。'
               : trialOn
                 ? `注册即送 ${trialDays} 天免费使用，连接你的 Rust 服务器，体验完整的基地监控、队友追踪与战术指挥能力。`
-                : '连接你的 Rust 服务器，体验完整的基地监控、队友追踪与战术指挥能力。'}
+                : '注册后可选择订阅方案，并连接你的 Rust 服务器。'}
           </p>
         </div>
 
@@ -172,11 +174,11 @@ export default function RegisterPage() {
                   {approvalMode ? (
                     trialOn
                       ? <>注册后需管理员审核，通过即送 <span className="font-mono text-terminal font-bold">{trialDays}</span> 天免费使用</>
-                      : <>注册后需管理员审核，通过后开通使用</>
+                      : <>注册后需管理员审核，通过后可购买订阅并开通服务</>
                   ) : trialOn ? (
                     <>注册即送 <span className="font-mono text-terminal font-bold">{trialDays}</span> 天免费使用</>
                   ) : (
-                    <>注册后由管理员开通服务</>
+                    <>注册后可购买订阅并开通服务</>
                   )}
                 </span>
               </div>
@@ -201,7 +203,7 @@ export default function RegisterPage() {
                   </label>
                   <input
                     type="password" name="password" value={formData.password} onChange={handleChange} required
-                    className="tac-input" placeholder="密码至少 6 位"
+                    className="tac-input" placeholder="至少 8 位，包含字母和数字"
                   />
                 </div>
 

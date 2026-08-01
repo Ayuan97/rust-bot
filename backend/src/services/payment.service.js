@@ -666,7 +666,7 @@ class PaymentService {
       if (order.subscriptionId) {
         await conn.query(
           `UPDATE subscriptions SET
-            planType = ?, endDate = ?, amount = ?, paymentMethod = ?, transactionId = ?, updatedAt = NOW()
+            planType = ?, status = 'ACTIVE', endDate = ?, amount = ?, paymentMethod = ?, transactionId = ?, updatedAt = NOW()
            WHERE userId = ?`,
           [order.planType || inferPlanType(duration), newEndDate, order.amount, order.paymentMethod, tradeNo, order.userId]
         );

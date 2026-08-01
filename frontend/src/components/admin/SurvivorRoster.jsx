@@ -241,17 +241,24 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
 
   // 审核通过
   const handleApprove = async (user) => {
+    const isRestore = user.approvalStatus === 'REJECTED';
     const confirmed = await confirm({
       type: 'info',
-      title: '通过审核',
-      message: `确定通过用户「${user.username}」的注册审核吗？`,
-      confirmText: '通过'
+      title: isRestore ? '重新通过审核' : '通过审核',
+      message: isRestore
+        ? `确定重新通过用户「${user.username}」的注册审核吗？`
+        : `确定通过用户「${user.username}」的注册审核吗？`,
+      confirmText: isRestore ? '重新通过' : '通过'
     });
     if (!confirmed) return;
     try {
       const res = await api.put(`/admin/users/${user.id}/approval`, { action: 'approve' });
       if (res.data.success) {
-        toast.success(res.data.data?.grantedTrialDays ? `已通过并发放 ${res.data.data.grantedTrialDays} 天` : '已通过审核');
+        if (res.data.data?.serviceStatus === 'retrying') {
+          toast.warning(res.data.message);
+        } else {
+          toast.success(res.data.message);
+        }
         fetchUsers();
       }
     } catch (err) {
@@ -271,7 +278,11 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
     try {
       const res = await api.put(`/admin/users/${user.id}/approval`, { action: 'reject' });
       if (res.data.success) {
-        toast.success('已拒绝');
+        if (res.data.data?.serviceStatus === 'stopping_retry') {
+          toast.warning(res.data.message);
+        } else {
+          toast.success(res.data.message);
+        }
         fetchUsers();
       }
     } catch (err) {
@@ -459,6 +470,7 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
         >
           <option value="">全部状态</option>
           <option value="pending">待审核</option>
+          <option value="rejected">已拒绝</option>
           <option value="active">活跃</option>
           <option value="inactive">已禁用</option>
           <option value="not_activated">未激活</option>
@@ -668,23 +680,25 @@ const SurvivorRoster = ({ onNavigateToLogs }) => {
                       <FaTerminal className="text-xs" />
                     </button>
 
-                    {/* 审核通过/拒绝（仅待审核用户） */}
-                    {user.approvalStatus === 'PENDING' && (
+                    {/* 待审核和已拒绝用户可通过；只有待审核用户可拒绝 */}
+                    {(user.approvalStatus === 'PENDING' || user.approvalStatus === 'REJECTED') && (
                       <>
                         <button
                           onClick={() => handleApprove(user)}
                           className="p-1.5 border border-ink-line bg-ink-800 text-fg-dim hover:border-terminal hover:text-terminal transition-colors"
-                          title="通过审核"
+                          title={user.approvalStatus === 'REJECTED' ? '重新通过审核' : '通过审核'}
                         >
                           <FaUserCheck className="text-xs" />
                         </button>
-                        <button
-                          onClick={() => handleReject(user)}
-                          className="p-1.5 border border-ink-line bg-ink-800 text-fg-dim hover:border-hazard hover:text-hazard transition-colors"
-                          title="拒绝注册"
-                        >
-                          <FaUserSlash className="text-xs" />
-                        </button>
+                        {user.approvalStatus === 'PENDING' && (
+                          <button
+                            onClick={() => handleReject(user)}
+                            className="p-1.5 border border-ink-line bg-ink-800 text-fg-dim hover:border-hazard hover:text-hazard transition-colors"
+                            title="拒绝注册"
+                          >
+                            <FaUserSlash className="text-xs" />
+                          </button>
+                        )}
                       </>
                     )}
 

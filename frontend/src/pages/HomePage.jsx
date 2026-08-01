@@ -26,11 +26,12 @@ import { openContactUs } from '../components/ContactUsModal';
 export default function HomePage() {
   const navigate = useNavigate();
   const [plans, setPlans] = useState([]);
+  const [registrationInfo, setRegistrationInfo] = useState(null);
 
   useSEO({
     title: 'Rust+ 网页控制台 · 离线监控基地、队友追踪、设备远程控制 | Rust 服务器管理',
     description:
-      'Rust+ 网页版控制台：离线也能实时监控 Rust 服务器、追踪队友位置、远程控制智能设备、第一时间收到基地遭袭警报推送。基于 Facepunch 官方 Rust+ API，安全不封号，注册即享 7 天免费试用。',
+      'Rust+ 网页版控制台：离线也能实时监控 Rust 服务器、追踪队友位置、远程控制智能设备、第一时间收到基地遭袭警报推送。基于 Facepunch 官方 Rust+ API，安全不封号。',
     path: '/',
   });
 
@@ -56,6 +57,14 @@ export default function HomePage() {
       }
     };
     fetchPlans();
+  }, []);
+
+  useEffect(() => {
+    api.get('/auth/registration-info')
+      .then((res) => {
+        if (res.data?.success) setRegistrationInfo(res.data.data);
+      })
+      .catch(() => {});
   }, []);
 
   // 平滑滚动到指定锚点
@@ -462,7 +471,13 @@ export default function HomePage() {
             </div>
             <h2 className="text-4xl md:text-5xl font-extrabold text-fg tracking-tightest">订阅你的指挥权限</h2>
             <p className="mt-3 text-sm text-fg-dim">
-              新用户注册即享 <span className="font-mono text-terminal font-bold">7</span> 天免费试用
+              {registrationInfo?.freeTrialEnabled
+                ? registrationInfo.mode === 'approval'
+                  ? <>注册审核通过即享 <span className="font-mono text-terminal font-bold">{registrationInfo.freeTrialDays}</span> 天免费试用</>
+                  : <>新用户注册即享 <span className="font-mono text-terminal font-bold">{registrationInfo.freeTrialDays}</span> 天免费试用</>
+                : registrationInfo?.mode === 'approval'
+                  ? '注册审核通过后可选择订阅方案'
+                  : '注册后可选择适合你的订阅方案'}
             </p>
           </div>
 

@@ -3,14 +3,14 @@
  */
 
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth.middleware.js';
+import { authenticate, requireApprovedAccount } from '../middleware/auth.middleware.js';
 import globalServiceManager from '../services/global-manager.service.js';
 import battlemetricsService from '../services/battlemetrics.service.js';
 
 const router = Router();
 
 // 所有路由都需要认证
-router.use(authenticate);
+router.use(authenticate, requireApprovedAccount);
 
 /**
  * 获取或创建用户的追踪服务

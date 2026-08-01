@@ -122,7 +122,8 @@ export const AuthProvider = ({ children }) => {
 
   // 当用户状态变化时，管理 Socket 连接
   useEffect(() => {
-    if (user) {
+    const realtimeAllowed = user && (user.isAdmin || user.approvalStatus === 'APPROVED');
+    if (realtimeAllowed) {
       // 用户已登录，连接 Socket
       const token = localStorage.getItem('token');
       if (token && !isTokenExpired(token)) {
@@ -130,14 +131,13 @@ export const AuthProvider = ({ children }) => {
         socketService.connect();
       }
     } else {
-      // 用户未登录或已退出，断开 Socket
-      console.log('🔌 用户已退出，断开 WebSocket 连接...');
+      // 用户未登录或尚未通过审核，断开 Socket
       socketService.disconnect();
     }
 
     return () => {
       // 组件卸载时断开连接
-      if (!user) {
+      if (!realtimeAllowed) {
         socketService.disconnect();
       }
     };

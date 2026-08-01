@@ -11,7 +11,7 @@ class RateLimiter {
   constructor() {
     this.requests = new Map();
     // 每 5 分钟清理一次过期记录
-    setInterval(() => this.cleanup(), 5 * 60 * 1000);
+    setInterval(() => this.cleanup(), 5 * 60 * 1000).unref();
   }
 
   /**

@@ -158,6 +158,30 @@ export const requireAdmin = (req, res, next) => {
 };
 
 /**
+ * 检查账号是否已通过注册审核
+ * 必须配合 authenticate 使用
+ */
+export const requireApprovedAccount = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      error: '请先登录'
+    });
+  }
+
+  if (req.user.approvalStatus !== 'APPROVED') {
+    const rejected = req.user.approvalStatus === 'REJECTED';
+    return res.status(403).json({
+      success: false,
+      error: rejected ? '账号审核未通过' : '账号正在审核中，通过后即可继续',
+      code: rejected ? 'ACCOUNT_REJECTED' : 'PENDING_APPROVAL'
+    });
+  }
+
+  next();
+};
+
+/**
  * 检查订阅是否有效
  * 必须配合 authenticate 使用
  * 用于需要有效订阅才能执行的操作（如连接服务器、控制设备等）
@@ -171,11 +195,12 @@ export const requireActiveSubscription = (req, res, next) => {
   }
 
   // 未通过审核的账号一律拦截（即便订阅被手工置为有效），保证审核态硬约束
-  if (req.user.approvalStatus === 'PENDING' || req.user.approvalStatus === 'REJECTED') {
+  if (req.user.approvalStatus !== 'APPROVED') {
+    const rejected = req.user.approvalStatus === 'REJECTED';
     return res.status(403).json({
       success: false,
-      error: req.user.approvalStatus === 'REJECTED' ? '账号审核未通过' : '账号正在审核中，通过后即可使用',
-      code: 'PENDING_APPROVAL'
+      error: rejected ? '账号审核未通过' : '账号正在审核中，通过后即可继续',
+      code: rejected ? 'ACCOUNT_REJECTED' : 'PENDING_APPROVAL'
     });
   }
 
@@ -207,7 +232,11 @@ export const requireActiveSubscription = (req, res, next) => {
 export const isSubscriptionActive = async (userId) => {
   if (!userId) return false;
   const [rows] = await db.query(
-    'SELECT endDate FROM subscriptions WHERE userId = ? ORDER BY endDate DESC LIMIT 1',
+    `SELECT s.endDate
+     FROM subscriptions s
+     INNER JOIN users u ON u.id = s.userId
+     WHERE s.userId = ? AND u.isActive = 1 AND u.approvalStatus = 'APPROVED'
+     ORDER BY s.endDate DESC LIMIT 1`,
     [userId]
   );
   const sub = rows[0];

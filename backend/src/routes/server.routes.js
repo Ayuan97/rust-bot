@@ -5,7 +5,7 @@
 
 import express from 'express';
 import db from '../lib/db.js';
-import { authenticate, requireActiveSubscription } from '../middleware/auth.middleware.js';
+import { authenticate, requireApprovedAccount, requireActiveSubscription } from '../middleware/auth.middleware.js';
 import globalServiceManager from '../services/global-manager.service.js';
 import battlemetricsService from '../services/battlemetrics.service.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -18,7 +18,7 @@ import { getUserFcmHealth } from '../utils/fcm-health.js';
 const router = express.Router();
 
 // 所有路由都需要认证
-router.use(authenticate);
+router.use(authenticate, requireApprovedAccount);
 
 /**
  * 获取用户的 RustPlus 服务实例

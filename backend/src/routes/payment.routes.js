@@ -12,7 +12,8 @@
 import express from 'express';
 import paymentService from '../services/payment.service.js';
 import alipayService from '../services/alipay.service.js';
-import { authenticate } from '../middleware/auth.middleware.js';
+import globalServiceManager from '../services/global-manager.service.js';
+import { authenticate, requireApprovedAccount } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
@@ -59,7 +60,7 @@ router.get('/plans', async (req, res) => {
  *   "order": { ... }
  * }
  */
-router.post('/create-order', authenticate, async (req, res) => {
+router.post('/create-order', authenticate, requireApprovedAccount, async (req, res) => {
   try {
     const { planId, paymentMethod } = req.body;
     const userId = req.user.id;
@@ -104,7 +105,7 @@ router.post('/create-order', authenticate, async (req, res) => {
  *   "orders": [ ... ]
  * }
  */
-router.get('/orders', authenticate, async (req, res) => {
+router.get('/orders', authenticate, requireApprovedAccount, async (req, res) => {
   try {
     const userId = req.user.id;
     const { limit, status } = req.query;
@@ -142,7 +143,7 @@ router.get('/orders', authenticate, async (req, res) => {
  *   "order": { ... }
  * }
  */
-router.get('/orders/:id', authenticate, async (req, res) => {
+router.get('/orders/:id', authenticate, requireApprovedAccount, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -187,7 +188,7 @@ router.get('/orders/:id', authenticate, async (req, res) => {
  *   "order": { ... }
  * }
  */
-router.post('/orders/:id/cancel', authenticate, async (req, res) => {
+router.post('/orders/:id/cancel', authenticate, requireApprovedAccount, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -228,7 +229,7 @@ router.post('/orders/:id/cancel', authenticate, async (req, res) => {
  *   "tradeNo": "商户订单号"
  * }
  */
-router.post('/alipay/qrcode', authenticate, async (req, res) => {
+router.post('/alipay/qrcode', authenticate, requireApprovedAccount, async (req, res) => {
   try {
     const { orderId } = req.body;
     const userId = req.user.id;
@@ -305,7 +306,7 @@ router.post('/alipay/qrcode', authenticate, async (req, res) => {
  *   "payUrl": "https://..."
  * }
  */
-router.post('/alipay/page', authenticate, async (req, res) => {
+router.post('/alipay/page', authenticate, requireApprovedAccount, async (req, res) => {
   try {
     const { orderId } = req.body;
     const userId = req.user.id;
@@ -380,7 +381,7 @@ router.post('/alipay/page', authenticate, async (req, res) => {
  *   ...
  * }
  */
-router.get('/alipay/query/:orderId', authenticate, async (req, res) => {
+router.get('/alipay/query/:orderId', authenticate, requireApprovedAccount, async (req, res) => {
   try {
     const { orderId } = req.params;
     const userId = req.user.id;
@@ -427,7 +428,7 @@ router.get('/alipay/query/:orderId', authenticate, async (req, res) => {
  *
  * 响应: success 或 fail (直接返回文本,不是 JSON)
  */
-router.post('/callback/alipay', async (req, res) => {
+router.post('/callback/alipay', express.urlencoded({ extended: false }), async (req, res) => {
   try {
     const params = req.body;
 
@@ -483,9 +484,14 @@ router.post('/callback/alipay', async (req, res) => {
     console.log(`   交易号: ${trade_no}`);
     console.log(`   金额: ¥${total_amount}`);
     console.log(`   套餐: ${order.planType}`);
-    console.log(`   订阅到期时间: ${result.subscription.endDate}`);
+    console.log(`   订阅到期时间: ${result.subscription?.endDate || '已由并发回调处理'}`);
 
-    // TODO: 触发服务创建/恢复 (需要在多租户架构中实现)
+    // 支付结果已经持久化，服务初始化放到后台执行，避免延迟支付宝回调确认。
+    if (!globalServiceManager.userServices.has(order.userId)) {
+      void globalServiceManager.createUserService(order.userId).catch((error) => {
+        console.error(`支付成功后拉起用户服务失败（userId=${order.userId}），等待定时补偿:`, error.message);
+      });
+    }
 
     // 8. 返回成功
     res.send('success');

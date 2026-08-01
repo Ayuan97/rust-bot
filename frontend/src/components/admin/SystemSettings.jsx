@@ -5,7 +5,7 @@ import { useToast } from '../Toast';
 
 /**
  * 系统设置 - 注册模式与免费策略
- * 仅对「新注册」用户生效；已有用户不受影响。
+ * 注册模式用于新注册用户；免费试用策略在注册或审核发生时读取。
  */
 export default function SystemSettings() {
   const toast = useToast();
@@ -117,7 +117,7 @@ export default function SystemSettings() {
           <FaSlidersH className="text-hazard" /> 系统设置 // CONFIG
         </div>
         <h2 className="text-xl font-extrabold text-fg mt-1">注册与免费策略</h2>
-        <p className="text-[13px] text-fg-dim mt-1">以下设置仅对「新注册」用户生效，已有用户不受影响。</p>
+        <p className="text-[13px] text-fg-dim mt-1">注册模式用于新账号；免费试用策略会影响之后发生的注册和审核。</p>
       </div>
 
       {/* 注册模式 */}
@@ -143,7 +143,7 @@ export default function SystemSettings() {
             icon={<FaUserShield />}
             en="REVIEW"
             title="注册后需我审核"
-            desc="用户能注册并登录，但需你在「用户运营」里审核通过后才能使用。"
+            desc="用户能注册并登录，通过审核后才可购买订阅或使用有效订阅。"
           />
         </div>
       </div>

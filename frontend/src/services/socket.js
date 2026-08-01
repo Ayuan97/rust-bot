@@ -52,6 +52,13 @@ class SocketService {
     this.socket.on('connect_error', (error) => {
       console.error('❌ WebSocket 连接错误:', error.message);
 
+      if (error.message.includes('审核')) {
+        const blockedSocket = this.socket;
+        blockedSocket?.disconnect();
+        if (this.socket === blockedSocket) this.socket = null;
+        return;
+      }
+
       // 如果是认证错误，清除 Token 并跳转到登录页
       if (error.message.includes('认证') || error.message.includes('令牌') || error.message.includes('授权')) {
         console.error('❌ 认证失败，请重新登录');

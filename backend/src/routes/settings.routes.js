@@ -5,14 +5,14 @@
 
 import { Router } from 'express';
 import db from '../lib/db.js';
-import { authenticate } from '../middleware/auth.middleware.js';
+import { authenticate, requireApprovedAccount } from '../middleware/auth.middleware.js';
 import globalManager from '../services/global-manager.service.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
 // 所有路由都需要认证
-router.use(authenticate);
+router.use(authenticate, requireApprovedAccount);
 
 // AFK 消息模板默认值
 const DEFAULT_AFK_TEMPLATE = '`{name}` 在 {position} 已挂机 {minutes} 分钟';

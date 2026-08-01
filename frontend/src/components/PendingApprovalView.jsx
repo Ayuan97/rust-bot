@@ -10,12 +10,11 @@ export default function PendingApprovalView({ status = 'PENDING' }) {
   const { user, logout, refreshUser } = useAuth();
   const isRejected = status === 'REJECTED';
 
-  // 待审核时更勤快地拉取状态，审核通过后无需刷新即可自动进入控制台
+  // 待审核或被拒绝后持续拉取状态，管理员重新通过时无需手动刷新
   useEffect(() => {
-    if (isRejected) return;
     const timer = setInterval(() => { refreshUser(); }, 20000);
     return () => clearInterval(timer);
-  }, [isRejected, refreshUser]);
+  }, [refreshUser]);
 
   return (
     <div className="tac-fx min-h-[100dvh] bg-ink-900 text-fg font-sans flex items-center justify-center px-4">
@@ -39,7 +38,7 @@ export default function PendingApprovalView({ status = 'PENDING' }) {
             <p className="mt-2 text-sm text-fg-dim leading-relaxed">
               {isRejected
                 ? '你的注册申请未通过管理员审核，如有疑问请联系管理员。'
-                : '你的账号已提交，正在等待管理员审核开通，通过后将自动解锁全部功能。'}
+                : '你的账号已提交，正在等待管理员审核。通过后将解除账号限制，服务功能需要有效订阅。'}
             </p>
           </div>
 
@@ -61,16 +60,14 @@ export default function PendingApprovalView({ status = 'PENDING' }) {
           </div>
 
           {/* 自动检测提示 */}
-          {!isRejected && (
-            <div className="mb-6 border border-hazard/30 bg-hazard-dim p-4">
-              <div className="tac-label !text-hazard mb-1.5 flex items-center gap-2">
-                <FaSyncAlt className="text-[10px] animate-spin-slow" /> 自动检测中 // AUTO
-              </div>
-              <p className="text-[13px] text-fg-dim leading-relaxed">
-                本页每 20 秒自动检测一次审核状态，通过后无需刷新即可进入控制台。
-              </p>
+          <div className="mb-6 border border-hazard/30 bg-hazard-dim p-4">
+            <div className="tac-label !text-hazard mb-1.5 flex items-center gap-2">
+              <FaSyncAlt className="text-[10px] animate-spin-slow" /> 自动检测中 // AUTO
             </div>
-          )}
+            <p className="text-[13px] text-fg-dim leading-relaxed">
+              本页每 20 秒自动检测一次审核状态，通过后无需刷新即可进入控制台。
+            </p>
+          </div>
 
           {/* 退出按钮 */}
           <button onClick={logout} className="tac-btn tac-btn-ghost w-full !py-3.5">

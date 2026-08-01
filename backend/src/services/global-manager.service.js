@@ -336,6 +336,8 @@ class GlobalServiceManager extends EventEmitter {
 
       const now = new Date();
       let expiredCount = 0;
+      let restoredCount = 0;
+      let restoreFailedCount = 0;
 
       // 创建 keys 快照，防止迭代期间 Map 被修改
       const userIds = Array.from(this.userServices.keys());
@@ -385,6 +387,26 @@ class GlobalServiceManager extends EventEmitter {
         }
       }
 
+      // 补建“账号有效 + 已审核 + 订阅有效”但实例缺失的用户，覆盖审核/续费后初始化失败场景
+      const [eligibleUsers] = await db.query(
+        `SELECT u.id, u.username
+         FROM users u
+         INNER JOIN subscriptions s ON s.userId = u.id
+         WHERE u.isActive = 1 AND u.approvalStatus = 'APPROVED' AND s.endDate > NOW()`
+      );
+
+      for (const user of eligibleUsers) {
+        if (this.userServices.has(user.id) || this.creatingUsers.has(user.id)) continue;
+        try {
+          await this.createUserService(user.id);
+          restoredCount++;
+          console.log(`  ✅ 已补建用户 ${user.username} 的服务实例`);
+        } catch (error) {
+          restoreFailedCount++;
+          console.error(`  ❌ 补建用户 ${user.username} 服务失败:`, error.message);
+        }
+      }
+
       if (expiredCount > 0) {
         console.log(`📊 清理了 ${expiredCount} 个过期订阅`);
       } else {
@@ -395,7 +417,9 @@ class GlobalServiceManager extends EventEmitter {
 
       this.emit('subscriptions:checked', {
         total: this.userServices.size,
-        expired: expiredCount
+        expired: expiredCount,
+        restored: restoredCount,
+        restoreFailed: restoreFailedCount
       });
     } catch (error) {
       console.error('❌ 检查订阅失败:', error);
