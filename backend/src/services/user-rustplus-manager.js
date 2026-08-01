@@ -19,6 +19,7 @@ class UserRustPlusManager extends EventEmitter {
     }
 
     this.userId = userId;
+    this.clientFactory = options.clientFactory || ((...args) => new RustPlusClient(...args));
     // 分布式 connector 模式应禁用本地自动重连：重连由控制平面 assignment 主导，避免与 failover 冲突造成双连接
     this.autoReconnect = options.autoReconnect !== false;
     this.connections = new Map(); // serverId -> rustplus instance
@@ -78,10 +79,15 @@ class UserRustPlusManager extends EventEmitter {
       return null;
     }
 
-    // 已连接，直接返回
-    if (this.connections.has(serverId)) {
+    // 已连接，直接返回；失效的客户端先清掉，再走正常重连。
+    const existingConnection = this.connections.get(serverId);
+    if (existingConnection?.isConnected?.()) {
       logger.debug(`用户 ${this.userId} 的服务器 ${serverId} 已连接`);
-      return this.connections.get(serverId);
+      return existingConnection;
+    }
+    if (existingConnection) {
+      this.connections.delete(serverId);
+      try { existingConnection.disconnect(); } catch { /* ignore */ }
     }
 
     // 竞态保护：正在连接中，抛出错误
@@ -98,58 +104,6 @@ class UserRustPlusManager extends EventEmitter {
 
     // 为单个 RustPlusClient 绑定全部事件监听（每次连接尝试各自一份）
     const attachHandlers = (rustplus) => {
-      // 监听连接事件
-      rustplus.on('connected', async () => {
-        // 【连接验证】参考 rustplusplus：连接后立即验证，确保连接真正有效
-        // 使用 getInfo 验证（比 getMap 更快，数据量小）
-        const VALIDATION_TIMEOUT = 30000; // 30秒验证超时
-        let isValid = false;
-        let serverName = serverId;
-
-        try {
-          const info = await rustplus.sendRequestAsync({ getInfo: {} }, VALIDATION_TIMEOUT);
-
-          // 验证响应是否有效
-          if (info === undefined || info.error || Object.keys(info).length === 0) {
-            // 验证失败，静默处理
-          } else if (info.info) {
-            isValid = true;
-            serverName = info.info.name || serverId;
-          }
-        } catch (err) {
-          // 验证失败，静默处理
-        }
-
-        // 验证失败，主动断开连接（会触发 disconnected 事件和自动重连）
-        if (!isValid) {
-          rustplus.disconnect();
-          return;
-        }
-
-        // 验证通过，正式标记为已连接
-        // 保存服务器名称到 logger（供其他服务使用）
-        logger.setServerName(serverId, serverName);
-        logger.server(serverId, `✅ 用户 ${this.userId} 已连接`);
-
-        // 连接成功，重置重连计数
-        this.reconnectAttempts.delete(serverId);
-        this.emit('server:connected', { userId: this.userId, serverId, serverName });
-
-        // 主动获取初始队伍状态
-        try {
-          await this.getTeamInfo(serverId);
-        } catch (err) {
-          // 静默处理
-        }
-
-        // 直接调用 getServerInfo 获取并保存 mapSize
-        try {
-          await this.getServerInfo(serverId);
-        } catch (err) {
-          // 静默处理
-        }
-      });
-
       rustplus.on('disconnected', () => {
         const wasConnected = this.connections.has(serverId);
         // 失败的连接尝试（从未建立成功，例如直连握手超时）不向上报断开，
@@ -192,13 +146,25 @@ class UserRustPlusManager extends EventEmitter {
 
     };
 
-    // 单次连接尝试：建客户端 + 绑监听 + 连接,成功入库返回,失败清理后抛出
+    // 单次连接尝试：WebSocket 打开且 getInfo 验证通过后，才算真正连接成功。
     const tryConnect = async (proxyUrl) => {
-      const rustplus = new RustPlusClient(ip, port, playerId, playerToken, proxyUrl);
+      const rustplus = this.clientFactory(ip, port, playerId, playerToken, proxyUrl);
       attachHandlers(rustplus);
       try {
         await rustplus.connect();
+        const info = await rustplus.sendRequestAsync({ getInfo: {} }, 30000);
+        if (!info?.info) {
+          throw new Error('Rust+ 连接验证失败');
+        }
+
         this.connections.set(serverId, rustplus);
+        const serverName = info.info.name || serverId;
+        logger.setServerName(serverId, serverName);
+        logger.server(serverId, `✅ 用户 ${this.userId} 已连接`);
+        this.reconnectAttempts.delete(serverId);
+        this.emit('server:connected', { userId: this.userId, serverId, serverName });
+        this.getTeamInfo(serverId).catch(() => {});
+        this.getServerInfo(serverId).catch(() => {});
         return rustplus;
       } catch (err) {
         try { rustplus.disconnect(); } catch { /* ignore */ }
@@ -933,14 +899,16 @@ class UserRustPlusManager extends EventEmitter {
    * 获取所有连接的服务器
    */
   getConnectedServers() {
-    return Array.from(this.connections.keys());
+    return Array.from(this.connections.entries())
+      .filter(([, connection]) => connection?.isConnected?.())
+      .map(([serverId]) => serverId);
   }
 
   /**
    * 检查服务器是否已连接
    */
   isConnected(serverId) {
-    return this.connections.has(serverId);
+    return !!this.connections.get(serverId)?.isConnected?.();
   }
 
   /**
@@ -950,7 +918,7 @@ class UserRustPlusManager extends EventEmitter {
     return {
       userId: this.userId,
       totalServers: this.serverConfigs.size,
-      connectedServers: this.connections.size,
+      connectedServers: this.getConnectedServers().length,
       connectingServers: this.connecting.size,
       reconnectingServers: this.reconnectTimers.size,
       activeCameras: this.cameras.size

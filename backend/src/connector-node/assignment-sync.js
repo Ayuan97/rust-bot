@@ -3,6 +3,7 @@ export function createAssignmentSynchronizer({
   fetchAssignments,
   connectSession,
   disconnectSession,
+  shouldConnect = (assignment) => !activeSessions.has(assignment.sessionId),
 }) {
   let isSyncing = false;
 
@@ -17,7 +18,7 @@ export function createAssignmentSynchronizer({
       const incomingIds = new Set(assignments.map((item) => item.sessionId));
 
       for (const assignment of assignments) {
-        if (!activeSessions.has(assignment.sessionId)) {
+        if (shouldConnect(assignment)) {
           await connectSession(assignment);
         }
       }
