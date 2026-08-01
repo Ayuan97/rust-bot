@@ -17,7 +17,7 @@ import { resolve, join, extname } from 'node:path';
 const DIST = resolve(process.cwd(), 'dist');
 const PORT = 4271;
 // 需要被搜索引擎收录的公开页（与 sitemap.xml 对应）
-const ROUTES = ['/', '/demo', '/privacy'];
+const ROUTES = ['/', '/privacy'];
 
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',

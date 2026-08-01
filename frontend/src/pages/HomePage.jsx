@@ -8,7 +8,7 @@ import {
   FaCrosshairs,
   FaMoneyBillWave,
   FaArrowRight,
-  FaPlay,
+  FaWeixin,
   FaLock,
   FaShieldAlt,
   FaBell,
@@ -21,6 +21,7 @@ import {
 import api from '../services/api';
 import useSEO from '../hooks/useSEO';
 import { GAME_COMMANDS } from '../constants/commands';
+import { openContactUs } from '../components/ContactUsModal';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -113,9 +114,16 @@ export default function HomePage() {
 
           {/* 右侧按钮 */}
           <div className="flex items-center gap-2 md:gap-3 shrink-0">
-            <Link to="/demo" className="hidden sm:inline-flex tac-label hover:text-fg transition-colors">
-              体验控制台
-            </Link>
+            <button
+              type="button"
+              onClick={openContactUs}
+              className="tac-btn tac-btn-ghost !px-2.5 sm:!px-3 !py-2.5"
+              title="联系我们"
+              aria-label="联系我们"
+            >
+              <FaWeixin className="text-sm" />
+              <span className="hidden sm:inline">联系我们</span>
+            </button>
             <Link to="/login" className="tac-btn tac-btn-ghost !px-3 md:!px-4 !py-2.5">登录</Link>
             <Link to="/register" className="tac-btn tac-btn-primary !px-3 md:!px-4 !py-2.5">免费注册</Link>
           </div>
@@ -160,9 +168,9 @@ export default function HomePage() {
                   进入控制台 // LAUNCH
                   <FaArrowRight className="text-xs group-hover:translate-x-1 transition-transform" />
                 </Link>
-                <Link to="/demo" className="tac-btn tac-btn-ghost !py-4 group">
-                  <FaPlay className="text-[10px]" /> 先体验 // DEMO
-                </Link>
+                <button type="button" onClick={openContactUs} className="tac-btn tac-btn-ghost !py-4">
+                  <FaWeixin className="text-sm" /> 联系我们 // WECHAT
+                </button>
                 <Link to="/login" className="tac-btn tac-btn-ghost !py-4">
                   已有账号 // SIGN IN
                 </Link>
@@ -280,7 +288,7 @@ export default function HomePage() {
           <div className="mt-px flex items-center gap-3 px-4 py-3 border border-ink-line bg-hazard-dim">
             <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-hazard shrink-0">TIP</span>
             <span className="text-[13px] text-fg-dim">
-              首次上手建议：先体验控制台界面，再登录完成 Edge 插件配对。
+              首次上手建议：注册或登录后，先完成 Edge 凭证配置，再在游戏内点击 Pair 连接服务器。
             </span>
           </div>
         </div>
@@ -293,34 +301,27 @@ export default function HomePage() {
             <div className="tac-label mb-2 flex items-center gap-2">
               <FaArrowRight className="text-hazard text-[11px]" /> ONBOARDING // 第一次怎么走
             </div>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-fg tracking-tight">四步完成接入</h2>
-            <p className="mt-2 text-sm text-fg-dim">按这 4 步操作，基本不会走弯路</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-fg tracking-tight">三步完成接入</h2>
+            <p className="mt-2 text-sm text-fg-dim">按这 3 步操作，完成 Rust+ 服务器连接</p>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-px bg-ink-line border border-ink-line">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-ink-line border border-ink-line">
             <GettingStartedStep
               step="01"
-              title="先体验控制台"
-              desc="不登录也能看完整界面，先理解功能分区。"
-              actionLabel="打开演示页"
-              actionTo="/demo"
-            />
-            <GettingStartedStep
-              step="02"
               title="注册或登录"
               desc="注册后自动进入试用期，可直接进入个人控制台。"
               actionLabel="立即注册"
               actionTo="/register"
             />
             <GettingStartedStep
-              step="03"
-              title="完成 Edge 配对"
-              desc="配对凭证需通过 Edge 插件生成并粘贴保存。"
-              actionLabel="查看配对说明"
-              actionTo="/demo?tab=hud"
+              step="02"
+              title="完成 Edge 凭证配置"
+              desc="通过 Edge 插件生成配对凭证，并在个人控制台粘贴保存。"
+              actionLabel="登录并配置"
+              actionTo="/login"
             />
             <GettingStartedStep
-              step="04"
+              step="03"
               title="游戏内点击 Pair"
               desc="在 Rust 游戏内完成 Pair 后，即可实时连接与控制。"
               actionLabel="登录控制台"
@@ -548,9 +549,9 @@ export default function HomePage() {
               立即开启配对 // DEPLOY
               <FaArrowRight className="text-xs group-hover:translate-x-1 transition-transform" />
             </Link>
-            <Link to="/demo" className="tac-btn tac-btn-ghost !py-4 group">
-              <FaPlay className="text-[10px]" /> 先看演示 // PREVIEW
-            </Link>
+            <button type="button" onClick={openContactUs} className="tac-btn tac-btn-ghost !py-4">
+              <FaWeixin className="text-sm" /> 联系我们 // WECHAT
+            </button>
           </div>
         </div>
       </section>
@@ -573,6 +574,7 @@ export default function HomePage() {
               <button onClick={() => scrollToSection('features')} className="tac-label hover:text-fg transition-colors">功能 // FEATURES</button>
               <button onClick={() => scrollToSection('pricing')} className="tac-label hover:text-fg transition-colors">价格 // PRICING</button>
               <button onClick={() => scrollToSection('faq')} className="tac-label hover:text-fg transition-colors">问答 // FAQ</button>
+              <button type="button" onClick={openContactUs} className="tac-label hover:text-fg transition-colors">联系 // CONTACT</button>
             </nav>
             <div className="font-mono text-[10px] uppercase tracking-wider text-fg-mute tabular-nums">
               © 2024 RUST+ OPS · ALL SYSTEMS NOMINAL

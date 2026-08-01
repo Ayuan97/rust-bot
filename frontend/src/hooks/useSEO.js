@@ -6,7 +6,7 @@ const SITE = 'https://www.rustplusplus.com';
 /**
  * 轻量 SEO：在客户端为每个页面设置 title / description / canonical。
  * 无需额外依赖；未做预渲染时主要服务于浏览器标签标题、社媒抓取与能执行 JS 的爬虫。
- * 用法：useSEO({ title: '...', description: '...', path: '/demo' })
+ * 用法：useSEO({ title: '...', description: '...', path: '/privacy' })
  */
 export default function useSEO({ title, description, path } = {}) {
   useEffect(() => {

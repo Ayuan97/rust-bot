@@ -55,7 +55,7 @@ Rust+ Dashboard 前端的统一设计语言。**所有页面/组件必须遵循�
 ## 7. 参考标杆（照着写）
 
 - **入口页**：`frontend/src/pages/LoginPage.jsx`、`RegisterPage.jsx`（左视觉 + 右表单、中英混排）
-- **全屏数据台**：`frontend/src/pages/DemoConsolePage.jsx`（全屏布局 + 真实设备模型）
+- **全屏数据台**：`frontend/src/App.jsx`（全屏布局 + 真实设备模型）
 - **数据密集 / 表格**：`frontend/src/components/DeviceControl.jsx`、`components/admin/SurvivorRoster.jsx`、`NodeMonitor.jsx`
 - **地图 + 热力图**：`frontend/src/components/MapView.jsx`（活动热力 = terminal 绿 / 死亡热力 = hazard 红，图层可切换）
 

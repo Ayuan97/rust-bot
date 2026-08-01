@@ -8,7 +8,6 @@ import HomePage from './pages/HomePage';
 import PaymentPage from './pages/PaymentPage';
 import AccountPage from './pages/AccountPage';
 import AdminPage from './pages/AdminPage';
-import DemoConsolePage from './pages/DemoConsolePage';
 import PrivacyPage from './pages/PrivacyPage';
 import { ToastProvider } from './components/Toast';
 import { ConfirmProvider } from './components/ConfirmModal';
@@ -72,7 +71,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               <Route path="/" element={<HomePage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
-              <Route path="/demo" element={<DemoConsolePage />} />
               <Route path="/privacy" element={<PrivacyPage />} />
 
               {/* 私有路由 - 需要登录 */}
