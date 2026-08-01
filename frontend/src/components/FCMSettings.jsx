@@ -521,8 +521,8 @@ function FCMSettings({ onNavigateToPairing }) {
 
       {/* 更新凭证模态框 */}
       {showUpdateModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-2xl tac-panel tac-corners flex flex-col max-h-[85vh]">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 sm:p-8 md:p-12 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-2xl tac-panel tac-corners flex flex-col max-h-[calc(100vh-10rem)]">
             {/* Modal Header */}
             <div className="p-5 border-b border-ink-line flex justify-between items-center">
               <div className="flex items-center gap-3">

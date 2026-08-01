@@ -202,203 +202,211 @@ function PairingWizard({ onComplete, onCancel, fcmStatus: initialFcmStatus }) {
   // 订阅过期锁定态
   if (isSubscriptionExpired) {
     return (
-      <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden flex items-start sm:items-center justify-center animate-fade-in p-3 sm:p-6">
-        <div className="w-full max-w-lg min-w-0">
-          <WizardContainer>
-            <WizardHeader steps={steps} currentStep={0} getStepStatus={() => 'locked'} />
-
-            <div className="p-8">
-              <div className="text-center py-12">
-                <div className="w-20 h-20 bg-hazard-dim border border-hazard/40 flex items-center justify-center mx-auto mb-6">
-                  <FaLock className="text-3xl text-hazard" />
-                </div>
-
-                <div className="tac-label mb-2">SUBSCRIPTION EXPIRED</div>
-                <h3 className="text-2xl font-extrabold text-fg mb-3">
-                  服务已暂停
-                </h3>
-                <p className="text-fg-dim text-sm mb-8 max-w-sm mx-auto leading-relaxed">
-                  您的订阅已过期，续费后即可继续使用配对功能
-                </p>
-
-                <div className="p-4 bg-hazard-dim border border-hazard/40 mb-8">
-                  <div className="flex items-center justify-center gap-3 text-fg text-sm">
-                    <FaExclamationTriangle className="text-hazard" />
-                    <span>
-                      订阅过期时间：
-                      <span className="font-mono tabular-nums text-fg ml-1">
-                        {user?.subscriptionEndDate ? new Date(user.subscriptionEndDate).toLocaleDateString() : '未知'}
-                      </span>
+      <WizardModalShell onBackdropClick={onCancel} maxWidthClass="max-w-lg">
+        <WizardHeader steps={steps} currentStep={0} getStepStatus={() => 'locked'} />
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
+          <div className="p-6 sm:p-8">
+            <div className="text-center py-6 sm:py-10">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-hazard-dim border border-hazard/40 flex items-center justify-center mx-auto mb-6">
+                <FaLock className="text-2xl sm:text-3xl text-hazard" />
+              </div>
+              <div className="tac-label mb-2">SUBSCRIPTION EXPIRED</div>
+              <h3 className="text-xl sm:text-2xl font-extrabold text-fg mb-3">服务已暂停</h3>
+              <p className="text-fg-dim text-sm mb-6 max-w-sm mx-auto leading-relaxed">
+                您的订阅已过期，请联系管理员后再使用配对功能
+              </p>
+              <div className="p-4 bg-hazard-dim border border-hazard/40 mb-6">
+                <div className="flex items-center justify-center gap-3 text-fg text-sm">
+                  <FaExclamationTriangle className="text-hazard shrink-0" />
+                  <span>
+                    订阅过期时间：
+                    <span className="font-mono tabular-nums text-fg ml-1">
+                      {user?.subscriptionEndDate ? new Date(user.subscriptionEndDate).toLocaleDateString() : '未知'}
                     </span>
-                  </div>
+                  </span>
                 </div>
-
-                <button
-                  onClick={() => window.location.href = '/account'}
-                  className="tac-btn tac-btn-primary mx-auto"
-                >
-                  <FaCreditCard /> 立即续费 // RENEW
-                </button>
               </div>
             </div>
-
-            <WizardFooter>
-              <button
-                onClick={onCancel}
-                className="tac-btn tac-btn-ghost"
-              >
-                <FaArrowLeft /> 返回首页
-              </button>
-            </WizardFooter>
-          </WizardContainer>
+          </div>
         </div>
-      </div>
+        <WizardFooter>
+          <button type="button" onClick={onCancel} className="tac-btn tac-btn-ghost">
+            <FaArrowLeft /> 返回
+          </button>
+        </WizardFooter>
+      </WizardModalShell>
     );
   }
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden flex items-start sm:items-center justify-center animate-fade-in p-3 sm:p-6">
-      <div className="w-full max-w-2xl min-w-0">
-        <WizardContainer>
-          <WizardHeader steps={steps} currentStep={currentStep} getStepStatus={getStepStatus} />
+    <WizardModalShell onBackdropClick={onCancel} maxWidthClass="max-w-2xl">
+      <WizardHeader steps={steps} currentStep={currentStep} getStepStatus={getStepStatus} />
 
-          {!isUsingEdge && currentStep < 4 && (
-            <div className="mx-3 sm:mx-6 mt-4 sm:mt-6 min-w-0">
-              <EdgeRequiredNotice compact />
+      {/* 中间可滚动：内容过高时在弹窗内上下滚动，弹窗外上下始终留边距 */}
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
+        {!isUsingEdge && currentStep < 4 && (
+          <div className="mx-3 sm:mx-6 mt-4 sm:mt-5 min-w-0">
+            <EdgeRequiredNotice compact />
+          </div>
+        )}
+
+        {(isExpired || (fcmStatus.needsRestore && fcmStatus.restoreReason !== 'missing')) && currentStep < 4 && (
+          <div className="mx-3 sm:mx-6 mt-4 sm:mt-5 p-2 sm:p-3 border border-hazard/40 bg-hazard-dim min-w-0">
+            <div className="tac-label !text-hazard mb-1">
+              {isExpired ? 'FCM EXPIRED' : 'FCM RESTORE REQUIRED'}
+            </div>
+            <p className="text-sm font-bold text-fg">
+              {isExpired ? 'FCM 凭证已过期' : 'FCM 需要先恢复'}
+            </p>
+            <p className="text-[13px] text-fg-dim mt-1 leading-relaxed break-words">
+              {fcmStatus.restoreMessage
+                || '请按下方步骤重新获取并粘贴最新 /credentials add 命令，恢复成功后再进行服务器配对。'}
+            </p>
+          </div>
+        )}
+
+        <div className="mx-3 sm:mx-6 mt-4 sm:mt-5 p-3 sm:p-4 bg-ink-800 border border-ink-line min-w-0">
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <StatusPill
+              label="EDGE"
+              active={isUsingEdge}
+              activeText="Edge"
+              inactiveText="非 Edge"
+              warn={!isUsingEdge}
+            />
+            <StatusPill
+              label="FCM"
+              active={hasUsableCredentials}
+              activeText="可用"
+              inactiveText={isExpired ? '已过期' : '未配置'}
+              warn={isExpired || !hasCredentials}
+            />
+            <StatusPill
+              label="LISTEN"
+              active={isPairingListening}
+              activeText="监听中"
+              inactiveText="未启动"
+            />
+          </div>
+          {hasUsableCredentials && fcmStatus.steamId && (
+            <div className="mt-3 flex items-baseline gap-2 min-w-0">
+              <span className="tac-label shrink-0">STEAM ID</span>
+              <span className="font-mono text-xs tabular-nums text-fg-dim truncate">{fcmStatus.steamId}</span>
             </div>
           )}
+        </div>
 
-          {(isExpired || (fcmStatus.needsRestore && fcmStatus.restoreReason !== 'missing')) && currentStep < 4 && (
-            <div className="mx-3 sm:mx-6 mt-4 sm:mt-6 p-3 sm:p-4 border border-hazard/40 bg-hazard-dim min-w-0">
-              <div className="tac-label !text-hazard mb-1">
-                {isExpired ? 'FCM EXPIRED' : 'FCM RESTORE REQUIRED'}
-              </div>
-              <p className="text-sm font-bold text-fg">
-                {isExpired ? 'FCM 凭证已过期' : 'FCM 需要先恢复'}
-              </p>
-              <p className="text-[13px] text-fg-dim mt-1 leading-relaxed break-words">
-                {fcmStatus.restoreMessage
-                  || '请按下方步骤重新获取并粘贴最新 /credentials add 命令，恢复成功后再进行服务器配对。'}
-              </p>
-            </div>
+        <div className="p-3 sm:p-6 min-w-0">
+          {currentStep === 1 && (
+            <Step1InstallPlugin
+              browser={browser}
+              onNext={() => setCurrentStep(2)}
+              onSkip={() => setCurrentStep(2)}
+            />
           )}
 
-          <div className="mx-3 sm:mx-6 mt-4 sm:mt-6 p-3 sm:p-4 bg-ink-800 border border-ink-line min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-[11px]">
-              <StatusPill
-                label="EDGE"
-                active={isUsingEdge}
-                activeText="Edge"
-                inactiveText="非 Edge"
-                warn={!isUsingEdge}
-              />
-              <StatusPill
-                label="FCM"
-                active={hasUsableCredentials}
-                activeText="可用"
-                inactiveText={isExpired ? '已过期' : '未配置'}
-                warn={isExpired || !hasCredentials}
-              />
-              <StatusPill
-                label="LISTEN"
-                active={isPairingListening}
-                activeText="监听中"
-                inactiveText="未启动"
-              />
-            </div>
-            {hasUsableCredentials && fcmStatus.steamId && (
-              <div className="mt-3 flex items-baseline gap-2 min-w-0">
-                <span className="tac-label shrink-0">STEAM ID</span>
-                <span className="font-mono text-xs tabular-nums text-fg-dim truncate">{fcmStatus.steamId}</span>
-              </div>
-            )}
-          </div>
+          {currentStep === 2 && (
+            <Step2FcmAuth
+              credentialsInput={credentialsInput}
+              setCredentialsInput={setCredentialsInput}
+              loading={loading}
+              onSubmit={handleSubmitCredentials}
+              onBack={() => setCurrentStep(1)}
+              fcmStatus={fcmStatus}
+              isUsingEdge={isUsingEdge}
+              onSkipToStep3={() => {
+                if (isExpired) return;
+                setCurrentStep(3);
+              }}
+            />
+          )}
 
-          {/* 步骤内容 */}
-          <div className="p-3 sm:p-6 min-w-0 overflow-x-hidden">
-            {currentStep === 1 && (
-              <Step1InstallPlugin
-                browser={browser}
-                onNext={() => setCurrentStep(2)}
-                onSkip={() => setCurrentStep(2)}
-              />
-            )}
+          {currentStep === 3 && (
+            <Step3GamePairing
+              isListening={isListening}
+              loading={loading}
+              onStartListening={handleStartListening}
+              onStopListening={handleStopListening}
+              onBack={() => setCurrentStep(2)}
+              fcmStatus={fcmStatus}
+            />
+          )}
 
-            {currentStep === 2 && (
-              <Step2FcmAuth
-                credentialsInput={credentialsInput}
-                setCredentialsInput={setCredentialsInput}
-                loading={loading}
-                onSubmit={handleSubmitCredentials}
-                onBack={() => setCurrentStep(1)}
-                fcmStatus={fcmStatus}
-                isUsingEdge={isUsingEdge}
-                onSkipToStep3={() => {
-                  if (isExpired) return;
-                  setCurrentStep(3);
-                }}
-              />
-            )}
-
-            {currentStep === 3 && (
-              <Step3GamePairing
-                isListening={isListening}
-                loading={loading}
-                onStartListening={handleStartListening}
-                onStopListening={handleStopListening}
-                onBack={() => setCurrentStep(2)}
-                fcmStatus={fcmStatus}
-              />
-            )}
-
-            {currentStep === 4 && (
-              <Step4Complete
-                pairedServer={pairedServer}
-                onFinish={handleFinish}
-              />
-            )}
-          </div>
-
-          <WizardFooter>
-            <button
-              onClick={onCancel}
-              className="tac-btn tac-btn-ghost shrink-0"
-            >
-              <FaArrowLeft /> 返回
-            </button>
-
-            {currentStep < 4 && (
-              <div className="tac-label flex items-center gap-1.5 shrink-0">
-                STEP <span className="font-mono tabular-nums text-fg">{currentStep}</span> / 4
-              </div>
-            )}
-          </WizardFooter>
-        </WizardContainer>
+          {currentStep === 4 && (
+            <Step4Complete
+              pairedServer={pairedServer}
+              onFinish={handleFinish}
+            />
+          )}
+        </div>
       </div>
-    </div>
+
+      <WizardFooter>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="tac-btn tac-btn-ghost shrink-0"
+        >
+          <FaArrowLeft /> 返回
+        </button>
+
+        {currentStep < 4 && (
+          <div className="tac-label flex items-center gap-1.5 shrink-0">
+            STEP <span className="font-mono tabular-nums text-fg">{currentStep}</span> / 4
+          </div>
+        )}
+      </WizardFooter>
+    </WizardModalShell>
   );
 }
 
 // ============ 子组件 ============
 
-function WizardContainer({ children }) {
+/**
+ * 居中弹窗壳：
+ * - 相对视口上下左右固定边距（p-6 / sm:p-8 / md:p-12）
+ * - 弹窗 max-height = calc(100vh - 6rem)，避免被顶部/底部 UI 遮挡，内部滚动
+ */
+function WizardModalShell({ children, onBackdropClick, maxWidthClass = 'max-w-2xl' }) {
   return (
-    <div className="tac-panel tac-corners relative w-full min-w-0 max-w-full overflow-hidden">
-      {children}
+    <div
+      className="fixed inset-0 z-[160] flex items-center justify-center p-6 sm:p-8 md:p-12 animate-fade-in"
+      role="presentation"
+    >
+      {/* 遮罩 */}
+      <button
+        type="button"
+        aria-label="关闭配对向导"
+        className="absolute inset-0 bg-ink-900/80 border-0 cursor-default"
+        onClick={onBackdropClick}
+      />
+
+      {/* 弹窗本体：高度上限 + 纵向 flex，中间区域自己滚 */}
+      <div
+        className={`relative z-10 w-full ${maxWidthClass} min-w-0 max-h-[calc(100vh-6rem)] flex flex-col`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pairing-wizard-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="tac-panel tac-corners relative w-full min-h-0 max-h-[calc(100vh-6rem)] flex flex-col overflow-hidden bg-ink-850">
+          {children}
+        </div>
+      </div>
     </div>
   );
 }
 
 function WizardHeader({ steps, currentStep, getStepStatus }) {
   return (
-    <div className="p-4 sm:p-6 border-b border-ink-line min-w-0">
-      <div className="flex items-center gap-3 sm:gap-4 mb-5 sm:mb-6 min-w-0">
-        <div className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 bg-hazard-dim border border-hazard/40 flex items-center justify-center text-hazard">
+    <div className="shrink-0 p-4 sm:p-5 border-b border-ink-line min-w-0">
+      <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-5 min-w-0">
+        <div className="w-10 h-10 sm:w-11 sm:h-11 shrink-0 bg-hazard-dim border border-hazard/40 flex items-center justify-center text-hazard">
           <FaSatellite className="text-lg sm:text-xl" />
         </div>
         <div className="min-w-0">
           <div className="tac-label mb-1">SERVER PAIRING WIZARD</div>
-          <h2 className="text-lg sm:text-xl font-extrabold text-fg tracking-tight truncate">
+          <h2 id="pairing-wizard-title" className="text-base sm:text-lg font-extrabold text-fg tracking-tight truncate">
             服务器配对向导
           </h2>
         </div>
@@ -450,7 +458,7 @@ function WizardHeader({ steps, currentStep, getStepStatus }) {
 
 function WizardFooter({ children }) {
   return (
-    <div className="p-3 sm:p-4 border-t border-ink-line flex flex-wrap items-center justify-between gap-2 bg-ink-850 min-w-0">
+    <div className="shrink-0 p-3 sm:p-4 border-t border-ink-line flex flex-wrap items-center justify-between gap-2 bg-ink-850 min-w-0">
       {children}
     </div>
   );
@@ -565,7 +573,7 @@ function Step2FcmAuth({
 
       {/* 过期：明确要求更新，禁止使用旧凭证 */}
       {isExpired && (
-        <div className="p-3 sm:p-4 bg-hazard-dim border border-hazard/40 min-w-0">
+        <div className="p-2 sm:p-3 bg-hazard-dim border border-hazard/40 min-w-0">
           <div className="flex items-start gap-3">
             <span className="w-1.5 h-1.5 mt-1.5 shrink-0 bg-hazard" />
             <div className="min-w-0">
