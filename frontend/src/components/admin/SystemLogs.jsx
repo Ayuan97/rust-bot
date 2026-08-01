@@ -14,6 +14,7 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
   const [filteredLogs, setFilteredLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState('');
+  const [logMeta, setLogMeta] = useState({ isServiceRunning: false, bufferLimit: 200 });
   const [isAutoScroll, setIsAutoScroll] = useState(true);
   const logEndRef = useRef(null);
 
@@ -23,7 +24,7 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
   const [moduleFilter, setModuleFilter] = useState('');
 
   useEffect(() => {
-    fetchActiveUsers();
+    fetchUsers();
   }, []);
 
   // 处理预选用户
@@ -40,11 +41,16 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
   useEffect(() => {
     let interval;
     if (selectedUserId) {
+      setLogs([]);
+      setFilteredLogs([]);
+      setFetchError('');
+      setLogMeta({ isServiceRunning: false, bufferLimit: 200 });
       fetchLogs();
       interval = setInterval(fetchLogs, 3000);
     } else {
       setLogs([]);
       setFilteredLogs([]);
+      setLogMeta({ isServiceRunning: false, bufferLimit: 200 });
     }
     return () => clearInterval(interval);
   }, [selectedUserId]);
@@ -76,14 +82,14 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
     }
   }, [filteredLogs]);
 
-  const fetchActiveUsers = async () => {
+  const fetchUsers = async () => {
     try {
-      const res = await api.get('/admin/users');
+      const res = await api.get('/admin/users/log-targets');
       if (res.data.success) {
-        setUsers(res.data.data.users.filter(u => u.serviceStatus?.isServiceRunning));
+        setUsers(res.data.data);
       }
     } catch (err) {
-      toast.error('获取活跃幸存者失败');
+      toast.error('获取诊断用户失败');
     }
   };
 
@@ -94,6 +100,7 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
       const res = await api.get(`/admin/users/${selectedUserId}/logs`);
       if (res.data.success) {
         setLogs(res.data.data);
+        setLogMeta(res.data.meta || { isServiceRunning: false, bufferLimit: 200 });
         setFetchError('');
       }
     } catch (err) {
@@ -173,7 +180,9 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
           </div>
           <h2 className="text-xl font-extrabold text-fg mt-1">系统诊断控制台</h2>
           <p className="text-xs text-fg-dim mt-1">
-            {selectedUser ? `当前监听：${selectedUser.username}` : '请先选择活跃用户开始诊断'}
+            {selectedUser
+              ? `当前目标：${selectedUser.username} · ${logMeta.isServiceRunning ? '实时日志' : '服务未运行'}`
+              : '请选择用户查看诊断日志'}
           </p>
         </div>
 
@@ -186,9 +195,11 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
               onChange={(e) => setSelectedUserId(e.target.value)}
               className="bg-transparent text-fg text-sm focus:outline-none py-1 min-w-[150px] font-mono tabular-nums cursor-pointer"
             >
-              <option value="">-- 选择活跃幸存者 --</option>
+              <option value="">-- 选择用户 --</option>
               {users.map(u => (
-                <option key={u.id} value={u.id}>{u.username} ({u.id.substring(0, 8)}...)</option>
+                <option key={u.id} value={u.id}>
+                  {u.username} · {u.isServiceRunning ? '运行中' : '未运行'} ({u.id.substring(0, 8)}...)
+                </option>
               ))}
             </select>
           </div>
@@ -206,7 +217,7 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
 
           {/* 刷新按钮 */}
           <button
-            onClick={() => { fetchActiveUsers(); fetchLogs(); }}
+            onClick={() => { fetchUsers(); fetchLogs(); }}
             className="tac-btn tac-btn-ghost !px-3"
             title="刷新"
             aria-label="刷新"
@@ -310,14 +321,16 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
         <div className="px-4 py-2 bg-ink-800 border-b border-ink-line flex justify-between items-center text-[10px] font-mono uppercase tracking-[0.18em]">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className={`w-1.5 h-1.5 ${selectedUserId ? 'bg-terminal animate-tac-blink' : 'bg-fg-mute'}`} />
-              <span className={selectedUserId ? 'text-terminal' : 'text-fg-mute'}>
-                {selectedUserId ? 'LOG_STREAM_ACTIVE' : 'AWAITING_TARGET...'}
+              <span className={`w-1.5 h-1.5 ${logMeta.isServiceRunning ? 'bg-terminal animate-tac-blink' : 'bg-fg-mute'}`} />
+              <span className={logMeta.isServiceRunning ? 'text-terminal' : 'text-fg-mute'}>
+                {!selectedUserId
+                  ? 'AWAITING_TARGET...'
+                  : logMeta.isServiceRunning ? 'LOG_STREAM_ACTIVE' : 'SERVICE_OFFLINE'}
               </span>
             </div>
             {selectedUserId && (
               <span className="text-fg-dim tabular-nums">
-                BUFFER {logs.length}/{200} · {loading ? '同步中' : '实时'}
+                BUFFER {logs.length}/{logMeta.bufferLimit} · {loading ? '同步中' : logMeta.isServiceRunning ? '实时' : '离线'}
               </span>
             )}
           </div>
@@ -344,8 +357,10 @@ const SystemLogs = ({ preselectedUserId, onUserSelected }) => {
             </div>
           ) : filteredLogs.length === 0 ? (
             <div className="text-fg-dim">
-              {logs.length === 0
-                ? '正在扫描缓冲区，等待初始数据信号...'
+              {!logMeta.isServiceRunning
+                ? '用户服务未运行，当前无实时日志；历史内存日志已释放。'
+                : logs.length === 0
+                  ? '服务正在运行，当前缓冲区暂无日志。'
                 : '没有匹配的日志记录'}
             </div>
           ) : (

@@ -525,6 +525,32 @@ router.put('/users/:id/adjust', async (req, res) => {
 });
 
 /**
+ * GET /api/admin/users/log-targets
+ * 获取系统诊断可选用户
+ */
+router.get('/users/log-targets', async (req, res) => {
+  try {
+    const [users] = await db.query(
+      'SELECT id, username FROM users ORDER BY createdAt DESC'
+    );
+
+    res.json({
+      success: true,
+      data: users.map(user => ({
+        ...user,
+        isServiceRunning: globalServiceManager.userServices.has(user.id)
+      }))
+    });
+  } catch (error) {
+    console.error('获取诊断用户列表失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '获取诊断用户列表失败'
+    });
+  }
+});
+
+/**
  * GET /api/admin/users/:id/logs
  * 获取幸存者实时诊断日志 (黑匣子)
  */
@@ -532,13 +558,13 @@ router.get('/users/:id/logs', async (req, res) => {
   const { id } = req.params;
   const userService = globalServiceManager.userServices.get(id);
 
-  if (!userService) {
-    return res.json({ success: true, data: [] });
-  }
-
   res.json({
     success: true,
-    data: userService.logs
+    data: userService?.logs || [],
+    meta: {
+      isServiceRunning: !!userService,
+      bufferLimit: userService?.MAX_LOGS || 200
+    }
   });
 });
 
@@ -653,7 +679,8 @@ router.get('/users', async (req, res) => {
     // 查询用户
     const [users] = await db.query(
       `SELECT u.*, s.id as subscriptionId, s.planType, s.status as subscriptionStatus, s.startDate, s.endDate,
-        (SELECT COUNT(*) FROM servers WHERE userId = u.id) as serverCount,
+        (SELECT COUNT(*) FROM servers
+         WHERE userId = u.id AND ip <> '0.0.0.0' AND id NOT LIKE 'fcm-%') as serverCount,
         (SELECT COUNT(*) FROM orders WHERE userId = u.id) as orderCount
        FROM users u
        LEFT JOIN subscriptions s ON u.id = s.userId
@@ -773,7 +800,8 @@ router.get('/users/:id', async (req, res) => {
     // 获取用户服务器列表
     const [servers] = await db.query(
       `SELECT s.*, (SELECT COUNT(*) FROM devices WHERE serverId = s.id) as deviceCount
-       FROM servers s WHERE s.userId = ?`,
+       FROM servers s
+       WHERE s.userId = ? AND s.ip <> '0.0.0.0' AND s.id NOT LIKE 'fcm-%'`,
       [id]
     );
 
@@ -785,7 +813,8 @@ router.get('/users/:id', async (req, res) => {
 
     // 计算统计数据
     const [serverCountResult] = await db.query(
-      'SELECT COUNT(*) as count FROM servers WHERE userId = ?',
+      `SELECT COUNT(*) as count FROM servers
+       WHERE userId = ? AND ip <> '0.0.0.0' AND id NOT LIKE 'fcm-%'`,
       [id]
     );
     const [orderCountResult] = await db.query(
@@ -1146,7 +1175,7 @@ router.get('/users/:id/servers', async (req, res) => {
     const [servers] = await db.query(
       `SELECT s.*, (SELECT COUNT(*) FROM devices WHERE serverId = s.id) as deviceCount
        FROM servers s
-       WHERE s.userId = ?
+       WHERE s.userId = ? AND s.ip <> '0.0.0.0' AND s.id NOT LIKE 'fcm-%'
        ORDER BY s.createdAt DESC`,
       [id]
     );
@@ -1351,7 +1380,10 @@ router.get('/stats', async (req, res) => {
     const todayRevenue = parseFloat(todayRevenueResult[0].total) || 0;
 
     // Rust+ 业务统计
-    const [totalServersResult] = await db.query('SELECT COUNT(*) as count FROM servers');
+    const [totalServersResult] = await db.query(
+      `SELECT COUNT(*) as count FROM servers
+       WHERE ip <> '0.0.0.0' AND id NOT LIKE 'fcm-%'`
+    );
     const [totalDevicesResult] = await db.query('SELECT COUNT(*) as count FROM devices');
     const [todayEventsResult] = await db.query(
       'SELECT COUNT(*) as count FROM event_logs WHERE createdAt >= ?',
