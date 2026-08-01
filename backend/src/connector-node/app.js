@@ -20,7 +20,7 @@ const POLL_ASSIGNMENT_INTERVAL_MS = Number(process.env.NODE_POLL_ASSIGNMENT_INTE
 const POLL_COMMAND_INTERVAL_MS = Number(process.env.NODE_POLL_COMMAND_INTERVAL_MS || 300);
 const CONTROL_PLANE_STALE_MS = Number(process.env.NODE_CONTROL_PLANE_STALE_MS || 45000);
 const CONTROL_PLANE_CHECK_INTERVAL_MS = Number(process.env.NODE_CONTROL_PLANE_CHECK_INTERVAL_MS || 2000);
-const CONNECTION_RETRY_DELAY_MS = 5000;
+const CONNECTION_RETRY_DELAYS_MS = [5000, 10000, 20000, 40000, 60000];
 // 代理出口(本机 Mihomo 的 SOCKS) + 拉取代理配置的间隔
 const PROXY_SOCKS = process.env.PROXY_SOCKS || 'socks5://127.0.0.1:7899';
 const PROXY_POLL_INTERVAL_MS = Number(process.env.PROXY_POLL_INTERVAL_MS || 15000);
@@ -45,7 +45,7 @@ const rustManager = new UserRustPlusManager(`connector:${NODE_ID}`, { autoReconn
 const proxyPool = new ProxyPool();
 
 const activeSessions = new Map();
-const sessionRetryAt = new Map();
+const sessionRetryState = new Map();
 // 主动关闭中的会话：断开事件不得再上报 CONNECTING（避免与 manual_disconnect 打架）
 const intentionalCloseSessions = new Set();
 let heartbeatTimer = null;
@@ -158,7 +158,7 @@ async function connectSession(assignment) {
       playerId: assignment.playerId,
       playerToken: assignment.playerToken,
     });
-    sessionRetryAt.delete(sessionId);
+    sessionRetryState.delete(sessionId);
     await updateSessionState(sessionId, 'CONNECTED');
   } catch (error) {
     try {
@@ -167,8 +167,22 @@ async function connectSession(assignment) {
       // Ignore local cleanup errors and retry from a fresh client later.
     }
     activeSessions.delete(sessionId);
-    sessionRetryAt.set(sessionId, Date.now() + CONNECTION_RETRY_DELAY_MS);
-    await updateSessionState(sessionId, 'CONNECTING', error.message || String(error));
+    const errorMessage = error.message || String(error);
+    if (errorMessage === 'not_found') {
+      sessionRetryState.delete(sessionId);
+      await updateSessionState(sessionId, 'FAILED', errorMessage);
+      return;
+    }
+
+    const attempts = (sessionRetryState.get(sessionId)?.attempts || 0) + 1;
+    const retryDelay = CONNECTION_RETRY_DELAYS_MS[
+      Math.min(attempts - 1, CONNECTION_RETRY_DELAYS_MS.length - 1)
+    ];
+    sessionRetryState.set(sessionId, {
+      attempts,
+      retryAt: Date.now() + retryDelay,
+    });
+    await updateSessionState(sessionId, 'CONNECTING', errorMessage);
   }
 }
 
@@ -180,7 +194,7 @@ async function disconnectSession(sessionId, reason = 'assignment_removed') {
     // Ignore local disconnect errors and still publish closed state.
   } finally {
     activeSessions.delete(sessionId);
-    sessionRetryAt.delete(sessionId);
+    sessionRetryState.delete(sessionId);
     intentionalCloseSessions.delete(sessionId);
   }
   await updateSessionState(sessionId, 'CLOSED', reason);
@@ -221,9 +235,9 @@ const syncAssignmentState = createAssignmentSynchronizer({
     const res = await apiGet('/session/assignments');
     const assignments = res.assignments || [];
     const incomingIds = new Set(assignments.map((item) => item.sessionId));
-    for (const sessionId of sessionRetryAt.keys()) {
+    for (const sessionId of sessionRetryState.keys()) {
       if (!incomingIds.has(sessionId)) {
-        sessionRetryAt.delete(sessionId);
+        sessionRetryState.delete(sessionId);
       }
     }
     return assignments;
@@ -232,7 +246,7 @@ const syncAssignmentState = createAssignmentSynchronizer({
   disconnectSession,
   shouldConnect: (assignment) =>
     !activeSessions.has(assignment.sessionId) &&
-    Date.now() >= (sessionRetryAt.get(assignment.sessionId) || 0),
+    Date.now() >= (sessionRetryState.get(assignment.sessionId)?.retryAt || 0),
 });
 
 async function syncAssignments() {
@@ -421,7 +435,10 @@ async function bootstrap() {
     // 意外掉线：本地不自动重连，从 activeSessions 移除并上报 CONNECTING，
     // 由 syncAssignments 依据控制平面 assignment 决定是否重连（避免 failover 双连接）
     activeSessions.delete(serverId);
-    sessionRetryAt.set(serverId, Date.now() + CONNECTION_RETRY_DELAY_MS);
+    sessionRetryState.set(serverId, {
+      attempts: 1,
+      retryAt: Date.now() + CONNECTION_RETRY_DELAYS_MS[0],
+    });
     updateSessionState(serverId, 'CONNECTING', 'connection dropped, awaiting reassignment');
   });
 
