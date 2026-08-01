@@ -7,7 +7,7 @@ set -Eeuo pipefail
 # 3) 仅重启 rust-connector-* 进程，不动主节点
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-APP_DIR=${APP_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}
+APP_DIR=${APP_DIR:-/www/wwwroot/rust-bot}
 BRANCH=${1:-main}
 
 cd "$APP_DIR"

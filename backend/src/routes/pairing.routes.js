@@ -94,6 +94,15 @@ router.post('/start', requireActiveSubscription, async (req, res) => {
       });
     }
 
+    const fcmHealth = await getUserFcmHealth(db, req.user.id, fcmService);
+    if (fcmHealth.needsRestore) {
+      return res.status(403).json({
+        success: false,
+        error: fcmHealth.restoreMessage || '请先恢复 FCM 凭证后再启动监听',
+        code: 'FCM_RESTORE_REQUIRED'
+      });
+    }
+
     // 检查是否已有保存的凭证
     const [servers] = await db.query(
       `SELECT fcmCredentials FROM servers
@@ -250,6 +259,7 @@ router.post('/register/simple', requireActiveSubscription, async (req, res) => {
     // 启动 FCM 监听
     const fcmService = getUserFCMService(req.user.id);
     if (fcmService) {
+      fcmService.stop();
       await fcmService.start(credentials);
     }
 
